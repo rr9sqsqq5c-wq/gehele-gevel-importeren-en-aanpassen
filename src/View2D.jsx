@@ -14,7 +14,14 @@ function lighten(hex, amount = 0.3) {
   return `rgb(${r},${g},${b})`;
 }
 
-export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedWallIds, maxHoogte }) {
+function brickColor(label, baseColor) {
+  if (label === 'Kop') return '#b45309';
+  if (label === 'Driekwart') return '#7c3aed';
+  if (label === 'Rest') return '#dc2626';
+  return baseColor ?? '#a64033';
+}
+
+export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedWallIds, maxHoogte, penantFaceData, groupColor }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -176,6 +183,79 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       }
     }
 
+    if (penantFaceData?.length) {
+      const mat = walls.length > 0 ? null : null;
+      const steenH = (() => {
+        for (const wall of walls) {
+          const gid = wallGroupMap[wall.expressID];
+          const gs = gid ? groupSettings(gid) : null;
+          return gs?.material?.steenH ?? 50;
+        }
+        return 50;
+      })();
+
+      for (const { penant: p, front, left, right, height: pH, groupMinH } of penantFaceData) {
+        const pX = p.x ?? 0;
+        const pB = Math.max(1, p.breedte ?? 400);
+        const pD = Math.max(1, p.diepte ?? 150);
+        const wallsWithOrigin = walls.filter((w) => w.wallOrigin);
+        if (!wallsWithOrigin.length) continue;
+        const refWall = wallsWithOrigin[0];
+        const wo = refWall.wallOrigin;
+        const worldBaseY = groupMinH ?? wo.heightStart;
+
+        const [sx, baseY] = toScreen(pX, worldBaseY + pH);
+        const [ex] = toScreen(pX + pB, 0);
+        const [, bottomY] = toScreen(0, worldBaseY);
+        const pW = ex - sx;
+        const pHpx = bottomY - baseY;
+        const depthPx = Math.min(pD * scale * 0.001, 30);
+
+        ctx.fillStyle = 'rgba(99,102,241,0.15)';
+        ctx.fillRect(sx, baseY, pW, pHpx);
+
+        ctx.fillStyle = 'rgba(99,102,241,0.25)';
+        ctx.beginPath();
+        ctx.moveTo(sx + pW, baseY);
+        ctx.lineTo(sx + pW + depthPx, baseY - depthPx);
+        ctx.lineTo(sx + pW + depthPx, bottomY - depthPx);
+        ctx.lineTo(sx + pW, bottomY);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(99,102,241,0.2)';
+        ctx.beginPath();
+        ctx.moveTo(sx, baseY);
+        ctx.lineTo(sx + depthPx, baseY - depthPx);
+        ctx.lineTo(sx + pW + depthPx, baseY - depthPx);
+        ctx.lineTo(sx + pW, baseY);
+        ctx.closePath();
+        ctx.fill();
+
+        const col = groupColor ?? '#a64033';
+        for (const row of front) {
+          const [, rowTop] = toScreen(0, worldBaseY + row.y + steenH);
+          const rowH = steenH * scale * 0.001;
+          for (const piece of row.pieces) {
+            const [px2] = toScreen(pX + piece.start, 0);
+            const pw2 = piece.length * scale * 0.001;
+            ctx.fillStyle = brickColor(piece.label, col);
+            ctx.fillRect(px2 + 0.5, rowTop + 0.5, Math.max(pw2 - 1, 1), Math.max(rowH - 1, 1));
+          }
+        }
+
+        ctx.strokeStyle = '#4338ca';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(sx, baseY, pW, pHpx);
+
+        ctx.fillStyle = '#4338ca';
+        ctx.font = 'bold 11px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('P', sx + pW / 2, baseY + Math.min(pHpx / 2, 14));
+      }
+    }
+
     if (maxHoogte !== null && maxHoogte > 0 && walls.length > 0) {
       const wallsWithOrigin = walls.filter((w) => w.wallOrigin);
       if (wallsWithOrigin.length > 0) {
@@ -214,7 +294,7 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}`, 8, H - 6);
-  }, [walls, patterns, groupSettings, wallGroupMap, selectedWallIds, bounds, size, redrawTick, maxHoogte]);
+  }, [walls, patterns, groupSettings, wallGroupMap, selectedWallIds, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();

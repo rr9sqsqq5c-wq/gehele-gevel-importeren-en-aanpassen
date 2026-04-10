@@ -213,3 +213,16 @@ export function buildSingleWallPattern(wall, material, verband) {
 
   return rows;
 }
+
+export function buildFacePattern(width, height, material, verband, rowOffset = 0) {
+  const { steenH, lint } = material;
+  const lagenmaat = steenH + lint;
+  const lagen = lagenmaat > 0 ? Math.floor((height + lint) / lagenmaat) : 0;
+  const rows = [];
+  for (let r = 0; r < lagen; r++) {
+    const rowY = round2(r * lagenmaat);
+    const pieces = buildRowPiecesForWidth(width, material, verband, r + rowOffset, 0);
+    if (pieces.length) rows.push({ y: rowY, pieces });
+  }
+  return rows;
+}

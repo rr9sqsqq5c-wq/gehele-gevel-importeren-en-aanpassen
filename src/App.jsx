@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc } from './lib/ifc.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
-import { buildGroupPattern } from './lib/pattern.js';
+import { buildGroupPattern, buildFacePattern } from './lib/pattern.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
 
@@ -118,7 +118,7 @@ const nextColor = () => GROUP_COLORS[_colorIdx++ % GROUP_COLORS.length];
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, penanten: [] });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -199,6 +199,43 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
           </Field>
         )}
       </div>
+
+      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#475569' }}>Penanten</span>
+          <button
+            onClick={() => onUpdate({ penanten: [...(settings.penanten ?? []), { id: Date.now(), x: 500, breedte: 400, diepte: 150, hoogte: 2000, gavelVolgend: true }] })}
+            style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '2px 8px', cursor: 'pointer' }}>
+            + Toevoegen
+          </button>
+        </div>
+        {(settings.penanten ?? []).length === 0 && (
+          <div style={{ fontSize: 11, color: '#94a3b8' }}>Geen penanten</div>
+        )}
+        {(settings.penanten ?? []).map((p, idx) => (
+          <div key={p.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4, padding: 6, marginBottom: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#334155' }}>Penant {idx + 1}</span>
+              <button onClick={() => onUpdate({ penanten: (settings.penanten ?? []).filter((q) => q.id !== p.id) })}
+                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 12 }}>✕</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+              {[['X positie', 'x'], ['Breedte', 'breedte'], ['Diepte', 'diepte'], ['Hoogte', 'hoogte']].map(([lbl, key]) => (
+                <Field key={key} label={`${lbl} mm`}>
+                  <input type="number" min={0} step={10} value={p[key] ?? 0}
+                    onChange={(e) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, [key]: Number(e.target.value) } : q) })}
+                    style={{ ...inp, width: '100%' }} />
+                </Field>
+              ))}
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginTop: 4, cursor: 'pointer' }}>
+              <input type="checkbox" checked={p.gavelVolgend !== false}
+                onChange={(e) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, gavelVolgend: e.target.checked } : q) })} />
+              Patroon volgt gevel
+            </label>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -269,6 +306,32 @@ export default function App() {
           const wallOffset = (wall.wallOrigin?.heightStart ?? 0) - groupMinH;
           const localCutoff = s.maxHoogte - wallOffset;
           rows[wid] = rows[wid].filter((r) => r.y < localCutoff);
+        }
+      }
+      if (s.penanten?.length) {
+        for (const wall of walls) {
+          const wid = wall.expressID;
+          if (!rows[wid]) continue;
+          const wallLeft = wall.wallOrigin?.lengthStart ?? 0;
+          const wallRight = wallLeft + wall.length;
+          for (const p of s.penanten) {
+            const pX = p.x ?? 0;
+            const pEnd = pX + Math.max(1, p.breedte ?? 400);
+            if (pEnd <= wallLeft || pX >= wallRight) continue;
+            const maskStart = Math.max(0, pX - wallLeft);
+            const maskEnd = Math.min(wall.length, pEnd - wallLeft);
+            rows[wid] = rows[wid].map((row) => ({
+              ...row,
+              pieces: row.pieces.flatMap((piece) => {
+                const ps = piece.start, pe = piece.start + piece.length;
+                if (pe <= maskStart || ps >= maskEnd) return [piece];
+                const out = [];
+                if (ps < maskStart) out.push({ ...piece, length: maskStart - ps });
+                if (pe > maskEnd) out.push({ ...piece, start: maskEnd, length: pe - maskEnd });
+                return out;
+              }),
+            }));
+          }
         }
       }
       Object.assign(result, rows);
@@ -401,7 +464,7 @@ export default function App() {
     const srcSettings = getSettings(sourceGroupId);
     const linkedIds = groups.filter((g) => groupLinks[g.id] === linkId && g.id !== sourceGroupId).map((g) => g.id);
     for (const id of linkedIds) {
-      updateSettings(id, { name: srcSettings.name, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth, maxHoogte: srcSettings.maxHoogte });
+      updateSettings(id, { name: srcSettings.name, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth, maxHoogte: srcSettings.maxHoogte, penanten: srcSettings.penanten ? [...srcSettings.penanten] : [] });
     }
   }
 
@@ -460,6 +523,56 @@ export default function App() {
   const activeGroup = groups.find((g) => g.id === activeGroupId);
   const selectionHasUngrouped = [...selectedWallIds].some((id) => !wallGroupMap[id]);
   const ungroupedSelCount = [...selectedWallIds].filter((id) => !wallGroupMap[id]).length;
+
+  const penantFaceData = useMemo(() => {
+    if (!activeGroup) return [];
+    const s = getSettings(activeGroup.id);
+    if (!s.penanten?.length) return [];
+    const mat = s.material ?? DEFAULT_MATERIAL;
+    const verband = s.verband ?? DEFAULT_VERBAND;
+    const walls = activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean);
+    const groupMinH = walls.length ? Math.min(...walls.map((w) => w.wallOrigin?.heightStart ?? 0)) : 0;
+    const gAdj = adjacencies.filter((a) => activeGroup.wallIds.includes(a.wallIdA) && activeGroup.wallIds.includes(a.wallIdB));
+    const facadeRows = buildGroupPattern(walls, gAdj, mat, verband);
+
+    return s.penanten.map((p) => {
+      const pX = p.x ?? 0;
+      const pB = Math.max(1, p.breedte ?? 400);
+      const pD = Math.max(1, p.diepte ?? 150);
+      const pH = Math.max(1, p.hoogte ?? 2000);
+      const maxH = s.maxHoogte !== null && s.maxHoogte > 0 ? s.maxHoogte : null;
+      const effectiveH = maxH !== null ? Math.min(pH, maxH) : pH;
+
+      let frontRows;
+      if (p.gavelVolgend !== false) {
+        frontRows = [];
+        for (const wall of walls) {
+          const wallLeft = wall.wallOrigin?.lengthStart ?? 0;
+          const wallRight = wallLeft + wall.length;
+          const pEnd = pX + pB;
+          if (pEnd <= wallLeft || pX >= wallRight) continue;
+          const wRows = facadeRows[wall.expressID] ?? [];
+          const maskStart = Math.max(0, pX - wallLeft);
+          const maskEnd = Math.min(wall.length, pEnd - wallLeft);
+          for (const row of wRows) {
+            if (row.y >= effectiveH) continue;
+            const clipped = row.pieces.flatMap((piece) => {
+              const ps = piece.start, pe = piece.start + piece.length;
+              const os = Math.max(ps, maskStart), oe = Math.min(pe, maskEnd);
+              if (oe - os < 0.001) return [];
+              return [{ ...piece, start: os - maskStart, length: oe - os }];
+            });
+            if (clipped.length) frontRows.push({ y: row.y, pieces: clipped });
+          }
+        }
+      } else {
+        frontRows = buildFacePattern(pB, effectiveH, mat, verband);
+      }
+
+      const sideRows = buildFacePattern(pD, effectiveH, mat, verband);
+      return { penant: p, front: frontRows, left: sideRows, right: sideRows, height: effectiveH, groupMinH };
+    });
+  }, [activeGroup, getSettings, wallMap, adjacencies]);
   const adjWallIds = useMemo(() => new Set(adjacencies.flatMap((a) => [a.wallIdA, a.wallIdB])), [adjacencies]);
 
   const totalSelected = wallTypes.filter((t) => selectedTypes.has(t.name)).reduce((s, t) => s + t.count, 0);
@@ -800,6 +913,8 @@ export default function App() {
                     wallGroupMap={wallGroupMap}
                     selectedWallIds={selectedWallIds}
                     maxHoogte={getSettings(activeGroup.id).maxHoogte}
+                    penantFaceData={penantFaceData}
+                    groupColor={getSettings(activeGroup.id).color}
                   />
                   <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.85)', color: '#94a3b8', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                     {getSettings(activeGroup.id).name} · {activeGroup.wallIds.length} wand{activeGroup.wallIds.length !== 1 ? 'en' : ''} · 2D gevelaanzicht
