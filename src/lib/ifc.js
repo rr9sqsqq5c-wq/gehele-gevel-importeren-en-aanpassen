@@ -70,11 +70,18 @@ function getBBox(api, modelID, expressID) {
   return ok ? { minX, maxX, minY, maxY, minZ, maxZ } : null;
 }
 
-function getProjectedVertices(api, modelID, expressID, lAxis, hAxis) {
+function getProjectedVertices(api, modelID, expressID, lAxis, hAxis, wallBB) {
   let mesh;
   try { mesh = api.GetFlatMesh(modelID, expressID); } catch { return null; }
   if (!mesh || mesh.geometries.size() === 0) return null;
   const pts = [];
+  const lKey = lAxis.toUpperCase();
+  const hKey = hAxis.toUpperCase();
+  const lTol = (wallBB[`max${lKey}`] - wallBB[`min${lKey}`]) * 0.1 + 0.05;
+  const hTol = (wallBB[`max${hKey}`] - wallBB[`min${hKey}`]) * 0.1 + 0.05;
+  const lMin = wallBB[`min${lKey}`] - lTol, lMax = wallBB[`max${lKey}`] + lTol;
+  const hMin = wallBB[`min${hKey}`] - hTol, hMax = wallBB[`max${hKey}`] + hTol;
+
   for (let gi = 0; gi < mesh.geometries.size(); gi++) {
     const placed = mesh.geometries.get(gi);
     let geom;
@@ -85,11 +92,12 @@ function getProjectedVertices(api, modelID, expressID, lAxis, hAxis) {
       for (let vi = 0; vi < verts.length; vi += 6) {
         const lx = verts[vi], ly = verts[vi + 1], lz = verts[vi + 2];
         const w = { x: m[0]*lx+m[4]*ly+m[8]*lz+m[12], y: m[1]*lx+m[5]*ly+m[9]*lz+m[13], z: m[2]*lx+m[6]*ly+m[10]*lz+m[14] };
-        pts.push({ l: w[lAxis], h: w[hAxis] });
+        const l = w[lAxis], h = w[hAxis];
+        if (l >= lMin && l <= lMax && h >= hMin && h <= hMax) pts.push({ l, h });
       }
     } finally { geom?.delete(); }
   }
-  if (!pts.length) return null;
+  if (pts.length < 3) return null;
   return convexHull2D(pts);
 }
 
@@ -263,7 +271,7 @@ export async function parseIfc(file, allowedTypes = null) {
               const fillID = fillerExpressID[oID];
               const geomID = fillID ?? oID;
 
-              const polygon = getProjectedVertices(api, modelID, geomID, lengthAxis, heightAxis);
+              const polygon = getProjectedVertices(api, modelID, geomID, lengthAxis, heightAxis, wallBB);
 
               const oBB = (fillID ? getBBox(api, modelID, fillID) : null) ?? getBBox(api, modelID, oID);
               if (!oBB && !polygon) continue;
