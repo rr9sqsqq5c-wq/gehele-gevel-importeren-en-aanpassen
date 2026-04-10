@@ -3,11 +3,22 @@ import { OrbitControls, Html } from '@react-three/drei';
 import { useMemo, useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 
-function ifcToThree(ifcX, ifcY, ifcZ) {
+function ifcToThree(ifcX, ifcY, ifcZ, upAxis = 'z') {
+  if (upAxis === 'y') return [ifcX / 1000, ifcY / 1000, ifcZ / 1000];
   return [ifcX / 1000, ifcZ / 1000, ifcY / 1000];
 }
 
-function getWallBox(wall) {
+function detectUpAxis(walls) {
+  let yCount = 0, zCount = 0;
+  for (const w of walls) {
+    const h = w.wallOrigin?.heightAxis;
+    if (h === 'y') yCount++;
+    else if (h === 'z') zCount++;
+  }
+  return yCount > zCount ? 'y' : 'z';
+}
+
+function getWallBox(wall, upAxis = 'z') {
   const wo = wall.wallOrigin;
   if (!wo) return null;
 
@@ -23,14 +34,14 @@ function getWallBox(wall) {
   dims[wo.thicknessAxis] = thickness;
 
   return {
-    pos: ifcToThree(ifc.x, ifc.y, ifc.z),
-    size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
+    pos: ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
+    size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
     wo,
     thickness,
   };
 }
 
-function getBrickPos(wall, pieceStart, pieceLen, rowY, steenH, brickD) {
+function getBrickPos(wall, pieceStart, pieceLen, rowY, steenH, brickD, upAxis = 'z') {
   const wo = wall.wallOrigin;
   const ifc = { x: 0, y: 0, z: 0 };
   const thickness = Math.max(50, Math.abs((wo.thicknessEnd ?? wo.thicknessStart + 200) - wo.thicknessStart));
@@ -46,13 +57,13 @@ function getBrickPos(wall, pieceStart, pieceLen, rowY, steenH, brickD) {
   brickDims[wo.thicknessAxis] = brickD;
 
   return {
-    pos: ifcToThree(ifc.x, ifc.y, ifc.z),
-    size: ifcToThree(brickDims.x, brickDims.y, brickDims.z).map(Math.abs),
+    pos: ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
+    size: ifcToThree(brickDims.x, brickDims.y, brickDims.z, upAxis).map(Math.abs),
   };
 }
 
-function WallMesh({ wall, isSelected, isHovered, groupColor, pattern, material, brickD, onSelect, onHover }) {
-  const box = useMemo(() => getWallBox(wall), [wall]);
+function WallMesh({ wall, isSelected, isHovered, groupColor, pattern, material, brickD, onSelect, onHover, upAxis }) {
+  const box = useMemo(() => getWallBox(wall, upAxis), [wall, upAxis]);
   if (!box) return null;
 
   const wallColor = isSelected
@@ -75,11 +86,11 @@ function WallMesh({ wall, isSelected, isHovered, groupColor, pattern, material, 
     const out = [];
     for (const row of pattern) {
       for (const piece of row.pieces) {
-        out.push(getBrickPos(wall, piece.start, piece.length, row.y, steenH, depth));
+        out.push(getBrickPos(wall, piece.start, piece.length, row.y, steenH, depth, upAxis));
       }
     }
     return out;
-  }, [pattern, groupColor, material, brickD, wall]);
+  }, [pattern, groupColor, material, brickD, wall, upAxis]);
 
   return (
     <group>
@@ -132,7 +143,7 @@ function WallMesh({ wall, isSelected, isHovered, groupColor, pattern, material, 
   );
 }
 
-function OpeningMesh({ wall, opening }) {
+function OpeningMesh({ wall, opening, upAxis }) {
   const wo = wall.wallOrigin;
   if (!wo) return null;
 
@@ -148,8 +159,8 @@ function OpeningMesh({ wall, opening }) {
   dims[wo.heightAxis] = opening.hoogte ?? 0;
   dims[wo.thicknessAxis] = thickness + 0.01;
 
-  const pos = ifcToThree(ifc.x, ifc.y, ifc.z);
-  const size = ifcToThree(dims.x, dims.y, dims.z).map(Math.abs);
+  const pos = ifcToThree(ifc.x, ifc.y, ifc.z, upAxis);
+  const size = ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs);
 
   return (
     <mesh position={pos}>
@@ -185,7 +196,7 @@ function CameraPresetController({ preset, center, span }) {
       O:    { pos: [cx + d, cy, cz], up: [0, 1, 0] },
       W:    { pos: [cx - d, cy, cz], up: [0, 1, 0] },
       Top:  { pos: [cx, cy + d * 1.5, cz],     up: [0, 0, -1] },
-      Home: { pos: [cx + span * 0.6, cy + span * 0.5, cz + span * 1.4], up: [0, 1, 0] },
+      Home: { pos: [cx + span * 0.7, cy + span * 0.5, cz + span * 0.7], up: [0, 1, 0] },
     };
 
     const p = presets[preset];
@@ -217,7 +228,7 @@ function CameraPresetController({ preset, center, span }) {
   return null;
 }
 
-function CameraInit({ walls }) {
+function CameraInit({ walls, upAxis }) {
   const { camera } = useThree();
   const done = useRef(false);
 
@@ -230,7 +241,7 @@ function CameraInit({ walls }) {
     let minZ = Infinity, maxZ = -Infinity;
 
     for (const wall of walls) {
-      const box = getWallBox(wall);
+      const box = getWallBox(wall, upAxis);
       if (!box) continue;
       const [px, py, pz] = box.pos;
       const [sx, sy, sz] = box.size;
@@ -242,11 +253,17 @@ function CameraInit({ walls }) {
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
     const cz = (minZ + maxZ) / 2;
-    const span = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 0.1);
+    const spanX = maxX - minX;
+    const spanZ = maxZ - minZ;
+    const spanAll = Math.max(spanX, maxY - minY, spanZ, 0.1);
 
-    camera.position.set(cx + span * 0.6, cy + span * 0.4, cz + span * 1.4);
+    camera.position.set(
+      cx + spanX * 0.6,
+      cy + spanAll * 0.5,
+      cz + spanZ * 0.6,
+    );
     camera.lookAt(cx, cy, cz);
-  }, [walls, camera]);
+  }, [walls, upAxis, camera]);
 
   return null;
 }
@@ -263,6 +280,8 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
   const [hoveredWallId, setHoveredWallId] = useState(null);
   const [preset, setPreset] = useState(null);
 
+  const upAxis = useMemo(() => detectUpAxis(walls), [walls]);
+
   const wallGroupMap = useMemo(() => {
     const map = {};
     for (const g of groups) {
@@ -271,13 +290,13 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
     return map;
   }, [groups]);
 
-  const center = useMemo(() => {
-    if (!walls.length) return [0, 0, 0];
+  const { center, span } = useMemo(() => {
+    if (!walls.length) return { center: [0, 0, 0], span: 10 };
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
     for (const wall of walls) {
-      const box = getWallBox(wall);
+      const box = getWallBox(wall, upAxis);
       if (!box) continue;
       const [px, py, pz] = box.pos;
       const [sx, sy, sz] = box.size;
@@ -285,22 +304,11 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
       minY = Math.min(minY, py - sy / 2); maxY = Math.max(maxY, py + sy / 2);
       minZ = Math.min(minZ, pz - sz / 2); maxZ = Math.max(maxZ, pz + sz / 2);
     }
-    return [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
-  }, [walls]);
-
-  const span = useMemo(() => {
-    if (!walls.length) return 10;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    for (const wall of walls) {
-      const box = getWallBox(wall);
-      if (!box) continue;
-      const [px, py, pz] = box.pos; const [sx, sy, sz] = box.size;
-      minX = Math.min(minX, px - sx/2); maxX = Math.max(maxX, px + sx/2);
-      minY = Math.min(minY, py - sy/2); maxY = Math.max(maxY, py + sy/2);
-      minZ = Math.min(minZ, pz - sz/2); maxZ = Math.max(maxZ, pz + sz/2);
-    }
-    return Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1);
-  }, [walls]);
+    return {
+      center: [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2],
+      span: Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1),
+    };
+  }, [walls, upAxis]);
 
   function handlePreset(key) {
     setPreset(null);
@@ -310,11 +318,11 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
   return (
     <div style={{ width: '100%', height: '100%', background: '#0f172a', position: 'relative' }}>
       <Canvas camera={{ fov: 45, near: 0.01, far: 2000 }}>
-        <CameraInit walls={walls} />
+        <CameraInit walls={walls} upAxis={upAxis} />
         <CameraPresetController preset={preset} center={center} span={span} />
         <SceneLights />
         <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault />
-        <gridHelper args={[50, 50, '#1e3a5f', '#1e293b']} position={[center[0], 0, center[2]]} />
+        <gridHelper args={[500, 100, '#1e3a5f', '#1e293b']} position={[center[0], center[1] - span * 0.5, center[2]]} />
 
         {walls.map((wall) => {
           const group = wallGroupMap[wall.expressID];
@@ -332,13 +340,14 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
               brickD={settings?.brickDepth ?? 20}
               onSelect={onSelectWall}
               onHover={setHoveredWallId}
+              upAxis={upAxis}
             />
           );
         })}
 
         {walls.flatMap((wall) =>
           (wall.openings ?? []).map((op) => (
-            <OpeningMesh key={`${wall.expressID}-${op.id}`} wall={wall} opening={op} />
+            <OpeningMesh key={`${wall.expressID}-${op.id}`} wall={wall} opening={op} upAxis={upAxis} />
           ))
         )}
       </Canvas>
