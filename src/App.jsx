@@ -763,26 +763,26 @@ export default function App() {
             </>
           ) : (
             <>
-              <View2D
-                walls={
-                  activeGroup
-                    ? activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean)
-                    : selectedWallIds.size > 0
-                    ? allWalls.filter((w) => selectedWallIds.has(w.expressID))
-                    : allWalls
-                }
-                patterns={allPatterns}
-                groupSettings={getSettings}
-                wallGroupMap={wallGroupMap}
-                selectedWallIds={selectedWallIds}
-              />
-              <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.85)', color: '#94a3b8', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-                {selectedWallIds.size > 0
-                  ? `${selectedWallIds.size} geselecteerde element${selectedWallIds.size !== 1 ? 'en' : ''} · 2D gevelaanzicht`
-                  : activeGroup
-                  ? `Groep: ${getSettings(activeGroup.id).name} (${activeGroup.wallIds.length} wanden) · 2D gevelaanzicht`
-                  : `Alle ${allWalls.length} wanden · 2D gevelaanzicht`}
-              </div>
+              {activeGroup ? (
+                <>
+                  <View2D
+                    walls={activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean)}
+                    patterns={allPatterns}
+                    groupSettings={getSettings}
+                    wallGroupMap={wallGroupMap}
+                    selectedWallIds={selectedWallIds}
+                  />
+                  <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.85)', color: '#94a3b8', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+                    {getSettings(activeGroup.id).name} · {activeGroup.wallIds.length} wand{activeGroup.wallIds.length !== 1 ? 'en' : ''} · 2D gevelaanzicht
+                  </div>
+                </>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#1e293b', color: '#64748b', gap: 12 }}>
+                  <span style={{ fontSize: 32 }}>⬛</span>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: '#94a3b8' }}>Selecteer een groep</span>
+                  <span style={{ fontSize: 12 }}>Klik op een groep in de lijst links om deze in 2D te bekijken</span>
+                </div>
+              )}
             </>
           )}
         </div>
