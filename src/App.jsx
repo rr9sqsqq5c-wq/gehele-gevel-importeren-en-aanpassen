@@ -7,6 +7,38 @@ import { View2D } from './View2D.jsx';
 
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
 const DEFAULT_VERBAND = 'halfsteens';
+
+function findSimilarGroups(referenceWalls, allWalls, existingGroups, adjacencies) {
+  const groupedIds = new Set(existingGroups.flatMap((g) => g.wallIds));
+  const ungrouped = allWalls.filter((w) => !groupedIds.has(w.expressID));
+  if (!ungrouped.length || !referenceWalls.length) return [];
+
+  const refTypes = new Set(referenceWalls.map((w) => w.typeName).filter(Boolean));
+  const refThicknessAxes = new Set(referenceWalls.map((w) => w.wallOrigin?.thicknessAxis).filter(Boolean));
+  const refThicknessValues = referenceWalls.map((w) => {
+    const wo = w.wallOrigin;
+    if (!wo) return null;
+    return Math.abs((wo.thicknessEnd ?? wo.thicknessStart + 200) - wo.thicknessStart);
+  }).filter((v) => v !== null);
+  const refThicknessMed = refThicknessValues.length ? refThicknessValues.reduce((a, b) => a + b, 0) / refThicknessValues.length : null;
+
+  const similar = ungrouped.filter((w) => {
+    if (refTypes.size > 0 && w.typeName && refTypes.has(w.typeName)) return true;
+    if (refThicknessAxes.has(w.wallOrigin?.thicknessAxis) && refThicknessMed !== null) {
+      const wo = w.wallOrigin;
+      if (!wo) return false;
+      const t = Math.abs((wo.thicknessEnd ?? wo.thicknessStart + 200) - wo.thicknessStart);
+      return Math.abs(t - refThicknessMed) / refThicknessMed < 0.1;
+    }
+    return false;
+  });
+
+  if (!similar.length) return [];
+  const simIds = similar.map((w) => w.expressID);
+  const simAdj = adjacencies.filter((a) => simIds.includes(a.wallIdA) && simIds.includes(a.wallIdB));
+  const comps = buildConnectedComponents(similar, simAdj);
+  return comps.map((ids) => sortWallsInComponent(ids, allWalls, adjacencies));
+}
 let _gid = 1;
 const newGid = () => `G${_gid++}`;
 
@@ -112,6 +144,7 @@ export default function App() {
   const [pendingFile, setPendingFile] = useState(null);
   const [wallTypes, setWallTypes] = useState([]);
   const [selectedTypes, setSelectedTypes] = useState(new Set());
+  const [similarSuggestions, setSimilarSuggestions] = useState(null);
   const { get: getSettings, update: updateSettings, initColor } = useGroupSettings();
 
   const wallMap = useMemo(() => Object.fromEntries(allWalls.map((w) => [w.expressID, w])), [allWalls]);
@@ -237,9 +270,17 @@ export default function App() {
     const gid = newGid();
     const color = nextColor();
     initColor(gid, color);
-    setGroups((prev) => [...prev, { id: gid, wallIds: sortWallsInComponent(ids, allWalls, adjacencies) }]);
+    const newGroup = { id: gid, wallIds: sortWallsInComponent(ids, allWalls, adjacencies) };
+    const updatedGroups = [...groups, newGroup];
+    setGroups(updatedGroups);
     setSelectedWallIds(new Set());
     setActiveGroupId(gid);
+
+    const refWalls = ids.map((id) => allWalls.find((w) => w.expressID === id)).filter(Boolean);
+    const suggestions = findSimilarGroups(refWalls, allWalls, updatedGroups, adjacencies);
+    if (suggestions.length > 0) {
+      setSimilarSuggestions({ sourceGroupId: gid, sourceColor: color, groups: suggestions });
+    }
   }
 
   function addToGroup(gid) {
@@ -350,6 +391,60 @@ export default function App() {
           </div>
         </div>
       )}
+      {similarSuggestions && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 8, padding: 24, width: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Vergelijkbare wanden gevonden</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 16 }}>
+              Er zijn {similarSuggestions.groups.reduce((s, g) => s + g.length, 0)} vergelijkbare wanden gevonden die nog niet in een groep zitten.
+              Wil je deze ook als aparte groepen toevoegen?
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+              {similarSuggestions.groups.map((wallIds, idx) => {
+                const firstWall = allWalls.find((w) => w.expressID === wallIds[0]);
+                return (
+                  <label key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', background: '#f8fafc' }}>
+                    <input type="checkbox" defaultChecked style={{ width: 16, height: 16 }} id={`sim-${idx}`} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{wallIds.length} wand{wallIds.length !== 1 ? 'en' : ''}</div>
+                      {firstWall && <div style={{ fontSize: 11, color: '#64748b' }}>{firstWall.typeName ?? firstWall.name}</div>}
+                    </div>
+                    <span style={{ fontSize: 11, color: '#94a3b8', background: '#e2e8f0', padding: '2px 8px', borderRadius: 10 }}>
+                      {wallIds.length} wanden
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setSimilarSuggestions(null)}
+                style={{ fontSize: 12, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: '6px 14px', cursor: 'pointer' }}>
+                Overslaan
+              </button>
+              <button
+                onClick={() => {
+                  const checkboxes = similarSuggestions.groups.map((_, idx) => document.getElementById(`sim-${idx}`)?.checked ?? true);
+                  pushHistory(groups);
+                  const newGroups = similarSuggestions.groups
+                    .filter((_, idx) => checkboxes[idx])
+                    .map((wallIds) => {
+                      const gid = newGid();
+                      const color = nextColor();
+                      initColor(gid, color);
+                      return { id: gid, wallIds: sortWallsInComponent(wallIds, allWalls, adjacencies) };
+                    });
+                  setGroups((prev) => [...prev, ...newGroups]);
+                  setSimilarSuggestions(null);
+                }}
+                style={{ fontSize: 12, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 16px', cursor: 'pointer', fontWeight: 600 }}>
+                Groepen aanmaken
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ background: '#1e293b', color: '#f8fafc', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <span style={{ fontWeight: 700, fontSize: 15 }}>IFC Brickslip Planner</span>
 
