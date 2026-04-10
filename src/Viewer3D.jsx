@@ -1,4 +1,4 @@
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
 import { useMemo, useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
@@ -169,6 +169,51 @@ function SceneLights() {
   );
 }
 
+function CameraPresetController({ preset, center, span }) {
+  const { camera, controls } = useThree();
+  const target = useRef(null);
+  const upTarget = useRef(new THREE.Vector3(0, 1, 0));
+
+  useEffect(() => {
+    if (!preset) return;
+    const [cx, cy, cz] = center;
+    const d = Math.max(span * 1.5, 1);
+
+    const presets = {
+      N:    { pos: [cx, cy + d * 0.2, cz + d], up: [0, 1, 0] },
+      Z:    { pos: [cx, cy + d * 0.2, cz - d], up: [0, 1, 0] },
+      O:    { pos: [cx + d, cy + d * 0.2, cz], up: [0, 1, 0] },
+      W:    { pos: [cx - d, cy + d * 0.2, cz], up: [0, 1, 0] },
+      Top:  { pos: [cx, cy + d * 1.5, cz],     up: [0, 0, -1] },
+      Home: { pos: [cx + span * 0.6, cy + span * 0.5, cz + span * 1.4], up: [0, 1, 0] },
+    };
+
+    const p = presets[preset];
+    if (!p) return;
+    target.current = { pos: new THREE.Vector3(...p.pos), up: new THREE.Vector3(...p.up) };
+  }, [preset, center, span]);
+
+  useFrame(() => {
+    if (!target.current || !controls) return;
+    const { pos, up } = target.current;
+    const [cx, cy, cz] = center;
+
+    camera.position.lerp(pos, 0.1);
+    camera.up.lerp(up, 0.1);
+
+    const ct = controls.target;
+    ct.lerp(new THREE.Vector3(cx, cy, cz), 0.1);
+    controls.update();
+
+    if (camera.position.distanceTo(pos) < 0.001) {
+      camera.position.copy(pos);
+      target.current = null;
+    }
+  });
+
+  return null;
+}
+
 function CameraInit({ walls }) {
   const { camera } = useThree();
   const done = useRef(false);
@@ -203,8 +248,17 @@ function CameraInit({ walls }) {
   return null;
 }
 
+const COMPASS = [
+  { key: 'N',    label: 'N',   title: 'Noord',   gridPos: '2/3' },
+  { key: 'O',    label: 'O',   title: 'Oost',    gridPos: '3/4' },
+  { key: 'Z',    label: 'Z',   title: 'Zuid',    gridPos: '4/3' },
+  { key: 'W',    label: 'W',   title: 'West',    gridPos: '3/2' },
+  { key: 'Top',  label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
+];
+
 export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPatterns, onSelectWall }) {
   const [hoveredWallId, setHoveredWallId] = useState(null);
+  const [preset, setPreset] = useState(null);
 
   const wallGroupMap = useMemo(() => {
     const map = {};
@@ -231,10 +285,30 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
     return [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
   }, [walls]);
 
+  const span = useMemo(() => {
+    if (!walls.length) return 10;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const wall of walls) {
+      const box = getWallBox(wall);
+      if (!box) continue;
+      const [px, py, pz] = box.pos; const [sx, sy, sz] = box.size;
+      minX = Math.min(minX, px - sx/2); maxX = Math.max(maxX, px + sx/2);
+      minY = Math.min(minY, py - sy/2); maxY = Math.max(maxY, py + sy/2);
+      minZ = Math.min(minZ, pz - sz/2); maxZ = Math.max(maxZ, pz + sz/2);
+    }
+    return Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1);
+  }, [walls]);
+
+  function handlePreset(key) {
+    setPreset(null);
+    setTimeout(() => setPreset(key), 10);
+  }
+
   return (
-    <div style={{ width: '100%', height: '100%', background: '#0f172a' }}>
+    <div style={{ width: '100%', height: '100%', background: '#0f172a', position: 'relative' }}>
       <Canvas camera={{ fov: 45, near: 0.01, far: 2000 }}>
         <CameraInit walls={walls} />
+        <CameraPresetController preset={preset} center={center} span={span} />
         <SceneLights />
         <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault />
         <gridHelper args={[50, 50, '#1e3a5f', '#1e293b']} position={[center[0], 0, center[2]]} />
@@ -265,6 +339,58 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
           ))
         )}
       </Canvas>
+
+      {walls.length > 0 && (
+        <div style={{ position: 'absolute', bottom: 16, right: 16, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(5, 28px)',
+            gridTemplateRows: 'repeat(5, 28px)',
+            gap: 2,
+          }}>
+            {COMPASS.map(({ key, label, title, gridPos }) => {
+              const [row, col] = gridPos.split('/').map(Number);
+              return (
+                <button
+                  key={key}
+                  onClick={() => handlePreset(key)}
+                  title={title}
+                  style={{
+                    gridRow: row,
+                    gridColumn: col,
+                    width: 28, height: 28,
+                    background: preset === key ? '#3b82f6' : 'rgba(15,23,42,0.85)',
+                    color: preset === key ? '#fff' : '#94a3b8',
+                    border: '1px solid #334155',
+                    borderRadius: 4,
+                    fontSize: key === 'Top' ? 14 : 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            onClick={() => handlePreset('Home')}
+            title="Perspectief (startpositie)"
+            style={{
+              width: 60, height: 24,
+              background: 'rgba(15,23,42,0.85)',
+              color: '#64748b',
+              border: '1px solid #334155',
+              borderRadius: 4,
+              fontSize: 10,
+              cursor: 'pointer',
+            }}
+          >
+            ⌂ Home
+          </button>
+        </div>
+      )}
     </div>
   );
 }
