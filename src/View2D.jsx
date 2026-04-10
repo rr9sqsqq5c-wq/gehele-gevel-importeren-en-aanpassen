@@ -53,7 +53,7 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
     const PAD = 60;
     const bw = bounds.maxX - bounds.minX || 1;
     const bh = bounds.maxY - bounds.minY || 1;
-    const scale = Math.min((W - PAD * 2) / bw, (H - PAD * 2) / bh) * 0.001;
+    const scale = Math.min((W - PAD * 2) / bw, (H - PAD * 2) / bh) * 1000;
     const cx = (bounds.minX + bounds.maxX) / 2;
     const cy = (bounds.minY + bounds.maxY) / 2;
     transform.current = {
