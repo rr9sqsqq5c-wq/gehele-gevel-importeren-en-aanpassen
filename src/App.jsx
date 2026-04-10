@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc } from './lib/ifc.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern } from './lib/pattern.js';
@@ -101,6 +101,7 @@ export default function App() {
   const [allWalls, setAllWalls] = useState([]);
   const [adjacencies, setAdjacencies] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [groupsHistory, setGroupsHistory] = useState([]);
   const [selectedWallIds, setSelectedWallIds] = useState(new Set());
   const [activeGroupId, setActiveGroupId] = useState(null);
   const [loadStatus, setLoadStatus] = useState('idle');
@@ -190,7 +191,32 @@ export default function App() {
     });
   }
 
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  function pushHistory(currentGroups) {
+    setGroupsHistory((h) => [...h.slice(-19), currentGroups]);
+  }
+
+  function undo() {
+    setGroupsHistory((h) => {
+      if (!h.length) return h;
+      const prev = h[h.length - 1];
+      setGroups(prev);
+      return h.slice(0, -1);
+    });
+  }
+
   function autoGroup() {
+    pushHistory(groups);
     const comps = buildConnectedComponents(allWalls, adjacencies);
     _colorIdx = 0;
     const newGroups = comps.map((ids) => {
@@ -205,6 +231,7 @@ export default function App() {
   }
 
   function createGroup() {
+    pushHistory(groups);
     const ids = [...selectedWallIds].filter((id) => !wallGroupMap[id]);
     if (!ids.length) return;
     const gid = newGid();
@@ -216,6 +243,7 @@ export default function App() {
   }
 
   function addToGroup(gid) {
+    pushHistory(groups);
     const ids = [...selectedWallIds].filter((id) => !wallGroupMap[id]);
     if (!ids.length) return;
     setGroups((prev) => prev.map((g) => g.id !== gid ? g : {
@@ -225,11 +253,13 @@ export default function App() {
   }
 
   function removeFromGroup(gid, wallId) {
+    pushHistory(groups);
     setGroups((prev) => prev.map((g) => g.id !== gid ? g : { ...g, wallIds: g.wallIds.filter((id) => id !== wallId) }).filter((g) => g.wallIds.length > 0));
     if (activeGroupId === gid && groups.find((g) => g.id === gid)?.wallIds.length <= 1) setActiveGroupId(null);
   }
 
   function deleteGroup(gid) {
+    pushHistory(groups);
     setGroups((prev) => prev.filter((g) => g.id !== gid));
     if (activeGroupId === gid) setActiveGroupId(null);
   }
@@ -334,6 +364,11 @@ export default function App() {
         {loadError && <span style={{ fontSize: 11, color: '#f87171' }}>⚠ {loadError}</span>}
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {groupsHistory.length > 0 && (
+            <button onClick={undo} title="Ongedaan maken (Ctrl+Z)" style={{ background: '#334155', color: '#f1f5f9', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
+              ↩ Undo
+            </button>
+          )}
           {viewMode === '3d' && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer' }}>
               <input type="checkbox" checked={showPattern} onChange={(e) => setShowPattern(e.target.checked)} />
