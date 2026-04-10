@@ -225,7 +225,8 @@ export async function parseIfc(file, allowedTypes = null) {
           const openings = [];
           for (const oID of (wallVoids[wID] ?? [])) {
             try {
-              const oBB = getBBox(api, modelID, oID);
+              const fillID = fillerExpressID[oID];
+              const oBB = (fillID ? getBBox(api, modelID, fillID) : null) ?? getBBox(api, modelID, oID);
               if (!oBB) continue;
               const odx = oBB.maxX - oBB.minX;
               const ody = oBB.maxY - oBB.minY;

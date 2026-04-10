@@ -148,7 +148,8 @@ function OpeningMesh({ wall, opening, upAxis }) {
   if (!wo) return null;
 
   const thickness = Math.max(50, Math.abs((wo.thicknessEnd ?? wo.thicknessStart + 200) - wo.thicknessStart));
-  const frontFace = wo.thicknessStart + thickness + 1;
+  const backFace  = wo.thicknessStart - 5;
+  const frontFace = wo.thicknessStart + thickness + 5;
 
   const ox = opening.x ?? 0;
   const oy = opening.y ?? 0;
@@ -156,25 +157,27 @@ function OpeningMesh({ wall, opening, upAxis }) {
   const oh = opening.hoogte ?? 0;
 
   const lineObj = useMemo(() => {
-    const ifc0 = { x: 0, y: 0, z: 0 };
-    const ifc1 = { x: 0, y: 0, z: 0 };
-    const ifc2 = { x: 0, y: 0, z: 0 };
-    const ifc3 = { x: 0, y: 0, z: 0 };
+    const color = opening.type === 'raam' ? '#93c5fd' : '#fde68a';
+    const mat = new THREE.LineBasicMaterial({ color, depthTest: false });
 
-    ifc0[wo.lengthAxis] = wo.lengthStart + ox;       ifc0[wo.heightAxis] = wo.heightStart + oy;       ifc0[wo.thicknessAxis] = frontFace;
-    ifc1[wo.lengthAxis] = wo.lengthStart + ox + ow;  ifc1[wo.heightAxis] = wo.heightStart + oy;       ifc1[wo.thicknessAxis] = frontFace;
-    ifc2[wo.lengthAxis] = wo.lengthStart + ox + ow;  ifc2[wo.heightAxis] = wo.heightStart + oy + oh;  ifc2[wo.thicknessAxis] = frontFace;
-    ifc3[wo.lengthAxis] = wo.lengthStart + ox;       ifc3[wo.heightAxis] = wo.heightStart + oy + oh;  ifc3[wo.thicknessAxis] = frontFace;
+    const makeRect = (tVal) => {
+      const p = (lOff, hOff) => {
+        const ifc = { x: 0, y: 0, z: 0 };
+        ifc[wo.lengthAxis]    = wo.lengthStart + lOff;
+        ifc[wo.heightAxis]    = wo.heightStart + hOff;
+        ifc[wo.thicknessAxis] = tVal;
+        const [tx, ty, tz] = ifcToThree(ifc.x, ifc.y, ifc.z, upAxis);
+        return new THREE.Vector3(tx, ty, tz);
+      };
+      const pts = [p(ox, oy), p(ox + ow, oy), p(ox + ow, oy + oh), p(ox, oy + oh), p(ox, oy)];
+      return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+    };
 
-    const pts = [ifc0, ifc1, ifc2, ifc3, ifc0].map((p) => {
-      const [tx, ty, tz] = ifcToThree(p.x, p.y, p.z, upAxis);
-      return new THREE.Vector3(tx, ty, tz);
-    });
-
-    const geo = new THREE.BufferGeometry().setFromPoints(pts);
-    const mat = new THREE.LineBasicMaterial({ color: opening.type === 'raam' ? '#93c5fd' : '#fde68a' });
-    return new THREE.Line(geo, mat);
-  }, [wo, ox, oy, ow, oh, frontFace, upAxis, opening.type]);
+    const group = new THREE.Group();
+    group.add(makeRect(frontFace));
+    group.add(makeRect(backFace));
+    return group;
+  }, [wo, ox, oy, ow, oh, frontFace, backFace, upAxis, opening.type]);
 
   return <primitive object={lineObj} />;
 }
