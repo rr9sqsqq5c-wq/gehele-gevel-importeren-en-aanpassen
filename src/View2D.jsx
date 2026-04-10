@@ -14,7 +14,7 @@ function lighten(hex, amount = 0.3) {
   return `rgb(${r},${g},${b})`;
 }
 
-export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedWallIds }) {
+export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedWallIds, maxHoogte }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -176,12 +176,45 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       }
     }
 
+    if (maxHoogte !== null && maxHoogte > 0 && walls.length > 0) {
+      const wallsWithOrigin = walls.filter((w) => w.wallOrigin);
+      if (wallsWithOrigin.length > 0) {
+        const groupMinH = Math.min(...wallsWithOrigin.map((w) => w.wallOrigin.heightStart));
+        const lineY = groupMinH + maxHoogte;
+        let xMin = Infinity, xMax = -Infinity;
+        for (const wall of wallsWithOrigin) {
+          const wwo = wall.wallOrigin;
+          const [sx] = toScreen(wwo.lengthStart, 0);
+          const ex = toScreen(wwo.lengthStart + wall.length, 0)[0];
+          if (sx < xMin) xMin = sx;
+          if (ex > xMax) xMax = ex;
+        }
+        const [, sy] = toScreen(0, lineY);
+        ctx.save();
+        ctx.strokeStyle = '#f97316';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 5]);
+        ctx.beginPath();
+        ctx.moveTo(Math.max(0, xMin - 20), sy);
+        ctx.lineTo(Math.min(W, xMax + 20), sy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#f97316';
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`▲ max ${maxHoogte} mm`, Math.max(4, xMin), sy - 2);
+        ctx.restore();
+      }
+    }
+
+
     ctx.font = '10px system-ui, sans-serif';
     ctx.fillStyle = '#64748b';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}`, 8, H - 6);
-  }, [walls, patterns, groupSettings, wallGroupMap, selectedWallIds, bounds, size, redrawTick]);
+  }, [walls, patterns, groupSettings, wallGroupMap, selectedWallIds, bounds, size, redrawTick, maxHoogte]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();

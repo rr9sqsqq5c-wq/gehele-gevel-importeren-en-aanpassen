@@ -118,7 +118,7 @@ const nextColor = () => GROUP_COLORS[_colorIdx++ % GROUP_COLORS.length];
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20 });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -181,6 +181,24 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         <input type="number" value={settings.brickDepth} onChange={(e) => onUpdate({ brickDepth: Number(e.target.value) })}
           style={{ ...inp, width: 70 }} />
       </Field>
+
+      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+          <input type="checkbox" id="mh-enable"
+            checked={settings.maxHoogte !== null}
+            onChange={(e) => onUpdate({ maxHoogte: e.target.checked ? 1000 : null })} />
+          <label htmlFor="mh-enable" style={{ fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer' }}>
+            Maximale strip hoogte
+          </label>
+        </div>
+        {settings.maxHoogte !== null && (
+          <Field label="Hoogte (mm)">
+            <input type="number" min={0} step={10} value={settings.maxHoogte}
+              onChange={(e) => onUpdate({ maxHoogte: Number(e.target.value) })}
+              style={{ ...inp, width: 80 }} />
+          </Field>
+        )}
+      </div>
     </div>
   );
 }
@@ -243,6 +261,16 @@ export default function App() {
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const gAdj = adjacencies.filter((a) => group.wallIds.includes(a.wallIdA) && group.wallIds.includes(a.wallIdB));
       const rows = buildGroupPattern(walls, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND);
+      if (s.maxHoogte !== null && s.maxHoogte > 0) {
+        const groupMinH = Math.min(...walls.map((w) => w.wallOrigin?.heightStart ?? 0));
+        for (const wall of walls) {
+          const wid = wall.expressID;
+          if (!rows[wid]) continue;
+          const wallOffset = (wall.wallOrigin?.heightStart ?? 0) - groupMinH;
+          const localCutoff = s.maxHoogte - wallOffset;
+          rows[wid] = rows[wid].filter((r) => r.y < localCutoff);
+        }
+      }
       Object.assign(result, rows);
     }
     return result;
@@ -373,7 +401,7 @@ export default function App() {
     const srcSettings = getSettings(sourceGroupId);
     const linkedIds = groups.filter((g) => groupLinks[g.id] === linkId && g.id !== sourceGroupId).map((g) => g.id);
     for (const id of linkedIds) {
-      updateSettings(id, { name: srcSettings.name, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth });
+      updateSettings(id, { name: srcSettings.name, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth, maxHoogte: srcSettings.maxHoogte });
     }
   }
 
@@ -771,6 +799,7 @@ export default function App() {
                     groupSettings={getSettings}
                     wallGroupMap={wallGroupMap}
                     selectedWallIds={selectedWallIds}
+                    maxHoogte={getSettings(activeGroup.id).maxHoogte}
                   />
                   <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.85)', color: '#94a3b8', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                     {getSettings(activeGroup.id).name} · {activeGroup.wallIds.length} wand{activeGroup.wallIds.length !== 1 ? 'en' : ''} · 2D gevelaanzicht
