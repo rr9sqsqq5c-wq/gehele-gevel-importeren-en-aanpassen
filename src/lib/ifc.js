@@ -70,17 +70,15 @@ function getBBox(api, modelID, expressID) {
   return ok ? { minX, maxX, minY, maxY, minZ, maxZ } : null;
 }
 
-function getProjectedVertices(api, modelID, expressID, lAxis, hAxis, wallBB) {
+function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
   let mesh;
   try { mesh = api.GetFlatMesh(modelID, expressID); } catch { return null; }
   if (!mesh || mesh.geometries.size() === 0) return null;
-  const pts = [];
-  const lKey = lAxis.toUpperCase();
-  const hKey = hAxis.toUpperCase();
-  const lTol = (wallBB[`max${lKey}`] - wallBB[`min${lKey}`]) * 0.1 + 0.05;
-  const hTol = (wallBB[`max${hKey}`] - wallBB[`min${hKey}`]) * 0.1 + 0.05;
-  const lMin = wallBB[`min${lKey}`] - lTol, lMax = wallBB[`max${lKey}`] + lTol;
-  const hMin = wallBB[`min${hKey}`] - hTol, hMax = wallBB[`max${hKey}`] + hTol;
+
+  const GRID = 15;
+  const wallMinL = wallBB[`min${lAxis.toUpperCase()}`];
+  const wallMinH = wallBB[`min${hAxis.toUpperCase()}`];
+  const cellSet = new Set();
 
   for (let gi = 0; gi < mesh.geometries.size(); gi++) {
     const placed = mesh.geometries.get(gi);
@@ -88,29 +86,100 @@ function getProjectedVertices(api, modelID, expressID, lAxis, hAxis, wallBB) {
     try {
       geom = api.GetGeometry(modelID, placed.geometryExpressID);
       const verts = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
+      const idxs  = api.GetIndexArray(geom.GetIndexData(), geom.GetIndexDataSize());
       const m = placed.flatTransformation;
-      for (let vi = 0; vi < verts.length; vi += 6) {
-        const lx = verts[vi], ly = verts[vi + 1], lz = verts[vi + 2];
-        const w = { x: m[0]*lx+m[4]*ly+m[8]*lz+m[12], y: m[1]*lx+m[5]*ly+m[9]*lz+m[13], z: m[2]*lx+m[6]*ly+m[10]*lz+m[14] };
-        const l = w[lAxis], h = w[hAxis];
-        if (l >= lMin && l <= lMax && h >= hMin && h <= hMax) pts.push({ l, h });
+
+      const project = (vi) => {
+        const lx = verts[vi], ly = verts[vi+1], lz = verts[vi+2];
+        const wx = m[0]*lx+m[4]*ly+m[8]*lz+m[12];
+        const wy = m[1]*lx+m[5]*ly+m[9]*lz+m[13];
+        const wz = m[2]*lx+m[6]*ly+m[10]*lz+m[14];
+        const w = { x: wx, y: wy, z: wz };
+        return { l: (w[lAxis] - wallMinL) * 1000, h: (w[hAxis] - wallMinH) * 1000 };
+      };
+
+      const addCell = (l, h) => cellSet.add(`${Math.round(l / GRID)},${Math.round(h / GRID)}`);
+      const lerp = (a, b) => {
+        const steps = Math.max(1, Math.ceil(Math.max(Math.abs(b.l - a.l), Math.abs(b.h - a.h)) / GRID));
+        for (let s = 0; s <= steps; s++) {
+          const t = s / steps;
+          addCell(a.l + t * (b.l - a.l), a.h + t * (b.h - a.h));
+        }
+      };
+
+      for (let ti = 0; ti < idxs.length; ti += 3) {
+        const a = project(idxs[ti] * 6);
+        const b = project(idxs[ti+1] * 6);
+        const c = project(idxs[ti+2] * 6);
+        lerp(a, b); lerp(b, c); lerp(a, c);
       }
     } finally { geom?.delete(); }
   }
-  if (pts.length < 3) return null;
-  return convexHull2D(pts);
-}
 
-function convexHull2D(pts) {
-  if (pts.length < 3) return pts;
-  const s = pts.slice().sort((a, b) => a.l !== b.l ? a.l - b.l : a.h - b.h);
-  const cross = (O, A, B) => (A.l - O.l) * (B.h - O.h) - (A.h - O.h) * (B.l - O.l);
-  const lower = [];
-  for (const p of s) { while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop(); lower.push(p); }
-  const upper = [];
-  for (let i = s.length - 1; i >= 0; i--) { const p = s[i]; while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop(); upper.push(p); }
-  upper.pop(); lower.pop();
-  return lower.concat(upper);
+  if (!cellSet.size) return null;
+
+  const parsed = [...cellSet].map(k => { const [gl, gh] = k.split(',').map(Number); return { gl, gh }; });
+  const minGL = Math.min(...parsed.map(c => c.gl)) - 1;
+  const maxGL = Math.max(...parsed.map(c => c.gl)) + 1;
+  const minGH = Math.min(...parsed.map(c => c.gh)) - 1;
+  const maxGH = Math.max(...parsed.map(c => c.gh)) + 1;
+  if ((maxGL - minGL) * (maxGH - minGH) > 200000) return null;
+
+  const outside = new Set();
+  const queue = [`${minGL},${minGH}`];
+  outside.add(queue[0]);
+  while (queue.length) {
+    const key = queue.shift();
+    const [x, y] = key.split(',').map(Number);
+    for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < minGL || nx > maxGL || ny < minGH || ny > maxGH) continue;
+      const nk = `${nx},${ny}`;
+      if (!outside.has(nk) && !cellSet.has(nk)) { outside.add(nk); queue.push(nk); }
+    }
+  }
+
+  const filledSet = new Set(cellSet);
+  for (let gl = minGL + 1; gl < maxGL; gl++) {
+    for (let gh = minGH + 1; gh < maxGH; gh++) {
+      if (!outside.has(`${gl},${gh}`)) filledSet.add(`${gl},${gh}`);
+    }
+  }
+
+  const edgeMap = {};
+  for (const k of filledSet) {
+    const [gl, gh] = k.split(',').map(Number);
+    const l0 = gl * GRID, h0 = gh * GRID, l1 = l0 + GRID, h1 = h0 + GRID;
+    if (!filledSet.has(`${gl},${gh+1}`)) edgeMap[`${l0},${h1}`] = [l1, h1];
+    if (!filledSet.has(`${gl},${gh-1}`)) edgeMap[`${l1},${h0}`] = [l0, h0];
+    if (!filledSet.has(`${gl+1},${gh}`)) edgeMap[`${l1},${h1}`] = [l1, h0];
+    if (!filledSet.has(`${gl-1},${gh}`)) edgeMap[`${l0},${h0}`] = [l0, h1];
+  }
+
+  const startKey = Object.keys(edgeMap)[0];
+  if (!startKey) return null;
+  const [sl, sh] = startKey.split(',').map(Number);
+  const raw = [];
+  let cl = sl, ch = sh;
+  for (let iter = 0; iter < 100000; iter++) {
+    raw.push({ l: cl, h: ch });
+    const next = edgeMap[`${cl},${ch}`];
+    if (!next) break;
+    [cl, ch] = next;
+    if (cl === sl && ch === sh) break;
+  }
+
+  const poly = [];
+  for (let i = 0; i < raw.length; i++) {
+    const prev = raw[(i - 1 + raw.length) % raw.length];
+    const curr = raw[i];
+    const next = raw[(i + 1) % raw.length];
+    if (!((prev.l === curr.l && curr.l === next.l) || (prev.h === curr.h && curr.h === next.h))) {
+      poly.push(curr);
+    }
+  }
+
+  return poly.length >= 3 ? poly : null;
 }
 
 export async function scanIfcWallTypes(file) {
@@ -271,7 +340,7 @@ export async function parseIfc(file, allowedTypes = null) {
               const fillID = fillerExpressID[oID];
               const geomID = fillID ?? oID;
 
-              const polygon = getProjectedVertices(api, modelID, geomID, lengthAxis, heightAxis, wallBB);
+              const polygon = getFacadePolygon(api, modelID, geomID, lengthAxis, heightAxis, wallBB);
 
               const oBB = (fillID ? getBBox(api, modelID, fillID) : null) ?? getBBox(api, modelID, oID);
               if (!oBB && !polygon) continue;
@@ -285,14 +354,11 @@ export async function parseIfc(file, allowedTypes = null) {
                 const hs = polygon.map((p) => p.h);
                 const lMin = Math.min(...ls), lMax = Math.max(...ls);
                 const hMin = Math.min(...hs), hMax = Math.max(...hs);
-                oWidth  = Math.round((lMax - lMin) * 1000);
-                oHeight = Math.round((hMax - hMin) * 1000);
-                oX = Math.round((lMin - wallMins[lengthAxis]) * 1000);
-                oY = Math.round((hMin - wallMins[heightAxis]) * 1000);
-                polyPts = polygon.map((p) => ({
-                  l: Math.round((p.l - wallMins[lengthAxis]) * 1000),
-                  h: Math.round((p.h - wallMins[heightAxis]) * 1000),
-                }));
+                oWidth  = Math.round(lMax - lMin);
+                oHeight = Math.round(hMax - hMin);
+                oX = Math.round(lMin);
+                oY = Math.round(hMin);
+                polyPts = polygon;
               } else if (oBB) {
                 const odx = oBB.maxX - oBB.minX;
                 const ody = oBB.maxY - oBB.minY;
