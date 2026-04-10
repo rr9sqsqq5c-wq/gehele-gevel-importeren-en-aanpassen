@@ -3,6 +3,7 @@ import { parseIfc, exportGroupsToIfc } from './lib/ifc.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern } from './lib/pattern.js';
 import { Viewer3D } from './Viewer3D.jsx';
+import { View2D } from './View2D.jsx';
 
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
 const DEFAULT_VERBAND = 'halfsteens';
@@ -106,6 +107,7 @@ export default function App() {
   const [loadError, setLoadError] = useState(null);
   const [ifcFileName, setIfcFileName] = useState(null);
   const [showPattern, setShowPattern] = useState(true);
+  const [viewMode, setViewMode] = useState('3d');
   const { get: getSettings, update: updateSettings, initColor } = useGroupSettings();
 
   const wallMap = useMemo(() => Object.fromEntries(allWalls.map((w) => [w.expressID, w])), [allWalls]);
@@ -246,16 +248,37 @@ export default function App() {
         {ifcFileName && <span style={{ fontSize: 11, color: '#94a3b8' }}>{ifcFileName}.ifc · {allWalls.length} wanden</span>}
         {loadError && <span style={{ fontSize: 11, color: '#f87171' }}>⚠ {loadError}</span>}
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer', marginLeft: 'auto' }}>
-          <input type="checkbox" checked={showPattern} onChange={(e) => setShowPattern(e.target.checked)} />
-          Patroon in 3D
-        </label>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {viewMode === '3d' && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer' }}>
+              <input type="checkbox" checked={showPattern} onChange={(e) => setShowPattern(e.target.checked)} />
+              Patroon in 3D
+            </label>
+          )}
 
-        {groups.length > 0 && (
-          <button onClick={handleExport} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
-            ⬇ Exporteer IFC
-          </button>
-        )}
+          {allWalls.length > 0 && (
+            <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', border: '1px solid #334155' }}>
+              <button
+                onClick={() => setViewMode('3d')}
+                style={{ background: viewMode === '3d' ? '#3b82f6' : '#1e293b', color: '#fff', border: 'none', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
+              >
+                3D
+              </button>
+              <button
+                onClick={() => setViewMode('2d')}
+                style={{ background: viewMode === '2d' ? '#3b82f6' : '#1e293b', color: viewMode === '2d' ? '#fff' : '#94a3b8', border: 'none', borderLeft: '1px solid #334155', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
+              >
+                2D Gevel
+              </button>
+            </div>
+          )}
+
+          {groups.length > 0 && (
+            <button onClick={handleExport} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
+              ⬇ Exporteer IFC
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -385,36 +408,55 @@ export default function App() {
         </div>
 
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-          <Viewer3D
-            walls={allWalls}
-            selectedWallIds={selectedWallIds}
-            groups={groups}
-            groupSettings={getSettings}
-            wallPatterns={allPatterns}
-            onSelectWall={toggleSelect}
-          />
+          {viewMode === '3d' ? (
+            <>
+              <Viewer3D
+                walls={allWalls}
+                selectedWallIds={selectedWallIds}
+                groups={groups}
+                groupSettings={getSettings}
+                wallPatterns={allPatterns}
+                onSelectWall={toggleSelect}
+              />
 
-          {allWalls.length === 0 && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-              <div style={{ textAlign: 'center', color: '#475569' }}>
-                <div style={{ fontSize: 48, marginBottom: 12 }}>🏗</div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>3D Viewer</div>
-                <div style={{ fontSize: 12, marginTop: 4, color: '#94a3b8' }}>Importeer een IFC-bestand om wanden te tonen</div>
+              {allWalls.length === 0 && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                  <div style={{ textAlign: 'center', color: '#475569' }}>
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>🏗</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>3D Viewer</div>
+                    <div style={{ fontSize: 12, marginTop: 4, color: '#94a3b8' }}>Importeer een IFC-bestand om wanden te tonen</div>
+                  </div>
+                </div>
+              )}
+
+              {allWalls.length > 0 && (
+                <div style={{ position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.6)', color: '#f1f5f9', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+                  Klik om te selecteren · Slepen = rondkijken
+                </div>
+              )}
+
+              {selectedWallIds.size > 0 && (
+                <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: '#1d4ed8', color: '#fff', fontSize: 12, padding: '5px 14px', borderRadius: 6, pointerEvents: 'none', fontWeight: 500 }}>
+                  {selectedWallIds.size} element{selectedWallIds.size !== 1 ? 'en' : ''} geselecteerd
+                  {ungroupedSelCount > 0 && ` · ${ungroupedSelCount} zonder groep`}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <View2D
+                walls={selectedWallIds.size > 0 ? allWalls.filter((w) => selectedWallIds.has(w.expressID)) : allWalls}
+                patterns={allPatterns}
+                groupSettings={getSettings}
+                wallGroupMap={wallGroupMap}
+                selectedWallIds={selectedWallIds}
+              />
+              <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.85)', color: '#94a3b8', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+                {selectedWallIds.size > 0
+                  ? `${selectedWallIds.size} geselecteerde element${selectedWallIds.size !== 1 ? 'en' : ''} · 2D gevelaanzicht`
+                  : `Alle ${allWalls.length} wanden · 2D gevelaanzicht`}
               </div>
-            </div>
-          )}
-
-          {allWalls.length > 0 && (
-            <div style={{ position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.6)', color: '#f1f5f9', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-              Klik om te selecteren · Slepen = rondkijken
-            </div>
-          )}
-
-          {selectedWallIds.size > 0 && (
-            <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: '#1d4ed8', color: '#fff', fontSize: 12, padding: '5px 14px', borderRadius: 6, pointerEvents: 'none', fontWeight: 500 }}>
-              {selectedWallIds.size} element{selectedWallIds.size !== 1 ? 'en' : ''} geselecteerd
-              {ungroupedSelCount > 0 && ` · ${ungroupedSelCount} zonder groep`}
-            </div>
+            </>
           )}
         </div>
 
