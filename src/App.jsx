@@ -121,7 +121,7 @@ function useGroupSettings() {
   const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20 });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
-  const initColor = useCallback((id, color) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color } }), []);
+  const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
   return { get, update, initColor };
 }
 
@@ -371,7 +371,7 @@ export default function App() {
     const srcSettings = getSettings(sourceGroupId);
     const linkedIds = groups.filter((g) => groupLinks[g.id] === linkId && g.id !== sourceGroupId).map((g) => g.id);
     for (const id of linkedIds) {
-      updateSettings(id, { color: srcSettings.color, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth });
+      updateSettings(id, { name: srcSettings.name, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth });
     }
   }
 
@@ -518,7 +518,8 @@ export default function App() {
               </button>
               <button
                 onClick={() => {
-                  const { linkId } = similarSuggestions;
+                  const { linkId, sourceGroupId } = similarSuggestions;
+                  const sourceName = getSettings(sourceGroupId).name;
                   const checkboxes = similarSuggestions.groups.map((_, idx) => document.getElementById(`sim-${idx}`)?.checked ?? true);
                   pushHistory(groups);
                   const newGroupEntries = similarSuggestions.groups
@@ -527,7 +528,7 @@ export default function App() {
                     .map(({ wallIds }) => {
                       const gid = newGid();
                       const color = nextColor();
-                      initColor(gid, color);
+                      initColor(gid, color, sourceName);
                       return { group: { id: gid, wallIds: sortWallsInComponent(wallIds, allWalls, adjacencies) }, gid };
                     });
                   setGroups((prev) => [...prev, ...newGroupEntries.map((e) => e.group)]);
