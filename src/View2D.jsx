@@ -30,20 +30,38 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
   const transform = useRef({ scale: 1, tx: 0, ty: 0 });
   const dragStart = useRef(null);
 
+  const virtualCoords = useMemo(() => {
+    const withOrigin = walls.filter((w) => w.wallOrigin);
+    if (!withOrigin.length) return { refX: 0, minH: 0, map: {} };
+
+    const widest = withOrigin.reduce((a, b) => b.length > a.length ? b : a);
+    const refX = widest.wallOrigin.lengthStart;
+    const minH = Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart));
+
+    const map = {};
+    for (const w of withOrigin) {
+      map[w.expressID] = {
+        vx: w.wallOrigin.lengthStart - refX,
+        vy: w.wallOrigin.heightStart - minH,
+      };
+    }
+    return { refX, minH, map };
+  }, [walls]);
+
   const bounds = useMemo(() => {
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
     for (const wall of walls) {
-      const wo = wall.wallOrigin;
-      if (!wo) continue;
-      minX = Math.min(minX, wo.lengthStart);
-      maxX = Math.max(maxX, wo.lengthStart + wall.length);
-      minY = Math.min(minY, wo.heightStart);
-      maxY = Math.max(maxY, wo.heightStart + wall.height);
+      if (!wall.wallOrigin) continue;
+      const { vx, vy } = virtualCoords.map[wall.expressID] ?? { vx: 0, vy: 0 };
+      minX = Math.min(minX, vx);
+      maxX = Math.max(maxX, vx + wall.length);
+      minY = Math.min(minY, vy);
+      maxY = Math.max(maxY, vy + wall.height);
     }
     if (!isFinite(minX)) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
     return { minX, maxX, minY, maxY };
-  }, [walls]);
+  }, [walls, virtualCoords]);
 
   const fitToView = useCallback(() => {
     const canvas = canvasRef.current;
@@ -85,9 +103,9 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
     const H = canvas.height;
     const { scale, tx, ty } = transform.current;
 
-    const toScreen = (ifcX, ifcY) => [
-      ifcX * scale * 0.001 + tx,
-      ty - ifcY * scale * 0.001,
+    const toScreen = (vX, vY) => [
+      vX * scale * 0.001 + tx,
+      ty - vY * scale * 0.001,
     ];
 
     ctx.clearRect(0, 0, W, H);
@@ -113,15 +131,15 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
     }
 
     for (const wall of walls) {
-      const wo = wall.wallOrigin;
-      if (!wo) continue;
+      if (!wall.wallOrigin) continue;
+      const { vx, vy } = virtualCoords.map[wall.expressID] ?? { vx: 0, vy: 0 };
 
       const gid = wallGroupMap[wall.expressID];
       const gs = gid ? groupSettings(gid) : null;
       const color = gs?.color ?? '#64748b';
       const isSel = selectedWallIds?.has(wall.expressID);
 
-      const [sx, sy] = toScreen(wo.lengthStart, wo.heightStart + wall.height);
+      const [sx, sy] = toScreen(vx, vy + wall.height);
       const sw = wall.length * scale * 0.001;
       const sh = wall.height * scale * 0.001;
 
@@ -139,10 +157,10 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
 
         ctx.fillStyle = hexToRgba(color, 0.85);
         for (const row of pattern) {
-          const [, rowSy] = toScreen(wo.lengthStart, wo.heightStart + row.y + steenH);
+          const [, rowSy] = toScreen(vx, vy + row.y + steenH);
           const rowSh = steenH * scale * 0.001;
           for (const piece of row.pieces) {
-            const [pSx] = toScreen(wo.lengthStart + piece.start, 0);
+            const [pSx] = toScreen(vx + piece.start, 0);
             const pSw = piece.length * scale * 0.001;
             ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
           }
@@ -153,15 +171,43 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       }
 
       for (const op of (wall.openings ?? [])) {
-        const [opSx, opSy] = toScreen(wo.lengthStart + op.x, wo.heightStart + op.y + op.hoogte);
-        const opSw = op.breedte * scale * 0.001;
-        const opSh = op.hoogte * scale * 0.001;
-        ctx.clearRect(opSx, opSy, opSw, opSh);
-        ctx.fillStyle = 'rgba(147,197,253,0.25)';
-        ctx.fillRect(opSx, opSy, opSw, opSh);
-        ctx.strokeStyle = '#93c5fd';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(opSx, opSy, opSw, opSh);
+        if (op.polyPts?.length >= 3) {
+          const pts = op.polyPts.map(([pl, ph]) => toScreen(vx + pl, vy + ph));
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+          ctx.closePath();
+          ctx.clip();
+          const [opSx, opSy] = toScreen(vx + op.x, vy + op.y + op.hoogte);
+          const opSw = op.breedte * scale * 0.001;
+          const opSh = op.hoogte * scale * 0.001;
+          ctx.clearRect(opSx - 1, opSy - 1, opSw + 2, opSh + 2);
+          ctx.restore();
+          ctx.fillStyle = 'rgba(147,197,253,0.25)';
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = '#93c5fd';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+          ctx.closePath();
+          ctx.stroke();
+        } else {
+          const [opSx, opSy] = toScreen(vx + op.x, vy + op.y + op.hoogte);
+          const opSw = op.breedte * scale * 0.001;
+          const opSh = op.hoogte * scale * 0.001;
+          ctx.clearRect(opSx, opSy, opSw, opSh);
+          ctx.fillStyle = 'rgba(147,197,253,0.25)';
+          ctx.fillRect(opSx, opSy, opSw, opSh);
+          ctx.strokeStyle = '#93c5fd';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(opSx, opSy, opSw, opSh);
+        }
       }
 
       if (sw > 30) {
@@ -184,7 +230,6 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
     }
 
     if (penantFaceData?.length) {
-      const mat = walls.length > 0 ? null : null;
       const steenH = (() => {
         for (const wall of walls) {
           const gid = wallGroupMap[wall.expressID];
@@ -194,19 +239,15 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
         return 50;
       })();
 
-      for (const { penant: p, front, left, right, height: pH, groupMinH } of penantFaceData) {
+      for (const { penant: p, front, height: pH } of penantFaceData) {
         const pX = p.x ?? 0;
         const pB = Math.max(1, p.breedte ?? 400);
         const pD = Math.max(1, p.diepte ?? 150);
-        const wallsWithOrigin = walls.filter((w) => w.wallOrigin);
-        if (!wallsWithOrigin.length) continue;
-        const refWall = wallsWithOrigin[0];
-        const wo = refWall.wallOrigin;
-        const worldBaseY = groupMinH ?? wo.heightStart;
+        const baseVY = 0;
 
-        const [sx, baseY] = toScreen(pX, worldBaseY + pH);
+        const [sx, baseY] = toScreen(pX, baseVY + pH);
         const [ex] = toScreen(pX + pB, 0);
-        const [, bottomY] = toScreen(0, worldBaseY);
+        const [, bottomY] = toScreen(0, baseVY);
         const pW = ex - sx;
         const pHpx = bottomY - baseY;
         const depthPx = Math.min(pD * scale * 0.001, 30);
@@ -234,7 +275,7 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
 
         const col = groupColor ?? '#a64033';
         for (const row of front) {
-          const [, rowTop] = toScreen(0, worldBaseY + row.y + steenH);
+          const [, rowTop] = toScreen(0, baseVY + row.y + steenH);
           const rowH = steenH * scale * 0.001;
           for (const piece of row.pieces) {
             const [px2] = toScreen(pX + piece.start, 0);
@@ -259,17 +300,16 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
     if (maxHoogte !== null && maxHoogte > 0 && walls.length > 0) {
       const wallsWithOrigin = walls.filter((w) => w.wallOrigin);
       if (wallsWithOrigin.length > 0) {
-        const groupMinH = Math.min(...wallsWithOrigin.map((w) => w.wallOrigin.heightStart));
-        const lineY = groupMinH + maxHoogte;
+        const lineVY = maxHoogte;
         let xMin = Infinity, xMax = -Infinity;
         for (const wall of wallsWithOrigin) {
-          const wwo = wall.wallOrigin;
-          const [sx] = toScreen(wwo.lengthStart, 0);
-          const ex = toScreen(wwo.lengthStart + wall.length, 0)[0];
+          const { vx } = virtualCoords.map[wall.expressID] ?? { vx: 0 };
+          const [sx] = toScreen(vx, 0);
+          const ex = toScreen(vx + wall.length, 0)[0];
           if (sx < xMin) xMin = sx;
           if (ex > xMax) xMax = ex;
         }
-        const [, sy] = toScreen(0, lineY);
+        const [, sy] = toScreen(0, lineVY);
         ctx.save();
         ctx.strokeStyle = '#f97316';
         ctx.lineWidth = 2;
@@ -288,13 +328,12 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       }
     }
 
-
     ctx.font = '10px system-ui, sans-serif';
     ctx.fillStyle = '#64748b';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}`, 8, H - 6);
-  }, [walls, patterns, groupSettings, wallGroupMap, selectedWallIds, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor]);
+  }, [walls, patterns, groupSettings, wallGroupMap, selectedWallIds, bounds, virtualCoords, size, redrawTick, maxHoogte, penantFaceData, groupColor]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
