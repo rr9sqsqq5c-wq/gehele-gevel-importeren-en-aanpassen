@@ -8,30 +8,38 @@ import { View2D } from './View2D.jsx';
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
 const DEFAULT_VERBAND = 'halfsteens';
 
+const DIM_TOL = 50;
+const OP_TOL = 50;
+
+function openingsMatch(refOps, candOps) {
+  if (refOps.length !== candOps.length) return false;
+  if (refOps.length === 0) return true;
+  const sr = [...refOps].sort((a, b) => a.x - b.x);
+  const sc = [...candOps].sort((a, b) => a.x - b.x);
+  for (let i = 0; i < sr.length; i++) {
+    const r = sr[i]; const c = sc[i];
+    if (Math.abs(r.x - c.x) > OP_TOL) return false;
+    if (Math.abs(r.y - c.y) > OP_TOL) return false;
+    if (Math.abs(r.breedte - c.breedte) > OP_TOL) return false;
+    if (Math.abs(r.hoogte - c.hoogte) > OP_TOL) return false;
+  }
+  return true;
+}
+
+function wallMatchesAnyRef(candidate, referenceWalls) {
+  return referenceWalls.some((ref) => {
+    if (Math.abs(ref.length - candidate.length) > DIM_TOL) return false;
+    if (Math.abs(ref.height - candidate.height) > DIM_TOL) return false;
+    return openingsMatch(ref.openings ?? [], candidate.openings ?? []);
+  });
+}
+
 function findSimilarGroups(referenceWalls, allWalls, existingGroups, adjacencies) {
   const groupedIds = new Set(existingGroups.flatMap((g) => g.wallIds));
   const ungrouped = allWalls.filter((w) => !groupedIds.has(w.expressID));
   if (!ungrouped.length || !referenceWalls.length) return [];
 
-  const refTypes = new Set(referenceWalls.map((w) => w.typeName).filter(Boolean));
-  const refThicknessAxes = new Set(referenceWalls.map((w) => w.wallOrigin?.thicknessAxis).filter(Boolean));
-  const refThicknessValues = referenceWalls.map((w) => {
-    const wo = w.wallOrigin;
-    if (!wo) return null;
-    return Math.abs((wo.thicknessEnd ?? wo.thicknessStart + 200) - wo.thicknessStart);
-  }).filter((v) => v !== null);
-  const refThicknessMed = refThicknessValues.length ? refThicknessValues.reduce((a, b) => a + b, 0) / refThicknessValues.length : null;
-
-  const similar = ungrouped.filter((w) => {
-    if (refTypes.size > 0 && w.typeName && refTypes.has(w.typeName)) return true;
-    if (refThicknessAxes.has(w.wallOrigin?.thicknessAxis) && refThicknessMed !== null) {
-      const wo = w.wallOrigin;
-      if (!wo) return false;
-      const t = Math.abs((wo.thicknessEnd ?? wo.thicknessStart + 200) - wo.thicknessStart);
-      return Math.abs(t - refThicknessMed) / refThicknessMed < 0.1;
-    }
-    return false;
-  });
+  const similar = ungrouped.filter((w) => wallMatchesAnyRef(w, referenceWalls));
 
   if (!similar.length) return [];
   const simIds = similar.map((w) => w.expressID);
