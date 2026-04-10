@@ -70,6 +70,41 @@ function getBBox(api, modelID, expressID) {
   return ok ? { minX, maxX, minY, maxY, minZ, maxZ } : null;
 }
 
+function getProjectedVertices(api, modelID, expressID, lAxis, hAxis) {
+  let mesh;
+  try { mesh = api.GetFlatMesh(modelID, expressID); } catch { return null; }
+  if (!mesh || mesh.geometries.size() === 0) return null;
+  const pts = [];
+  for (let gi = 0; gi < mesh.geometries.size(); gi++) {
+    const placed = mesh.geometries.get(gi);
+    let geom;
+    try {
+      geom = api.GetGeometry(modelID, placed.geometryExpressID);
+      const verts = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
+      const m = placed.flatTransformation;
+      for (let vi = 0; vi < verts.length; vi += 6) {
+        const lx = verts[vi], ly = verts[vi + 1], lz = verts[vi + 2];
+        const w = { x: m[0]*lx+m[4]*ly+m[8]*lz+m[12], y: m[1]*lx+m[5]*ly+m[9]*lz+m[13], z: m[2]*lx+m[6]*ly+m[10]*lz+m[14] };
+        pts.push({ l: w[lAxis], h: w[hAxis] });
+      }
+    } finally { geom?.delete(); }
+  }
+  if (!pts.length) return null;
+  return convexHull2D(pts);
+}
+
+function convexHull2D(pts) {
+  if (pts.length < 3) return pts;
+  const s = pts.slice().sort((a, b) => a.l !== b.l ? a.l - b.l : a.h - b.h);
+  const cross = (O, A, B) => (A.l - O.l) * (B.h - O.h) - (A.h - O.h) * (B.l - O.l);
+  const lower = [];
+  for (const p of s) { while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop(); lower.push(p); }
+  const upper = [];
+  for (let i = s.length - 1; i >= 0; i--) { const p = s[i]; while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop(); upper.push(p); }
+  upper.pop(); lower.pop();
+  return lower.concat(upper);
+}
+
 export async function scanIfcWallTypes(file) {
   const { IFC, api } = await getApi();
   const buffer = await file.arrayBuffer();
@@ -226,21 +261,45 @@ export async function parseIfc(file, allowedTypes = null) {
           for (const oID of (wallVoids[wID] ?? [])) {
             try {
               const fillID = fillerExpressID[oID];
+              const geomID = fillID ?? oID;
+
+              const polygon = getProjectedVertices(api, modelID, geomID, lengthAxis, heightAxis);
+
               const oBB = (fillID ? getBBox(api, modelID, fillID) : null) ?? getBBox(api, modelID, oID);
-              if (!oBB) continue;
-              const odx = oBB.maxX - oBB.minX;
-              const ody = oBB.maxY - oBB.minY;
-              const odz = oBB.maxZ - oBB.minZ;
-              const oDims = { x: odx, y: ody, z: odz };
-              const oWidth  = Math.round(oDims[lengthAxis] * 1000);
-              const oHeight = Math.round(oDims[heightAxis] * 1000);
-              if (oWidth < 50 || oHeight < 50) continue;
+              if (!oBB && !polygon) continue;
+
               const wallMins = { x: wallBB.minX, y: wallBB.minY, z: wallBB.minZ };
-              const oBBmins = { x: oBB.minX, y: oBB.minY, z: oBB.minZ };
-              const oBBmaxs = { x: oBB.maxX, y: oBB.maxY, z: oBB.maxZ };
-              const oHCenter = (oBBmins[lengthAxis] + oBBmaxs[lengthAxis]) / 2;
-              const oX = Math.round((oHCenter - wallMins[lengthAxis] - oDims[lengthAxis] / 2) * 1000);
-              const oY = Math.round((oBBmins[heightAxis] - wallMins[heightAxis]) * 1000);
+
+              let oX, oY, oWidth, oHeight, polyPts;
+
+              if (polygon && polygon.length >= 3) {
+                const ls = polygon.map((p) => p.l);
+                const hs = polygon.map((p) => p.h);
+                const lMin = Math.min(...ls), lMax = Math.max(...ls);
+                const hMin = Math.min(...hs), hMax = Math.max(...hs);
+                oWidth  = Math.round((lMax - lMin) * 1000);
+                oHeight = Math.round((hMax - hMin) * 1000);
+                oX = Math.round((lMin - wallMins[lengthAxis]) * 1000);
+                oY = Math.round((hMin - wallMins[heightAxis]) * 1000);
+                polyPts = polygon.map((p) => ({
+                  l: Math.round((p.l - wallMins[lengthAxis]) * 1000),
+                  h: Math.round((p.h - wallMins[heightAxis]) * 1000),
+                }));
+              } else if (oBB) {
+                const odx = oBB.maxX - oBB.minX;
+                const ody = oBB.maxY - oBB.minY;
+                const odz = oBB.maxZ - oBB.minZ;
+                const oDims = { x: odx, y: ody, z: odz };
+                oWidth  = Math.round(oDims[lengthAxis] * 1000);
+                oHeight = Math.round(oDims[heightAxis] * 1000);
+                const oBBmins = { x: oBB.minX, y: oBB.minY, z: oBB.minZ };
+                oX = Math.round((oBBmins[lengthAxis] - wallMins[lengthAxis]) * 1000);
+                oY = Math.round((oBBmins[heightAxis] - wallMins[heightAxis]) * 1000);
+                polyPts = null;
+              } else continue;
+
+              if (oWidth < 50 || oHeight < 50) continue;
+
               openings.push({
                 id: oID,
                 type: openingType[oID] ?? "sparing",
@@ -248,6 +307,7 @@ export async function parseIfc(file, allowedTypes = null) {
                 y: Math.max(0, oY),
                 breedte: oWidth,
                 hoogte: oHeight,
+                polyPts: polyPts ?? null,
               });
             } catch { }
           }

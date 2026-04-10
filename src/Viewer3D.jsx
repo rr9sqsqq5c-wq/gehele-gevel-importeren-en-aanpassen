@@ -156,28 +156,35 @@ function OpeningMesh({ wall, opening, upAxis }) {
   const ow = opening.breedte ?? 0;
   const oh = opening.hoogte ?? 0;
 
+  const polyPts = opening.polyPts ?? null;
+
   const lineObj = useMemo(() => {
     const color = opening.type === 'raam' ? '#93c5fd' : '#fde68a';
     const mat = new THREE.LineBasicMaterial({ color, depthTest: false });
 
-    const makeRect = (tVal) => {
-      const p = (lOff, hOff) => {
+    const makePoly = (tVal, pts2d) => {
+      const pts = [...pts2d, pts2d[0]].map(({ l, h }) => {
         const ifc = { x: 0, y: 0, z: 0 };
-        ifc[wo.lengthAxis]    = wo.lengthStart + lOff;
-        ifc[wo.heightAxis]    = wo.heightStart + hOff;
+        ifc[wo.lengthAxis]    = wo.lengthStart + l;
+        ifc[wo.heightAxis]    = wo.heightStart + h;
         ifc[wo.thicknessAxis] = tVal;
         const [tx, ty, tz] = ifcToThree(ifc.x, ifc.y, ifc.z, upAxis);
         return new THREE.Vector3(tx, ty, tz);
-      };
-      const pts = [p(ox, oy), p(ox + ow, oy), p(ox + ow, oy + oh), p(ox, oy + oh), p(ox, oy)];
+      });
       return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
     };
 
+    const rectPts = [
+      { l: ox, h: oy }, { l: ox + ow, h: oy },
+      { l: ox + ow, h: oy + oh }, { l: ox, h: oy + oh },
+    ];
+    const pts2d = (polyPts && polyPts.length >= 3) ? polyPts : rectPts;
+
     const group = new THREE.Group();
-    group.add(makeRect(frontFace));
-    group.add(makeRect(backFace));
+    group.add(makePoly(frontFace, pts2d));
+    group.add(makePoly(backFace, pts2d));
     return group;
-  }, [wo, ox, oy, ow, oh, frontFace, backFace, upAxis, opening.type]);
+  }, [wo, ox, oy, ow, oh, frontFace, backFace, upAxis, opening.type, polyPts]);
 
   return <primitive object={lineObj} />;
 }
