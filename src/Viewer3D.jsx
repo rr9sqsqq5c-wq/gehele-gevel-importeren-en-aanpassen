@@ -180,26 +180,29 @@ function CameraPresetController({ preset, center, span }) {
     const d = Math.max(span * 1.5, 1);
 
     const presets = {
-      N:    { pos: [cx, cy + d * 0.2, cz + d], up: [0, 1, 0] },
-      Z:    { pos: [cx, cy + d * 0.2, cz - d], up: [0, 1, 0] },
-      O:    { pos: [cx + d, cy + d * 0.2, cz], up: [0, 1, 0] },
-      W:    { pos: [cx - d, cy + d * 0.2, cz], up: [0, 1, 0] },
+      N:    { pos: [cx, cy, cz + d], up: [0, 1, 0] },
+      Z:    { pos: [cx, cy, cz - d], up: [0, 1, 0] },
+      O:    { pos: [cx + d, cy, cz], up: [0, 1, 0] },
+      W:    { pos: [cx - d, cy, cz], up: [0, 1, 0] },
       Top:  { pos: [cx, cy + d * 1.5, cz],     up: [0, 0, -1] },
       Home: { pos: [cx + span * 0.6, cy + span * 0.5, cz + span * 1.4], up: [0, 1, 0] },
     };
 
     const p = presets[preset];
     if (!p) return;
-    target.current = { pos: new THREE.Vector3(...p.pos), up: new THREE.Vector3(...p.up) };
+    const fov = preset === 'Home' ? 45 : 25;
+    target.current = { pos: new THREE.Vector3(...p.pos), up: new THREE.Vector3(...p.up), fov };
   }, [preset, center, span]);
 
   useFrame(() => {
     if (!target.current || !controls) return;
-    const { pos, up } = target.current;
+    const { pos, up, fov } = target.current;
     const [cx, cy, cz] = center;
 
     camera.position.lerp(pos, 0.1);
     camera.up.lerp(up, 0.1);
+    if (fov !== undefined) camera.fov += (fov - camera.fov) * 0.1;
+    camera.updateProjectionMatrix();
 
     const ct = controls.target;
     ct.lerp(new THREE.Vector3(cx, cy, cz), 0.1);
