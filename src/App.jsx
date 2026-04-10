@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { parseIfc, exportGroupsToIfc } from './lib/ifc.js';
+import { scanIfcWallTypes, parseIfc, exportGroupsToIfc } from './lib/ifc.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern } from './lib/pattern.js';
 import { Viewer3D } from './Viewer3D.jsx';
@@ -108,6 +108,9 @@ export default function App() {
   const [ifcFileName, setIfcFileName] = useState(null);
   const [showPattern, setShowPattern] = useState(true);
   const [viewMode, setViewMode] = useState('3d');
+  const [pendingFile, setPendingFile] = useState(null);
+  const [wallTypes, setWallTypes] = useState([]);
+  const [selectedTypes, setSelectedTypes] = useState(new Set());
   const { get: getSettings, update: updateSettings, initColor } = useGroupSettings();
 
   const wallMap = useMemo(() => Object.fromEntries(allWalls.map((w) => [w.expressID, w])), [allWalls]);
@@ -135,23 +138,56 @@ export default function App() {
     const file = e.target.files[0];
     if (!file) return;
     e.target.value = '';
-    setLoadStatus('loading');
+    setLoadStatus('scanning');
     setLoadError(null);
     try {
-      const walls = await parseIfc(file);
-      if (!walls.length) throw new Error('Geen wanden gevonden in IFC-bestand');
+      const types = await scanIfcWallTypes(file);
+      if (!types.length) throw new Error('Geen wanden gevonden in IFC-bestand');
+      setPendingFile(file);
+      setWallTypes(types);
+      setSelectedTypes(new Set(types.map((t) => t.name)));
+      setLoadStatus('selecting');
+    } catch (err) {
+      setLoadError(err.message);
+      setLoadStatus('error');
+    }
+  }
+
+  async function confirmImport() {
+    if (!pendingFile) return;
+    setLoadStatus('loading');
+    try {
+      const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
+      const walls = await parseIfc(pendingFile, filter);
+      if (!walls.length) throw new Error('Geen wanden gevonden met de geselecteerde types');
       setAllWalls(walls);
       setAdjacencies(detectAdjacencies(walls));
       setGroups([]);
       setSelectedWallIds(new Set());
       setActiveGroupId(null);
-      setIfcFileName(file.name.replace(/\.ifc$/i, ''));
+      setIfcFileName(pendingFile.name.replace(/\.ifc$/i, ''));
       setLoadStatus('loaded');
+      setPendingFile(null);
+      setWallTypes([]);
       _colorIdx = 0;
     } catch (err) {
       setLoadError(err.message);
       setLoadStatus('error');
     }
+  }
+
+  function cancelImport() {
+    setPendingFile(null);
+    setWallTypes([]);
+    setLoadStatus(allWalls.length ? 'loaded' : 'idle');
+  }
+
+  function toggleType(name) {
+    setSelectedTypes((prev) => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
   }
 
   function autoGroup() {
@@ -233,15 +269,64 @@ export default function App() {
   const ungroupedSelCount = [...selectedWallIds].filter((id) => !wallGroupMap[id]).length;
   const adjWallIds = useMemo(() => new Set(adjacencies.flatMap((a) => [a.wallIdA, a.wallIdB])), [adjacencies]);
 
+  const totalSelected = wallTypes.filter((t) => selectedTypes.has(t.name)).reduce((s, t) => s + t.count, 0);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      {loadStatus === 'selecting' && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 8, padding: 24, width: 480, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Wandtypen selecteren</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 16 }}>
+              {pendingFile?.name} · Selecteer welke typen je wilt importeren
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <button onClick={() => setSelectedTypes(new Set(wallTypes.map((t) => t.name)))}
+                style={{ fontSize: 11, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}>
+                Alle selecteren
+              </button>
+              <button onClick={() => setSelectedTypes(new Set())}
+                style={{ fontSize: 11, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}>
+                Geen selecteren
+              </button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+              {wallTypes.map((t) => {
+                const checked = selectedTypes.has(t.name);
+                return (
+                  <label key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: checked ? '#eff6ff' : '#fff' }}>
+                    <input type="checkbox" checked={checked} onChange={() => toggleType(t.name)} />
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: 500 }}>{t.name}</span>
+                    <span style={{ fontSize: 11, color: '#94a3b8', background: '#f1f5f9', padding: '1px 7px', borderRadius: 10 }}>{t.count} wanden</span>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 12, color: '#64748b', flex: 1 }}>
+                {totalSelected} wanden geselecteerd
+              </span>
+              <button onClick={cancelImport} style={{ fontSize: 12, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: '6px 14px', cursor: 'pointer' }}>
+                Annuleren
+              </button>
+              <button onClick={confirmImport} disabled={!selectedTypes.size}
+                style={{ fontSize: 12, background: selectedTypes.size ? '#3b82f6' : '#94a3b8', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 16px', cursor: selectedTypes.size ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
+                Importeren
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ background: '#1e293b', color: '#f8fafc', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <span style={{ fontWeight: 700, fontSize: 15 }}>IFC Brickslip Planner</span>
 
         <label style={{ cursor: 'pointer' }}>
           <input type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} disabled={loadStatus === 'loading'} />
-          <span style={{ background: loadStatus === 'loading' ? '#475569' : '#3b82f6', color: '#fff', padding: '4px 12px', borderRadius: 4, fontSize: 12, display: 'inline-block' }}>
-            {loadStatus === 'loading' ? '⏳ Laden…' : '📂 IFC importeren'}
+          <span style={{ background: (loadStatus === 'loading' || loadStatus === 'scanning') ? '#475569' : '#3b82f6', color: '#fff', padding: '4px 12px', borderRadius: 4, fontSize: 12, display: 'inline-block' }}>
+            {loadStatus === 'scanning' ? '🔍 Scannen…' : loadStatus === 'loading' ? '⏳ Laden…' : '📂 IFC importeren'}
           </span>
         </label>
 

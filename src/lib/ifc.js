@@ -70,7 +70,53 @@ function getBBox(api, modelID, expressID) {
   return ok ? { minX, maxX, minY, maxY, minZ, maxZ } : null;
 }
 
-export async function parseIfc(file) {
+export async function scanIfcWallTypes(file) {
+  const { IFC, api } = await getApi();
+  const buffer = await file.arrayBuffer();
+  const data = new Uint8Array(buffer);
+  const modelID = api.OpenModel(data, {});
+
+  try {
+    const wallTypeMap = {};
+    try {
+      const relDefVec = api.GetLineIDsWithType(modelID, IFC.IFCRELDEFINESBYTYPE);
+      for (let i = 0; i < relDefVec.size(); i++) {
+        try {
+          const rel = api.GetLine(modelID, relDefVec.get(i), false);
+          const typeRef = rel?.RelatingType?.value;
+          if (!typeRef) continue;
+          const typeLine = api.GetLine(modelID, typeRef, false);
+          const tName = typeLine?.Name?.value ?? null;
+          const related = rel?.RelatedObjects;
+          if (!related || !tName) continue;
+          for (let j = 0; j < related.length; j++) {
+            const wid = related[j]?.value;
+            if (wid) wallTypeMap[wid] = tName;
+          }
+        } catch { }
+      }
+    } catch { }
+
+    const typeCounts = {};
+    const wallTypes = [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL];
+    for (const wType of wallTypes) {
+      const idsVec = api.GetLineIDsWithType(modelID, wType);
+      for (let i = 0; i < idsVec.size(); i++) {
+        const wID = idsVec.get(i);
+        const tName = wallTypeMap[wID] ?? '(geen type)';
+        typeCounts[tName] = (typeCounts[tName] ?? 0) + 1;
+      }
+    }
+
+    return Object.entries(typeCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  } finally {
+    api.CloseModel(modelID);
+  }
+}
+
+export async function parseIfc(file, allowedTypes = null) {
   const { IFC, api } = await getApi();
   const buffer = await file.arrayBuffer();
   const data = new Uint8Array(buffer);
@@ -136,6 +182,11 @@ export async function parseIfc(file) {
       for (let i = 0; i < idsVec.size(); i++) {
         const wID = idsVec.get(i);
         try {
+          if (allowedTypes !== null) {
+            const tName = wallTypeMap[wID] ?? '(geen type)';
+            if (!allowedTypes.has(tName)) continue;
+          }
+
           const wallBB = getBBox(api, modelID, wID);
           if (!wallBB) continue;
 
