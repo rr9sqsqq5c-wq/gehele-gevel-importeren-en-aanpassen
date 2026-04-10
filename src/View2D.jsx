@@ -18,22 +18,15 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
+  const [redrawTick, setRedrawTick] = useState(0);
 
   const transform = useRef({ scale: 1, tx: 0, ty: 0 });
   const dragStart = useRef(null);
-  const [, forceRedraw] = useState(0);
-
-  const wallsToShow = useMemo(() => {
-    if (selectedWallIds && selectedWallIds.size > 0) {
-      return walls.filter((w) => selectedWallIds.has(w.expressID));
-    }
-    return walls;
-  }, [walls, selectedWallIds]);
 
   const bounds = useMemo(() => {
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
-    for (const wall of wallsToShow) {
+    for (const wall of walls) {
       const wo = wall.wallOrigin;
       if (!wo) continue;
       minX = Math.min(minX, wo.lengthStart);
@@ -43,14 +36,14 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
     }
     if (!isFinite(minX)) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
     return { minX, maxX, minY, maxY };
-  }, [wallsToShow]);
+  }, [walls]);
 
   const fitToView = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !canvas.width || !canvas.height) return;
     const W = canvas.width;
     const H = canvas.height;
-    const PAD = 60;
+    const PAD = 24;
     const bw = bounds.maxX - bounds.minX || 1;
     const bh = bounds.maxY - bounds.minY || 1;
     const scale = Math.min((W - PAD * 2) / bw, (H - PAD * 2) / bh) * 1000;
@@ -61,13 +54,13 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       tx: W / 2 - cx * scale * 0.001,
       ty: H / 2 + cy * scale * 0.001,
     };
-    forceRedraw((n) => n + 1);
+    setRedrawTick((n) => n + 1);
   }, [bounds]);
 
   useEffect(() => {
     const obs = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
-      setSize({ w: Math.floor(width), h: Math.floor(height) });
+      setSize({ w: Math.floor(width) || 800, h: Math.floor(height) || 600 });
     });
     if (containerRef.current) obs.observe(containerRef.current);
     return () => obs.disconnect();
@@ -112,7 +105,7 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       }
     }
 
-    for (const wall of wallsToShow) {
+    for (const wall of walls) {
       const wo = wall.wallOrigin;
       if (!wo) continue;
 
@@ -136,8 +129,6 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       if (pattern && gs) {
         const mat = gs.material ?? {};
         const steenH = mat.steenH ?? 50;
-        const steenL = mat.steenL ?? 210;
-        const stoot = mat.stoot ?? 10;
 
         ctx.fillStyle = hexToRgba(color, 0.85);
         for (const row of pattern) {
@@ -190,7 +181,7 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}`, 8, H - 6);
-  }, [wallsToShow, patterns, groupSettings, wallGroupMap, selectedWallIds, bounds, size, forceRedraw]);
+  }, [walls, patterns, groupSettings, wallGroupMap, selectedWallIds, bounds, size, redrawTick]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
@@ -205,7 +196,7 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       tx: mx + (t.tx - mx) * factor,
       ty: my + (t.ty - my) * factor,
     };
-    forceRedraw((n) => n + 1);
+    setRedrawTick((n) => n + 1);
   }, []);
 
   const onMouseDown = useCallback((e) => {
@@ -219,7 +210,7 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       tx: dragStart.current.tx + (e.clientX - dragStart.current.x),
       ty: dragStart.current.ty + (e.clientY - dragStart.current.y),
     };
-    forceRedraw((n) => n + 1);
+    setRedrawTick((n) => n + 1);
   }, []);
 
   const onMouseUp = useCallback(() => { dragStart.current = null; }, []);

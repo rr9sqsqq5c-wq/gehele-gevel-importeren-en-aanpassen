@@ -565,7 +565,13 @@ export default function App() {
           ) : (
             <>
               <View2D
-                walls={selectedWallIds.size > 0 ? allWalls.filter((w) => selectedWallIds.has(w.expressID)) : allWalls}
+                walls={
+                  activeGroup
+                    ? activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean)
+                    : selectedWallIds.size > 0
+                    ? allWalls.filter((w) => selectedWallIds.has(w.expressID))
+                    : allWalls
+                }
                 patterns={allPatterns}
                 groupSettings={getSettings}
                 wallGroupMap={wallGroupMap}
@@ -574,6 +580,8 @@ export default function App() {
               <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.85)', color: '#94a3b8', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                 {selectedWallIds.size > 0
                   ? `${selectedWallIds.size} geselecteerde element${selectedWallIds.size !== 1 ? 'en' : ''} · 2D gevelaanzicht`
+                  : activeGroup
+                  ? `Groep: ${getSettings(activeGroup.id).name} (${activeGroup.wallIds.length} wanden) · 2D gevelaanzicht`
                   : `Alle ${allWalls.length} wanden · 2D gevelaanzicht`}
               </div>
             </>
