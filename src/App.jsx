@@ -332,10 +332,10 @@ export default function App() {
     pushHistory(groups);
     const comps = buildConnectedComponents(allWalls, adjacencies);
     _colorIdx = 0;
-    const newGroups = comps.map((ids) => {
+    const newGroups = comps.map((ids, idx) => {
       const gid = newGid();
       const color = nextColor();
-      initColor(gid, color);
+      initColor(gid, color, `Groep ${idx + 1}`);
       return { id: gid, wallIds: sortWallsInComponent(ids, allWalls, adjacencies) };
     });
     setGroups(newGroups);
@@ -349,7 +349,9 @@ export default function App() {
     if (!ids.length) return;
     const gid = newGid();
     const color = nextColor();
-    initColor(gid, color);
+    const uniqueNames = new Set(groups.map((g) => getSettings(g.id).name));
+    const groupName = `Groep ${uniqueNames.size + 1}`;
+    initColor(gid, color, groupName);
     const newGroup = { id: gid, wallIds: sortWallsInComponent(ids, allWalls, adjacencies) };
     const updatedGroups = [...groups, newGroup];
     setGroups(updatedGroups);
