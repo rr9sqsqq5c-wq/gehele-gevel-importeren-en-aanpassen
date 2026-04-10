@@ -10,6 +10,23 @@ const DEFAULT_VERBAND = 'halfsteens';
 
 const DIM_TOL = 50;
 const OP_TOL = 50;
+const POS_TOL = 150;
+
+function wallCenter(wall) {
+  const wo = wall.wallOrigin;
+  if (!wo) return { x: 0, y: 0, z: 0 };
+  const c = { x: 0, y: 0, z: 0 };
+  c[wo.lengthAxis] = wo.lengthStart + wall.length / 2;
+  c[wo.heightAxis] = wo.heightStart + wall.height / 2;
+  const thickness = Math.abs((wo.thicknessEnd ?? wo.thicknessStart + 200) - wo.thicknessStart);
+  c[wo.thicknessAxis] = wo.thicknessStart + thickness / 2;
+  return c;
+}
+
+function wallSortKey(wall) {
+  const c = wallCenter(wall);
+  return c.x * 1e9 + c.z * 1e6 + c.y;
+}
 
 function openingsMatch(refOps, candOps) {
   if (refOps.length !== candOps.length) return false;
@@ -26,26 +43,68 @@ function openingsMatch(refOps, candOps) {
   return true;
 }
 
-function wallMatchesAnyRef(candidate, referenceWalls) {
-  return referenceWalls.some((ref) => {
-    if (Math.abs(ref.length - candidate.length) > DIM_TOL) return false;
-    if (Math.abs(ref.height - candidate.height) > DIM_TOL) return false;
-    return openingsMatch(ref.openings ?? [], candidate.openings ?? []);
+function buildGroupSignature(walls) {
+  const sorted = [...walls].sort((a, b) => wallSortKey(a) - wallSortKey(b));
+  const base = wallCenter(sorted[0]);
+  return sorted.map((w) => {
+    const c = wallCenter(w);
+    return {
+      dx: c.x - base.x, dy: c.y - base.y, dz: c.z - base.z,
+      length: w.length, height: w.height,
+      openings: (w.openings ?? []).slice().sort((a, b) => a.x - b.x),
+    };
   });
 }
 
 function findSimilarGroups(referenceWalls, allWalls, existingGroups, adjacencies) {
+  if (!referenceWalls.length) return [];
   const groupedIds = new Set(existingGroups.flatMap((g) => g.wallIds));
   const ungrouped = allWalls.filter((w) => !groupedIds.has(w.expressID));
-  if (!ungrouped.length || !referenceWalls.length) return [];
+  if (!ungrouped.length) return [];
 
-  const similar = ungrouped.filter((w) => wallMatchesAnyRef(w, referenceWalls));
+  const N = referenceWalls.length;
+  const refSig = buildGroupSignature(referenceWalls);
 
-  if (!similar.length) return [];
-  const simIds = similar.map((w) => w.expressID);
-  const simAdj = adjacencies.filter((a) => simIds.includes(a.wallIdA) && simIds.includes(a.wallIdB));
-  const comps = buildConnectedComponents(similar, simAdj);
-  return comps.map((ids) => sortWallsInComponent(ids, allWalls, adjacencies));
+  const anchors = ungrouped.filter((w) =>
+    Math.abs(w.length - refSig[0].length) <= DIM_TOL &&
+    Math.abs(w.height - refSig[0].height) <= DIM_TOL &&
+    openingsMatch(w.openings ?? [], refSig[0].openings)
+  );
+
+  const results = [];
+  const seen = new Set();
+
+  for (const anchor of anchors) {
+    const ac = wallCenter(anchor);
+    const matched = [anchor];
+    let valid = true;
+
+    for (let i = 1; i < N; i++) {
+      const sig = refSig[i];
+      const tx = ac.x + sig.dx, ty = ac.y + sig.dy, tz = ac.z + sig.dz;
+      const match = ungrouped.find((w) => {
+        if (matched.includes(w)) return false;
+        if (Math.abs(w.length - sig.length) > DIM_TOL) return false;
+        if (Math.abs(w.height - sig.height) > DIM_TOL) return false;
+        const wc = wallCenter(w);
+        if (Math.abs(wc.x - tx) > POS_TOL) return false;
+        if (Math.abs(wc.y - ty) > POS_TOL) return false;
+        if (Math.abs(wc.z - tz) > POS_TOL) return false;
+        return openingsMatch(w.openings ?? [], sig.openings);
+      });
+      if (!match) { valid = false; break; }
+      matched.push(match);
+    }
+
+    if (!valid) continue;
+    if (!matched.every((w) => !groupedIds.has(w.expressID))) continue;
+    const key = matched.map((w) => w.expressID).sort().join(',');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push(matched.map((w) => w.expressID));
+  }
+
+  return results.map((ids) => sortWallsInComponent(ids, allWalls, adjacencies));
 }
 let _gid = 1;
 const newGid = () => `G${_gid++}`;
@@ -66,7 +125,7 @@ function useGroupSettings() {
   return { get, update, initColor };
 }
 
-function GroupConfigPanel({ groupId, settings, onUpdate, onDelete }) {
+function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked }) {
   const mat = settings.material ?? { ...DEFAULT_MATERIAL };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -74,6 +133,18 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete }) {
         <span style={{ fontWeight: 600, fontSize: 13 }}>Groep configuratie</span>
         <button onClick={onDelete} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 13 }} title="Groep verwijderen">🗑</button>
       </div>
+
+      {linkedCount > 0 && (
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 5, padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: '#1d4ed8', flex: 1 }}>🔗 {linkedCount} gekoppelde groep{linkedCount !== 1 ? 'en' : ''}</span>
+          <button
+            onClick={onSyncToLinked}
+            style={{ fontSize: 11, background: '#2563eb', color: '#fff', border: 'none', borderRadius: 3, padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            Sync instellingen →
+          </button>
+        </div>
+      )}
 
       <Field label="Naam">
         <input type="text" value={settings.name} onChange={(e) => onUpdate({ name: e.target.value })}
@@ -153,6 +224,7 @@ export default function App() {
   const [wallTypes, setWallTypes] = useState([]);
   const [selectedTypes, setSelectedTypes] = useState(new Set());
   const [similarSuggestions, setSimilarSuggestions] = useState(null);
+  const [groupLinks, setGroupLinks] = useState({});
   const { get: getSettings, update: updateSettings, initColor } = useGroupSettings();
 
   const wallMap = useMemo(() => Object.fromEntries(allWalls.map((w) => [w.expressID, w])), [allWalls]);
@@ -287,7 +359,19 @@ export default function App() {
     const refWalls = ids.map((id) => allWalls.find((w) => w.expressID === id)).filter(Boolean);
     const suggestions = findSimilarGroups(refWalls, allWalls, updatedGroups, adjacencies);
     if (suggestions.length > 0) {
-      setSimilarSuggestions({ sourceGroupId: gid, sourceColor: color, groups: suggestions });
+      const linkId = `L${gid}`;
+      setGroupLinks((prev) => ({ ...prev, [gid]: linkId }));
+      setSimilarSuggestions({ sourceGroupId: gid, sourceColor: color, linkId, groups: suggestions });
+    }
+  }
+
+  function syncToLinked(sourceGroupId) {
+    const linkId = groupLinks[sourceGroupId];
+    if (!linkId) return;
+    const srcSettings = getSettings(sourceGroupId);
+    const linkedIds = groups.filter((g) => groupLinks[g.id] === linkId && g.id !== sourceGroupId).map((g) => g.id);
+    for (const id of linkedIds) {
+      updateSettings(id, { color: srcSettings.color, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth });
     }
   }
 
@@ -402,23 +486,25 @@ export default function App() {
       {similarSuggestions && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', borderRadius: 8, padding: 24, width: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Vergelijkbare wanden gevonden</div>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Vergelijkbare groeperingen gevonden</div>
             <div style={{ fontSize: 12, color: '#64748b', marginBottom: 16 }}>
-              Er zijn {similarSuggestions.groups.reduce((s, g) => s + g.length, 0)} vergelijkbare wanden gevonden die nog niet in een groep zitten.
-              Wil je deze ook als aparte groepen toevoegen?
+              Er zijn <strong>{similarSuggestions.groups.length}</strong> groeperingen gevonden met dezelfde samenstelling en onderlinge posities.
+              Geselecteerde groepen worden gekoppeld — instellingen zijn later in één keer te synchroniseren.
             </div>
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
               {similarSuggestions.groups.map((wallIds, idx) => {
-                const firstWall = allWalls.find((w) => w.expressID === wallIds[0]);
+                const walls = wallIds.map((id) => allWalls.find((w) => w.expressID === id)).filter(Boolean);
                 return (
                   <label key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer', background: '#f8fafc' }}>
                     <input type="checkbox" defaultChecked style={{ width: 16, height: 16 }} id={`sim-${idx}`} />
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600 }}>{wallIds.length} wand{wallIds.length !== 1 ? 'en' : ''}</div>
-                      {firstWall && <div style={{ fontSize: 11, color: '#64748b' }}>{firstWall.typeName ?? firstWall.name}</div>}
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{wallIds.length} element{wallIds.length !== 1 ? 'en' : ''}</div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>
+                        {walls.map((w) => `${w.length}×${w.height}mm`).join(' + ')}
+                      </div>
                     </div>
-                    <span style={{ fontSize: 11, color: '#94a3b8', background: '#e2e8f0', padding: '2px 8px', borderRadius: 10 }}>
-                      {wallIds.length} wanden
+                    <span style={{ fontSize: 11, color: '#6366f1', background: '#ede9fe', padding: '2px 8px', borderRadius: 10 }}>
+                      🔗 gekoppeld
                     </span>
                   </label>
                 );
@@ -432,21 +518,28 @@ export default function App() {
               </button>
               <button
                 onClick={() => {
+                  const { linkId } = similarSuggestions;
                   const checkboxes = similarSuggestions.groups.map((_, idx) => document.getElementById(`sim-${idx}`)?.checked ?? true);
                   pushHistory(groups);
-                  const newGroups = similarSuggestions.groups
-                    .filter((_, idx) => checkboxes[idx])
-                    .map((wallIds) => {
+                  const newGroupEntries = similarSuggestions.groups
+                    .map((wallIds, idx) => ({ wallIds, checked: checkboxes[idx] }))
+                    .filter(({ checked }) => checked)
+                    .map(({ wallIds }) => {
                       const gid = newGid();
                       const color = nextColor();
                       initColor(gid, color);
-                      return { id: gid, wallIds: sortWallsInComponent(wallIds, allWalls, adjacencies) };
+                      return { group: { id: gid, wallIds: sortWallsInComponent(wallIds, allWalls, adjacencies) }, gid };
                     });
-                  setGroups((prev) => [...prev, ...newGroups]);
+                  setGroups((prev) => [...prev, ...newGroupEntries.map((e) => e.group)]);
+                  setGroupLinks((prev) => {
+                    const next = { ...prev };
+                    for (const { gid } of newGroupEntries) next[gid] = linkId;
+                    return next;
+                  });
                   setSimilarSuggestions(null);
                 }}
                 style={{ fontSize: 12, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 16px', cursor: 'pointer', fontWeight: 600 }}>
-                Groepen aanmaken
+                Groepen aanmaken &amp; koppelen
               </button>
             </div>
           </div>
@@ -699,6 +792,12 @@ export default function App() {
                 settings={getSettings(activeGroup.id)}
                 onUpdate={(patch) => updateSettings(activeGroup.id, patch)}
                 onDelete={() => deleteGroup(activeGroup.id)}
+                linkedCount={(() => {
+                  const linkId = groupLinks[activeGroup.id];
+                  if (!linkId) return 0;
+                  return groups.filter((g) => groupLinks[g.id] === linkId && g.id !== activeGroup.id).length;
+                })()}
+                onSyncToLinked={() => syncToLinked(activeGroup.id)}
               />
             </div>
           </div>
