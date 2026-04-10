@@ -259,7 +259,7 @@ export default function App() {
       if (!types.length) throw new Error('Geen wanden gevonden in IFC-bestand');
       setPendingFile(file);
       setWallTypes(types);
-      setSelectedTypes(new Set(types.map((t) => t.name)));
+      setSelectedTypes(new Set());
       setLoadStatus('selecting');
     } catch (err) {
       setLoadError(err.message);
