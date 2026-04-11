@@ -150,9 +150,13 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
           const latW = info ? info[1] - info[0] : groupWidth;
 
           let latY;
-          if (openingBottomYs.has(yr) && yr > 0) {
+          if (yr === 0) {
+            latY = 0;
+          } else if (yr === Math.round(groupHeight)) {
             latY = yr - latBreedte;
-          } else if (openingTopYs.has(yr) && yr < Math.round(groupHeight)) {
+          } else if (openingBottomYs.has(yr)) {
+            latY = yr - latBreedte;
+          } else if (openingTopYs.has(yr)) {
             latY = yr;
           } else {
             latY = yr - latBreedte / 2;

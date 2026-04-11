@@ -775,11 +775,14 @@ export default function App() {
             }
             const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
             const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
+            const gH = Math.round(groupHeight);
             lattenData = [...positions].sort((a, b) => a - b).map((y) => {
               const yr = Math.round(y);
               let latY;
-              if (openingBottomYs.has(yr) && yr > 0) latY = yr - latBreedte;
-              else if (openingTopYs.has(yr) && yr < Math.round(groupHeight)) latY = yr;
+              if (yr === 0) latY = 0;
+              else if (yr === gH) latY = yr - latBreedte;
+              else if (openingBottomYs.has(yr)) latY = yr - latBreedte;
+              else if (openingTopYs.has(yr)) latY = yr;
               else latY = yr - latBreedte / 2;
               return { richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte };
             });
