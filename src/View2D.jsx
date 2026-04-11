@@ -32,19 +32,18 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
 
   const virtualCoords = useMemo(() => {
     const withOrigin = walls.filter((w) => w.wallOrigin);
-    if (!withOrigin.length) return { refX: 0, minH: 0, map: {} };
+    if (!withOrigin.length) return { minH: 0, map: {} };
 
-    const refX = Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart));
     const minH = Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart));
 
     const map = {};
     for (const w of withOrigin) {
       map[w.expressID] = {
-        vx: w.wallOrigin.lengthStart - refX,
+        vx: 0,
         vy: w.wallOrigin.heightStart - minH,
       };
     }
-    return { refX, minH, map };
+    return { minH, map };
   }, [walls]);
 
   const bounds = useMemo(() => {
