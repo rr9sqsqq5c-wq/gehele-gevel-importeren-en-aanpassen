@@ -171,7 +171,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const zwExpandX = zwEnabled ? (zwH + zwB + zwS) : 0;
   const zwExpandY = zwEnabled ? (zwV + zwB + zwS) : 0;
 
-  const groupOpenings = [];
+  const rawOpenings = [];
   for (const w of withOrigin) {
     const wallOffsetX = round2(w.wallOrigin.lengthStart - groupMinX);
     const wallOffsetH = round2(w.wallOrigin.heightStart - groupMinH);
@@ -180,9 +180,32 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       const oy = round2(wallOffsetH + (op.y ?? 0));
       const ow = op.breedte ?? op.width ?? 0;
       const oh = op.hoogte ?? op.height ?? 0;
-      groupOpenings.push({ x: ox, y: oy, width: ow, height: oh });
+      if (ow < 50 || oh < 50) continue;
+      rawOpenings.push({ x: ox, y: oy, width: ow, height: oh });
     }
   }
+
+  const isContained = (inner, outer, tol = 30) =>
+    inner.x >= outer.x - tol &&
+    inner.y >= outer.y - tol &&
+    inner.x + inner.width  <= outer.x + outer.width  + tol &&
+    inner.y + inner.height <= outer.y + outer.height + tol;
+
+  const isDuplicate = (a, b, tol = 50) =>
+    Math.abs(a.x - b.x) < tol &&
+    Math.abs(a.y - b.y) < tol &&
+    Math.abs(a.width  - b.width)  < tol &&
+    Math.abs(a.height - b.height) < tol;
+
+  const groupOpenings = rawOpenings.filter((op, i) => {
+    for (let j = 0; j < rawOpenings.length; j++) {
+      if (i === j) continue;
+      const other = rawOpenings[j];
+      if (isDuplicate(op, other) && j < i) return false;
+      if (isContained(op, other) && (other.width * other.height > op.width * op.height + 1)) return false;
+    }
+    return true;
+  });
 
   const maskOpenings = groupOpenings.map((op) => ({
     x: Math.max(0, op.x - zwExpandX),
