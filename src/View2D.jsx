@@ -16,6 +16,22 @@ function brickColor(label, baseColor) {
   return baseColor ?? '#a64033';
 }
 
+function polyXRangesAtY(poly, y) {
+  const xs = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const ay = a.h, by = b.h, ax = a.l, bx = b.l;
+    if ((ay < y && by >= y) || (by < y && ay >= y)) {
+      const t = (y - ay) / (by - ay);
+      xs.push(ax + t * (bx - ax));
+    }
+  }
+  xs.sort((p, q) => p - q);
+  const ranges = [];
+  for (let i = 0; i + 1 < xs.length; i += 2) ranges.push([xs[i], xs[i + 1]]);
+  return ranges;
+}
+
 function pickGridStep(scale) {
   const pixelsPerMm = scale * 0.001;
   if (pixelsPerMm < 0.005) return 0;
@@ -81,13 +97,28 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       rowTops.add(0);
       rowTops.add(Math.round(groupHeight));
 
-      const forced = new Set();
-      forced.add(0);
-      forced.add(Math.round(groupHeight));
+      const forcedLatInfo = new Map();
+      forcedLatInfo.set(0, [0, groupWidth]);
+      forcedLatInfo.set(Math.round(groupHeight), [0, groupWidth]);
       for (const op of groupOpenings) {
-        forced.add(Math.round(op.y));
-        forced.add(Math.round(op.y + op.height));
+        const yBot = Math.round(op.y);
+        const yTop = Math.round(op.y + op.height);
+        const getRange = (y) => {
+          if (op.polyPts && op.polyPts.length >= 3) {
+            const scanY = y === yBot ? y + 1 : y - 1;
+            const ranges = polyXRangesAtY(op.polyPts, scanY);
+            if (ranges.length) return [ranges[0][0], ranges[ranges.length - 1][1]];
+          }
+          return [op.x, op.x + op.width];
+        };
+        const [bx1, bx2] = getRange(yBot);
+        const [tx1, tx2] = getRange(yTop);
+        const prev = forcedLatInfo.get(yBot);
+        forcedLatInfo.set(yBot, prev ? [Math.min(prev[0], bx1), Math.max(prev[1], bx2)] : [bx1, bx2]);
+        const prevT = forcedLatInfo.get(yTop);
+        forcedLatInfo.set(yTop, prevT ? [Math.min(prevT[0], tx1), Math.max(prevT[1], tx2)] : [tx1, tx2]);
       }
+      const forced = new Set(forcedLatInfo.keys());
 
       const snapToRow = (y) => {
         const sorted = [...rowTops].sort((a, b) => Math.abs(a - y) - Math.abs(b - y));
@@ -109,15 +140,21 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
 
       return [...positions]
         .sort((a, b) => a - b)
-        .map((y, idx) => ({
-          id: `lat-h-${idx}`,
-          richting: 'horizontaal',
-          x: 0,
-          y: y - latBreedte / 2,
-          width: groupWidth,
-          height: latBreedte,
-          forced: forced.has(Math.round(y)),
-        }));
+        .map((y, idx) => {
+          const yr = Math.round(y);
+          const info = forcedLatInfo.get(yr);
+          const latX = info ? info[0] : 0;
+          const latW = info ? info[1] - info[0] : groupWidth;
+          return {
+            id: `lat-h-${idx}`,
+            richting: 'horizontaal',
+            x: latX,
+            y: yr - latBreedte / 2,
+            width: latW,
+            height: latBreedte,
+            forced: forced.has(yr),
+          };
+        });
     } else {
       const xPositions = new Set();
       xPositions.add(0);
@@ -230,7 +267,26 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     ctx.fillStyle = hexToRgba(color, 0.15);
     ctx.fillRect(faceSx, faceSy, faceW, faceH);
 
+    const applyOpeningExclusionClip = () => {
+      ctx.beginPath();
+      ctx.rect(faceSx - 1, faceSy - 1, faceW + 2, faceH + 2);
+      for (const op of groupOpenings) {
+        if (op.polyPts && op.polyPts.length >= 3) {
+          const pts = op.polyPts.map((p) => toScreen(p.l, p.h));
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+          ctx.closePath();
+        } else {
+          const [bx, by] = toScreen(op.x, op.y + op.height);
+          ctx.rect(bx, by, op.width * scale * 0.001, op.height * scale * 0.001);
+        }
+      }
+      ctx.clip('evenodd');
+    };
+
     if (allPanels.length) {
+      ctx.save();
+      applyOpeningExclusionClip();
       const panelColors = ['rgba(203,213,225,0.45)', 'rgba(186,230,253,0.45)'];
       allPanels.forEach((panel, i) => {
         const [pSx, pSy] = toScreen(panel.x, panel.y + panel.height);
@@ -249,9 +305,12 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
           ctx.fillText(`${Math.round(panel.width)}×${Math.round(panel.height)}`, pSx + pSw / 2, pSy + pSh / 2);
         }
       });
+      ctx.restore();
     }
 
     if (allLatten.length) {
+      ctx.save();
+      applyOpeningExclusionClip();
       for (const lat of allLatten) {
         const [lSx, lSy] = toScreen(lat.x, lat.y + lat.height);
         const lSw = lat.width * scale * 0.001;
@@ -262,6 +321,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
         ctx.lineWidth = lat.forced ? 1 : 0.5;
         ctx.strokeRect(lSx, lSy, lSw, Math.max(lSh, 1));
       }
+      ctx.restore();
     }
 
     for (const row of rows) {
@@ -327,24 +387,50 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
         const zohPx = zwH * scale * 0.001;
         const zovPx = zwV * scale * 0.001;
 
-        const [opL] = toScreen(op.x, 0);
-        const [opR] = toScreen(op.x + op.width, 0);
-        const [, opTop] = toScreen(0, op.y + op.height);
-        const [, opBot] = toScreen(0, op.y);
-        const opW = opR - opL;
+        if (op.polyPts && op.polyPts.length >= 3) {
+          const pts = op.polyPts.map((p) => toScreen(p.l, p.h));
+          const expandPx = zohPx + zbPx;
 
-        ctx.fillStyle = 'rgba(148,163,184,0.85)';
-        ctx.strokeStyle = '#475569';
-        ctx.lineWidth = 0.5;
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, W, H);
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+          ctx.closePath();
+          ctx.clip('evenodd');
 
-        const boven = [opL - zohPx - zbPx, opTop - zbPx - zovPx, opW + 2 * (zohPx + zbPx), zbPx];
-        const onder = [opL - zohPx - zbPx, opBot + zovPx, opW + 2 * (zohPx + zbPx), zbPx];
-        const links = [opL - zbPx - zohPx, opTop - zovPx, zbPx, (opBot - opTop) + 2 * zovPx];
-        const rechts = [opR + zohPx, opTop - zovPx, zbPx, (opBot - opTop) + 2 * zovPx];
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+          ctx.closePath();
+          ctx.strokeStyle = 'rgba(148,163,184,0.85)';
+          ctx.lineWidth = expandPx * 2;
+          ctx.stroke();
 
-        for (const [rx, ry, rw, rh] of [boven, onder, links, rechts]) {
-          ctx.fillRect(rx, ry, rw, rh);
-          ctx.strokeRect(rx, ry, rw, rh);
+          ctx.strokeStyle = '#475569';
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          const [opL] = toScreen(op.x, 0);
+          const [opR] = toScreen(op.x + op.width, 0);
+          const [, opTop] = toScreen(0, op.y + op.height);
+          const [, opBot] = toScreen(0, op.y);
+          const opW = opR - opL;
+
+          ctx.fillStyle = 'rgba(148,163,184,0.85)';
+          ctx.strokeStyle = '#475569';
+          ctx.lineWidth = 0.5;
+
+          const boven = [opL - zohPx - zbPx, opTop - zbPx - zovPx, opW + 2 * (zohPx + zbPx), zbPx];
+          const onder = [opL - zohPx - zbPx, opBot + zovPx, opW + 2 * (zohPx + zbPx), zbPx];
+          const links = [opL - zbPx - zohPx, opTop - zovPx, zbPx, (opBot - opTop) + 2 * zovPx];
+          const rechts = [opR + zohPx, opTop - zovPx, zbPx, (opBot - opTop) + 2 * zovPx];
+
+          for (const [rx, ry, rw, rh] of [boven, onder, links, rechts]) {
+            ctx.fillRect(rx, ry, rw, rh);
+            ctx.strokeRect(rx, ry, rw, rh);
+          }
         }
       }
     }
