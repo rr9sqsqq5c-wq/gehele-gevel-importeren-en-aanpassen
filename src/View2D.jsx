@@ -34,8 +34,7 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
     const withOrigin = walls.filter((w) => w.wallOrigin);
     if (!withOrigin.length) return { refX: 0, minH: 0, map: {} };
 
-    const widest = withOrigin.reduce((a, b) => b.length > a.length ? b : a);
-    const refX = widest.wallOrigin.lengthStart;
+    const refX = Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart));
     const minH = Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart));
 
     const map = {};
