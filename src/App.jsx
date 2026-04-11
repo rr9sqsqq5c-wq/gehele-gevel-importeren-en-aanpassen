@@ -118,7 +118,7 @@ const nextColor = () => GROUP_COLORS[_colorIdx++ % GROUP_COLORS.length];
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, penanten: [], zetwerk: { enabled: false, breedte: 50, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200 } });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, penanten: [], zetwerk: { enabled: false, breedte: 50, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -306,6 +306,57 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       style={{ ...inp, width: '100%' }} />
                   </Field>
                 </div>
+              )}
+            </>
+          );
+        })()}
+      </div>
+      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
+        {(() => {
+          const lat = settings.latten ?? {};
+          const upd = (patch) => onUpdate({ latten: { ...(settings.latten ?? {}), ...patch } });
+          return (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <input type="checkbox" id="lat-enable" checked={lat.enabled ?? false}
+                  onChange={(e) => upd({ enabled: e.target.checked })} />
+                <label htmlFor="lat-enable" style={{ fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
+                  Achterconstructie hout
+                  <InfoIcon tip={"Houten latten als dragerstructuur achter de basisplaat.\nHorizontale latten: maximaal interval in hoogte, altijd boven en onder ramen/deuren.\nVerticale latten: op paneelgrenzen (links, midden, rechts).\n\n· Breedte = breedte van de lat (zichtbaar in gevelaanzicht)\n· Dikte = diepte van de lat (loodrecht op gevel)\n· Max interval = max. hartafstand tussen horizontale latten"} />
+                </label>
+              </div>
+              {lat.enabled && (
+                <>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                    {['horizontaal', 'verticaal'].map((r) => (
+                      <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer', color: '#334155' }}>
+                        <input type="radio" name={`lat-richting-${groupId}`} value={r}
+                          checked={(lat.richting ?? 'horizontaal') === r}
+                          onChange={() => upd({ richting: r })} />
+                        {r.charAt(0).toUpperCase() + r.slice(1)}
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                    <Field label="Breedte mm" tip="Breedte van de houten lat (mm). Dit is de zichtbare maat in het gevelaanzicht.">
+                      <input type="number" min={10} step={5} value={lat.breedte ?? 50}
+                        onChange={(e) => upd({ breedte: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                    <Field label="Dikte mm" tip="Dikte van de houten lat loodrecht op de gevel (mm).">
+                      <input type="number" min={5} step={5} value={lat.dikte ?? 28}
+                        onChange={(e) => upd({ dikte: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                    {(lat.richting ?? 'horizontaal') === 'horizontaal' && (
+                      <Field label="Max interval mm" tip="Maximale hartafstand tussen horizontale latten (mm). Standaard 400 mm.">
+                        <input type="number" min={50} step={50} value={lat.maxInterval ?? 400}
+                          onChange={(e) => upd({ maxInterval: Number(e.target.value) })}
+                          style={{ ...inp, width: '100%' }} />
+                      </Field>
+                    )}
+                  </div>
+                </>
               )}
             </>
           );
@@ -1044,6 +1095,7 @@ export default function App() {
                     groupColor={getSettings(activeGroup.id).color}
                     zetwerk={getSettings(activeGroup.id).zetwerk}
                     panelen={getSettings(activeGroup.id).panelen}
+                    latten={getSettings(activeGroup.id).latten}
                   />
                   <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.85)', color: '#94a3b8', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                     {getSettings(activeGroup.id).name} · {activeGroup.wallIds.length} wand{activeGroup.wallIds.length !== 1 ? 'en' : ''} · 2D gevelaanzicht

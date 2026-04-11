@@ -26,7 +26,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk, panelen }) {
+export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk, panelen, latten }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -59,6 +59,82 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     }
     return panels;
   }, [facadeData, panelen, mat]);
+
+  const allLatten = useMemo(() => {
+    if (!facadeData || !latten?.enabled) return [];
+    const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
+    const steenH = mat.steenH;
+    const richting = latten.richting ?? 'horizontaal';
+    const latBreedte = Math.max(5, latten.breedte ?? 50);
+    const maxInterval = Math.max(50, latten.maxInterval ?? 400);
+
+    if (richting === 'horizontaal') {
+      const rowTops = new Set();
+      for (const row of rows) {
+        rowTops.add(Math.round(row.y));
+        rowTops.add(Math.round(row.y + steenH));
+      }
+      rowTops.add(0);
+      rowTops.add(Math.round(groupHeight));
+
+      const forced = new Set();
+      forced.add(0);
+      forced.add(Math.round(groupHeight));
+      for (const op of groupOpenings) {
+        forced.add(Math.round(op.y));
+        forced.add(Math.round(op.y + op.height));
+      }
+
+      const snapToRow = (y) => {
+        const sorted = [...rowTops].sort((a, b) => Math.abs(a - y) - Math.abs(b - y));
+        return sorted[0] ?? y;
+      };
+
+      const positions = new Set([...forced]);
+      const sortedForced = [...positions].sort((a, b) => a - b);
+      for (let i = 0; i < sortedForced.length - 1; i++) {
+        let cur = sortedForced[i];
+        const next = sortedForced[i + 1];
+        while (next - cur > maxInterval + 1) {
+          const mid = cur + maxInterval;
+          positions.add(snapToRow(mid));
+          cur = snapToRow(mid);
+        }
+      }
+
+      return [...positions]
+        .sort((a, b) => a - b)
+        .map((y, idx) => ({
+          id: `lat-h-${idx}`,
+          richting: 'horizontaal',
+          x: 0,
+          y: y - latBreedte / 2,
+          width: groupWidth,
+          height: latBreedte,
+          forced: forced.has(Math.round(y)),
+        }));
+    } else {
+      const xPositions = new Set();
+      xPositions.add(0);
+      xPositions.add(groupWidth);
+      for (const panel of allPanels) {
+        xPositions.add(Math.round(panel.x));
+        xPositions.add(Math.round(panel.x + panel.width / 2));
+        xPositions.add(Math.round(panel.x + panel.width));
+      }
+      return [...xPositions]
+        .sort((a, b) => a - b)
+        .map((x, idx) => ({
+          id: `lat-v-${idx}`,
+          richting: 'verticaal',
+          x: x - latBreedte / 2,
+          y: 0,
+          width: latBreedte,
+          height: groupHeight,
+          forced: false,
+        }));
+    }
+  }, [facadeData, latten, allPanels, mat]);
 
   const bounds = useMemo(() => {
     if (!facadeData) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
@@ -168,6 +244,19 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
           ctx.fillText(`${Math.round(panel.width)}×${Math.round(panel.height)}`, pSx + pSw / 2, pSy + pSh / 2);
         }
       });
+    }
+
+    if (allLatten.length) {
+      for (const lat of allLatten) {
+        const [lSx, lSy] = toScreen(lat.x, lat.y + lat.height);
+        const lSw = lat.width * scale * 0.001;
+        const lSh = lat.height * scale * 0.001;
+        ctx.fillStyle = lat.forced ? 'rgba(180,120,50,0.55)' : 'rgba(180,120,50,0.35)';
+        ctx.fillRect(lSx, lSy, lSw, Math.max(lSh, 1));
+        ctx.strokeStyle = lat.forced ? '#92400e' : '#b45309';
+        ctx.lineWidth = lat.forced ? 1 : 0.5;
+        ctx.strokeRect(lSx, lSy, lSw, Math.max(lSh, 1));
+      }
     }
 
     for (const row of rows) {
@@ -354,7 +443,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
-  }, [walls, facadeData, allPanels, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk, panelen]);
+  }, [walls, facadeData, allPanels, allLatten, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
