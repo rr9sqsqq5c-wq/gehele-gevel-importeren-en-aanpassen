@@ -1026,9 +1026,9 @@ export default function App() {
           )}
 
           {groups.length > 0 && (
-            <Tooltip text={"Exporteert alle groepen met steenstrippatroon als IFC-bestand.\nElk element krijgt individuele brickslip-objecten op basis van de groepsinstellingen."}>
+            <Tooltip text={"Exporteert alle aangevinkte lagen als een nieuw IFC-bestand.\nDit bestand bevat ALLEEN de gevelbekleding (strips, zetwerk, panelen, latten) — GEEN originele wandelementen.\nImporteer dit bestand naast het originele IFC in je BIM-software om de gevelbekleding toe te voegen.\nWelke lagen worden geëxporteerd is per groep te regelen via 'Laagzichtbaarheid 2D'."}>
               <button onClick={handleExport} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
-                ⬇ Exporteer IFC
+                ⬇ Exporteer gevelbekleding IFC
               </button>
             </Tooltip>
           )}

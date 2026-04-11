@@ -633,7 +633,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${fileName ?? 'export'}_brickslips.ifc`;
+  a.download = `${fileName ?? 'export'}_gevelbekleding.ifc`;
   a.click();
   URL.revokeObjectURL(url);
 }
