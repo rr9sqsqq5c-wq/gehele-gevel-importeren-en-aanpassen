@@ -82,77 +82,32 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
 
   const allLatten = useMemo(() => {
     if (!facadeData || !latten?.enabled) return [];
-    const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
-    const steenH = mat.steenH;
+    const { groupWidth, groupHeight, groupOpenings } = facadeData;
     const richting = latten.richting ?? 'horizontaal';
     const latBreedte = Math.max(5, latten.breedte ?? 50);
-    const maxInterval = Math.max(50, latten.maxInterval ?? 400);
 
     if (richting === 'horizontaal') {
-      const rowTops = new Set();
-      for (const row of rows) {
-        rowTops.add(Math.round(row.y));
-        rowTops.add(Math.round(row.y + steenH));
-      }
-      rowTops.add(0);
-      rowTops.add(Math.round(groupHeight));
-
-      const forcedLatInfo = new Map();
-      forcedLatInfo.set(0, [0, groupWidth]);
-      forcedLatInfo.set(Math.round(groupHeight), [0, groupWidth]);
-      for (const op of groupOpenings) {
-        const yBot = Math.round(op.y);
-        const yTop = Math.round(op.y + op.height);
-        const getRange = (y) => {
-          if (op.polyPts && op.polyPts.length >= 3) {
-            const scanY = y === yBot ? y + 1 : y - 1;
-            const ranges = polyXRangesAtY(op.polyPts, scanY);
-            if (ranges.length) return [ranges[0][0], ranges[ranges.length - 1][1]];
-          }
-          return [op.x, op.x + op.width];
-        };
-        const [bx1, bx2] = getRange(yBot);
-        const [tx1, tx2] = getRange(yTop);
-        const prev = forcedLatInfo.get(yBot);
-        forcedLatInfo.set(yBot, prev ? [Math.min(prev[0], bx1), Math.max(prev[1], bx2)] : [bx1, bx2]);
-        const prevT = forcedLatInfo.get(yTop);
-        forcedLatInfo.set(yTop, prevT ? [Math.min(prevT[0], tx1), Math.max(prevT[1], tx2)] : [tx1, tx2]);
-      }
-      const forced = new Set(forcedLatInfo.keys());
-
-      const snapToRow = (y) => {
-        const sorted = [...rowTops].sort((a, b) => Math.abs(a - y) - Math.abs(b - y));
-        return sorted[0] ?? y;
-      };
-
-      const positions = new Set([...forced]);
-      const sortedForced = [...positions].sort((a, b) => a - b);
-      for (let i = 0; i < sortedForced.length - 1; i++) {
-        let cur = sortedForced[i];
-        const next = sortedForced[i + 1];
-        while (next - cur > maxInterval + 1) {
-          const mid = cur + maxInterval;
-          const snapped = snapToRow(mid);
-          positions.add(snapped);
-          cur = snapped > cur ? snapped : mid;
-        }
-      }
-
       const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
       const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
+      const gH = Math.round(groupHeight);
 
-      return [...positions]
+      const panelYs = new Set([0, gH]);
+      for (const panel of allPanels) {
+        panelYs.add(Math.round(panel.y));
+        panelYs.add(Math.round(panel.y + panel.height));
+      }
+      for (const op of groupOpenings) {
+        panelYs.add(Math.round(op.y));
+        panelYs.add(Math.round(op.y + op.height));
+      }
+
+      return [...panelYs]
         .sort((a, b) => a - b)
-        .map((y, idx) => {
-          const yr = Math.round(y);
-          const info = forcedLatInfo.get(yr);
-          const latX = info ? info[0] : 0;
-          const latW = info ? info[1] - info[0] : groupWidth;
-
+        .map((yr, idx) => {
           let latY;
           if (yr === 0) {
             latY = 0;
-          } else if (yr === Math.round(groupHeight)) {
+          } else if (yr === gH) {
             latY = yr - latBreedte;
           } else if (openingBottomYs.has(yr)) {
             latY = yr - latBreedte;
@@ -162,14 +117,15 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
             latY = yr - latBreedte / 2;
           }
 
+          const isForced = openingBottomYs.has(yr) || openingTopYs.has(yr) || yr === 0 || yr === gH;
           return {
             id: `lat-h-${idx}`,
             richting: 'horizontaal',
-            x: latX,
+            x: 0,
             y: latY,
-            width: latW,
+            width: groupWidth,
             height: latBreedte,
-            forced: forced.has(yr),
+            forced: isForced,
           };
         });
     } else {
