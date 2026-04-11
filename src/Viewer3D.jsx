@@ -383,22 +383,26 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
     const canvasW = containerRef.current.clientWidth;
     const canvasH = containerRef.current.clientHeight;
 
-    const foundIds = [];
+    const candidates = [];
     for (const wall of walls) {
       const box = getWallBox(wall, upAxis);
       if (!box) continue;
       const [px, py, pz] = box.pos;
       const worldPos = new THREE.Vector3(px, py, pz);
       const ndc = worldPos.clone().project(camera);
+      if (ndc.z > 1) continue;
       const sx = (ndc.x + 1) / 2 * canvasW;
       const sy = (1 - ndc.y) / 2 * canvasH;
       if (sx >= rect.x1 && sx <= rect.x2 && sy >= rect.y1 && sy <= rect.y2) {
-        foundIds.push(wall.expressID);
+        candidates.push({ id: wall.expressID, ndcZ: ndc.z });
       }
     }
 
-    if (foundIds.length > 0 && onSelectMultiple) {
-      onSelectMultiple(foundIds);
+    if (candidates.length > 0 && onSelectMultiple) {
+      const minZ = Math.min(...candidates.map((c) => c.ndcZ));
+      const DEPTH_TOLERANCE = 0.05;
+      const frontIds = candidates.filter((c) => c.ndcZ <= minZ + DEPTH_TOLERANCE).map((c) => c.id);
+      onSelectMultiple(frontIds);
     }
   }
 
