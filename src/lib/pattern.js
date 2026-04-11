@@ -253,12 +253,22 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
 
   const groupOpenings = merged;
 
+  function expandPolygon(pts, dx, dy) {
+    if (!pts || pts.length < 3) return pts;
+    const cx = pts.reduce((s, p) => s + p.l, 0) / pts.length;
+    const cy = pts.reduce((s, p) => s + p.h, 0) / pts.length;
+    return pts.map((p) => ({
+      l: p.l + (p.l >= cx ? dx : -dx),
+      h: p.h + (p.h >= cy ? dy : -dy),
+    }));
+  }
+
   const maskOpenings = groupOpenings.map((op) => ({
     x: Math.max(0, op.x - zwExpandX),
     y: Math.max(0, op.y - zwExpandY),
     width: op.width + 2 * zwExpandX,
     height: op.height + 2 * zwExpandY,
-    polyPts: (!zwEnabled && op.polyPts) ? op.polyPts : null,
+    polyPts: op.polyPts ? (zwEnabled ? expandPolygon(op.polyPts, zwExpandX, zwExpandY) : op.polyPts) : null,
   }));
 
   function cutSegments(segments, ox1, ox2) {
