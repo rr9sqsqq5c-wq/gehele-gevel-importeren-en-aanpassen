@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import { buildFullGroupFacadePattern } from './lib/pattern.js';
+import { buildFullGroupFacadePattern, getOpeningPoly } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
 
 function hexToRgba(hex, alpha = 1) {
@@ -271,15 +271,11 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       ctx.beginPath();
       ctx.rect(faceSx - 1, faceSy - 1, faceW + 2, faceH + 2);
       for (const op of groupOpenings) {
-        if (op.polyPts && op.polyPts.length >= 3) {
-          const pts = op.polyPts.map((p) => toScreen(p.l, p.h));
-          ctx.moveTo(pts[0][0], pts[0][1]);
-          for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
-          ctx.closePath();
-        } else {
-          const [bx, by] = toScreen(op.x, op.y + op.height);
-          ctx.rect(bx, by, op.width * scale * 0.001, op.height * scale * 0.001);
-        }
+        const poly = getOpeningPoly(op);
+        const pts = poly.map((p) => toScreen(p.l, p.h));
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+        ctx.closePath();
       }
       ctx.clip('evenodd');
     };
@@ -344,33 +340,25 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       const opSw = op.width * scale * 0.001;
       const opSh = op.height * scale * 0.001;
 
-      if (op.polyPts && op.polyPts.length >= 3) {
-        const pts = op.polyPts.map((p) => toScreen(p.l, p.h));
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(pts[0][0], pts[0][1]);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-        ctx.closePath();
-        ctx.clip();
-        ctx.clearRect(opSx - 2, opSy - 2, opSw + 4, opSh + 4);
-        ctx.fillStyle = 'rgba(147,197,253,0.18)';
-        ctx.fillRect(opSx - 2, opSy - 2, opSw + 4, opSh + 4);
-        ctx.restore();
-        ctx.strokeStyle = '#93c5fd';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(pts[0][0], pts[0][1]);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-        ctx.closePath();
-        ctx.stroke();
-      } else {
-        ctx.clearRect(opSx - 0.5, opSy - 0.5, opSw + 1, opSh + 1);
-        ctx.fillStyle = 'rgba(147,197,253,0.18)';
-        ctx.fillRect(opSx, opSy, opSw, opSh);
-        ctx.strokeStyle = '#93c5fd';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(opSx, opSy, opSw, opSh);
-      }
+      const poly = getOpeningPoly(op);
+      const pts = poly.map((p) => toScreen(p.l, p.h));
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
+      ctx.clip();
+      ctx.clearRect(opSx - 2, opSy - 2, opSw + 4, opSh + 4);
+      ctx.fillStyle = 'rgba(147,197,253,0.18)';
+      ctx.fillRect(opSx - 2, opSy - 2, opSw + 4, opSh + 4);
+      ctx.restore();
+      ctx.strokeStyle = '#93c5fd';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
+      ctx.stroke();
 
       if (opSw > 20) {
         const labelY = opSy - 2;
@@ -391,51 +379,30 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
         const zohPx = zwH * scale * 0.001;
         const zovPx = zwV * scale * 0.001;
 
-        if (op.polyPts && op.polyPts.length >= 3) {
-          const pts = op.polyPts.map((p) => toScreen(p.l, p.h));
-          const expandPx = zohPx + zbPx;
+        const expandPx = zohPx + zbPx;
+        const poly = getOpeningPoly(op);
+        const pts = poly.map((p) => toScreen(p.l, p.h));
 
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(0, 0, W, H);
-          ctx.moveTo(pts[0][0], pts[0][1]);
-          for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
-          ctx.closePath();
-          ctx.clip('evenodd');
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, W, H);
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+        ctx.closePath();
+        ctx.clip('evenodd');
 
-          ctx.beginPath();
-          ctx.moveTo(pts[0][0], pts[0][1]);
-          for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
-          ctx.closePath();
-          ctx.strokeStyle = 'rgba(148,163,184,0.85)';
-          ctx.lineWidth = expandPx * 2;
-          ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+        ctx.closePath();
+        ctx.strokeStyle = 'rgba(148,163,184,0.85)';
+        ctx.lineWidth = expandPx * 2;
+        ctx.stroke();
 
-          ctx.strokeStyle = '#475569';
-          ctx.lineWidth = 0.5;
-          ctx.stroke();
-          ctx.restore();
-        } else {
-          const [opL] = toScreen(op.x, 0);
-          const [opR] = toScreen(op.x + op.width, 0);
-          const [, opTop] = toScreen(0, op.y + op.height);
-          const [, opBot] = toScreen(0, op.y);
-          const opW = opR - opL;
-
-          ctx.fillStyle = 'rgba(148,163,184,0.85)';
-          ctx.strokeStyle = '#475569';
-          ctx.lineWidth = 0.5;
-
-          const boven = [opL - zohPx - zbPx, opTop - zbPx - zovPx, opW + 2 * (zohPx + zbPx), zbPx];
-          const onder = [opL - zohPx - zbPx, opBot + zovPx, opW + 2 * (zohPx + zbPx), zbPx];
-          const links = [opL - zbPx - zohPx, opTop - zovPx, zbPx, (opBot - opTop) + 2 * zovPx];
-          const rechts = [opR + zohPx, opTop - zovPx, zbPx, (opBot - opTop) + 2 * zovPx];
-
-          for (const [rx, ry, rw, rh] of [boven, onder, links, rechts]) {
-            ctx.fillRect(rx, ry, rw, rh);
-            ctx.strokeRect(rx, ry, rw, rh);
-          }
-        }
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+        ctx.restore();
       }
     }
 

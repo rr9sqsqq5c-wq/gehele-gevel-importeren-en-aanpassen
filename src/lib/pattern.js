@@ -2,6 +2,17 @@ function round2(v) {
   return Math.round(v * 100) / 100;
 }
 
+export function getOpeningPoly(op) {
+  if (op.polyPts && op.polyPts.length >= 3) return op.polyPts;
+  const { x, y, width, height } = op;
+  return [
+    { l: x,         h: y },
+    { l: x + width, h: y },
+    { l: x + width, h: y + height },
+    { l: x,         h: y + height },
+  ];
+}
+
 function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX) {
   const { steenL, steenH, lint, stoot } = material;
   const kop = round2((steenL - stoot) / 2);

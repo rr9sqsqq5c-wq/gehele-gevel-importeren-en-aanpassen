@@ -1,3 +1,4 @@
+import { getOpeningPoly } from './pattern.js';
 const WEB_IFC_VERSION = "0.0.77";
 const CDN_BASE = `https://cdn.jsdelivr.net/npm/web-ifc@${WEB_IFC_VERSION}`;
 
@@ -601,10 +602,14 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
       const { axisStr, refStr } = makeGroupAxes();
       const depth = brickD / 2;
       for (const op of (group.facadeData.groupOpenings ?? [])) {
-        const ox1 = op.x - zwH - zwB, ox2 = op.x + op.width + zwH + zwB;
-        const oy1 = op.y - zwV - zwB, oy2 = op.y + op.height + zwV + zwB;
+        const opPoly = getOpeningPoly(op);
+        const opLs = opPoly.map(p => p.l), opHs = opPoly.map(p => p.h);
+        const opMinL = Math.min(...opLs), opMaxL = Math.max(...opLs);
+        const opMinH = Math.min(...opHs), opMaxH = Math.max(...opHs);
+        const ox1 = opMinL - zwH - zwB, ox2 = opMaxL + zwH + zwB;
+        const oy1 = opMinH - zwV - zwB, oy2 = opMaxH + zwV + zwB;
         const totalW = ox2 - ox1;
-        const innerH = (op.y + op.height + zwV) - (op.y - zwV);
+        const innerH = (opMaxH + zwV) - (opMinH - zwV);
         const bars = [
           { lx: ox1 + totalW / 2, lz: oy2 - zwB / 2, lw: totalW, lh: zwB },
           { lx: ox1 + totalW / 2, lz: oy1 + zwB / 2, lw: totalW, lh: zwB },
