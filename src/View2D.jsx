@@ -87,21 +87,37 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     const latBreedte = Math.max(5, latten.breedte ?? 50);
 
     if (richting === 'horizontaal') {
+      const MAX_HOC = latten.maxInterval ?? 400;
       const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
       const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
       const gH = Math.round(groupHeight);
 
-      const panelYs = new Set([0, gH]);
+      const boundaryYs = new Set([0, gH]);
       for (const panel of allPanels) {
-        panelYs.add(Math.round(panel.y));
-        panelYs.add(Math.round(panel.y + panel.height));
+        boundaryYs.add(Math.round(panel.y));
+        boundaryYs.add(Math.round(panel.y + panel.height));
       }
       for (const op of groupOpenings) {
-        panelYs.add(Math.round(op.y));
-        panelYs.add(Math.round(op.y + op.height));
+        boundaryYs.add(Math.round(op.y));
+        boundaryYs.add(Math.round(op.y + op.height));
       }
 
-      return [...panelYs]
+      const sortedBoundaries = [...boundaryYs].sort((a, b) => a - b);
+
+      const allYs = new Set(sortedBoundaries);
+      for (let i = 0; i < sortedBoundaries.length - 1; i++) {
+        const yA = sortedBoundaries[i];
+        const yB = sortedBoundaries[i + 1];
+        const span = yB - yA;
+        if (span > MAX_HOC) {
+          const steps = Math.ceil(span / MAX_HOC);
+          for (let s = 1; s < steps; s++) {
+            allYs.add(Math.round(yA + (span / steps) * s));
+          }
+        }
+      }
+
+      return [...allYs]
         .sort((a, b) => a - b)
         .map((yr, idx) => {
           let latY;
