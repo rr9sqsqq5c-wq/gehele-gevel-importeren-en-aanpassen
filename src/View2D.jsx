@@ -97,8 +97,9 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
         const next = sortedForced[i + 1];
         while (next - cur > maxInterval + 1) {
           const mid = cur + maxInterval;
-          positions.add(snapToRow(mid));
-          cur = snapToRow(mid);
+          const snapped = snapToRow(mid);
+          positions.add(snapped);
+          cur = snapped > cur ? snapped : mid;
         }
       }
 
