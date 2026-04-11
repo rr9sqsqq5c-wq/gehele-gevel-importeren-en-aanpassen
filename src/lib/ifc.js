@@ -487,13 +487,15 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     const groupMinX = group.groupMinX ?? 0;
     const groupMinH = group.groupMinH ?? 0;
 
+    const normalizeZUp = (px, py, pz, heightAxis) =>
+      heightAxis === 'y' ? [px, pz, py] : [px, py, pz];
+
     const makeGroupAxes = () => {
-      let aId = null, rId = null;
-      if (rwo) {
-        if (rwo.lengthAxis !== 'x') { const v = rwo.lengthAxis === 'y' ? '0.,1.,0.' : '0.,0.,1.'; rId = E(`IFCDIRECTION((${v}))`); }
-        if (rwo.heightAxis !== 'z') { const v = rwo.heightAxis === 'y' ? '0.,1.,0.' : '1.,0.,0.'; aId = E(`IFCDIRECTION((${v}))`); }
-      }
-      return { axisStr: aId ? `#${aId}` : '$', refStr: rId ? `#${rId}` : '$' };
+      if (!rwo) return { axisStr: '$', refStr: '$' };
+      const needsYRef = (rwo.heightAxis === 'y' && rwo.lengthAxis === 'z') ||
+                        (rwo.heightAxis === 'z' && rwo.lengthAxis === 'y');
+      const rId = needsYRef ? E(`IFCDIRECTION((0.,1.,0.))`) : null;
+      return { axisStr: '$', refStr: rId ? `#${rId}` : '$' };
     };
 
     const groupToWorld = (gx, depth, gz) => {
@@ -502,7 +504,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
       p[rwo.lengthAxis]    = (groupMinX + gx) / 1000;
       p[rwo.thicknessAxis] = (rwo.thicknessStart + depth) / 1000;
       p[rwo.heightAxis]    = (groupMinH + gz) / 1000;
-      return [p.x, p.y, p.z];
+      return normalizeZUp(p.x, p.y, p.z, rwo.heightAxis);
     };
 
     if (vis.strips !== false) {
@@ -516,16 +518,16 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
           p[wo.lengthAxis]    = (wo.lengthStart    + localX) / 1000;
           p[wo.thicknessAxis] = (wo.thicknessStart + localDepth) / 1000;
           p[wo.heightAxis]    = (wo.heightStart    + localZ) / 1000;
-          return [p.x, p.y, p.z];
+          return normalizeZUp(p.x, p.y, p.z, wo.heightAxis);
         };
 
-        let axisId = null, refDirId = null;
-        if (wo) {
-          if (wo.lengthAxis !== 'x') { const v = wo.lengthAxis === 'y' ? '0.,1.,0.' : '0.,0.,1.'; refDirId = E(`IFCDIRECTION((${v}))`); }
-          if (wo.heightAxis !== 'z') { const v = wo.heightAxis === 'y' ? '0.,1.,0.' : '1.,0.,0.'; axisId   = E(`IFCDIRECTION((${v}))`); }
-        }
-        const axisStr = axisId   ? `#${axisId}`   : '$';
-        const refStr  = refDirId ? `#${refDirId}` : '$';
+        const stripNeedsYRef = wo && (
+          (wo.heightAxis === 'y' && wo.lengthAxis === 'z') ||
+          (wo.heightAxis === 'z' && wo.lengthAxis === 'y')
+        );
+        const stripRefId = stripNeedsYRef ? E(`IFCDIRECTION((0.,1.,0.))`) : null;
+        const axisStr = '$';
+        const refStr  = stripRefId ? `#${stripRefId}` : '$';
 
         for (const row of rows) {
           for (const piece of row.pieces) {
