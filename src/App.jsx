@@ -146,12 +146,12 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         </div>
       )}
 
-      <Field label="Naam">
+      <Field label="Naam" tip="Naam van de groep, zichtbaar in de lijst en bij de IFC-export.">
         <input type="text" value={settings.name} onChange={(e) => onUpdate({ name: e.target.value })}
           style={inp} />
       </Field>
 
-      <Field label="Kleur">
+      <Field label="Kleur" tip="Kleur van de groep in de 3D viewer en het 2D gevelaanzicht.">
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <input type="color" value={settings.color} onChange={(e) => onUpdate({ color: e.target.value })}
             style={{ width: 36, height: 28, border: '1px solid #cbd5e1', borderRadius: 3, padding: 1, cursor: 'pointer' }} />
@@ -159,17 +159,24 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         </div>
       </Field>
 
-      <Field label="Metselverband">
+      <Field label="Metselverband" tip={"Halfsteens: stenen verspringen een halve steenlengte per laag — meest gebruikelijk.\nStaand: stenen lopen verticaal door (geen verspinging)."}>
         <select value={settings.verband} onChange={(e) => onUpdate({ verband: e.target.value })} style={inp}>
           <option value="halfsteens">Halfsteens</option>
           <option value="staand">Staand</option>
         </select>
       </Field>
 
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#475569', marginTop: 2 }}>Steenstrip afmetingen</div>
+      <SectionLabel tip={"Afmetingen van de brickslip (steenstrip):\n· Lengte = zichtbare lengte van de strip\n· Hoogte = zichtbare hoogte van de strip\n· Lintvoeg = horizontale voeg tussen lagen\n· Stootvoeg = verticale voeg tussen stenen"}>
+        Steenstrip afmetingen
+      </SectionLabel>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-        {[['Lengte', 'steenL'], ['Hoogte', 'steenH'], ['Lintvoeg', 'lint'], ['Stootvoeg', 'stoot']].map(([label, key]) => (
-          <Field key={key} label={`${label} mm`}>
+        {[
+          ['Lengte', 'steenL', 'Zichtbare lengte van de brickslip (mm).'],
+          ['Hoogte', 'steenH', 'Zichtbare hoogte van de brickslip (mm).'],
+          ['Lintvoeg', 'lint', 'Breedte van de horizontale voeg tussen lagen (mm).'],
+          ['Stootvoeg', 'stoot', 'Breedte van de verticale voeg tussen stenen (mm).'],
+        ].map(([label, key, tip]) => (
+          <Field key={key} label={`${label} mm`} tip={tip}>
             <input type="number" value={mat[key] ?? DEFAULT_MATERIAL[key]}
               onChange={(e) => onUpdate({ material: { ...mat, [key]: Number(e.target.value) } })}
               style={{ ...inp, width: '100%' }} />
@@ -177,7 +184,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         ))}
       </div>
 
-      <Field label="Strip dikte IFC (mm)">
+      <Field label="Strip dikte IFC (mm)" tip="Dikte van de brickslip zoals geëxporteerd naar IFC. Dit is de uitsteek van de strip op de wand (mm).">
         <input type="number" value={settings.brickDepth} onChange={(e) => onUpdate({ brickDepth: Number(e.target.value) })}
           style={{ ...inp, width: 70 }} />
       </Field>
@@ -187,8 +194,9 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
           <input type="checkbox" id="mh-enable"
             checked={settings.maxHoogte !== null}
             onChange={(e) => onUpdate({ maxHoogte: e.target.checked ? 1000 : null })} />
-          <label htmlFor="mh-enable" style={{ fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer' }}>
+          <label htmlFor="mh-enable" style={{ fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
             Maximale strip hoogte
+            <InfoIcon tip={"Begrenst het steenstrippatroon tot een bepaalde hoogte boven de onderkant van de groep.\nHandig voor een waterslag of als strips niet tot de bovenkant hoeven."} />
           </label>
         </div>
         {settings.maxHoogte !== null && (
@@ -202,7 +210,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
 
       <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: '#475569' }}>Penanten</span>
+          <SectionLabel tip={"Een penant is een uitstekende verticale lijst in de gevel.\nGeef de X-positie, breedte, diepte en hoogte op in mm.\n· X positie = afstand van de linker groepsrand\n· Breedte = breedte van het penant\n· Diepte = uitsteek t.o.v. het gevelvlak\n· Hoogte = hoogte van het penant\n· Patroon volgt gevel = strips lopen door als op de gevel"}>Penanten</SectionLabel>
           <button
             onClick={() => onUpdate({ penanten: [...(settings.penanten ?? []), { id: Date.now(), x: 500, breedte: 400, diepte: 150, hoogte: 2000, gavelVolgend: true }] })}
             style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '2px 8px', cursor: 'pointer' }}>
@@ -246,19 +254,20 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                 <input type="checkbox" id="zw-enable" checked={zw.enabled ?? false}
                   onChange={(e) => upd({ enabled: e.target.checked })} />
-                <label htmlFor="zw-enable" style={{ fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer' }}>
+                <label htmlFor="zw-enable" style={{ fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
                   Zetwerk rondom openingen
+                  <InfoIcon tip={"Aluminium of stalen randprofiel rondom ramen en deuren.\nWordt in 2D als grijs frame getekend rondom elke sparing.\nDe steenstrips worden automatisch op afstand gehouden.\n\n· Breedte = breedte van het profiel\n· Offset H = ruimte tussen opening en profiel (horizontaal)\n· Offset V = ruimte boven/onder de opening\n· Strip gap = extra vrije ruimte tussen profiel en strips"} />
                 </label>
               </div>
               {(zw.enabled) && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
                   {[
-                    ['Breedte', 'breedte', 50],
-                    ['Offset H', 'offsetH', 0],
-                    ['Offset V', 'offsetV', 0],
-                    ['Strip gap', 'stripOffset', 5],
-                  ].map(([lbl, key, def]) => (
-                    <Field key={key} label={`${lbl} mm`}>
+                    ['Breedte', 'breedte', 50, 'Breedte van het zetwerk profiel (mm).'],
+                    ['Offset H', 'offsetH', 0, 'Horizontale ruimte tussen de openingsrand en het profiel (mm).'],
+                    ['Offset V', 'offsetV', 0, 'Verticale ruimte boven en onder de opening (mm).'],
+                    ['Strip gap', 'stripOffset', 5, 'Extra ruimte die de steenstrips vrijhouden van het profiel (mm).'],
+                  ].map(([lbl, key, def, tip]) => (
+                    <Field key={key} label={`${lbl} mm`} tip={tip}>
                       <input type="number" min={0} step={1} value={zw[key] ?? def}
                         onChange={(e) => upd({ [key]: Number(e.target.value) })}
                         style={{ ...inp, width: '100%' }} />
@@ -274,10 +283,65 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
   );
 }
 
-function Field({ label, children }) {
+function Tooltip({ text, children }) {
+  const [visible, setVisible] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  return (
+    <span
+      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+      onMouseEnter={(e) => { setVisible(true); setPos({ x: e.clientX, y: e.clientY }); }}
+      onMouseMove={(e) => setPos({ x: e.clientX, y: e.clientY })}
+      onMouseLeave={() => setVisible(false)}
+    >
+      {children}
+      {visible && (
+        <div style={{
+          position: 'fixed',
+          left: pos.x + 12,
+          top: pos.y + 4,
+          zIndex: 9999,
+          background: '#0f172a',
+          color: '#e2e8f0',
+          fontSize: 11,
+          lineHeight: 1.5,
+          padding: '6px 10px',
+          borderRadius: 5,
+          maxWidth: 240,
+          pointerEvents: 'none',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          whiteSpace: 'pre-wrap',
+        }}>
+          {text}
+        </div>
+      )}
+    </span>
+  );
+}
+
+function InfoIcon({ tip }) {
+  return (
+    <Tooltip text={tip}>
+      <span style={{ marginLeft: 4, fontSize: 10, color: '#94a3b8', cursor: 'default', fontWeight: 700, border: '1px solid #cbd5e1', borderRadius: '50%', width: 13, height: 13, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>i</span>
+    </Tooltip>
+  );
+}
+
+function SectionLabel({ children, tip }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 600, color: '#475569' }}>
+      {children}
+      {tip && <InfoIcon tip={tip} />}
+    </div>
+  );
+}
+
+function Field({ label, tip, children }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
-      <span style={{ color: '#64748b' }}>{label}</span>
+      <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: 3 }}>
+        {label}
+        {tip && <InfoIcon tip={tip} />}
+      </span>
       {children}
     </label>
   );
