@@ -70,7 +70,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     const basePanel = { width: Math.max(100, panelen.breedte ?? 3005), height: Math.max(100, panelen.hoogte ?? 1200) };
     const steenH = mat.steenH;
     const globalPieces = rows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
-    const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height }));
+    const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
     const zones = buildFacadeZones(groupWidth, groupHeight, openingsForZones);
     const panels = [];
     for (const zone of zones) {

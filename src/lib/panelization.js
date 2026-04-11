@@ -2,6 +2,40 @@ function round2(v) {
   return Math.round(v * 100) / 100;
 }
 
+function polyXRangesAtY(poly, y) {
+  const xs = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const ay = a.h, by = b.h, ax = a.l, bx = b.l;
+    if ((ay < y && by >= y) || (by < y && ay >= y)) {
+      const t = (y - ay) / (by - ay);
+      xs.push(ax + t * (bx - ax));
+    }
+  }
+  xs.sort((p, q) => p - q);
+  const ranges = [];
+  for (let i = 0; i + 1 < xs.length; i += 2) ranges.push([xs[i], xs[i + 1]]);
+  return ranges;
+}
+
+function openingCoversX(op, midX, midY) {
+  if (op.polyPts && op.polyPts.length >= 3) {
+    const ranges = polyXRangesAtY(op.polyPts, midY);
+    return ranges.some(([x1, x2]) => midX >= x1 && midX <= x2);
+  }
+  return midX >= op.x && midX <= op.x + op.width;
+}
+
+function openingXCoordsAtY(op, midY) {
+  if (op.polyPts && op.polyPts.length >= 3) {
+    const ranges = polyXRangesAtY(op.polyPts, midY);
+    const xs = [];
+    for (const [x1, x2] of ranges) { xs.push(x1); xs.push(x2); }
+    return xs;
+  }
+  return [op.x, op.x + op.width];
+}
+
 export function buildFacadeZones(facadeWidth, facadeHeight, openings) {
   if (!openings.length) {
     return [{ id: 'Z1', kind: 'algemeen', x: 0, y: 0, width: facadeWidth, height: facadeHeight }];
@@ -9,13 +43,16 @@ export function buildFacadeZones(facadeWidth, facadeHeight, openings) {
 
   const yCoords = new Set([0, facadeHeight]);
   for (const o of openings) {
+    const ys = o.polyPts ? o.polyPts.map(p => p.h) : [o.y, o.y + o.height];
+    for (const y of ys) {
+      if (y > 0.001 && y < facadeHeight - 0.001) yCoords.add(y);
+    }
     if (o.y > 0.001) yCoords.add(o.y);
     if (o.y + o.height < facadeHeight - 0.001) yCoords.add(o.y + o.height);
   }
   const yArr = [...yCoords].sort((a, b) => a - b);
 
   const rawZones = [];
-  let id = 1;
 
   for (let yi = 0; yi < yArr.length - 1; yi++) {
     const yBot = yArr[yi];
@@ -28,8 +65,9 @@ export function buildFacadeZones(facadeWidth, facadeHeight, openings) {
 
     const xCoords = new Set([0, facadeWidth]);
     for (const o of bandOpenings) {
-      xCoords.add(Math.max(0, o.x));
-      xCoords.add(Math.min(facadeWidth, o.x + o.width));
+      for (const x of openingXCoordsAtY(o, midY)) {
+        xCoords.add(Math.max(0, Math.min(facadeWidth, x)));
+      }
     }
     const xArr = [...xCoords].sort((a, b) => a - b);
 
@@ -38,7 +76,7 @@ export function buildFacadeZones(facadeWidth, facadeHeight, openings) {
       const xR = xArr[xi + 1];
       if (xR - xL <= 0.001) continue;
       const midX = (xL + xR) / 2;
-      const covered = bandOpenings.some((o) => o.x <= midX && o.x + o.width >= midX);
+      const covered = bandOpenings.some((o) => openingCoversX(o, midX, midY));
       if (!covered) {
         rawZones.push({ x: xL, y: yBot, width: xR - xL, height: bandH });
       }
