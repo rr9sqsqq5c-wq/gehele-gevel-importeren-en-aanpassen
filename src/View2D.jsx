@@ -138,6 +138,9 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
         }
       }
 
+      const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
+      const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
+
       return [...positions]
         .sort((a, b) => a - b)
         .map((y, idx) => {
@@ -145,11 +148,21 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
           const info = forcedLatInfo.get(yr);
           const latX = info ? info[0] : 0;
           const latW = info ? info[1] - info[0] : groupWidth;
+
+          let latY;
+          if (openingBottomYs.has(yr) && yr > 0) {
+            latY = yr - latBreedte;
+          } else if (openingTopYs.has(yr) && yr < Math.round(groupHeight)) {
+            latY = yr;
+          } else {
+            latY = yr - latBreedte / 2;
+          }
+
           return {
             id: `lat-h-${idx}`,
             richting: 'horizontaal',
             x: latX,
-            y: yr - latBreedte / 2,
+            y: latY,
             width: latW,
             height: latBreedte,
             forced: forced.has(yr),

@@ -773,7 +773,16 @@ export default function App() {
                 cur = snapped > cur ? snapped : mid;
               }
             }
-            lattenData = [...positions].sort((a, b) => a - b).map((y) => ({ richting: 'horizontaal', x: 0, y: Math.round(y) - latBreedte / 2, width: groupWidth, height: latBreedte }));
+            const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
+            const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
+            lattenData = [...positions].sort((a, b) => a - b).map((y) => {
+              const yr = Math.round(y);
+              let latY;
+              if (openingBottomYs.has(yr) && yr > 0) latY = yr - latBreedte;
+              else if (openingTopYs.has(yr) && yr < Math.round(groupHeight)) latY = yr;
+              else latY = yr - latBreedte / 2;
+              return { richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte };
+            });
           } else {
             const xPositions = new Set([0, groupWidth]);
             for (const panel of panels) { xPositions.add(Math.round(panel.x)); xPositions.add(Math.round(panel.x + panel.width / 2)); xPositions.add(Math.round(panel.x + panel.width)); }
