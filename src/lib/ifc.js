@@ -482,6 +482,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     const brickColor = settings.color ?? '#a64033';
     const brickD = settings.brickDepth ?? 20;
     const material = settings.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
+    const panelDikte = settings.panelen?.dikte ?? 18;
     const vis = group.layerVisibility ?? {};
     const rwo = group.refWallOrigin;
     const groupMinX = group.groupMinX ?? 0;
@@ -551,17 +552,16 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     }
 
     if (vis.panelen !== false && (group.panels ?? []).length) {
-      const PANEL_DIKTE = 18;
       const { axisStr, refStr } = makeGroupAxes();
       for (const panel of group.panels) {
         const cx = panel.x + panel.width / 2;
-        const depth = brickD + PANEL_DIKTE / 2;
+        const depth = brickD + panelDikte / 2;
         const [wx, wy, wz] = groupToWorld(cx, depth, panel.y);
         const placePt = PT(wx, wy, wz);
         const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
         const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
         const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
-        const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(panel.width)},${r(PANEL_DIKTE)})`);
+        const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(panel.width)},${r(panelDikte)})`);
         const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(panel.height)})`);
         const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
         const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
@@ -573,13 +573,12 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     }
 
     if (vis.latten !== false && (group.lattenData ?? []).length) {
-      const PANEL_DIKTE = 18;
       const latDikte = group.latDikte ?? 28;
       const { axisStr, refStr } = makeGroupAxes();
       for (const lat of group.lattenData) {
         const cx = lat.x + lat.width / 2;
         const cy = lat.y;
-        const depth = brickD + PANEL_DIKTE + latDikte / 2;
+        const depth = brickD + panelDikte + latDikte / 2;
         const [wx, wy, wz] = groupToWorld(cx, depth, cy);
         const placePt = PT(wx, wy, wz);
         const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);

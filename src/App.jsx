@@ -6,7 +6,7 @@ import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
 
-const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
+const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 const DEFAULT_VERBAND = 'halfsteens';
 
 const DIM_TOL = 50;
@@ -119,7 +119,7 @@ const nextColor = () => GROUP_COLORS[_colorIdx++ % GROUP_COLORS.length];
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, penanten: [], zetwerk: { enabled: false, breedte: 50, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, penanten: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 18, gewichtM2: 15, maxKg: 100 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -185,10 +185,16 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         ))}
       </div>
 
-      <Field label="Strip dikte IFC (mm)" tip="Dikte van de brickslip zoals geëxporteerd naar IFC. Dit is de uitsteek van de strip op de wand (mm).">
-        <input type="number" value={settings.brickDepth} onChange={(e) => onUpdate({ brickDepth: Number(e.target.value) })}
-          style={{ ...inp, width: 70 }} />
-      </Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+        <Field label="Dikte IFC (mm)" tip="Dikte van de brickslip zoals geëxporteerd naar IFC. Dit is de uitsteek van de strip op de wand (mm).">
+          <input type="number" min={1} step={1} value={settings.brickDepth ?? 20} onChange={(e) => onUpdate({ brickDepth: Number(e.target.value) })}
+            style={{ ...inp, width: '100%' }} />
+        </Field>
+        <Field label="Gewicht (kg/m²)" tip="Gewicht van de steenstrips per vierkante meter (kg/m²). Wordt gebruikt voor de berekening van het maximale paneelgewicht.">
+          <input type="number" min={0} step={1} value={mat.brickWeightM2 ?? 40} onChange={(e) => onUpdate({ material: { ...mat, brickWeightM2: Number(e.target.value) } })}
+            style={{ ...inp, width: '100%' }} />
+        </Field>
+      </div>
 
       <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -264,6 +270,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
                   {[
                     ['Breedte', 'breedte', 50, 'Breedte van het zetwerk profiel (mm).'],
+                    ['Dikte', 'dikte', 2, 'Materiaaldikte van het zetwerk profiel (mm).'],
                     ['Offset H', 'offsetH', 0, 'Horizontale ruimte tussen de openingsrand en het profiel (mm).'],
                     ['Offset V', 'offsetV', 0, 'Verticale ruimte boven en onder de opening (mm).'],
                     ['Strip gap', 'stripOffset', 5, 'Extra ruimte die de steenstrips vrijhouden van het profiel (mm).'],
@@ -294,20 +301,45 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                   <InfoIcon tip={"Verdeelt de geveloppervlakte in draagsysteem-panelen.\nDe panelen vormen de achterste laag waarop de brickslips worden gemonteerd.\nDe indeling volgt de steenstripvoegen voor optimaal snijverlies.\n\n· Breedte = maximale breedte van een basispaneel\n· Hoogte = maximale hoogte van een basispaneel"} />
                 </label>
               </div>
-              {pan.enabled && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-                  <Field label="Breedte mm" tip="Maximale breedte van het basispaneel (mm). Standaard 3005 mm.">
-                    <input type="number" min={100} step={50} value={pan.breedte ?? 3005}
-                      onChange={(e) => upd({ breedte: Number(e.target.value) })}
-                      style={{ ...inp, width: '100%' }} />
-                  </Field>
-                  <Field label="Hoogte mm" tip="Maximale hoogte van het basispaneel (mm). Standaard 1200 mm.">
-                    <input type="number" min={100} step={50} value={pan.hoogte ?? 1200}
-                      onChange={(e) => upd({ hoogte: Number(e.target.value) })}
-                      style={{ ...inp, width: '100%' }} />
-                  </Field>
-                </div>
-              )}
+              {pan.enabled && (() => {
+                const brickW = (settings.material ?? DEFAULT_MATERIAL).brickWeightM2 ?? 40;
+                const panW = pan.gewichtM2 ?? 15;
+                const maxKg = pan.maxKg ?? 100;
+                const totalW = Math.max(0.001, brickW + panW);
+                const maxM2 = Math.round(maxKg / totalW * 100) / 100;
+                return (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                      <Field label="Breedte mm" tip="Maximale breedte van het basispaneel (mm). Standaard 3005 mm.">
+                        <input type="number" min={100} step={50} value={pan.breedte ?? 3005}
+                          onChange={(e) => upd({ breedte: Number(e.target.value) })}
+                          style={{ ...inp, width: '100%' }} />
+                      </Field>
+                      <Field label="Hoogte mm" tip="Maximale hoogte van het basispaneel (mm). Standaard 1200 mm.">
+                        <input type="number" min={100} step={50} value={pan.hoogte ?? 1200}
+                          onChange={(e) => upd({ hoogte: Number(e.target.value) })}
+                          style={{ ...inp, width: '100%' }} />
+                      </Field>
+                      <Field label="Dikte mm" tip="Dikte van het basispaneel (mm). Standaard 18 mm.">
+                        <input type="number" min={1} step={1} value={pan.dikte ?? 18}
+                          onChange={(e) => upd({ dikte: Number(e.target.value) })}
+                          style={{ ...inp, width: '100%' }} />
+                      </Field>
+                      <Field label="Gewicht (kg/m²)" tip="Gewicht van het basispaneel per vierkante meter (kg/m²). Standaard 15 kg/m².">
+                        <input type="number" min={0} step={1} value={pan.gewichtM2 ?? 15}
+                          onChange={(e) => upd({ gewichtM2: Number(e.target.value) })}
+                          style={{ ...inp, width: '100%' }} />
+                      </Field>
+                      <Field label="Max gewicht (kg)" tip="Maximaal gewicht per paneel inclusief brickslips (kg). Bepaalt de maximale paneeloppervlakte.">
+                        <input type="number" min={1} step={5} value={pan.maxKg ?? 100}
+                          onChange={(e) => upd({ maxKg: Number(e.target.value) })}
+                          style={{ ...inp, width: '100%' }} />
+                      </Field>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>→ max {maxM2} m²/paneel</div>
+                  </>
+                );
+              })()}
             </>
           );
         })()}
@@ -674,7 +706,7 @@ export default function App() {
     const srcSettings = getSettings(sourceGroupId);
     const linkedIds = groups.filter((g) => groupLinks[g.id] === linkId && g.id !== sourceGroupId).map((g) => g.id);
     for (const id of linkedIds) {
-      updateSettings(id, { name: srcSettings.name, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth, maxHoogte: srcSettings.maxHoogte, penanten: srcSettings.penanten ? [...srcSettings.penanten] : [] });
+      updateSettings(id, { name: srcSettings.name, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth, maxHoogte: srcSettings.maxHoogte, penanten: srcSettings.penanten ? [...srcSettings.penanten] : [], zetwerk: srcSettings.zetwerk ? { ...srcSettings.zetwerk } : undefined, panelen: srcSettings.panelen ? { ...srcSettings.panelen } : undefined, latten: srcSettings.latten ? { ...srcSettings.latten } : undefined });
     }
   }
 
