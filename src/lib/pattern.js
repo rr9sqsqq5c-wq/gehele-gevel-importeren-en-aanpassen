@@ -185,27 +185,39 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     }
   }
 
-  const isContained = (inner, outer, tol = 30) =>
-    inner.x >= outer.x - tol &&
-    inner.y >= outer.y - tol &&
-    inner.x + inner.width  <= outer.x + outer.width  + tol &&
-    inner.y + inner.height <= outer.y + outer.height + tol;
+  const overlapArea = (a, b) => {
+    const ox = Math.max(0, Math.min(a.x + a.width,  b.x + b.width)  - Math.max(a.x, b.x));
+    const oy = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+    return ox * oy;
+  };
 
-  const isDuplicate = (a, b, tol = 50) =>
-    Math.abs(a.x - b.x) < tol &&
-    Math.abs(a.y - b.y) < tol &&
-    Math.abs(a.width  - b.width)  < tol &&
-    Math.abs(a.height - b.height) < tol;
+  const mergeTwo = (a, b) => {
+    const x  = Math.min(a.x, b.x);
+    const y  = Math.min(a.y, b.y);
+    const x2 = Math.max(a.x + a.width,  b.x + b.width);
+    const y2 = Math.max(a.y + a.height, b.y + b.height);
+    return { x, y, width: x2 - x, height: y2 - y };
+  };
 
-  const groupOpenings = rawOpenings.filter((op, i) => {
-    for (let j = 0; j < rawOpenings.length; j++) {
-      if (i === j) continue;
-      const other = rawOpenings[j];
-      if (isDuplicate(op, other) && j < i) return false;
-      if (isContained(op, other) && (other.width * other.height > op.width * op.height + 1)) return false;
+  let merged = [...rawOpenings];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    outer: for (let i = 0; i < merged.length; i++) {
+      for (let j = i + 1; j < merged.length; j++) {
+        const a = merged[i], b = merged[j];
+        const ov = overlapArea(a, b);
+        const minArea = Math.min(a.width * a.height, b.width * b.height);
+        if (ov > minArea * 0.25) {
+          merged = [...merged.slice(0, i), mergeTwo(a, b), ...merged.slice(i + 1, j), ...merged.slice(j + 1)];
+          changed = true;
+          break outer;
+        }
+      }
     }
-    return true;
-  });
+  }
+
+  const groupOpenings = merged;
 
   const maskOpenings = groupOpenings.map((op) => ({
     x: Math.max(0, op.x - zwExpandX),
