@@ -5,6 +5,7 @@ import { buildGroupPattern, buildFacePattern, getGroupPatternLogic, buildFullGro
 import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
+import { Werktekening } from './Werktekening.jsx';
 
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 const DEFAULT_VERBAND = 'halfsteens';
@@ -1064,6 +1065,14 @@ export default function App() {
                   2D Gevel
                 </button>
               </Tooltip>
+              <Tooltip text={"Technische werktekening met maatvoering voor montage van latten en panelen.\nToont peilmaten (absolute hoogte t.o.v. IFC-nulpunt), dimensies per paneel en latpositie.\nExporteerbaar als SVG of afdrukbaar."}>
+                <button
+                  onClick={() => setViewMode('tekening')}
+                  style={{ background: viewMode === 'tekening' ? '#3b82f6' : '#1e293b', color: viewMode === 'tekening' ? '#fff' : '#94a3b8', border: 'none', borderLeft: '1px solid #334155', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
+                >
+                  📐 Werktekening
+                </button>
+              </Tooltip>
             </div>
           )}
 
@@ -1255,7 +1264,7 @@ export default function App() {
                 </div>
               )}
             </>
-          ) : (
+          ) : viewMode === '2d' ? (
             <>
               {activeGroup ? (
                 <>
@@ -1279,6 +1288,32 @@ export default function App() {
                   <span style={{ fontSize: 32 }}>⬛</span>
                   <span style={{ fontSize: 15, fontWeight: 600, color: '#94a3b8' }}>Selecteer een groep</span>
                   <span style={{ fontSize: 12 }}>Klik op een groep in de lijst links om deze in 2D te bekijken</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {activeGroup ? (() => {
+                const s = getSettings(activeGroup.id);
+                const groupWalls = activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean);
+                const withOrigin = groupWalls.filter((w) => w.wallOrigin);
+                const gMinH = withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart ?? 0)) : 0;
+                return (
+                  <Werktekening
+                    walls={groupWalls}
+                    groupSettings={s}
+                    groupName={s.name}
+                    zetwerk={s.zetwerk}
+                    panelen={s.panelen}
+                    latten={s.latten}
+                    groupMinH={gMinH}
+                  />
+                );
+              })() : (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', gap: 12 }}>
+                  <span style={{ fontSize: 32 }}>📐</span>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: '#94a3b8' }}>Selecteer een groep</span>
+                  <span style={{ fontSize: 12 }}>Klik op een groep in de lijst links voor de werktekening</span>
                 </div>
               )}
             </>
