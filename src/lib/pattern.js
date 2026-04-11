@@ -103,62 +103,93 @@ function clipPieceToWall(piece, wallStart, wallEnd, openings, rowY, steenH) {
   return [{ ...piece, start: round2(clipStart), length: round2(clipEnd - clipStart) }];
 }
 
-export function buildGroupPattern(sortedWalls, adjacencies, material, verband) {
-  const { steenL, steenH, lint } = material;
+export function buildGroupPattern(walls, adjacencies, material, verband) {
+  const { steenH, lint } = material;
   const lagenmaat = steenH + lint;
 
-  const hAdj = adjacencies.filter((a) => a.direction === 'right');
-  const adjSet = new Set(hAdj.map((a) => `${a.wallIdA}-${a.wallIdB}`));
+  if (!walls.length || lagenmaat <= 0) return {};
 
-  const wallMap = Object.fromEntries(sortedWalls.map((w) => [w.expressID, w]));
+  const groupMinX = Math.min(...walls.map((w) => w.wallOrigin?.lengthStart ?? 0));
+  const groupMaxX = Math.max(...walls.map((w) => (w.wallOrigin?.lengthStart ?? 0) - groupMinX + w.length));
+  const groupWidth = round2(groupMaxX);
 
-  const chainGroups = buildHorizontalChains(sortedWalls, hAdj);
+  const groupMinH = Math.min(...walls.map((w) => w.wallOrigin?.heightStart ?? 0));
 
   const result = {};
 
-  for (const chain of chainGroups) {
-    const chainWalls = chain.map((id) => wallMap[id]).filter(Boolean);
-    if (!chainWalls.length) continue;
+  for (const wall of walls) {
+    const wallStart = round2((wall.wallOrigin?.lengthStart ?? 0) - groupMinX);
+    const wallEnd = round2(wallStart + wall.length);
+    const wallLagen = Math.floor((wall.height + lint) / lagenmaat);
+    const verticalOffset = Math.floor(((wall.wallOrigin?.heightStart ?? 0) - groupMinH) / lagenmaat);
+    const rows = [];
 
-    const offsets = [];
-    let cumulative = 0;
-    for (const w of chainWalls) {
-      offsets.push(cumulative);
-      cumulative += w.length;
-    }
+    for (let r = 0; r < wallLagen; r++) {
+      const rowY = round2(r * lagenmaat);
+      const bondRow = r + verticalOffset;
+      const fullPieces = buildRowPiecesForWidth(groupWidth, material, verband, bondRow, 0);
+      const clipped = [];
 
-    const totalWidth = cumulative;
-    const lagen = lagenmaat > 0 ? Math.floor((Math.max(...chainWalls.map((w) => w.height)) + lint) / lagenmaat) : 0;
-
-    for (let ri = 0; ri < chainWalls.length; ri++) {
-      const wall = chainWalls[ri];
-      const wallStart = offsets[ri];
-      const wallEnd = wallStart + wall.length;
-      const wallLagen = lagenmaat > 0 ? Math.floor((wall.height + lint) / lagenmaat) : 0;
-      const rows = [];
-
-      for (let r = 0; r < wallLagen; r++) {
-        const rowY = round2(r * lagenmaat);
-        const fullPieces = buildRowPiecesForWidth(totalWidth, material, verband, r, 0);
-        const clipped = [];
-
-        for (const piece of fullPieces) {
-          const localPieces = clipPieceToWall(piece, wallStart, wallEnd, wall.openings, rowY, steenH);
-          for (const lp of localPieces) {
-            clipped.push({ ...lp, start: round2(lp.start - wallStart) });
-          }
-        }
-
-        if (clipped.length) {
-          rows.push({ y: rowY, pieces: clipped });
+      for (const piece of fullPieces) {
+        const localPieces = clipPieceToWall(piece, wallStart, wallEnd, wall.openings, rowY, steenH);
+        for (const lp of localPieces) {
+          clipped.push({ ...lp, start: round2(lp.start - wallStart) });
         }
       }
 
-      result[wall.expressID] = rows;
+      if (clipped.length) rows.push({ y: rowY, pieces: clipped });
     }
+
+    result[wall.expressID] = rows;
   }
 
   return result;
+}
+
+export function getGroupPatternLogic(walls, material, verband) {
+  const { steenL, steenH, lint, stoot } = material;
+  const lagenmaat = steenH + lint;
+  if (!walls.length || lagenmaat <= 0) return [];
+
+  const wallsWithOrigin = walls.filter((w) => w.wallOrigin);
+  const groupMinX = wallsWithOrigin.length ? Math.min(...wallsWithOrigin.map((w) => w.wallOrigin.lengthStart)) : 0;
+  const groupMaxX = wallsWithOrigin.length ? Math.max(...wallsWithOrigin.map((w) => w.wallOrigin.lengthStart + w.length)) : 0;
+  const groupWidth = Math.round(groupMaxX - groupMinX);
+  const groupMinH = wallsWithOrigin.length ? Math.min(...wallsWithOrigin.map((w) => w.wallOrigin.heightStart)) : 0;
+  const groupMaxH = wallsWithOrigin.length ? Math.max(...wallsWithOrigin.map((w) => w.wallOrigin.heightStart + w.height)) : 0;
+  const groupHeight = Math.round(groupMaxH - groupMinH);
+
+  const kop = Math.round((steenL - stoot) / 2);
+  const totallagen = Math.floor((groupHeight + lint) / lagenmaat);
+
+  const lines = [];
+  lines.push({ label: 'Verband', value: verband === 'halfsteens' ? 'Halfsteens' : 'Staand verband' });
+  lines.push({ label: 'Gevelbreedte', value: `${groupWidth} mm  (${wallsWithOrigin.length} wand${wallsWithOrigin.length !== 1 ? 'en' : ''})` });
+  lines.push({ label: 'Gevelhoogte', value: `${groupHeight} mm` });
+  lines.push({ label: 'Referentie X', value: 'Linker zijkant groep  (x = 0)' });
+  lines.push({ label: 'Referentie Y', value: 'Onderkant laagste wand  (y = 0)' });
+  lines.push({ label: 'Steenstrip', value: `${steenL} × ${steenH} mm` });
+  lines.push({ label: 'Voegen', value: `lintvoeg ${lint} mm · stootvoeg ${stoot} mm` });
+  lines.push({ label: 'Lagenmaat', value: `${lagenmaat} mm  (steenH + lintvoeg)` });
+  lines.push({ label: 'Lagen (totaal)', value: `${totallagen} lagen` });
+
+  if (verband === 'halfsteens') {
+    lines.push({ label: 'Rij 1 (even)', value: `kop (${kop} mm) → hele stenen (${steenL} mm) → afsluitkop` });
+    lines.push({ label: 'Rij 2 (oneven)', value: `hele stenen (${steenL} mm) → reststeen` });
+    lines.push({ label: 'Horizontale verspinging', value: `${Math.round(steenL / 2 + stoot / 2)} mm  (halve steen + halve stootvoeg)` });
+  } else {
+    lines.push({ label: 'Rij 1', value: `hele stenen (${steenL} mm)` });
+    lines.push({ label: 'Rij 2', value: `hele stenen (${steenL} mm) · geen verspinging` });
+  }
+
+  lines.push({ label: 'Verticale bond', value: 'Rijindex gebaseerd op hoogte in groep — doorlopend over gestapelde wanden' });
+
+  const hasDiffHeights = wallsWithOrigin.some((w) => Math.abs((w.wallOrigin.heightStart - groupMinH)) > 5);
+  if (hasDiffHeights) {
+    lines.push({ label: 'Hoogte offset', value: 'Wanden op verschillende hoogtes — rijindex gecorrigeerd per wand' });
+  }
+
+  return lines;
 }
 
 function buildHorizontalChains(walls, hAdj) {

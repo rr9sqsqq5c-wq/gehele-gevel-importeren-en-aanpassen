@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc } from './lib/ifc.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
-import { buildGroupPattern, buildFacePattern } from './lib/pattern.js';
+import { buildGroupPattern, buildFacePattern, getGroupPatternLogic } from './lib/pattern.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
 
@@ -947,6 +947,24 @@ export default function App() {
                 onSyncToLinked={() => syncToLinked(activeGroup.id)}
               />
             </div>
+            {viewMode === '2d' && (() => {
+              const s = getSettings(activeGroup.id);
+              const walls = activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean);
+              const logic = getGroupPatternLogic(walls, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND);
+              return (
+                <div style={{ borderTop: '2px solid #e2e8f0', padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#0f172a', marginBottom: 8, letterSpacing: 0.3, textTransform: 'uppercase' }}>
+                    Patroonlogica
+                  </div>
+                  {logic.map(({ label, value }) => (
+                    <div key={label} style={{ marginBottom: 5 }}>
+                      <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
+                      <div style={{ fontSize: 11, color: '#334155', wordBreak: 'break-word' }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
