@@ -7,30 +7,66 @@ export function buildFacadeZones(facadeWidth, facadeHeight, openings) {
     return [{ id: 'Z1', kind: 'algemeen', x: 0, y: 0, width: facadeWidth, height: facadeHeight }];
   }
 
-  const sorted = [...openings].sort((a, b) => a.y - b.y || a.x - b.x);
-  const first = sorted[0];
-  const last = sorted[sorted.length - 1];
-  const zones = [];
+  const yCoords = new Set([0, facadeHeight]);
+  for (const o of openings) {
+    if (o.y > 0.001) yCoords.add(o.y);
+    if (o.y + o.height < facadeHeight - 0.001) yCoords.add(o.y + o.height);
+  }
+  const yArr = [...yCoords].sort((a, b) => a - b);
 
-  if (first.y > 1) {
-    zones.push({ id: `Z${zones.length + 1}`, kind: 'onder', x: 0, y: 0, width: facadeWidth, height: first.y });
+  const rawZones = [];
+  let id = 1;
+
+  for (let yi = 0; yi < yArr.length - 1; yi++) {
+    const yBot = yArr[yi];
+    const yTop = yArr[yi + 1];
+    const bandH = yTop - yBot;
+    if (bandH <= 0.001) continue;
+    const midY = (yBot + yTop) / 2;
+
+    const bandOpenings = openings.filter((o) => o.y <= midY && o.y + o.height >= midY);
+
+    const xCoords = new Set([0, facadeWidth]);
+    for (const o of bandOpenings) {
+      xCoords.add(Math.max(0, o.x));
+      xCoords.add(Math.min(facadeWidth, o.x + o.width));
+    }
+    const xArr = [...xCoords].sort((a, b) => a - b);
+
+    for (let xi = 0; xi < xArr.length - 1; xi++) {
+      const xL = xArr[xi];
+      const xR = xArr[xi + 1];
+      if (xR - xL <= 0.001) continue;
+      const midX = (xL + xR) / 2;
+      const covered = bandOpenings.some((o) => o.x <= midX && o.x + o.width >= midX);
+      if (!covered) {
+        rawZones.push({ x: xL, y: yBot, width: xR - xL, height: bandH });
+      }
+    }
   }
 
-  sorted.forEach((o) => {
-    if (o.x > 1) {
-      zones.push({ id: `Z${zones.length + 1}`, kind: 'links', openingId: o.id, x: 0, y: o.y, width: o.x, height: o.height });
+  let zones = rawZones;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    outer: for (let i = 0; i < zones.length; i++) {
+      for (let j = i + 1; j < zones.length; j++) {
+        const a = zones[i], b = zones[j];
+        if (Math.abs(a.x - b.x) < 0.001 && Math.abs(a.width - b.width) < 0.001) {
+          if (Math.abs(a.y + a.height - b.y) < 0.001 || Math.abs(b.y + b.height - a.y) < 0.001) {
+            const merged = { x: a.x, y: Math.min(a.y, b.y), width: a.width, height: a.height + b.height };
+            zones = [...zones.slice(0, i), merged, ...zones.slice(i + 1, j), ...zones.slice(j + 1)];
+            changed = true;
+            break outer;
+          }
+        }
+      }
     }
-    if (o.x + o.width < facadeWidth - 1) {
-      zones.push({ id: `Z${zones.length + 1}`, kind: 'rechts', openingId: o.id, x: o.x + o.width, y: o.y, width: facadeWidth - (o.x + o.width), height: o.height });
-    }
-  });
-
-  const topStart = last.y + last.height;
-  if (topStart < facadeHeight - 1) {
-    zones.push({ id: `Z${zones.length + 1}`, kind: 'boven', x: 0, y: topStart, width: facadeWidth, height: facadeHeight - topStart });
   }
 
-  return zones.filter((z) => z.width > 0 && z.height > 0);
+  return zones
+    .filter((z) => z.width > 0.001 && z.height > 0.001)
+    .map((z, i) => ({ ...z, id: `Z${i + 1}`, kind: 'zone' }));
 }
 
 function collectVerticalCandidates(zone, globalPieces) {
