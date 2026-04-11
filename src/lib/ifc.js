@@ -466,43 +466,149 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     const brickColor = settings.color ?? '#a64033';
     const brickD = settings.brickDepth ?? 20;
     const material = settings.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
+    const vis = group.layerVisibility ?? {};
+    const rwo = group.refWallOrigin;
+    const groupMinX = group.groupMinX ?? 0;
+    const groupMinH = group.groupMinH ?? 0;
 
-    for (const wallData of (group.wallsWithRows ?? [])) {
-      const { wall, rows } = wallData;
-      const wo = wall.wallOrigin;
-
-      const toWorld = (localX, localDepth, localZ) => {
-        if (!wo) return [localX / 1000, localDepth / 1000, localZ / 1000];
-        const p = { x: 0, y: 0, z: 0 };
-        p[wo.lengthAxis]    = (wo.lengthStart    + localX) / 1000;
-        p[wo.thicknessAxis] = (wo.thicknessStart + localDepth) / 1000;
-        p[wo.heightAxis]    = (wo.heightStart    + localZ) / 1000;
-        return [p.x, p.y, p.z];
-      };
-
-      let axisId = null, refDirId = null;
-      if (wo) {
-        if (wo.lengthAxis !== 'x') { const v = wo.lengthAxis === 'y' ? '0.,1.,0.' : '0.,0.,1.'; refDirId = E(`IFCDIRECTION((${v}))`); }
-        if (wo.heightAxis !== 'z') { const v = wo.heightAxis === 'y' ? '0.,1.,0.' : '1.,0.,0.'; axisId   = E(`IFCDIRECTION((${v}))`); }
+    const makeGroupAxes = () => {
+      let aId = null, rId = null;
+      if (rwo) {
+        if (rwo.lengthAxis !== 'x') { const v = rwo.lengthAxis === 'y' ? '0.,1.,0.' : '0.,0.,1.'; rId = E(`IFCDIRECTION((${v}))`); }
+        if (rwo.heightAxis !== 'z') { const v = rwo.heightAxis === 'y' ? '0.,1.,0.' : '1.,0.,0.'; aId = E(`IFCDIRECTION((${v}))`); }
       }
-      const axisStr = axisId   ? `#${axisId}`   : '$';
-      const refStr  = refDirId ? `#${refDirId}` : '$';
+      return { axisStr: aId ? `#${aId}` : '$', refStr: rId ? `#${rId}` : '$' };
+    };
 
-      for (const row of rows) {
-        for (const piece of row.pieces) {
-          const [wx, wy, wz] = toWorld(piece.start + piece.length / 2, brickD / 2, row.y);
+    const groupToWorld = (gx, depth, gz) => {
+      if (!rwo) return [gx / 1000, depth / 1000, gz / 1000];
+      const p = { x: 0, y: 0, z: 0 };
+      p[rwo.lengthAxis]    = (groupMinX + gx) / 1000;
+      p[rwo.thicknessAxis] = (rwo.thicknessStart + depth) / 1000;
+      p[rwo.heightAxis]    = (groupMinH + gz) / 1000;
+      return [p.x, p.y, p.z];
+    };
+
+    if (vis.strips !== false) {
+      for (const wallData of (group.wallsWithRows ?? [])) {
+        const { wall, rows } = wallData;
+        const wo = wall.wallOrigin;
+
+        const toWorld = (localX, localDepth, localZ) => {
+          if (!wo) return [localX / 1000, localDepth / 1000, localZ / 1000];
+          const p = { x: 0, y: 0, z: 0 };
+          p[wo.lengthAxis]    = (wo.lengthStart    + localX) / 1000;
+          p[wo.thicknessAxis] = (wo.thicknessStart + localDepth) / 1000;
+          p[wo.heightAxis]    = (wo.heightStart    + localZ) / 1000;
+          return [p.x, p.y, p.z];
+        };
+
+        let axisId = null, refDirId = null;
+        if (wo) {
+          if (wo.lengthAxis !== 'x') { const v = wo.lengthAxis === 'y' ? '0.,1.,0.' : '0.,0.,1.'; refDirId = E(`IFCDIRECTION((${v}))`); }
+          if (wo.heightAxis !== 'z') { const v = wo.heightAxis === 'y' ? '0.,1.,0.' : '1.,0.,0.'; axisId   = E(`IFCDIRECTION((${v}))`); }
+        }
+        const axisStr = axisId   ? `#${axisId}`   : '$';
+        const refStr  = refDirId ? `#${refDirId}` : '$';
+
+        for (const row of rows) {
+          for (const piece of row.pieces) {
+            const [wx, wy, wz] = toWorld(piece.start + piece.length / 2, brickD / 2, row.y);
+            const placePt = PT(wx, wy, wz);
+            const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
+            const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
+            const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
+            const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(piece.length)},${r(brickD)})`);
+            const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(material.steenH)})`);
+            const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
+            const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
+            const safeName = `${group.name ?? 'Groep'} - ${wall.name} - ${piece.label}`.replace(/'/g, "\\'");
+            const proxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'Steenstrip',#${localPl},#${pds},$,.NOTDEFINED.)`);
+            const styleId = getStyle(brickColor);
+            E(`IFCSTYLEDITEM(#${solid},(#${styleId}),$)`);
+            allProxyIds.push(proxy);
+          }
+        }
+      }
+    }
+
+    if (vis.panelen !== false && (group.panels ?? []).length) {
+      const PANEL_DIKTE = 18;
+      const { axisStr, refStr } = makeGroupAxes();
+      for (const panel of group.panels) {
+        const cx = panel.x + panel.width / 2;
+        const depth = brickD + PANEL_DIKTE / 2;
+        const [wx, wy, wz] = groupToWorld(cx, depth, panel.y);
+        const placePt = PT(wx, wy, wz);
+        const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
+        const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
+        const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
+        const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(panel.width)},${r(PANEL_DIKTE)})`);
+        const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(panel.height)})`);
+        const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
+        const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
+        const safeName = `${group.name ?? 'Groep'} - Paneel ${Math.round(panel.width)}x${Math.round(panel.height)}`.replace(/'/g, "\\'");
+        const proxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'Basisplaat',#${localPl},#${pds},$,.NOTDEFINED.)`);
+        E(`IFCSTYLEDITEM(#${solid},(#${getStyle('#94a3b8')}),$)`);
+        allProxyIds.push(proxy);
+      }
+    }
+
+    if (vis.latten !== false && (group.lattenData ?? []).length) {
+      const PANEL_DIKTE = 18;
+      const latDikte = group.latDikte ?? 28;
+      const { axisStr, refStr } = makeGroupAxes();
+      for (const lat of group.lattenData) {
+        const cx = lat.x + lat.width / 2;
+        const cy = lat.y;
+        const depth = brickD + PANEL_DIKTE + latDikte / 2;
+        const [wx, wy, wz] = groupToWorld(cx, depth, cy);
+        const placePt = PT(wx, wy, wz);
+        const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
+        const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
+        const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
+        const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(lat.width)},${r(latDikte)})`);
+        const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(lat.height)})`);
+        const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
+        const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
+        const safeName = `${group.name ?? 'Groep'} - Lat ${lat.richting}`.replace(/'/g, "\\'");
+        const proxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'AchterconstructieLat',#${localPl},#${pds},$,.NOTDEFINED.)`);
+        E(`IFCSTYLEDITEM(#${solid},(#${getStyle('#b45309')}),$)`);
+        allProxyIds.push(proxy);
+      }
+    }
+
+    if (vis.zetwerk !== false && group.zetwerk?.enabled && group.facadeData) {
+      const zw = group.zetwerk;
+      const zwB = Math.max(1, zw.breedte ?? 50);
+      const zwH = Math.max(0, zw.offsetH ?? 0);
+      const zwV = Math.max(0, zw.offsetV ?? 0);
+      const { axisStr, refStr } = makeGroupAxes();
+      const depth = brickD / 2;
+      for (const op of (group.facadeData.groupOpenings ?? [])) {
+        const ox1 = op.x - zwH - zwB, ox2 = op.x + op.width + zwH + zwB;
+        const oy1 = op.y - zwV - zwB, oy2 = op.y + op.height + zwV + zwB;
+        const totalW = ox2 - ox1;
+        const innerH = (op.y + op.height + zwV) - (op.y - zwV);
+        const bars = [
+          { lx: ox1 + totalW / 2, lz: oy2 - zwB / 2, lw: totalW, lh: zwB },
+          { lx: ox1 + totalW / 2, lz: oy1 + zwB / 2, lw: totalW, lh: zwB },
+          { lx: ox1 + zwB / 2,    lz: op.y - zwV + innerH / 2, lw: zwB, lh: innerH },
+          { lx: ox2 - zwB / 2,    lz: op.y - zwV + innerH / 2, lw: zwB, lh: innerH },
+        ];
+        for (const bar of bars) {
+          const [wx, wy, wz] = groupToWorld(bar.lx, depth, bar.lz - bar.lh / 2);
           const placePt = PT(wx, wy, wz);
           const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
           const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
           const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
-          const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(piece.length)},${r(brickD)})`);
-          const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(material.steenH)})`);
+          const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(bar.lw)},${r(brickD)})`);
+          const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(bar.lh)})`);
           const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
           const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
-          const safeName = `${group.name ?? 'Groep'} - ${wall.name} - ${piece.label}`.replace(/'/g, "\\'");
-          const proxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'Steenstrip',#${localPl},#${pds},$,.NOTDEFINED.)`);
-          const styleId = getStyle(brickColor);
-          E(`IFCSTYLEDITEM(#${solid},(#${styleId}),$)`);
+          const safeName = `${group.name ?? 'Groep'} - Zetwerk`.replace(/'/g, "\\'");
+          const proxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'Zetwerk',#${localPl},#${pds},$,.NOTDEFINED.)`);
+          E(`IFCSTYLEDITEM(#${solid},(#${getStyle('#475569')}),$)`);
           allProxyIds.push(proxy);
         }
       }

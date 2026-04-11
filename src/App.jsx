@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc } from './lib/ifc.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
-import { buildGroupPattern, buildFacePattern, getGroupPatternLogic } from './lib/pattern.js';
+import { buildGroupPattern, buildFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
+import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
 
@@ -722,7 +723,79 @@ export default function App() {
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const gAdj = adjacencies.filter((a) => group.wallIds.includes(a.wallIdA) && group.wallIds.includes(a.wallIdB));
       const rows = buildGroupPattern(walls, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND);
-      return { id: group.id, name: s.name, wallsWithRows: walls.map((wall) => ({ wall, rows: rows[wall.expressID] ?? [] })) };
+
+      const mat = s.material ?? DEFAULT_MATERIAL;
+      const vis = s.layerVisibility ?? {};
+      const withOrigin = walls.filter((w) => w.wallOrigin);
+      const groupMinX = withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart)) : 0;
+      const groupMinH = withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart)) : 0;
+      const refWallOrigin = withOrigin[0]?.wallOrigin ?? null;
+
+      const facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk);
+
+      let panels = [];
+      let lattenData = [];
+
+      if (facadeData) {
+        const { rows: facRows, groupWidth, groupHeight, groupOpenings } = facadeData;
+
+        if (s.panelen?.enabled && vis.panelen !== false) {
+          const basePanel = { width: Math.max(100, s.panelen.breedte ?? 3005), height: Math.max(100, s.panelen.hoogte ?? 1200) };
+          const globalPieces = facRows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
+          const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height }));
+          const zones = buildFacadeZones(groupWidth, groupHeight, openingsForZones);
+          for (const zone of zones) {
+            const res = panelizeZone(zone, facRows, globalPieces, mat.steenH, basePanel);
+            if (res.ok) panels.push(...res.panels);
+          }
+        }
+
+        if (s.latten?.enabled && vis.latten !== false) {
+          const latBreedte = Math.max(5, s.latten.breedte ?? 50);
+          const maxInterval = Math.max(50, s.latten.maxInterval ?? 400);
+          const richting = s.latten.richting ?? 'horizontaal';
+
+          if (richting === 'horizontaal') {
+            const rowTops = new Set([0, Math.round(groupHeight)]);
+            for (const row of facRows) { rowTops.add(Math.round(row.y)); rowTops.add(Math.round(row.y + mat.steenH)); }
+            const forced = new Set([0, Math.round(groupHeight)]);
+            for (const op of groupOpenings) { forced.add(Math.round(op.y)); forced.add(Math.round(op.y + op.height)); }
+            const snapToRow = (y) => [...rowTops].sort((a, b) => Math.abs(a - y) - Math.abs(b - y))[0] ?? y;
+            const positions = new Set([...forced]);
+            const sortedF = [...positions].sort((a, b) => a - b);
+            for (let i = 0; i < sortedF.length - 1; i++) {
+              let cur = sortedF[i];
+              const next = sortedF[i + 1];
+              while (next - cur > maxInterval + 1) {
+                const mid = cur + maxInterval;
+                const snapped = snapToRow(mid);
+                positions.add(snapped);
+                cur = snapped > cur ? snapped : mid;
+              }
+            }
+            lattenData = [...positions].sort((a, b) => a - b).map((y) => ({ richting: 'horizontaal', x: 0, y: Math.round(y) - latBreedte / 2, width: groupWidth, height: latBreedte }));
+          } else {
+            const xPositions = new Set([0, groupWidth]);
+            for (const panel of panels) { xPositions.add(Math.round(panel.x)); xPositions.add(Math.round(panel.x + panel.width / 2)); xPositions.add(Math.round(panel.x + panel.width)); }
+            lattenData = [...xPositions].sort((a, b) => a - b).map((x) => ({ richting: 'verticaal', x: Math.round(x) - latBreedte / 2, y: 0, width: latBreedte, height: groupHeight }));
+          }
+        }
+      }
+
+      return {
+        id: group.id,
+        name: s.name,
+        wallsWithRows: walls.map((wall) => ({ wall, rows: rows[wall.expressID] ?? [] })),
+        panels,
+        lattenData,
+        latDikte: s.latten?.dikte ?? 28,
+        zetwerk: s.zetwerk,
+        facadeData,
+        groupMinX,
+        groupMinH,
+        refWallOrigin,
+        layerVisibility: vis,
+      };
     });
     const settingsMap = Object.fromEntries(groups.map((g) => [g.id, getSettings(g.id)]));
     exportGroupsToIfc(exportGroups, settingsMap, ifcFileName ?? 'export');
