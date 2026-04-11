@@ -78,6 +78,9 @@ function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
   const GRID = 15;
   const wallMinL = wallBB[`min${lAxis.toUpperCase()}`];
   const wallMinH = wallBB[`min${hAxis.toUpperCase()}`];
+  const wallLenMM = (wallBB[`max${lAxis.toUpperCase()}`] - wallMinL) * 1000;
+  const wallHgtMM = (wallBB[`max${hAxis.toUpperCase()}`] - wallMinH) * 1000;
+  const MARGIN = 600;
   const cellSet = new Set();
 
   for (let gi = 0; gi < mesh.geometries.size(); gi++) {
@@ -98,6 +101,10 @@ function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
         return { l: (w[lAxis] - wallMinL) * 1000, h: (w[hAxis] - wallMinH) * 1000 };
       };
 
+      const inBounds = (p) =>
+        p.l >= -MARGIN && p.l <= wallLenMM + MARGIN &&
+        p.h >= -MARGIN && p.h <= wallHgtMM + MARGIN;
+
       const addCell = (l, h) => cellSet.add(`${Math.round(l / GRID)},${Math.round(h / GRID)}`);
       const lerp = (a, b) => {
         const steps = Math.max(1, Math.ceil(Math.max(Math.abs(b.l - a.l), Math.abs(b.h - a.h)) / GRID));
@@ -111,6 +118,7 @@ function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
         const a = project(idxs[ti] * 6);
         const b = project(idxs[ti+1] * 6);
         const c = project(idxs[ti+2] * 6);
+        if (!inBounds(a) && !inBounds(b) && !inBounds(c)) continue;
         lerp(a, b); lerp(b, c); lerp(a, c);
       }
     } finally { geom?.delete(); }
