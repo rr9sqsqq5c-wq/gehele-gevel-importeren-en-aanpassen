@@ -41,7 +41,11 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
 
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
-    return buildFullGroupFacadePattern(walls, mat, verband, maxHoogte, zetwerk);
+    const result = buildFullGroupFacadePattern(walls, mat, verband, maxHoogte, zetwerk);
+    if (result) {
+      console.log('[View2D] groupOpenings:', result.groupOpenings.map(o => ({ x: o.x, y: o.y, w: o.width, h: o.height, hasPoly: !!o.polyPts, polyLen: o.polyPts?.length })));
+    }
+    return result;
   }, [walls, mat, verband, maxHoogte, zetwerk]);
 
   const allPanels = useMemo(() => {

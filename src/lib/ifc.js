@@ -338,11 +338,13 @@ export async function parseIfc(file, allowedTypes = null) {
           for (const oID of (wallVoids[wID] ?? [])) {
             try {
               const fillID = fillerExpressID[oID];
-              const geomID = fillID ?? oID;
 
-              const polygon = getFacadePolygon(api, modelID, geomID, lengthAxis, heightAxis, wallBB);
+              let polygon = getFacadePolygon(api, modelID, oID, lengthAxis, heightAxis, wallBB);
+              if (!polygon && fillID) {
+                polygon = getFacadePolygon(api, modelID, fillID, lengthAxis, heightAxis, wallBB);
+              }
 
-              const oBB = (fillID ? getBBox(api, modelID, fillID) : null) ?? getBBox(api, modelID, oID);
+              const oBB = getBBox(api, modelID, oID) ?? (fillID ? getBBox(api, modelID, fillID) : null);
               if (!oBB && !polygon) continue;
 
               const wallMins = { x: wallBB.minX, y: wallBB.minY, z: wallBB.minZ };
