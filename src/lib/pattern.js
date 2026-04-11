@@ -168,7 +168,8 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const zwH = zwEnabled ? Math.max(0, zetwerk.offsetH ?? 0) : 0;
   const zwV = zwEnabled ? Math.max(0, zetwerk.offsetV ?? 0) : 0;
   const zwS = zwEnabled ? Math.max(0, zetwerk.stripOffset ?? 5) : 0;
-  const zwExpand = zwEnabled ? (zwH + zwB + zwS) : 0;
+  const zwExpandX = zwEnabled ? (zwH + zwB + zwS) : 0;
+  const zwExpandY = zwEnabled ? (zwV + zwB + zwS) : 0;
 
   const groupOpenings = [];
   for (const w of withOrigin) {
@@ -184,10 +185,10 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   }
 
   const maskOpenings = groupOpenings.map((op) => ({
-    x: Math.max(0, op.x - zwExpand),
-    y: Math.max(0, op.y - zwV),
-    width: op.width + 2 * zwExpand,
-    height: op.height + 2 * zwV,
+    x: Math.max(0, op.x - zwExpandX),
+    y: Math.max(0, op.y - zwExpandY),
+    width: op.width + 2 * zwExpandX,
+    height: op.height + 2 * zwExpandY,
   }));
 
   function splitAroundOpenings(piece, rowY) {
