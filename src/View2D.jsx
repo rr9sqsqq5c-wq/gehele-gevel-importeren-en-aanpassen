@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
+import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
 
 function hexToRgba(hex, alpha = 1) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -25,7 +26,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk }) {
+export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk, panelen }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -42,6 +43,22 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     if (!walls?.length) return null;
     return buildFullGroupFacadePattern(walls, mat, verband, maxHoogte, zetwerk);
   }, [walls, mat, verband, maxHoogte, zetwerk]);
+
+  const allPanels = useMemo(() => {
+    if (!facadeData || !panelen?.enabled) return [];
+    const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
+    const basePanel = { width: Math.max(100, panelen.breedte ?? 3005), height: Math.max(100, panelen.hoogte ?? 1200) };
+    const steenH = mat.steenH;
+    const globalPieces = rows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
+    const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height }));
+    const zones = buildFacadeZones(groupWidth, groupHeight, openingsForZones);
+    const panels = [];
+    for (const zone of zones) {
+      const result = panelizeZone(zone, rows, globalPieces, steenH, basePanel);
+      if (result.ok) panels.push(...result.panels);
+    }
+    return panels;
+  }, [facadeData, panelen, mat]);
 
   const bounds = useMemo(() => {
     if (!facadeData) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
@@ -131,6 +148,27 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
 
     ctx.fillStyle = hexToRgba(color, 0.15);
     ctx.fillRect(faceSx, faceSy, faceW, faceH);
+
+    if (allPanels.length) {
+      const panelColors = ['rgba(203,213,225,0.45)', 'rgba(186,230,253,0.45)'];
+      allPanels.forEach((panel, i) => {
+        const [pSx, pSy] = toScreen(panel.x, panel.y + panel.height);
+        const pSw = panel.width * scale * 0.001;
+        const pSh = panel.height * scale * 0.001;
+        ctx.fillStyle = panelColors[i % 2];
+        ctx.fillRect(pSx, pSy, pSw, pSh);
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(pSx, pSy, pSw, pSh);
+        if (pSw > 24 && pSh > 14) {
+          ctx.font = '8px system-ui, sans-serif';
+          ctx.fillStyle = '#64748b';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`${Math.round(panel.width)}×${Math.round(panel.height)}`, pSx + pSw / 2, pSy + pSh / 2);
+        }
+      });
+    }
 
     for (const row of rows) {
       const [, rowSy] = toScreen(0, row.y + steenH);
@@ -316,7 +354,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
-  }, [walls, facadeData, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk]);
+  }, [walls, facadeData, allPanels, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk, panelen]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();

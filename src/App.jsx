@@ -118,7 +118,7 @@ const nextColor = () => GROUP_COLORS[_colorIdx++ % GROUP_COLORS.length];
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, penanten: [], zetwerk: { enabled: false, breedte: 50, offsetH: 0, offsetV: 0, stripOffset: 5 } });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, penanten: [], zetwerk: { enabled: false, breedte: 50, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200 } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -273,6 +273,38 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                         style={{ ...inp, width: '100%' }} />
                     </Field>
                   ))}
+                </div>
+              )}
+            </>
+          );
+        })()}
+      </div>
+      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
+        {(() => {
+          const pan = settings.panelen ?? {};
+          const upd = (patch) => onUpdate({ panelen: { ...(settings.panelen ?? {}), ...patch } });
+          return (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <input type="checkbox" id="pan-enable" checked={pan.enabled ?? false}
+                  onChange={(e) => upd({ enabled: e.target.checked })} />
+                <label htmlFor="pan-enable" style={{ fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
+                  Panelen (basisplaat)
+                  <InfoIcon tip={"Verdeelt de geveloppervlakte in draagsysteem-panelen.\nDe panelen vormen de achterste laag waarop de brickslips worden gemonteerd.\nDe indeling volgt de steenstripvoegen voor optimaal snijverlies.\n\n· Breedte = maximale breedte van een basispaneel\n· Hoogte = maximale hoogte van een basispaneel"} />
+                </label>
+              </div>
+              {pan.enabled && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                  <Field label="Breedte mm" tip="Maximale breedte van het basispaneel (mm). Standaard 3005 mm.">
+                    <input type="number" min={100} step={50} value={pan.breedte ?? 3005}
+                      onChange={(e) => upd({ breedte: Number(e.target.value) })}
+                      style={{ ...inp, width: '100%' }} />
+                  </Field>
+                  <Field label="Hoogte mm" tip="Maximale hoogte van het basispaneel (mm). Standaard 1200 mm.">
+                    <input type="number" min={100} step={50} value={pan.hoogte ?? 1200}
+                      onChange={(e) => upd({ hoogte: Number(e.target.value) })}
+                      style={{ ...inp, width: '100%' }} />
+                  </Field>
                 </div>
               )}
             </>
@@ -1011,6 +1043,7 @@ export default function App() {
                     penantFaceData={penantFaceData}
                     groupColor={getSettings(activeGroup.id).color}
                     zetwerk={getSettings(activeGroup.id).zetwerk}
+                    panelen={getSettings(activeGroup.id).panelen}
                   />
                   <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.85)', color: '#94a3b8', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                     {getSettings(activeGroup.id).name} · {activeGroup.wallIds.length} wand{activeGroup.wallIds.length !== 1 ? 'en' : ''} · 2D gevelaanzicht
