@@ -25,7 +25,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor }) {
+export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -40,8 +40,8 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
 
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
-    return buildFullGroupFacadePattern(walls, mat, verband, maxHoogte);
-  }, [walls, mat, verband, maxHoogte]);
+    return buildFullGroupFacadePattern(walls, mat, verband, maxHoogte, zetwerk);
+  }, [walls, mat, verband, maxHoogte, zetwerk]);
 
   const bounds = useMemo(() => {
     if (!facadeData) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
@@ -122,7 +122,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       return;
     }
 
-    const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
+    const { rows, groupWidth, groupHeight, groupOpenings, zetwerkParams } = facadeData;
     const steenH = mat.steenH;
 
     const [faceSx, faceSy] = toScreen(0, groupHeight);
@@ -195,6 +195,35 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
         for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
         ctx.closePath();
         ctx.stroke();
+      }
+    }
+
+    if (zetwerkParams) {
+      const { breedte: zwB, offsetH: zwH, offsetV: zwV } = zetwerkParams;
+      for (const op of groupOpenings) {
+        const zbPx = zwB * scale * 0.001;
+        const zohPx = zwH * scale * 0.001;
+        const zovPx = zwV * scale * 0.001;
+
+        const [opL] = toScreen(op.x, 0);
+        const [opR] = toScreen(op.x + op.width, 0);
+        const [, opTop] = toScreen(0, op.y + op.height);
+        const [, opBot] = toScreen(0, op.y);
+        const opW = opR - opL;
+
+        ctx.fillStyle = 'rgba(148,163,184,0.85)';
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 0.5;
+
+        const boven = [opL - zohPx - zbPx, opTop - zbPx - zovPx, opW + 2 * (zohPx + zbPx), zbPx];
+        const onder = [opL - zohPx - zbPx, opBot + zovPx, opW + 2 * (zohPx + zbPx), zbPx];
+        const links = [opL - zbPx - zohPx, opTop - zovPx, zbPx, (opBot - opTop) + 2 * zovPx];
+        const rechts = [opR + zohPx, opTop - zovPx, zbPx, (opBot - opTop) + 2 * zovPx];
+
+        for (const [rx, ry, rw, rh] of [boven, onder, links, rechts]) {
+          ctx.fillRect(rx, ry, rw, rh);
+          ctx.strokeRect(rx, ry, rw, rh);
+        }
       }
     }
 
@@ -287,7 +316,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
-  }, [walls, facadeData, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color]);
+  }, [walls, facadeData, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();

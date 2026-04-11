@@ -146,7 +146,7 @@ export function buildGroupPattern(walls, adjacencies, material, verband) {
   return result;
 }
 
-export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte) {
+export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk) {
   const { steenH, lint } = material;
   const lagenmaat = steenH + lint;
 
@@ -163,32 +163,36 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte)
   const effectiveHeight = maxHoogte != null && maxHoogte > 0 ? Math.min(groupHeight, maxHoogte) : groupHeight;
   const totalLagen = Math.floor((effectiveHeight + lint) / lagenmaat);
 
+  const zwEnabled = zetwerk?.enabled;
+  const zwB = zwEnabled ? Math.max(1, zetwerk.breedte ?? 50) : 0;
+  const zwH = zwEnabled ? Math.max(0, zetwerk.offsetH ?? 0) : 0;
+  const zwV = zwEnabled ? Math.max(0, zetwerk.offsetV ?? 0) : 0;
+  const zwS = zwEnabled ? Math.max(0, zetwerk.stripOffset ?? 5) : 0;
+  const zwExpand = zwEnabled ? (zwH + zwB + zwS) : 0;
+
   const groupOpenings = [];
   for (const w of withOrigin) {
     const wallOffsetX = round2(w.wallOrigin.lengthStart - groupMinX);
     const wallOffsetH = round2(w.wallOrigin.heightStart - groupMinH);
     for (const op of (w.openings ?? [])) {
-      groupOpenings.push({
-        x: round2(wallOffsetX + (op.x ?? 0)),
-        y: round2(wallOffsetH + (op.y ?? 0)),
-        width: op.breedte ?? op.width ?? 0,
-        height: op.hoogte ?? op.height ?? 0,
-      });
+      const ox = round2(wallOffsetX + (op.x ?? 0));
+      const oy = round2(wallOffsetH + (op.y ?? 0));
+      const ow = op.breedte ?? op.width ?? 0;
+      const oh = op.hoogte ?? op.height ?? 0;
+      groupOpenings.push({ x: ox, y: oy, width: ow, height: oh });
     }
   }
 
-  function isInGroupOpening(pieceStart, pieceEnd, rowY) {
-    for (const op of groupOpenings) {
-      if (rowY + 1 < op.y || rowY + steenH > op.y + op.height + 1) continue;
-      if (pieceEnd <= op.x + 0.001 || pieceStart >= op.x + op.width - 0.001) continue;
-      return true;
-    }
-    return false;
-  }
+  const maskOpenings = groupOpenings.map((op) => ({
+    x: Math.max(0, op.x - zwExpand),
+    y: Math.max(0, op.y - zwV),
+    width: op.width + 2 * zwExpand,
+    height: op.height + 2 * zwV,
+  }));
 
   function splitAroundOpenings(piece, rowY) {
     let segments = [{ start: piece.start, end: piece.start + piece.length }];
-    for (const op of groupOpenings) {
+    for (const op of maskOpenings) {
       if (rowY + 1 < op.y || rowY + steenH > op.y + op.height + 1) continue;
       const newSegs = [];
       for (const seg of segments) {
@@ -220,7 +224,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte)
     if (clipped.length) rows.push({ y: rowY, pieces: clipped });
   }
 
-  return { rows, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, groupOpenings };
+  return { rows, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, groupOpenings, zetwerkParams: zwEnabled ? { breedte: zwB, offsetH: zwH, offsetV: zwV } : null };
 }
 
 export function getGroupPatternLogic(walls, material, verband) {
