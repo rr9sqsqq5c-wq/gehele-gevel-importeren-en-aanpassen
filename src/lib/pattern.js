@@ -171,6 +171,22 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const zwExpandX = zwEnabled ? (zwH + zwB + zwS) : 0;
   const zwExpandY = zwEnabled ? (zwV + zwB + zwS) : 0;
 
+  function polyXRangesAtY(poly, y) {
+    const xs = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      const ay = a.h, by = b.h, ax = a.l, bx = b.l;
+      if ((ay < y && by >= y) || (by < y && ay >= y)) {
+        const t = (y - ay) / (by - ay);
+        xs.push(ax + t * (bx - ax));
+      }
+    }
+    xs.sort((p, q) => p - q);
+    const ranges = [];
+    for (let i = 0; i + 1 < xs.length; i += 2) ranges.push([xs[i], xs[i + 1]]);
+    return ranges;
+  }
+
   const rawOpenings = [];
   for (const w of withOrigin) {
     const wallOffsetX = round2(w.wallOrigin.lengthStart - groupMinX);
@@ -184,22 +200,29 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       const isNamedOpening = op.type === 'raam' || op.type === 'deur';
       const isLarge = ow >= 400 && oh >= 400;
       if (!isNamedOpening && !isLarge) continue;
-      rawOpenings.push({ x: ox, y: oy, width: ow, height: oh });
+      const groupPolyPts = op.polyPts
+        ? op.polyPts.map((p) => ({ l: round2(p.l + wallOffsetX), h: round2(p.h + wallOffsetH) }))
+        : null;
+      rawOpenings.push({ x: ox, y: oy, width: ow, height: oh, polyPts: groupPolyPts });
     }
   }
-
-  const overlapArea = (a, b) => {
-    const ox = Math.max(0, Math.min(a.x + a.width,  b.x + b.width)  - Math.max(a.x, b.x));
-    const oy = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
-    return ox * oy;
-  };
 
   const mergeTwo = (a, b) => {
     const x  = Math.min(a.x, b.x);
     const y  = Math.min(a.y, b.y);
     const x2 = Math.max(a.x + a.width,  b.x + b.width);
     const y2 = Math.max(a.y + a.height, b.y + b.height);
-    return { x, y, width: x2 - x, height: y2 - y };
+    return { x, y, width: x2 - x, height: y2 - y, polyPts: null };
+  };
+
+  const shouldMerge = (a, b) => {
+    const ax1 = a.x, ax2 = a.x + a.width;
+    const bx1 = b.x, bx2 = b.x + b.width;
+    const ay1 = a.y, ay2 = a.y + a.height;
+    const by1 = b.y, by2 = b.y + b.height;
+    const overlapX = Math.min(ax2, bx2) - Math.max(ax1, bx1);
+    const overlapY = Math.min(ay2, by2) - Math.max(ay1, by1);
+    return overlapX > 0 && overlapY > 0;
   };
 
   let merged = [...rawOpenings];
@@ -208,11 +231,8 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     changed = false;
     outer: for (let i = 0; i < merged.length; i++) {
       for (let j = i + 1; j < merged.length; j++) {
-        const a = merged[i], b = merged[j];
-        const ov = overlapArea(a, b);
-        const minArea = Math.min(a.width * a.height, b.width * b.height);
-        if (ov > minArea * 0.25) {
-          merged = [...merged.slice(0, i), mergeTwo(a, b), ...merged.slice(i + 1, j), ...merged.slice(j + 1)];
+        if (shouldMerge(merged[i], merged[j])) {
+          merged = [...merged.slice(0, i), mergeTwo(merged[i], merged[j]), ...merged.slice(i + 1, j), ...merged.slice(j + 1)];
           changed = true;
           break outer;
         }
@@ -227,24 +247,41 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     y: Math.max(0, op.y - zwExpandY),
     width: op.width + 2 * zwExpandX,
     height: op.height + 2 * zwExpandY,
+    polyPts: (!zwEnabled && op.polyPts) ? op.polyPts : null,
   }));
+
+  function cutSegments(segments, ox1, ox2) {
+    const result = [];
+    for (const seg of segments) {
+      if (seg.end <= ox1 + 0.001 || seg.start >= ox2 - 0.001) {
+        result.push(seg);
+      } else {
+        if (seg.start < ox1 - 0.001) result.push({ start: seg.start, end: ox1 });
+        if (seg.end > ox2 + 0.001) result.push({ start: ox2, end: seg.end });
+      }
+    }
+    return result;
+  }
 
   function splitAroundOpenings(piece, rowY) {
     let segments = [{ start: piece.start, end: piece.start + piece.length }];
     for (const op of maskOpenings) {
       if (rowY + 1 < op.y || rowY + steenH > op.y + op.height + 1) continue;
-      const newSegs = [];
-      for (const seg of segments) {
-        const ox1 = op.x;
-        const ox2 = op.x + op.width;
-        if (seg.end <= ox1 + 0.001 || seg.start >= ox2 - 0.001) {
-          newSegs.push(seg);
+      if (op.polyPts && op.polyPts.length >= 3) {
+        const midY = rowY + steenH * 0.5;
+        const ranges = polyXRangesAtY(op.polyPts, midY);
+        if (!ranges.length) {
+          const y2 = rowY + steenH * 0.25;
+          const y3 = rowY + steenH * 0.75;
+          const r2 = polyXRangesAtY(op.polyPts, y2);
+          const r3 = polyXRangesAtY(op.polyPts, y3);
+          for (const [ox1, ox2] of [...r2, ...r3]) segments = cutSegments(segments, ox1, ox2);
         } else {
-          if (seg.start < ox1 - 0.001) newSegs.push({ start: seg.start, end: ox1 });
-          if (seg.end > ox2 + 0.001) newSegs.push({ start: ox2, end: seg.end });
+          for (const [ox1, ox2] of ranges) segments = cutSegments(segments, ox1, ox2);
         }
+      } else {
+        segments = cutSegments(segments, op.x, op.x + op.width);
       }
-      segments = newSegs;
     }
     return segments
       .filter((s) => s.end - s.start > 0.5)

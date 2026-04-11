@@ -276,12 +276,33 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       const opSw = op.width * scale * 0.001;
       const opSh = op.height * scale * 0.001;
 
-      ctx.clearRect(opSx - 0.5, opSy - 0.5, opSw + 1, opSh + 1);
-      ctx.fillStyle = 'rgba(147,197,253,0.18)';
-      ctx.fillRect(opSx, opSy, opSw, opSh);
-      ctx.strokeStyle = '#93c5fd';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(opSx, opSy, opSw, opSh);
+      if (op.polyPts && op.polyPts.length >= 3) {
+        const pts = op.polyPts.map((p) => toScreen(p.l, p.h));
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.closePath();
+        ctx.clip();
+        ctx.clearRect(opSx - 2, opSy - 2, opSw + 4, opSh + 4);
+        ctx.fillStyle = 'rgba(147,197,253,0.18)';
+        ctx.fillRect(opSx - 2, opSy - 2, opSw + 4, opSh + 4);
+        ctx.restore();
+        ctx.strokeStyle = '#93c5fd';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.closePath();
+        ctx.stroke();
+      } else {
+        ctx.clearRect(opSx - 0.5, opSy - 0.5, opSw + 1, opSh + 1);
+        ctx.fillStyle = 'rgba(147,197,253,0.18)';
+        ctx.fillRect(opSx, opSy, opSw, opSh);
+        ctx.strokeStyle = '#93c5fd';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(opSx, opSy, opSw, opSh);
+      }
 
       if (opSw > 20) {
         const labelY = opSy - 2;
@@ -292,40 +313,6 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
         ctx.fillText(`${Math.round(op.x)}`, opSx + 2, labelY);
         ctx.textAlign = 'right';
         ctx.fillText(`${Math.round(op.x + op.width)}`, opSx + opSw - 2, labelY);
-      }
-    }
-
-    for (const wall of (walls ?? [])) {
-      if (!wall.openings) continue;
-      const withOrigin = (walls ?? []).filter((w) => w.wallOrigin);
-      if (!withOrigin.length) continue;
-      const minX = Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart));
-      const minH = Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart));
-      const wallOffsetX = (wall.wallOrigin?.lengthStart ?? 0) - minX;
-      const wallOffsetH = (wall.wallOrigin?.heightStart ?? 0) - minH;
-
-      for (const op of wall.openings) {
-        if (!op.polyPts?.length) continue;
-        const isNamedOpening = op.type === 'raam' || op.type === 'deur';
-        const isLarge = (op.breedte ?? 0) >= 400 && (op.hoogte ?? 0) >= 400;
-        if (!isNamedOpening && !isLarge) continue;
-        const pts = op.polyPts.map((p) => toScreen(wallOffsetX + p.l, wallOffsetH + p.h));
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(pts[0][0], pts[0][1]);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-        ctx.closePath();
-        ctx.clip();
-        const [opSx, opSy] = toScreen(wallOffsetX + (op.x ?? 0), wallOffsetH + (op.y ?? 0) + (op.hoogte ?? 0));
-        ctx.clearRect(opSx - 2, opSy - 2, (op.breedte ?? 0) * scale * 0.001 + 4, (op.hoogte ?? 0) * scale * 0.001 + 4);
-        ctx.restore();
-        ctx.strokeStyle = '#93c5fd';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(pts[0][0], pts[0][1]);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-        ctx.closePath();
-        ctx.stroke();
       }
     }
 
