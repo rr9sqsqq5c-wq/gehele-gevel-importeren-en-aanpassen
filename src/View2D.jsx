@@ -144,10 +144,6 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       ctx.fillStyle = hexToRgba(color, 0.2);
       ctx.fillRect(sx, sy, sw, sh);
 
-      ctx.strokeStyle = isSel ? '#facc15' : (gid ? color : '#475569');
-      ctx.lineWidth = isSel ? 2 : 1;
-      ctx.strokeRect(sx, sy, sw, sh);
-
       const pattern = patterns?.[wall.expressID];
       if (pattern && gs) {
         const mat = gs.material ?? {};
@@ -166,6 +162,12 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
 
         ctx.fillStyle = hexToRgba(color, 0.15);
         ctx.fillRect(sx, sy, sw, sh);
+      }
+
+      if (isSel) {
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(sx, sy, sw, sh);
       }
 
       for (const op of (wall.openings ?? [])) {
