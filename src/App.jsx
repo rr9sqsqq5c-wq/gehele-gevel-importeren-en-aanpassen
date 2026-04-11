@@ -366,12 +366,13 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
   );
 }
 
-function Tooltip({ text, children }) {
+function Tooltip({ text, children, block }) {
   const [visible, setVisible] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
+  const Tag = block ? 'div' : 'span';
   return (
-    <span
-      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+    <Tag
+      style={{ position: 'relative', display: block ? 'block' : 'inline-flex', alignItems: 'center' }}
       onMouseEnter={(e) => { setVisible(true); setPos({ x: e.clientX, y: e.clientY }); }}
       onMouseMove={(e) => setPos({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => setVisible(false)}
@@ -389,7 +390,7 @@ function Tooltip({ text, children }) {
           lineHeight: 1.5,
           padding: '6px 10px',
           borderRadius: 5,
-          maxWidth: 240,
+          maxWidth: 260,
           pointerEvents: 'none',
           boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
           whiteSpace: 'pre-wrap',
@@ -397,7 +398,7 @@ function Tooltip({ text, children }) {
           {text}
         </div>
       )}
-    </span>
+    </Tag>
   );
 }
 
@@ -874,50 +875,62 @@ export default function App() {
       <div style={{ background: '#1e293b', color: '#f8fafc', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <span style={{ fontWeight: 700, fontSize: 15 }}>IFC Brickslip Planner</span>
 
-        <label style={{ cursor: 'pointer' }}>
-          <input type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} disabled={loadStatus === 'loading'} />
-          <span style={{ background: (loadStatus === 'loading' || loadStatus === 'scanning') ? '#475569' : '#3b82f6', color: '#fff', padding: '4px 12px', borderRadius: 4, fontSize: 12, display: 'inline-block' }}>
-            {loadStatus === 'scanning' ? '🔍 Scannen…' : loadStatus === 'loading' ? '⏳ Laden…' : '📂 IFC importeren'}
-          </span>
-        </label>
+        <Tooltip text={"Laad een IFC-bestand in. Na het selecteren van het bestand kun je kiezen welke wandtypen je wilt importeren.\nAlleen Basic Wall elementen worden weergegeven."}>
+          <label style={{ cursor: 'pointer' }}>
+            <input type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} disabled={loadStatus === 'loading'} />
+            <span style={{ background: (loadStatus === 'loading' || loadStatus === 'scanning') ? '#475569' : '#3b82f6', color: '#fff', padding: '4px 12px', borderRadius: 4, fontSize: 12, display: 'inline-block' }}>
+              {loadStatus === 'scanning' ? '🔍 Scannen…' : loadStatus === 'loading' ? '⏳ Laden…' : '📂 IFC importeren'}
+            </span>
+          </label>
+        </Tooltip>
 
         {ifcFileName && <span style={{ fontSize: 11, color: '#94a3b8' }}>{ifcFileName}.ifc · {allWalls.length} wanden</span>}
         {loadError && <span style={{ fontSize: 11, color: '#f87171' }}>⚠ {loadError}</span>}
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           {groupsHistory.length > 0 && (
-            <button onClick={undo} title="Ongedaan maken (Ctrl+Z)" style={{ background: '#334155', color: '#f1f5f9', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
-              ↩ Undo
-            </button>
+            <Tooltip text={"Maakt de laatste groepering-actie ongedaan.\nSneltoets: Ctrl+Z"}>
+              <button onClick={undo} style={{ background: '#334155', color: '#f1f5f9', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
+                ↩ Undo
+              </button>
+            </Tooltip>
           )}
           {viewMode === '3d' && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer' }}>
-              <input type="checkbox" checked={showPattern} onChange={(e) => setShowPattern(e.target.checked)} />
-              Patroon in 3D
-            </label>
+            <Tooltip text={"Toont het berekende steenstrippatroon als gekleurde vlakken op de wanden in de 3D-viewer.\nUitzetten kan handig zijn voor een beter overzicht van de geometrie."}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer' }}>
+                <input type="checkbox" checked={showPattern} onChange={(e) => setShowPattern(e.target.checked)} />
+                Patroon in 3D
+              </label>
+            </Tooltip>
           )}
 
           {allWalls.length > 0 && (
             <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', border: '1px solid #334155' }}>
-              <button
-                onClick={() => setViewMode('3d')}
-                style={{ background: viewMode === '3d' ? '#3b82f6' : '#1e293b', color: '#fff', border: 'none', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
-              >
-                3D
-              </button>
-              <button
-                onClick={() => setViewMode('2d')}
-                style={{ background: viewMode === '2d' ? '#3b82f6' : '#1e293b', color: viewMode === '2d' ? '#fff' : '#94a3b8', border: 'none', borderLeft: '1px solid #334155', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
-              >
-                2D Gevel
-              </button>
+              <Tooltip text={"Toont alle wanden in een interactieve 3D-viewer.\nKlik op een element om het te selecteren. Slepen = rondkijken."}>
+                <button
+                  onClick={() => setViewMode('3d')}
+                  style={{ background: viewMode === '3d' ? '#3b82f6' : '#1e293b', color: '#fff', border: 'none', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
+                >
+                  3D
+                </button>
+              </Tooltip>
+              <Tooltip text={"Toont het 2D gevelaanzicht van de actieve groep.\nHet steenstrippatroon, zetwerk, panelen en latten worden hier getekend.\nSelecteer eerst een groep links in de lijst."}>
+                <button
+                  onClick={() => setViewMode('2d')}
+                  style={{ background: viewMode === '2d' ? '#3b82f6' : '#1e293b', color: viewMode === '2d' ? '#fff' : '#94a3b8', border: 'none', borderLeft: '1px solid #334155', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
+                >
+                  2D Gevel
+                </button>
+              </Tooltip>
             </div>
           )}
 
           {groups.length > 0 && (
-            <button onClick={handleExport} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
-              ⬇ Exporteer IFC
-            </button>
+            <Tooltip text={"Exporteert alle groepen met steenstrippatroon als IFC-bestand.\nElk element krijgt individuele brickslip-objecten op basis van de groepsinstellingen."}>
+              <button onClick={handleExport} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
+                ⬇ Exporteer IFC
+              </button>
+            </Tooltip>
           )}
         </div>
       </div>
@@ -934,34 +947,44 @@ export default function App() {
           ) : (
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
               {adjacencies.length > 0 && (
-                <div style={{ padding: '5px 10px', background: '#ede9fe', borderBottom: '1px solid #c4b5fd', fontSize: 11, color: '#6d28d9', flexShrink: 0 }}>
-                  ⬡ {adjacencies.length} aangrenzende relatie{adjacencies.length !== 1 ? 's' : ''} gevonden
-                </div>
+                <Tooltip block text={"Aangrenzende elementen delen een gemeenschappelijke rand.\nDit betekent dat het brickslip-patroon doorlopend kan worden over meerdere wanden.\nGebruik 'Auto-groeperen' om ze automatisch in groepen te verdelen."}>
+                  <div style={{ padding: '5px 10px', background: '#ede9fe', borderBottom: '1px solid #c4b5fd', fontSize: 11, color: '#6d28d9', flexShrink: 0, cursor: 'default' }}>
+                    ⬡ {adjacencies.length} aangrenzende relatie{adjacencies.length !== 1 ? 's' : ''} gevonden
+                  </div>
+                </Tooltip>
               )}
 
               <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', background: '#fff', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <button onClick={autoGroup} style={btn('#6366f1')}>
-                  🔗 Auto-groeperen op aangrenzendheid
-                </button>
-                {selectionHasUngrouped && (
-                  <button onClick={createGroup} style={btn('#0ea5e9')}>
-                    + Nieuwe groep van selectie ({ungroupedSelCount})
+                <Tooltip block text={"Detecteert automatisch welke wanden aan elkaar grenzen en maakt voor elke verbonden groep een aparte groep.\nHandig als een heel gebouw in één keer gegroepeerd moet worden."}>
+                  <button onClick={autoGroup} style={btn('#6366f1')}>
+                    🔗 Auto-groeperen op aangrenzendheid
                   </button>
+                </Tooltip>
+                {selectionHasUngrouped && (
+                  <Tooltip block text={"Maakt een nieuwe groep van de geselecteerde elementen die nog niet in een groep zitten.\nSelecteer eerst elementen in de 3D-viewer door erop te klikken."}>
+                    <button onClick={createGroup} style={btn('#0ea5e9')}>
+                      + Nieuwe groep van selectie ({ungroupedSelCount})
+                    </button>
+                  </Tooltip>
                 )}
                 {selectionHasUngrouped && groups.map((g) => {
                   const s = getSettings(g.id);
                   return (
-                    <button key={g.id} onClick={() => addToGroup(g.id)}
-                      style={{ ...btn(s.color), display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, border: '1px solid rgba(255,255,255,0.4)', display: 'inline-block', flexShrink: 0 }} />
-                      <span>Voeg toe aan {s.name}</span>
-                    </button>
+                    <Tooltip key={g.id} block text={`Voegt de geselecteerde ongegroepeende elementen toe aan bestaande groep "${s.name}".`}>
+                      <button onClick={() => addToGroup(g.id)}
+                        style={{ ...btn(s.color), display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, border: '1px solid rgba(255,255,255,0.4)', display: 'inline-block', flexShrink: 0 }} />
+                        <span>Voeg toe aan {s.name}</span>
+                      </button>
+                    </Tooltip>
                   );
                 })}
                 {selectedWallIds.size > 0 && (
-                  <button onClick={clearSelection} style={{ ...btn('#64748b') }}>
-                    ✕ Deselecteer alles ({selectedWallIds.size})
-                  </button>
+                  <Tooltip block text={"Heft de selectie van alle elementen op. Geselecteerde elementen worden blauw getoond in de 3D-viewer."}>
+                    <button onClick={clearSelection} style={{ ...btn('#64748b') }}>
+                      ✕ Deselecteer alles ({selectedWallIds.size})
+                    </button>
+                  </Tooltip>
                 )}
               </div>
 
@@ -1019,9 +1042,11 @@ export default function App() {
                   <div style={{ padding: '5px 10px', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span>Zonder groep ({ungrouped.length})</span>
                     {ungrouped.length > 0 && (
-                      <button onClick={selectAllUngrouped} style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', fontSize: 10, padding: 0 }}>
-                        Selecteer alle
-                      </button>
+                      <Tooltip text={"Selecteert alle elementen die nog niet in een groep zitten.\nDaarna kun je er een nieuwe groep van maken."}>
+                        <button onClick={selectAllUngrouped} style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', fontSize: 10, padding: 0 }}>
+                          Selecteer alle
+                        </button>
+                      </Tooltip>
                     )}
                   </div>
                   <div style={{ flex: 1, overflowY: 'auto' }}>
