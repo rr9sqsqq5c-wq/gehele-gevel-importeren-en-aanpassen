@@ -119,7 +119,7 @@ const nextColor = () => GROUP_COLORS[_colorIdx++ % GROUP_COLORS.length];
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, penanten: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 18, gewichtM2: 15, maxKg: 100 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, penanten: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 18, gewichtM2: 15, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -304,7 +304,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               {pan.enabled && (() => {
                 const brickW = (settings.material ?? DEFAULT_MATERIAL).brickWeightM2 ?? 40;
                 const panW = pan.gewichtM2 ?? 15;
-                const maxKg = pan.maxKg ?? 100;
+                const maxKg = pan.maxKg ?? 50;
                 const totalW = Math.max(0.001, brickW + panW);
                 const maxM2 = Math.round(maxKg / totalW * 100) / 100;
                 return (
@@ -331,7 +331,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                           style={{ ...inp, width: '100%' }} />
                       </Field>
                       <Field label="Max gewicht (kg)" tip="Maximaal gewicht per paneel inclusief brickslips (kg). Bepaalt de maximale paneeloppervlakte.">
-                        <input type="number" min={1} step={5} value={pan.maxKg ?? 100}
+                        <input type="number" min={1} step={5} value={pan.maxKg ?? 50}
                           onChange={(e) => upd({ maxKg: Number(e.target.value) })}
                           style={{ ...inp, width: '100%' }} />
                       </Field>
