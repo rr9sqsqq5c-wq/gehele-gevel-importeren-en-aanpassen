@@ -306,6 +306,9 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
 
       for (const op of wall.openings) {
         if (!op.polyPts?.length) continue;
+        const isNamedOpening = op.type === 'raam' || op.type === 'deur';
+        const isLarge = (op.breedte ?? 0) >= 400 && (op.hoogte ?? 0) >= 400;
+        if (!isNamedOpening && !isLarge) continue;
         const pts = op.polyPts.map((p) => toScreen(wallOffsetX + p.l, wallOffsetH + p.h));
         ctx.save();
         ctx.beginPath();

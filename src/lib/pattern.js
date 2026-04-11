@@ -181,6 +181,9 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       const ow = op.breedte ?? op.width ?? 0;
       const oh = op.hoogte ?? op.height ?? 0;
       if (ow < 50 || oh < 50) continue;
+      const isNamedOpening = op.type === 'raam' || op.type === 'deur';
+      const isLarge = ow >= 400 && oh >= 400;
+      if (!isNamedOpening && !isLarge) continue;
       rawOpenings.push({ x: ox, y: oy, width: ow, height: oh });
     }
   }
