@@ -15,6 +15,19 @@ export function getOpeningPoly(op) {
 
 function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX) {
   const { steenL, steenH, lint, stoot } = material;
+
+  if (verband === 'tegelverband') {
+    const stepW = steenH + stoot;
+    const pieces = [];
+    let x = 0;
+    while (x + 0.001 < totalWidth) {
+      const len = round2(Math.min(steenH, totalWidth - x));
+      if (len > 0.001) pieces.push({ start: round2(x + startX), length: len, label: len < steenH - 0.001 ? 'Rest' : 'Tegel' });
+      x += stepW;
+    }
+    return pieces;
+  }
+
   const kop = round2((steenL - stoot) / 2);
   const driekwart = round2((steenL + stoot) * 0.75 - stoot);
   const useKop = verband === 'halfsteens' && rowIndex % 2 === 0;
@@ -70,6 +83,11 @@ function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX)
     .filter((p) => p.start + p.length > startX - 0.001);
 }
 
+function getLagenmaat(material, verband) {
+  if (verband === 'tegelverband') return material.steenL + material.lint;
+  return material.steenH + material.lint;
+}
+
 function recomputeStarts(pieces, stoot) {
   let x = 0;
   return pieces.map((p, i) => {
@@ -116,7 +134,8 @@ function clipPieceToWall(piece, wallStart, wallEnd, openings, rowY, steenH) {
 
 export function buildGroupPattern(walls, adjacencies, material, verband) {
   const { steenH, lint } = material;
-  const lagenmaat = steenH + lint;
+  const lagenmaat = getLagenmaat(material, verband);
+  const rowH = verband === 'tegelverband' ? material.steenL : steenH;
 
   if (!walls.length || lagenmaat <= 0) return {};
 
@@ -142,7 +161,7 @@ export function buildGroupPattern(walls, adjacencies, material, verband) {
       const clipped = [];
 
       for (const piece of fullPieces) {
-        const localPieces = clipPieceToWall(piece, wallStart, wallEnd, wall.openings, rowY, steenH);
+        const localPieces = clipPieceToWall(piece, wallStart, wallEnd, wall.openings, rowY, rowH);
         for (const lp of localPieces) {
           clipped.push({ ...lp, start: round2(lp.start - wallStart) });
         }
@@ -159,7 +178,8 @@ export function buildGroupPattern(walls, adjacencies, material, verband) {
 
 export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk) {
   const { steenH, lint } = material;
-  const lagenmaat = steenH + lint;
+  const lagenmaat = getLagenmaat(material, verband);
+  const rowH = verband === 'tegelverband' ? material.steenL : steenH;
 
   const withOrigin = walls.filter((w) => w.wallOrigin);
   if (!withOrigin.length || lagenmaat <= 0) return null;
