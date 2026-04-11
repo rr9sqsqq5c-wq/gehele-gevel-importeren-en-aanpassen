@@ -34,16 +34,17 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
     const withOrigin = walls.filter((w) => w.wallOrigin);
     if (!withOrigin.length) return { minH: 0, map: {} };
 
+    const minX = Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart));
     const minH = Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart));
 
     const map = {};
     for (const w of withOrigin) {
       map[w.expressID] = {
-        vx: 0,
+        vx: w.wallOrigin.lengthStart - minX,
         vy: w.wallOrigin.heightStart - minH,
       };
     }
-    return { minH, map };
+    return { minX, minH, map };
   }, [walls]);
 
   const bounds = useMemo(() => {
