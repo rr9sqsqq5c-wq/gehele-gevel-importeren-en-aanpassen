@@ -172,7 +172,7 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
 
       for (const op of (wall.openings ?? [])) {
         if (op.polyPts?.length >= 3) {
-          const pts = op.polyPts.map(([pl, ph]) => toScreen(vx + pl, vy + ph));
+          const pts = op.polyPts.map((p) => toScreen(vx + p.l, vy + p.h));
           ctx.save();
           ctx.beginPath();
           ctx.moveTo(pts[0][0], pts[0][1]);
