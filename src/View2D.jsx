@@ -1,17 +1,11 @@
-import { useRef, useEffect, useMemo, useCallback, useState } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { buildFullGroupFacadePattern } from './lib/pattern.js';
 
 function hexToRgba(hex, alpha = 1) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function lighten(hex, amount = 0.3) {
-  const r = Math.min(255, parseInt(hex.slice(1, 3), 16) + Math.round(255 * amount));
-  const g = Math.min(255, parseInt(hex.slice(3, 5), 16) + Math.round(255 * amount));
-  const b = Math.min(255, parseInt(hex.slice(5, 7), 16) + Math.round(255 * amount));
-  return `rgb(${r},${g},${b})`;
 }
 
 function brickColor(label, baseColor) {
@@ -21,7 +15,17 @@ function brickColor(label, baseColor) {
   return baseColor ?? '#a64033';
 }
 
-export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedWallIds, maxHoogte, penantFaceData, groupColor }) {
+function pickGridStep(scale) {
+  const pixelsPerMm = scale * 0.001;
+  if (pixelsPerMm < 0.005) return 0;
+  const targets = [10000, 5000, 2000, 1000, 500, 200, 100, 50, 20, 10];
+  for (const s of targets) {
+    if (s * pixelsPerMm >= 40) return s;
+  }
+  return 0;
+}
+
+export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -30,44 +34,26 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
   const transform = useRef({ scale: 1, tx: 0, ty: 0 });
   const dragStart = useRef(null);
 
-  const virtualCoords = useMemo(() => {
-    const withOrigin = walls.filter((w) => w.wallOrigin);
-    if (!withOrigin.length) return { minH: 0, map: {} };
+  const mat = groupSettings?.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
+  const verband = groupSettings?.verband ?? 'halfsteens';
+  const color = groupSettings?.color ?? '#a64033';
 
-    const minX = Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart));
-    const minH = Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart));
-
-    const map = {};
-    for (const w of withOrigin) {
-      map[w.expressID] = {
-        vx: w.wallOrigin.lengthStart - minX,
-        vy: w.wallOrigin.heightStart - minH,
-      };
-    }
-    return { minX, minH, map };
-  }, [walls]);
+  const facadeData = useMemo(() => {
+    if (!walls?.length) return null;
+    return buildFullGroupFacadePattern(walls, mat, verband, maxHoogte);
+  }, [walls, mat, verband, maxHoogte]);
 
   const bounds = useMemo(() => {
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-    for (const wall of walls) {
-      if (!wall.wallOrigin) continue;
-      const { vx, vy } = virtualCoords.map[wall.expressID] ?? { vx: 0, vy: 0 };
-      minX = Math.min(minX, vx);
-      maxX = Math.max(maxX, vx + wall.length);
-      minY = Math.min(minY, vy);
-      maxY = Math.max(maxY, vy + wall.height);
-    }
-    if (!isFinite(minX)) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
-    return { minX, maxX, minY, maxY };
-  }, [walls, virtualCoords]);
+    if (!facadeData) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
+    return { minX: 0, maxX: facadeData.groupWidth, minY: 0, maxY: facadeData.groupHeight };
+  }, [facadeData]);
 
   const fitToView = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !canvas.width || !canvas.height) return;
     const W = canvas.width;
     const H = canvas.height;
-    const PAD = 24;
+    const PAD = 32;
     const bw = bounds.maxX - bounds.minX || 1;
     const bh = bounds.maxY - bounds.minY || 1;
     const scale = Math.min((W - PAD * 2) / bw, (H - PAD * 2) / bh) * 1000;
@@ -90,9 +76,7 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
     return () => obs.disconnect();
   }, []);
 
-  useEffect(() => {
-    fitToView();
-  }, [fitToView, size]);
+  useEffect(() => { fitToView(); }, [fitToView, size]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -129,130 +113,92 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       }
     }
 
-    for (const wall of walls) {
-      if (!wall.wallOrigin) continue;
-      const { vx, vy } = virtualCoords.map[wall.expressID] ?? { vx: 0, vy: 0 };
+    if (!facadeData) {
+      ctx.fillStyle = '#64748b';
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Geen groep geselecteerd', W / 2, H / 2);
+      return;
+    }
 
-      const gid = wallGroupMap[wall.expressID];
-      const gs = gid ? groupSettings(gid) : null;
-      const color = gs?.color ?? '#64748b';
-      const isSel = selectedWallIds?.has(wall.expressID);
+    const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
+    const steenH = mat.steenH;
 
-      const [sx, sy] = toScreen(vx, vy + wall.height);
-      const sw = wall.length * scale * 0.001;
-      const sh = wall.height * scale * 0.001;
+    const [faceSx, faceSy] = toScreen(0, groupHeight);
+    const faceW = groupWidth * scale * 0.001;
+    const faceH = groupHeight * scale * 0.001;
 
-      ctx.fillStyle = hexToRgba(color, 0.2);
-      ctx.fillRect(sx, sy, sw, sh);
+    ctx.fillStyle = hexToRgba(color, 0.15);
+    ctx.fillRect(faceSx, faceSy, faceW, faceH);
 
-      const pattern = patterns?.[wall.expressID];
-      if (pattern && gs) {
-        const mat = gs.material ?? {};
-        const steenH = mat.steenH ?? 50;
-
-        ctx.fillStyle = hexToRgba(color, 0.85);
-        for (const row of pattern) {
-          const [, rowSy] = toScreen(vx, vy + row.y + steenH);
-          const rowSh = steenH * scale * 0.001;
-          for (const piece of row.pieces) {
-            const [pSx] = toScreen(vx + piece.start, 0);
-            const pSw = piece.length * scale * 0.001;
-            ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
-          }
-        }
-
-        ctx.fillStyle = hexToRgba(color, 0.15);
-        ctx.fillRect(sx, sy, sw, sh);
+    for (const row of rows) {
+      const [, rowSy] = toScreen(0, row.y + steenH);
+      const rowSh = steenH * scale * 0.001;
+      for (const piece of row.pieces) {
+        const [pSx] = toScreen(piece.start, 0);
+        const pSw = piece.length * scale * 0.001;
+        ctx.fillStyle = brickColor(piece.label, color);
+        ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
       }
+    }
 
-      if (isSel) {
-        ctx.strokeStyle = '#facc15';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(sx, sy, sw, sh);
-      }
+    for (const op of groupOpenings) {
+      const [opSx, opSy] = toScreen(op.x, op.y + op.height);
+      const opSw = op.width * scale * 0.001;
+      const opSh = op.height * scale * 0.001;
 
-      for (const op of (wall.openings ?? [])) {
-        const opLeftMm = Math.round(vx + op.x);
-        const opRightMm = Math.round(vx + op.x + op.breedte);
-        const [opSx, opSy] = toScreen(vx + op.x, vy + op.y + op.hoogte);
-        const opSw = op.breedte * scale * 0.001;
-        const opSh = op.hoogte * scale * 0.001;
+      ctx.clearRect(opSx - 0.5, opSy - 0.5, opSw + 1, opSh + 1);
+      ctx.fillStyle = 'rgba(147,197,253,0.18)';
+      ctx.fillRect(opSx, opSy, opSw, opSh);
+      ctx.strokeStyle = '#93c5fd';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(opSx, opSy, opSw, opSh);
 
-        if (op.polyPts?.length >= 3) {
-          const pts = op.polyPts.map((p) => toScreen(vx + p.l, vy + p.h));
-          ctx.save();
-          ctx.beginPath();
-          ctx.moveTo(pts[0][0], pts[0][1]);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-          ctx.closePath();
-          ctx.clip();
-          ctx.clearRect(opSx - 1, opSy - 1, opSw + 2, opSh + 2);
-          ctx.restore();
-          ctx.fillStyle = 'rgba(147,197,253,0.25)';
-          ctx.beginPath();
-          ctx.moveTo(pts[0][0], pts[0][1]);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-          ctx.closePath();
-          ctx.fill();
-          ctx.strokeStyle = '#93c5fd';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(pts[0][0], pts[0][1]);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-          ctx.closePath();
-          ctx.stroke();
-        } else {
-          ctx.clearRect(opSx, opSy, opSw, opSh);
-          ctx.fillStyle = 'rgba(147,197,253,0.25)';
-          ctx.fillRect(opSx, opSy, opSw, opSh);
-          ctx.strokeStyle = '#93c5fd';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(opSx, opSy, opSw, opSh);
-        }
-
-        if (opSw > 20) {
-          const labelY = opSy - 2;
-          ctx.font = '9px system-ui, sans-serif';
-          ctx.fillStyle = '#7dd3fc';
-          ctx.textBaseline = 'bottom';
-
-          ctx.textAlign = 'left';
-          ctx.fillText(`${opLeftMm}`, opSx + 2, labelY);
-
-          ctx.textAlign = 'right';
-          ctx.fillText(`${opRightMm}`, opSx + opSw - 2, labelY);
-        }
-      }
-
-      if (sw > 30) {
-        ctx.font = `${Math.max(9, Math.min(13, sw / 10))}px system-ui, sans-serif`;
-        ctx.fillStyle = '#f1f5f9';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const label = wall.name.length > 20 ? wall.name.slice(0, 18) + '…' : wall.name;
-        ctx.fillText(label, sx + sw / 2, sy + sh / 2);
-      }
-
-      if (sh > 20) {
+      if (opSw > 20) {
+        const labelY = opSy - 2;
         ctx.font = '9px system-ui, sans-serif';
-        ctx.fillStyle = '#94a3b8';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        const dim = `${wall.length}×${wall.height}`;
-        ctx.fillText(dim, sx + sw / 2, sy + sh - 14);
+        ctx.fillStyle = '#7dd3fc';
+        ctx.textBaseline = 'bottom';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${Math.round(op.x)}`, opSx + 2, labelY);
+        ctx.textAlign = 'right';
+        ctx.fillText(`${Math.round(op.x + op.width)}`, opSx + opSw - 2, labelY);
+      }
+    }
+
+    for (const wall of (walls ?? [])) {
+      if (!wall.openings) continue;
+      const withOrigin = (walls ?? []).filter((w) => w.wallOrigin);
+      if (!withOrigin.length) continue;
+      const minX = Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart));
+      const minH = Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart));
+      const wallOffsetX = (wall.wallOrigin?.lengthStart ?? 0) - minX;
+      const wallOffsetH = (wall.wallOrigin?.heightStart ?? 0) - minH;
+
+      for (const op of wall.openings) {
+        if (!op.polyPts?.length) continue;
+        const pts = op.polyPts.map((p) => toScreen(wallOffsetX + p.l, wallOffsetH + p.h));
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.closePath();
+        ctx.clip();
+        const [opSx, opSy] = toScreen(wallOffsetX + (op.x ?? 0), wallOffsetH + (op.y ?? 0) + (op.hoogte ?? 0));
+        ctx.clearRect(opSx - 2, opSy - 2, (op.breedte ?? 0) * scale * 0.001 + 4, (op.hoogte ?? 0) * scale * 0.001 + 4);
+        ctx.restore();
+        ctx.strokeStyle = '#93c5fd';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.closePath();
+        ctx.stroke();
       }
     }
 
     if (penantFaceData?.length) {
-      const steenH = (() => {
-        for (const wall of walls) {
-          const gid = wallGroupMap[wall.expressID];
-          const gs = gid ? groupSettings(gid) : null;
-          return gs?.material?.steenH ?? 50;
-        }
-        return 50;
-      })();
-
       for (const { penant: p, front, height: pH } of penantFaceData) {
         const pX = p.x ?? 0;
         const pB = Math.max(1, p.breedte ?? 400);
@@ -311,43 +257,37 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       }
     }
 
-    if (maxHoogte !== null && maxHoogte > 0 && walls.length > 0) {
-      const wallsWithOrigin = walls.filter((w) => w.wallOrigin);
-      if (wallsWithOrigin.length > 0) {
-        const lineVY = maxHoogte;
-        let xMin = Infinity, xMax = -Infinity;
-        for (const wall of wallsWithOrigin) {
-          const { vx } = virtualCoords.map[wall.expressID] ?? { vx: 0 };
-          const [sx] = toScreen(vx, 0);
-          const ex = toScreen(vx + wall.length, 0)[0];
-          if (sx < xMin) xMin = sx;
-          if (ex > xMax) xMax = ex;
-        }
-        const [, sy] = toScreen(0, lineVY);
-        ctx.save();
-        ctx.strokeStyle = '#f97316';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([8, 5]);
-        ctx.beginPath();
-        ctx.moveTo(Math.max(0, xMin - 20), sy);
-        ctx.lineTo(Math.min(W, xMax + 20), sy);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = '#f97316';
-        ctx.font = '10px system-ui, sans-serif';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(`▲ max ${maxHoogte} mm`, Math.max(4, xMin), sy - 2);
-        ctx.restore();
-      }
+    if (maxHoogte != null && maxHoogte > 0) {
+      const [, sy] = toScreen(0, maxHoogte);
+      const [sx1] = toScreen(0, 0);
+      const [sx2] = toScreen(groupWidth, 0);
+      ctx.save();
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 5]);
+      ctx.beginPath();
+      ctx.moveTo(Math.max(0, sx1 - 20), sy);
+      ctx.lineTo(Math.min(W, sx2 + 20), sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#f97316';
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`▲ max ${maxHoogte} mm`, Math.max(4, sx1), sy - 2);
+      ctx.restore();
     }
+
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(faceSx, faceSy, faceW, faceH);
 
     ctx.font = '10px system-ui, sans-serif';
     ctx.fillStyle = '#64748b';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}`, 8, H - 6);
-  }, [walls, patterns, groupSettings, wallGroupMap, selectedWallIds, bounds, virtualCoords, size, redrawTick, maxHoogte, penantFaceData, groupColor]);
+    ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
+  }, [walls, facadeData, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
@@ -410,14 +350,4 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       </div>
     </div>
   );
-}
-
-function pickGridStep(scale) {
-  const pixelsPerMm = scale * 0.001;
-  if (pixelsPerMm < 0.005) return 0;
-  const targets = [10000, 5000, 2000, 1000, 500, 200, 100, 50, 20, 10];
-  for (const s of targets) {
-    if (s * pixelsPerMm >= 40) return s;
-  }
-  return 0;
 }

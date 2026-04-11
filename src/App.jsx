@@ -908,10 +908,7 @@ export default function App() {
                 <>
                   <View2D
                     walls={activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean)}
-                    patterns={allPatterns}
-                    groupSettings={getSettings}
-                    wallGroupMap={wallGroupMap}
-                    selectedWallIds={selectedWallIds}
+                    groupSettings={getSettings(activeGroup.id)}
                     maxHoogte={getSettings(activeGroup.id).maxHoogte}
                     penantFaceData={penantFaceData}
                     groupColor={getSettings(activeGroup.id).color}

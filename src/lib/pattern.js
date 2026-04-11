@@ -146,6 +146,83 @@ export function buildGroupPattern(walls, adjacencies, material, verband) {
   return result;
 }
 
+export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte) {
+  const { steenH, lint } = material;
+  const lagenmaat = steenH + lint;
+
+  const withOrigin = walls.filter((w) => w.wallOrigin);
+  if (!withOrigin.length || lagenmaat <= 0) return null;
+
+  const groupMinX = Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart));
+  const groupMaxX = Math.max(...withOrigin.map((w) => w.wallOrigin.lengthStart + w.length));
+  const groupMinH = Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart));
+  const groupMaxH = Math.max(...withOrigin.map((w) => w.wallOrigin.heightStart + w.height));
+
+  const groupWidth = round2(groupMaxX - groupMinX);
+  const groupHeight = round2(groupMaxH - groupMinH);
+  const effectiveHeight = maxHoogte != null && maxHoogte > 0 ? Math.min(groupHeight, maxHoogte) : groupHeight;
+  const totalLagen = Math.floor((effectiveHeight + lint) / lagenmaat);
+
+  const groupOpenings = [];
+  for (const w of withOrigin) {
+    const wallOffsetX = round2(w.wallOrigin.lengthStart - groupMinX);
+    const wallOffsetH = round2(w.wallOrigin.heightStart - groupMinH);
+    for (const op of (w.openings ?? [])) {
+      groupOpenings.push({
+        x: round2(wallOffsetX + (op.x ?? 0)),
+        y: round2(wallOffsetH + (op.y ?? 0)),
+        width: op.breedte ?? op.width ?? 0,
+        height: op.hoogte ?? op.height ?? 0,
+      });
+    }
+  }
+
+  function isInGroupOpening(pieceStart, pieceEnd, rowY) {
+    for (const op of groupOpenings) {
+      if (rowY + 1 < op.y || rowY + steenH > op.y + op.height + 1) continue;
+      if (pieceEnd <= op.x + 0.001 || pieceStart >= op.x + op.width - 0.001) continue;
+      return true;
+    }
+    return false;
+  }
+
+  function splitAroundOpenings(piece, rowY) {
+    let segments = [{ start: piece.start, end: piece.start + piece.length }];
+    for (const op of groupOpenings) {
+      if (rowY + 1 < op.y || rowY + steenH > op.y + op.height + 1) continue;
+      const newSegs = [];
+      for (const seg of segments) {
+        const ox1 = op.x;
+        const ox2 = op.x + op.width;
+        if (seg.end <= ox1 + 0.001 || seg.start >= ox2 - 0.001) {
+          newSegs.push(seg);
+        } else {
+          if (seg.start < ox1 - 0.001) newSegs.push({ start: seg.start, end: ox1 });
+          if (seg.end > ox2 + 0.001) newSegs.push({ start: ox2, end: seg.end });
+        }
+      }
+      segments = newSegs;
+    }
+    return segments
+      .filter((s) => s.end - s.start > 0.5)
+      .map((s) => ({ ...piece, start: round2(s.start), length: round2(s.end - s.start) }));
+  }
+
+  const rows = [];
+  for (let r = 0; r < totalLagen; r++) {
+    const rowY = round2(r * lagenmaat);
+    const rawPieces = buildRowPiecesForWidth(groupWidth, material, verband, r, 0);
+    const clipped = [];
+    for (const piece of rawPieces) {
+      const parts = splitAroundOpenings(piece, rowY);
+      for (const p of parts) clipped.push(p);
+    }
+    if (clipped.length) rows.push({ y: rowY, pieces: clipped });
+  }
+
+  return { rows, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, groupOpenings };
+}
+
 export function getGroupPatternLogic(walls, material, verband) {
   const { steenL, steenH, lint, stoot } = material;
   const lagenmaat = steenH + lint;
