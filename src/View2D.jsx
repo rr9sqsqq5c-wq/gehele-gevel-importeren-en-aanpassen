@@ -42,7 +42,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk, panelen, latten }) {
+export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -284,7 +284,9 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       ctx.clip('evenodd');
     };
 
-    if (allPanels.length) {
+    const vis = layerVisibility ?? {};
+
+    if (allPanels.length && vis.panelen !== false) {
       ctx.save();
       applyOpeningExclusionClip();
       const panelColors = ['rgba(203,213,225,0.45)', 'rgba(186,230,253,0.45)'];
@@ -308,7 +310,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       ctx.restore();
     }
 
-    if (allLatten.length) {
+    if (allLatten.length && vis.latten !== false) {
       ctx.save();
       applyOpeningExclusionClip();
       for (const lat of allLatten) {
@@ -324,14 +326,16 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       ctx.restore();
     }
 
-    for (const row of rows) {
-      const [, rowSy] = toScreen(0, row.y + steenH);
-      const rowSh = steenH * scale * 0.001;
-      for (const piece of row.pieces) {
-        const [pSx] = toScreen(piece.start, 0);
-        const pSw = piece.length * scale * 0.001;
-        ctx.fillStyle = brickColor(piece.label, color);
-        ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
+    if (vis.strips !== false) {
+      for (const row of rows) {
+        const [, rowSy] = toScreen(0, row.y + steenH);
+        const rowSh = steenH * scale * 0.001;
+        for (const piece of row.pieces) {
+          const [pSx] = toScreen(piece.start, 0);
+          const pSw = piece.length * scale * 0.001;
+          ctx.fillStyle = brickColor(piece.label, color);
+          ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
+        }
       }
     }
 
@@ -380,7 +384,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       }
     }
 
-    if (zetwerkParams) {
+    if (zetwerkParams && vis.zetwerk !== false) {
       const { breedte: zwB, offsetH: zwH, offsetV: zwV } = zetwerkParams;
       for (const op of groupOpenings) {
         const zbPx = zwB * scale * 0.001;
