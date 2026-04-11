@@ -172,6 +172,12 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
       }
 
       for (const op of (wall.openings ?? [])) {
+        const opLeftMm = Math.round(vx + op.x);
+        const opRightMm = Math.round(vx + op.x + op.breedte);
+        const [opSx, opSy] = toScreen(vx + op.x, vy + op.y + op.hoogte);
+        const opSw = op.breedte * scale * 0.001;
+        const opSh = op.hoogte * scale * 0.001;
+
         if (op.polyPts?.length >= 3) {
           const pts = op.polyPts.map((p) => toScreen(vx + p.l, vy + p.h));
           ctx.save();
@@ -180,9 +186,6 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
           for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
           ctx.closePath();
           ctx.clip();
-          const [opSx, opSy] = toScreen(vx + op.x, vy + op.y + op.hoogte);
-          const opSw = op.breedte * scale * 0.001;
-          const opSh = op.hoogte * scale * 0.001;
           ctx.clearRect(opSx - 1, opSy - 1, opSw + 2, opSh + 2);
           ctx.restore();
           ctx.fillStyle = 'rgba(147,197,253,0.25)';
@@ -199,15 +202,25 @@ export function View2D({ walls, patterns, groupSettings, wallGroupMap, selectedW
           ctx.closePath();
           ctx.stroke();
         } else {
-          const [opSx, opSy] = toScreen(vx + op.x, vy + op.y + op.hoogte);
-          const opSw = op.breedte * scale * 0.001;
-          const opSh = op.hoogte * scale * 0.001;
           ctx.clearRect(opSx, opSy, opSw, opSh);
           ctx.fillStyle = 'rgba(147,197,253,0.25)';
           ctx.fillRect(opSx, opSy, opSw, opSh);
           ctx.strokeStyle = '#93c5fd';
           ctx.lineWidth = 1;
           ctx.strokeRect(opSx, opSy, opSw, opSh);
+        }
+
+        if (opSw > 20) {
+          const labelY = opSy - 2;
+          ctx.font = '9px system-ui, sans-serif';
+          ctx.fillStyle = '#7dd3fc';
+          ctx.textBaseline = 'bottom';
+
+          ctx.textAlign = 'left';
+          ctx.fillText(`${opLeftMm}`, opSx + 2, labelY);
+
+          ctx.textAlign = 'right';
+          ctx.fillText(`${opRightMm}`, opSx + opSw - 2, labelY);
         }
       }
 
