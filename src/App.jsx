@@ -1000,13 +1000,11 @@ export default function App() {
         {loadError && <span style={{ fontSize: 11, color: '#f87171' }}>⚠ {loadError}</span>}
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-          {groupsHistory.length > 0 && (
-            <Tooltip text={"Maakt de laatste groepering-actie ongedaan.\nSneltoets: Ctrl+Z"}>
-              <button onClick={undo} style={{ background: '#334155', color: '#f1f5f9', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
-                ↩ Undo
-              </button>
-            </Tooltip>
-          )}
+          <Tooltip text={"Maakt de laatste groepering-actie ongedaan.\nSneltoets: Ctrl+Z"}>
+            <button onClick={undo} disabled={groupsHistory.length === 0} style={{ background: '#334155', color: groupsHistory.length === 0 ? '#64748b' : '#f1f5f9', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: groupsHistory.length === 0 ? 'default' : 'pointer', opacity: groupsHistory.length === 0 ? 0.5 : 1 }}>
+              ↩ Undo
+            </button>
+          </Tooltip>
           {viewMode === '3d' && (
             <Tooltip text={"Toont het berekende steenstrippatroon als gekleurde vlakken op de wanden in de 3D-viewer.\nUitzetten kan handig zijn voor een beter overzicht van de geometrie."}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer' }}>
