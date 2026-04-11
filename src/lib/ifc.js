@@ -116,14 +116,19 @@ function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
     } finally { geom?.delete(); }
   }
 
-  if (!cellSet.size) return null;
+  if (!cellSet.size) {
+    console.log(`[getFacadePolygon] expressID=${expressID} → cellSet empty (no geometry triangles projected)`);
+    return null;
+  }
 
   const parsed = [...cellSet].map(k => { const [gl, gh] = k.split(',').map(Number); return { gl, gh }; });
   const minGL = Math.min(...parsed.map(c => c.gl)) - 1;
   const maxGL = Math.max(...parsed.map(c => c.gl)) + 1;
   const minGH = Math.min(...parsed.map(c => c.gh)) - 1;
   const maxGH = Math.max(...parsed.map(c => c.gh)) + 1;
-  if ((maxGL - minGL) * (maxGH - minGH) > 200000) return null;
+  const gridArea = (maxGL - minGL) * (maxGH - minGH);
+  console.log(`[getFacadePolygon] expressID=${expressID} cellSet=${cellSet.size} gridArea=${gridArea}`);
+  if (gridArea > 200000) return null;
 
   const outside = new Set();
   const queue = [`${minGL},${minGH}`];
@@ -340,9 +345,11 @@ export async function parseIfc(file, allowedTypes = null) {
               const fillID = fillerExpressID[oID];
 
               let polygon = getFacadePolygon(api, modelID, oID, lengthAxis, heightAxis, wallBB);
+              const polyFromOID = !!polygon;
               if (!polygon && fillID) {
                 polygon = getFacadePolygon(api, modelID, fillID, lengthAxis, heightAxis, wallBB);
               }
+              console.log(`[IFC opening] oID=${oID} fillID=${fillID} polyFromOID=${polyFromOID} polyFromFill=${!polyFromOID && !!polygon} finalPolyPts=${polygon?.length ?? 0}`);
 
               const oBB = getBBox(api, modelID, oID) ?? (fillID ? getBBox(api, modelID, fillID) : null);
               if (!oBB && !polygon) continue;
