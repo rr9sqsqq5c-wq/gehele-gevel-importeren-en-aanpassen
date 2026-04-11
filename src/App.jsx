@@ -1195,6 +1195,11 @@ export default function App() {
                 groupSettings={getSettings}
                 wallPatterns={allPatterns}
                 onSelectWall={toggleSelect}
+                onSelectMultiple={(ids) => setSelectedWallIds((prev) => {
+                  const next = new Set(prev);
+                  for (const id of ids) next.add(id);
+                  return next;
+                })}
               />
 
               {allWalls.length === 0 && (

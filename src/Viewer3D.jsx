@@ -1,7 +1,13 @@
-import { Canvas, useThree, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
-import { useMemo, useRef, useEffect, useState } from 'react';
+import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
+
+function CameraAccessor({ cameraRef }) {
+  const { camera } = useThree();
+  cameraRef.current = camera;
+  return null;
+}
 
 function ifcToThree(ifcX, ifcY, ifcZ, upAxis = 'z') {
   if (upAxis === 'y') return [ifcX / 1000, ifcY / 1000, ifcZ / 1000];
@@ -295,9 +301,14 @@ const COMPASS = [
   { key: 'Top',  label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
 ];
 
-export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPatterns, onSelectWall }) {
+export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPatterns, onSelectWall, onSelectMultiple }) {
   const [hoveredWallId, setHoveredWallId] = useState(null);
   const [preset, setPreset] = useState(null);
+  const [boxSelectMode, setBoxSelectMode] = useState(false);
+  const [dragRect, setDragRect] = useState(null);
+  const dragStart = useRef(null);
+  const cameraRef = useRef(null);
+  const containerRef = useRef(null);
 
   const upAxis = useMemo(() => detectUpAxis(walls), [walls]);
 
@@ -334,13 +345,77 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
     setTimeout(() => setPreset(key), 10);
   }
 
+  function getCanvasPos(e) {
+    const rect = containerRef.current.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function onMouseDown(e) {
+    if (!boxSelectMode) return;
+    e.preventDefault();
+    const pos = getCanvasPos(e);
+    dragStart.current = pos;
+    setDragRect({ x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y });
+  }
+
+  function onMouseMove(e) {
+    if (!boxSelectMode || !dragStart.current) return;
+    const pos = getCanvasPos(e);
+    setDragRect({ x1: dragStart.current.x, y1: dragStart.current.y, x2: pos.x, y2: pos.y });
+  }
+
+  function onMouseUp(e) {
+    if (!boxSelectMode || !dragStart.current) return;
+    const pos = getCanvasPos(e);
+    const rect = {
+      x1: Math.min(dragStart.current.x, pos.x),
+      y1: Math.min(dragStart.current.y, pos.y),
+      x2: Math.max(dragStart.current.x, pos.x),
+      y2: Math.max(dragStart.current.y, pos.y),
+    };
+    dragStart.current = null;
+    setDragRect(null);
+
+    if (rect.x2 - rect.x1 < 4 || rect.y2 - rect.y1 < 4) return;
+
+    const camera = cameraRef.current;
+    if (!camera || !containerRef.current) return;
+    const canvasW = containerRef.current.clientWidth;
+    const canvasH = containerRef.current.clientHeight;
+
+    const foundIds = [];
+    for (const wall of walls) {
+      const box = getWallBox(wall, upAxis);
+      if (!box) continue;
+      const [px, py, pz] = box.pos;
+      const worldPos = new THREE.Vector3(px, py, pz);
+      const ndc = worldPos.clone().project(camera);
+      const sx = (ndc.x + 1) / 2 * canvasW;
+      const sy = (1 - ndc.y) / 2 * canvasH;
+      if (sx >= rect.x1 && sx <= rect.x2 && sy >= rect.y1 && sy <= rect.y2) {
+        foundIds.push(wall.expressID);
+      }
+    }
+
+    if (foundIds.length > 0 && onSelectMultiple) {
+      onSelectMultiple(foundIds);
+    }
+  }
+
   return (
-    <div style={{ width: '100%', height: '100%', background: '#0f172a', position: 'relative' }}>
+    <div
+      ref={containerRef}
+      style={{ width: '100%', height: '100%', background: '#0f172a', position: 'relative', cursor: boxSelectMode ? 'crosshair' : 'default' }}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+    >
       <Canvas camera={{ fov: 45, near: 0.01, far: 2000 }}>
+        <CameraAccessor cameraRef={cameraRef} />
         <CameraInit walls={walls} upAxis={upAxis} />
         <CameraPresetController preset={preset} center={center} span={span} />
         <SceneLights />
-        <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault />
+        <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault enabled={!boxSelectMode} />
         <gridHelper args={[500, 100, '#1e3a5f', '#1e293b']} position={[center[0], center[1] - span * 0.5, center[2]]} />
 
         {walls.map((wall) => {
@@ -357,7 +432,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
               pattern={pattern}
               material={settings?.material}
               brickD={settings?.brickDepth ?? 20}
-              onSelect={onSelectWall}
+              onSelect={boxSelectMode ? null : onSelectWall}
               onHover={setHoveredWallId}
               upAxis={upAxis}
             />
@@ -371,8 +446,39 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
         )}
       </Canvas>
 
+      {dragRect && (
+        <div
+          style={{
+            position: 'absolute',
+            left: Math.min(dragRect.x1, dragRect.x2),
+            top: Math.min(dragRect.y1, dragRect.y2),
+            width: Math.abs(dragRect.x2 - dragRect.x1),
+            height: Math.abs(dragRect.y2 - dragRect.y1),
+            border: '1.5px dashed #3b82f6',
+            background: 'rgba(59,130,246,0.08)',
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+
       {walls.length > 0 && (
         <div style={{ position: 'absolute', bottom: 16, right: 16, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+          <button
+            onClick={() => setBoxSelectMode((v) => !v)}
+            title="Rechthoekige selectie — sleep een rechthoek om meerdere elementen te selecteren"
+            style={{
+              width: 60, height: 24,
+              background: boxSelectMode ? '#3b82f6' : 'rgba(15,23,42,0.85)',
+              color: boxSelectMode ? '#fff' : '#94a3b8',
+              border: '1px solid #334155',
+              borderRadius: 4,
+              fontSize: 10,
+              cursor: 'pointer',
+              marginBottom: 4,
+            }}
+          >
+            ⬚ Box
+          </button>
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(5, 28px)',
