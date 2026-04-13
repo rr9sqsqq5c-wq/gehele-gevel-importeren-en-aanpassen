@@ -285,7 +285,7 @@ export async function scanIfcWallTypes(file) {
   return types;
 }
 
-export async function parseIfc(file, allowedTypes = null) {
+export async function parseIfc(file, allowedTypes = null, onProgress = null) {
   const { IFC, api } = await getApi();
 
   let modelID, wallTypeMap, ownModel = false;
@@ -356,18 +356,29 @@ export async function parseIfc(file, allowedTypes = null) {
     }
 
     const walls = [];
-    const wallTypes = [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL];
+    const wallTypesList2 = [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL];
 
-    for (const wType of wallTypes) {
+    let totalWalls = 0;
+    const allWallIDs = [];
+    for (const wType of wallTypesList2) {
       const idsVec = api.GetLineIDsWithType(modelID, wType);
       for (let i = 0; i < idsVec.size(); i++) {
         const wID = idsVec.get(i);
-        try {
-          if (allowedTypes !== null) {
-            const tName = wallTypeMap[wID] ?? '(geen type)';
-            if (!allowedTypes.has(tName)) continue;
-          }
+        if (allowedTypes !== null) {
+          const tName = wallTypeMap[wID] ?? '(geen type)';
+          if (!allowedTypes.has(tName)) continue;
+        }
+        allWallIDs.push(wID);
+        totalWalls++;
+      }
+    }
 
+    onProgress?.({ phase: 'wanden', current: 0, total: totalWalls });
+
+    let processed = 0;
+    let lastYield = Date.now();
+    for (const wID of allWallIDs) {
+        try {
           const wallBB = getBBox(api, modelID, wID);
           if (!wallBB) continue;
 
@@ -477,8 +488,15 @@ export async function parseIfc(file, allowedTypes = null) {
             typeName: wallTypeMap[wID] ?? null,
           });
         } catch { }
+
+        processed++;
+        onProgress?.({ phase: 'wanden', current: processed, total: totalWalls });
+        const now = Date.now();
+        if (now - lastYield > 50) {
+          lastYield = now;
+          await new Promise(r => setTimeout(r, 0));
+        }
       }
-    }
 
     return walls;
   } finally {

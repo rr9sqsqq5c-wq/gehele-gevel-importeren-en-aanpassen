@@ -515,6 +515,7 @@ export default function App() {
   const [selectedWallIds, setSelectedWallIds] = useState(new Set());
   const [activeGroupId, setActiveGroupId] = useState(null);
   const [loadStatus, setLoadStatus] = useState('idle');
+  const [loadProgress, setLoadProgress] = useState({ current: 0, total: 0 });
   const [loadError, setLoadError] = useState(null);
   const [ifcFileName, setIfcFileName] = useState(null);
   const [showPattern, setShowPattern] = useState(true);
@@ -605,9 +606,12 @@ export default function App() {
   async function confirmImport() {
     if (!pendingFile) return;
     setLoadStatus('loading');
+    setLoadProgress({ current: 0, total: 0 });
     try {
       const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
-      const walls = await parseIfc(pendingFile, filter);
+      const walls = await parseIfc(pendingFile, filter, (p) => {
+        setLoadProgress({ current: p.current, total: p.total });
+      });
       if (!walls.length) throw new Error('Geen wanden gevonden met de geselecteerde types');
       setAllWalls(walls);
       setAdjacencies(detectAdjacencies(walls));
@@ -956,17 +960,35 @@ export default function App() {
       )}
       {(loadStatus === 'loading' || loadStatus === 'scanning') && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.75)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#1e293b', borderRadius: 12, padding: '32px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
+          <div style={{ background: '#1e293b', borderRadius: 12, padding: '32px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.5)', minWidth: 320 }}>
             <div style={{ width: 48, height: 48, border: '4px solid #334155', borderTop: '4px solid #3b82f6', borderRadius: '50%', animation: 'wt-spin 0.8s linear infinite' }} />
             <style>{`@keyframes wt-spin { to { transform: rotate(360deg); } }`}</style>
             <div style={{ color: '#f1f5f9', fontSize: 15, fontWeight: 600 }}>
               {loadStatus === 'scanning' ? 'IFC bestand scannen…' : 'IFC wanden importeren…'}
             </div>
-            <div style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center', maxWidth: 280 }}>
-              {loadStatus === 'scanning'
-                ? 'Wandtypen worden gedetecteerd. Even geduld.'
-                : 'Geometrie en openingen worden verwerkt.\nDit kan 15–60 seconden duren bij grote bestanden.'}
-            </div>
+            {loadStatus === 'loading' && loadProgress.total > 0 && (() => {
+              const pct = Math.round((loadProgress.current / loadProgress.total) * 100);
+              return (
+                <div style={{ width: '100%' }}>
+                  <div style={{ background: '#334155', borderRadius: 4, height: 8, overflow: 'hidden', width: '100%' }}>
+                    <div style={{ background: '#3b82f6', height: '100%', width: `${pct}%`, transition: 'width 0.1s ease', borderRadius: 4 }} />
+                  </div>
+                  <div style={{ color: '#94a3b8', fontSize: 11, textAlign: 'center', marginTop: 6 }}>
+                    {loadProgress.current} / {loadProgress.total} wanden ({pct}%)
+                  </div>
+                </div>
+              );
+            })()}
+            {loadStatus === 'loading' && loadProgress.total === 0 && (
+              <div style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center', maxWidth: 280 }}>
+                Bestand inladen en openingen detecteren…
+              </div>
+            )}
+            {loadStatus === 'scanning' && (
+              <div style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center', maxWidth: 280 }}>
+                Wandtypen worden gedetecteerd. Even geduld.
+              </div>
+            )}
           </div>
         </div>
       )}
