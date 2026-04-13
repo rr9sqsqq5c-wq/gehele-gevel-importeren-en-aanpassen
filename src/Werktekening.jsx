@@ -187,7 +187,23 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const peilX     = OX - 55;
   const peilDimX  = OX - 30;
 
-  const svgTotal = VIEW_H + 16;
+  const lattenRichting = allLatten.length ? (allLatten[0].richting ?? 'horizontaal') : 'horizontaal';
+  const lattenSummary = (() => {
+    const groups = {};
+    for (const l of allLatten) {
+      const len = Math.round(lattenRichting === 'horizontaal' ? l.width : l.height);
+      groups[len] = (groups[len] ?? 0) + 1;
+    }
+    return Object.entries(groups)
+      .sort((a, b) => b[1] - a[1])
+      .map(([len, cnt]) => ({ len: Number(len), cnt }));
+  })();
+  const summaryLines = allLatten.length ? lattenSummary.length + 2 : 0;
+  const SUMMARY_LINE_H = 11;
+  const SUMMARY_PAD = 6;
+  const summaryBoxH = summaryLines > 0 ? summaryLines * SUMMARY_LINE_H + SUMMARY_PAD * 2 : 0;
+
+  const svgTotal = VIEW_H + 16 + (summaryBoxH > 0 ? summaryBoxH + 8 : 0);
 
   function exportSvg() {
     const svgEl = svgRef.current;
@@ -369,6 +385,31 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           })}
 
           <text x={peilX} y={OY - 6} textAnchor="middle" fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">PEILMATEN (m)</text>
+
+          {summaryBoxH > 0 && (() => {
+            const bx = OX;
+            const by = VIEW_H + 16;
+            const bw = 220;
+            return (
+              <g>
+                <rect x={bx} y={by} width={bw} height={summaryBoxH} fill="#fff" stroke="#000" strokeWidth={1} />
+                <text x={bx + SUMMARY_PAD} y={by + SUMMARY_PAD + SUMMARY_LINE_H - 2}
+                  fontSize={9} fontWeight="bold" fill="#000" fontFamily="Arial, sans-serif">
+                  Latten samenvatting ({lattenRichting})
+                </text>
+                <line x1={bx} y1={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} x2={bx + bw} y2={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} stroke="#000" strokeWidth={0.5} />
+                {lattenSummary.map(({ len, cnt }, i) => (
+                  <text key={i}
+                    x={bx + SUMMARY_PAD}
+                    y={by + SUMMARY_PAD + (i + 2) * SUMMARY_LINE_H + 2}
+                    fontSize={9} fill="#000" fontFamily="Arial, sans-serif"
+                  >
+                    {cnt}× {len} mm
+                  </text>
+                ))}
+              </g>
+            );
+          })()}
 
           <g transform={`translate(${OX},${svgTotal - 28})`}>
             <rect x={0} y={0} width={12} height={8} fill={panelColor} stroke={dimColor} strokeWidth={0.5} />
