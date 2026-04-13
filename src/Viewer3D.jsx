@@ -205,15 +205,21 @@ function SceneLights() {
   );
 }
 
-function CameraPresetController({ preset, center, span }) {
+function CameraPresetController({ preset, center, span, onDone }) {
   const { camera, controls } = useThree();
   const target = useRef(null);
   const upTarget = useRef(new THREE.Vector3(0, 1, 0));
+  const centerRef = useRef(center);
+  const spanRef = useRef(span);
+
+  useEffect(() => { centerRef.current = center; }, [center]);
+  useEffect(() => { spanRef.current = span; }, [span]);
 
   useEffect(() => {
     if (!preset) return;
-    const [cx, cy, cz] = center;
-    const d = Math.max(span * 1.5, 1);
+    const [cx, cy, cz] = centerRef.current;
+    const sp = spanRef.current;
+    const d = Math.max(sp * 1.5, 1);
 
     const presets = {
       N:    { pos: [cx, cy, cz + d], up: [0, 1, 0] },
@@ -221,14 +227,14 @@ function CameraPresetController({ preset, center, span }) {
       O:    { pos: [cx + d, cy, cz], up: [0, 1, 0] },
       W:    { pos: [cx - d, cy, cz], up: [0, 1, 0] },
       Top:  { pos: [cx, cy + d * 1.5, cz],     up: [0, 0, -1] },
-      Home: { pos: [cx + span * 0.7, cy + span * 0.5, cz + span * 0.7], up: [0, 1, 0] },
+      Home: { pos: [cx + sp * 0.7, cy + sp * 0.5, cz + sp * 0.7], up: [0, 1, 0] },
     };
 
     const p = presets[preset];
     if (!p) return;
     const fov = preset === 'Home' ? 45 : 25;
     target.current = { pos: new THREE.Vector3(...p.pos), up: new THREE.Vector3(...p.up), fov };
-  }, [preset, center, span]);
+  }, [preset]);
 
   useFrame(() => {
     if (!target.current || !controls) return;
@@ -247,6 +253,7 @@ function CameraPresetController({ preset, center, span }) {
     if (camera.position.distanceTo(pos) < 0.001) {
       camera.position.copy(pos);
       target.current = null;
+      onDone?.();
     }
   });
 
@@ -417,7 +424,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
       <Canvas camera={{ fov: 45, near: 0.01, far: 2000 }}>
         <CameraAccessor cameraRef={cameraRef} />
         <CameraInit walls={walls} upAxis={upAxis} />
-        <CameraPresetController preset={preset} center={center} span={span} />
+        <CameraPresetController preset={preset} center={center} span={span} onDone={() => setPreset(null)} />
         <SceneLights />
         <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault enabled={!boxSelectMode} />
         <gridHelper args={[500, 100, '#1e3a5f', '#1e293b']} position={[center[0], center[1] - span * 0.5, center[2]]} />
