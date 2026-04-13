@@ -243,7 +243,13 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     const y  = Math.min(a.y, b.y);
     const x2 = Math.max(a.x + a.width,  b.x + b.width);
     const y2 = Math.max(a.y + a.height, b.y + b.height);
-    return { x, y, width: x2 - x, height: y2 - y, polyPts: null };
+    const mergedPolyPts = [
+      { l: x,  h: y },
+      { l: x2, h: y },
+      { l: x2, h: y2 },
+      { l: x,  h: y2 },
+    ];
+    return { x, y, width: x2 - x, height: y2 - y, polyPts: mergedPolyPts };
   };
 
   const shouldMerge = (a, b) => {
@@ -253,7 +259,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     const by1 = b.y, by2 = b.y + b.height;
     const overlapX = Math.min(ax2, bx2) - Math.max(ax1, bx1);
     const overlapY = Math.min(ay2, by2) - Math.max(ay1, by1);
-    return overlapX > 0 && overlapY > 0;
+    return overlapX > 50 && overlapY > 50;
   };
 
   let merged = [...rawOpenings];
