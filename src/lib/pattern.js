@@ -307,13 +307,13 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   function splitAroundOpenings(piece, rowY) {
     let segments = [{ start: piece.start, end: piece.start + piece.length }];
     for (const op of maskOpenings) {
-      if (rowY + 1 < op.y || rowY + steenH > op.y + op.height + 1) continue;
+      if (rowY + 1 < op.y || rowY + rowH > op.y + op.height + 1) continue;
       if (op.polyPts && op.polyPts.length >= 3) {
-        const midY = rowY + steenH * 0.5;
+        const midY = rowY + rowH * 0.5;
         const ranges = polyXRangesAtY(op.polyPts, midY);
         if (!ranges.length) {
-          const y2 = rowY + steenH * 0.25;
-          const y3 = rowY + steenH * 0.75;
+          const y2 = rowY + rowH * 0.25;
+          const y3 = rowY + rowH * 0.75;
           const r2 = polyXRangesAtY(op.polyPts, y2);
           const r3 = polyXRangesAtY(op.polyPts, y3);
           for (const [ox1, ox2] of [...r2, ...r3]) segments = cutSegments(segments, ox1, ox2);
@@ -346,7 +346,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
 
 export function getGroupPatternLogic(walls, material, verband) {
   const { steenL, steenH, lint, stoot } = material;
-  const lagenmaat = steenH + lint;
+  const lagenmaat = getLagenmaat(material, verband);
   if (!walls.length || lagenmaat <= 0) return [];
 
   const wallsWithOrigin = walls.filter((w) => w.wallOrigin);
@@ -361,23 +361,32 @@ export function getGroupPatternLogic(walls, material, verband) {
   const totallagen = Math.floor((groupHeight + lint) / lagenmaat);
 
   const lines = [];
-  lines.push({ label: 'Verband', value: verband === 'halfsteens' ? 'Halfsteens' : 'Staand verband' });
+  const verbandLabel = verband === 'halfsteens' ? 'Halfsteens' : verband === 'tegelverband' ? 'Tegelverband (verticaal)' : 'Staand verband';
+  lines.push({ label: 'Verband', value: verbandLabel });
   lines.push({ label: 'Gevelbreedte', value: `${groupWidth} mm  (${wallsWithOrigin.length} wand${wallsWithOrigin.length !== 1 ? 'en' : ''})` });
   lines.push({ label: 'Gevelhoogte', value: `${groupHeight} mm` });
   lines.push({ label: 'Referentie X', value: 'Linker zijkant groep  (x = 0)' });
   lines.push({ label: 'Referentie Y', value: 'Onderkant laagste wand  (y = 0)' });
   lines.push({ label: 'Steenstrip', value: `${steenL} × ${steenH} mm` });
   lines.push({ label: 'Voegen', value: `lintvoeg ${lint} mm · stootvoeg ${stoot} mm` });
-  lines.push({ label: 'Lagenmaat', value: `${lagenmaat} mm  (steenH + lintvoeg)` });
-  lines.push({ label: 'Lagen (totaal)', value: `${totallagen} lagen` });
 
-  if (verband === 'halfsteens') {
-    lines.push({ label: 'Rij 1 (even)', value: `kop (${kop} mm) → hele stenen (${steenL} mm) → afsluitkop` });
-    lines.push({ label: 'Rij 2 (oneven)', value: `hele stenen (${steenL} mm) → reststeen` });
-    lines.push({ label: 'Horizontale verspinging', value: `${Math.round(steenL / 2 + stoot / 2)} mm  (halve steen + halve stootvoeg)` });
+  if (verband === 'tegelverband') {
+    lines.push({ label: 'Oriëntatie', value: 'Strips verticaal — steenL is hoogte, steenH is breedte per kolom' });
+    lines.push({ label: 'Kolombreedte', value: `${steenH} mm + stootvoeg ${stoot} mm = ${steenH + stoot} mm hart-op-hart` });
+    lines.push({ label: 'Lagenmaat', value: `${lagenmaat} mm  (steenL + lintvoeg)` });
+    lines.push({ label: 'Lagen (totaal)', value: `${totallagen} rijen verticale strips` });
+    lines.push({ label: 'Verspinging', value: 'Geen — alle rijen beginnen op dezelfde X-positie' });
   } else {
-    lines.push({ label: 'Rij 1', value: `hele stenen (${steenL} mm)` });
-    lines.push({ label: 'Rij 2', value: `hele stenen (${steenL} mm) · geen verspinging` });
+    lines.push({ label: 'Lagenmaat', value: `${lagenmaat} mm  (steenH + lintvoeg)` });
+    lines.push({ label: 'Lagen (totaal)', value: `${totallagen} lagen` });
+    if (verband === 'halfsteens') {
+      lines.push({ label: 'Rij 1 (even)', value: `kop (${kop} mm) → hele stenen (${steenL} mm) → afsluitkop` });
+      lines.push({ label: 'Rij 2 (oneven)', value: `hele stenen (${steenL} mm) → reststeen` });
+      lines.push({ label: 'Horizontale verspinging', value: `${Math.round(steenL / 2 + stoot / 2)} mm  (halve steen + halve stootvoeg)` });
+    } else {
+      lines.push({ label: 'Rij 1', value: `hele stenen (${steenL} mm)` });
+      lines.push({ label: 'Rij 2', value: `hele stenen (${steenL} mm) · geen verspinging` });
+    }
   }
 
   lines.push({ label: 'Verticale bond', value: 'Rijindex gebaseerd op hoogte in groep — doorlopend over gestapelde wanden' });

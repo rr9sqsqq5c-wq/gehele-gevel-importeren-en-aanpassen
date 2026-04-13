@@ -161,10 +161,11 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         </div>
       </Field>
 
-      <Field label="Metselverband" tip={"Halfsteens: stenen verspringen een halve steenlengte per laag — meest gebruikelijk.\nStaand: stenen lopen verticaal door (geen verspinging)."}>
+      <Field label="Metselverband" tip={"Halfsteens: stenen verspringen een halve steenlengte per laag — meest gebruikelijk.\nStaand: stenen lopen verticaal door (geen verspinging).\nTegelverband: steenstrips staan verticaal (lange kant omhoog), kolommen naast elkaar zonder verspinging."}>
         <select value={settings.verband} onChange={(e) => onUpdate({ verband: e.target.value })} style={inp}>
           <option value="halfsteens">Halfsteens</option>
           <option value="staand">Staand</option>
+          <option value="tegelverband">Tegelverband (verticaal)</option>
         </select>
       </Field>
 

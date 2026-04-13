@@ -312,9 +312,11 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     }
 
     if (vis.strips !== false) {
+      const isTegel = verband === 'tegelverband';
+      const stripH = isTegel ? mat.steenL : steenH;
       for (const row of rows) {
-        const [, rowSy] = toScreen(0, row.y + steenH);
-        const rowSh = steenH * scale * 0.001;
+        const [, rowSy] = toScreen(0, row.y + stripH);
+        const rowSh = stripH * scale * 0.001;
         for (const piece of row.pieces) {
           const [pSx] = toScreen(piece.start, 0);
           const pSw = piece.length * scale * 0.001;
