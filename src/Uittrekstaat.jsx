@@ -158,7 +158,38 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
     zetWerkAreaMM2,
     mat,
     openingsCount: groupOpenings.length,
+    groupOpenings,
   };
+}
+
+const TOL = 60;
+function openingSizeKey(op) {
+  return `${Math.round(op.width / TOL) * TOL}x${Math.round(op.height / TOL) * TOL}`;
+}
+
+function OpeningSvg({ op, size = 100 }) {
+  const pad = 6;
+  const scaleX = (size - pad * 2) / op.width;
+  const scaleY = (size - pad * 2) / op.height;
+  const sc = Math.min(scaleX, scaleY);
+  const w = op.width * sc, h = op.height * sc;
+  const ox = (size - w) / 2, oy = (size - h) / 2;
+
+  if (op.polyPts && op.polyPts.length >= 3) {
+    const minL = Math.min(...op.polyPts.map((p) => p.l));
+    const minH = Math.min(...op.polyPts.map((p) => p.h));
+    const pts = op.polyPts.map((p) => `${ox + (p.l - minL) * sc},${oy + h - (p.h - minH) * sc}`).join(' ');
+    return (
+      <svg width={size} height={size} style={{ display: 'block' }}>
+        <polygon points={pts} fill="#bfdbfe" stroke="#2563eb" strokeWidth={1.5} />
+      </svg>
+    );
+  }
+  return (
+    <svg width={size} height={size} style={{ display: 'block' }}>
+      <rect x={ox} y={oy} width={w} height={h} fill="#bfdbfe" stroke="#2563eb" strokeWidth={1.5} />
+    </svg>
+  );
 }
 
 const TH = ({ children, right }) => (
@@ -369,6 +400,34 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
             </table>
           );
         })}
+
+        {(() => {
+          const allOpenings = takeoffs.flatMap((to) => to.groupOpenings ?? []);
+          if (!allOpenings.length) return null;
+          const byKey = {};
+          for (const op of allOpenings) {
+            const key = openingSizeKey(op);
+            if (!byKey[key]) byKey[key] = { rep: op, count: 0 };
+            byKey[key].count++;
+          }
+          const entries = Object.values(byKey).sort((a, b) => b.count - a.count);
+          return (
+            <div style={{ background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderRadius: 6, overflow: 'hidden', marginBottom: 24 }}>
+              <div style={{ padding: '10px 14px', background: '#0f172a', fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>SPARINGTYPES</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, padding: 16 }}>
+                {entries.map(({ rep, count }, i) => (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: 10 }}>
+                    <OpeningSvg op={rep} size={90} />
+                    <span style={{ fontSize: 18, fontWeight: 700, color: '#1e293b' }}>{count}×</span>
+                    <span style={{ fontSize: 10, color: '#64748b', textAlign: 'center' }}>
+                      {mm2(rep.width)} × {mm2(rep.height)} mm
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
