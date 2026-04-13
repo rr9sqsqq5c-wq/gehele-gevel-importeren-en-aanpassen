@@ -527,18 +527,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             );
           })}
 
-          {groupOpenings.map((op, i) => {
-            const botH = (peilmatenBase + op.y) / 1000;
-            const topH = (peilmatenBase + op.y + op.height) / 1000;
-            return (
-              <g key={i}>
-                <line x1={peilLineX - 8} y1={sy(op.y)} x2={peilLineX + 4} y2={sy(op.y)} stroke="#dc2626" strokeWidth={0.6} strokeDasharray="2,2" />
-                <line x1={peilLineX - 8} y1={sy(op.y + op.height)} x2={peilLineX + 4} y2={sy(op.y + op.height)} stroke="#dc2626" strokeWidth={0.6} strokeDasharray="2,2" />
-                <text x={peilLineX - 10} y={sy(op.y) + 3} textAnchor="end" fontSize={FONT_DIM - 1} fill="#dc2626" fontFamily="Arial, sans-serif">{botH.toFixed(3)}</text>
-                <text x={peilLineX - 10} y={sy(op.y + op.height) + 3} textAnchor="end" fontSize={FONT_DIM - 1} fill="#dc2626" fontFamily="Arial, sans-serif">{topH.toFixed(3)}</text>
-              </g>
-            );
-          })}
+
 
           <text x={peilLineX} y={OY - 6} textAnchor="middle" fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">PEILMATEN (m)</text>
 
