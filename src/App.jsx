@@ -561,6 +561,7 @@ export default function App() {
         }
       }
       if (s.penanten?.length) {
+        const steenL = (s.material ?? DEFAULT_MATERIAL).steenL ?? 210;
         for (const wall of walls) {
           const wid = wall.expressID;
           if (!rows[wid]) continue;
@@ -572,14 +573,17 @@ export default function App() {
             if (pEnd <= wallLeft || pX >= wallRight) continue;
             const maskStart = Math.max(0, pX - wallLeft);
             const maskEnd = Math.min(wall.length, pEnd - wallLeft);
+            const innerMaskStart = maskStart + steenL;
+            const innerMaskEnd = maskEnd - steenL;
+            if (innerMaskStart >= innerMaskEnd) continue;
             rows[wid] = rows[wid].map((row) => ({
               ...row,
               pieces: row.pieces.flatMap((piece) => {
                 const ps = piece.start, pe = piece.start + piece.length;
-                if (pe <= maskStart || ps >= maskEnd) return [piece];
+                if (pe <= innerMaskStart || ps >= innerMaskEnd) return [piece];
                 const out = [];
-                if (ps < maskStart) out.push({ ...piece, length: maskStart - ps });
-                if (pe > maskEnd) out.push({ ...piece, start: maskEnd, length: pe - maskEnd });
+                if (ps < innerMaskStart) out.push({ ...piece, length: innerMaskStart - ps });
+                if (pe > innerMaskEnd) out.push({ ...piece, start: innerMaskEnd, length: pe - innerMaskEnd });
                 return out;
               }),
             }));
