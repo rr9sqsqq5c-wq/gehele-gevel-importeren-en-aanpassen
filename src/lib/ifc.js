@@ -19,6 +19,10 @@ async function loadWebIFC() {
   if (!window.WebIFC) throw new Error("WebIFC niet beschikbaar na laden");
 }
 
+export function warmupWebIFC() {
+  if (!_loading) _loading = loadWebIFC();
+}
+
 export async function getApi() {
   if (!_loading) _loading = loadWebIFC();
   await _loading;
