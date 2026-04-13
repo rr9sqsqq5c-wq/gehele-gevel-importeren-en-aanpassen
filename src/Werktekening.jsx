@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
 
-const PAD_LEFT   = 90;
+const PAD_LEFT   = 135;
 const PAD_RIGHT  = 60;
 const PAD_TOP    = 60;
 const PAD_BOTTOM = 70;
@@ -242,8 +242,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
   const dimRowY   = OY + H + 28;
   const dimRow2Y  = dimRowY + DIM_GAP;
-  const peilX     = OX - 55;
-  const peilDimX  = OX - 30;
+  const peilLineX  = OX - 100;
+  const dimVSpanX  = OX - 60;
+  const dimVTotalX = OX - 28;
 
   const lattenRichting = allLatten.length ? (allLatten[0].richting ?? 'horizontaal') : 'horizontaal';
   const lattenSummary = (() => {
@@ -478,24 +479,24 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             const y2 = yBreaks[i + 1];
             const span = y2 - y;
             if (span < 1) return null;
-            return <DimV key={i} x={peilDimX + 20} y1={sy(y2)} y2={sy(y)} label={`${mm(span)}`} color={dimColor} side="left" />;
+            return <DimV key={i} x={dimVSpanX} y1={sy(y2)} y2={sy(y)} label={`${mm(span)}`} color={dimColor} side="left" />;
           })}
 
           {yBreaks.length >= 2 && (
-            <DimV x={peilDimX + 44} y1={sy(groupHeight)} y2={sy(0)} label={`TOTAAL ${mm(groupHeight)}`} color="#dc2626" side="left" />
+            <DimV x={dimVTotalX} y1={sy(groupHeight)} y2={sy(0)} label={`TOTAAL ${mm(groupHeight)}`} color="#dc2626" side="left" />
           )}
 
           {latYs.map((cy, i) => (
             <line key={i} x1={OX} y1={sy(cy)} x2={OX + W + 20} y2={sy(cy)} stroke="#92400e" strokeWidth={0.6} strokeDasharray="5,3" opacity={0.7} />
           ))}
 
-          <line x1={peilX + 8} y1={OY} x2={peilX + 8} y2={OY + H} stroke="#334155" strokeWidth={0.8} />
+          <line x1={peilLineX} y1={OY} x2={peilLineX} y2={OY + H} stroke="#334155" strokeWidth={0.8} />
           {yBreaks.map((y, i) => {
             const absH = (peilmatenBase + y) / 1000;
             return (
               <g key={i}>
-                <line x1={peilX + 4} y1={sy(y)} x2={peilX + 12} y2={sy(y)} stroke="#334155" strokeWidth={0.8} />
-                <text x={peilX + 2} y={sy(y) + 3} textAnchor="end" fontSize={FONT_DIM} fill="#334155" fontFamily="Arial, sans-serif">
+                <line x1={peilLineX - 4} y1={sy(y)} x2={peilLineX + 4} y2={sy(y)} stroke="#334155" strokeWidth={0.8} />
+                <text x={peilLineX - 6} y={sy(y) + 3} textAnchor="end" fontSize={FONT_DIM} fill="#334155" fontFamily="Arial, sans-serif">
                   {absH.toFixed(3)}
                 </text>
               </g>
@@ -506,8 +507,8 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             const absH = (peilmatenBase + cy) / 1000;
             return (
               <g key={i}>
-                <line x1={peilX + 2} y1={sy(cy)} x2={peilX + 14} y2={sy(cy)} stroke="#92400e" strokeWidth={0.8} />
-                <text x={peilX + 2} y={sy(cy) - 2} textAnchor="end" fontSize={FONT_DIM - 1} fill="#92400e" fontFamily="Arial, sans-serif">
+                <line x1={peilLineX - 6} y1={sy(cy)} x2={peilLineX + 6} y2={sy(cy)} stroke="#92400e" strokeWidth={0.8} />
+                <text x={peilLineX - 8} y={sy(cy) - 2} textAnchor="end" fontSize={FONT_DIM - 1} fill="#92400e" fontFamily="Arial, sans-serif">
                   {absH.toFixed(3)}
                 </text>
               </g>
@@ -519,15 +520,15 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             const topH = (peilmatenBase + op.y + op.height) / 1000;
             return (
               <g key={i}>
-                <line x1={peilX - 2} y1={sy(op.y)} x2={peilX + 14} y2={sy(op.y)} stroke="#dc2626" strokeWidth={0.6} strokeDasharray="2,2" />
-                <line x1={peilX - 2} y1={sy(op.y + op.height)} x2={peilX + 14} y2={sy(op.y + op.height)} stroke="#dc2626" strokeWidth={0.6} strokeDasharray="2,2" />
-                <text x={peilX - 4} y={sy(op.y) + 3} textAnchor="end" fontSize={FONT_DIM - 1} fill="#dc2626" fontFamily="Arial, sans-serif">{botH.toFixed(3)}</text>
-                <text x={peilX - 4} y={sy(op.y + op.height) + 3} textAnchor="end" fontSize={FONT_DIM - 1} fill="#dc2626" fontFamily="Arial, sans-serif">{topH.toFixed(3)}</text>
+                <line x1={peilLineX - 8} y1={sy(op.y)} x2={peilLineX + 4} y2={sy(op.y)} stroke="#dc2626" strokeWidth={0.6} strokeDasharray="2,2" />
+                <line x1={peilLineX - 8} y1={sy(op.y + op.height)} x2={peilLineX + 4} y2={sy(op.y + op.height)} stroke="#dc2626" strokeWidth={0.6} strokeDasharray="2,2" />
+                <text x={peilLineX - 10} y={sy(op.y) + 3} textAnchor="end" fontSize={FONT_DIM - 1} fill="#dc2626" fontFamily="Arial, sans-serif">{botH.toFixed(3)}</text>
+                <text x={peilLineX - 10} y={sy(op.y + op.height) + 3} textAnchor="end" fontSize={FONT_DIM - 1} fill="#dc2626" fontFamily="Arial, sans-serif">{topH.toFixed(3)}</text>
               </g>
             );
           })}
 
-          <text x={peilX} y={OY - 6} textAnchor="middle" fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">PEILMATEN (m)</text>
+          <text x={peilLineX} y={OY - 6} textAnchor="middle" fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">PEILMATEN (m)</text>
 
           {drawingType === 'achterconstructie' && summaryBoxH > 0 && (() => {
             const bx = OX;
