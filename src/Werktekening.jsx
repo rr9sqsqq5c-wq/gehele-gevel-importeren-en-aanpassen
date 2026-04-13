@@ -240,6 +240,21 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
           <rect x={0} y={0} width={VIEW_W} height={svgTotal} fill="#fff" />
 
+          <defs>
+            <clipPath id="wt-openings-clip" clipPathUnits="userSpaceOnUse">
+              <path fillRule="evenodd" d={[
+                `M${OX},${OY} h${W} v${H} h${-W} Z`,
+                ...groupOpenings.map((op) => {
+                  const poly = op.polyPts && op.polyPts.length >= 3 ? op.polyPts : [
+                    { l: op.x, h: op.y }, { l: op.x + op.width, h: op.y },
+                    { l: op.x + op.width, h: op.y + op.height }, { l: op.x, h: op.y + op.height },
+                  ];
+                  return poly.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.l)},${sy(p.h)}`).join(' ') + ' Z';
+                }),
+              ].join(' ')} />
+            </clipPath>
+          </defs>
+
           <text x={OX} y={20} fontSize={13} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">{groupName ?? 'Groep'} — Werktekening latten & panelen</text>
           <text x={OX} y={33} fontSize={8} fill="#64748b" fontFamily="Arial, sans-serif">
             Schaal 1:{Math.round(1 / scale * 1000)} · Afmetingen in mm · Peilmaten in m t.o.v. IFC-nulpunt
@@ -266,23 +281,16 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             </g>
           ))}
 
-          {allLatten.filter((l) => l.richting === 'horizontaal').map((l) => (
-            <rect
-              key={l.id}
-              x={sx(l.x)} y={sy(l.y + l.height)}
-              width={l.width * scale} height={l.height * scale}
-              fill={latColor} stroke="#92400e" strokeWidth={0.5} fillOpacity={0.85}
-            />
-          ))}
-
-          {allLatten.filter((l) => l.richting === 'verticaal').map((l) => (
-            <rect
-              key={l.id}
-              x={sx(l.x)} y={sy(l.y + l.height)}
-              width={l.width * scale} height={l.height * scale}
-              fill={latColor} stroke="#92400e" strokeWidth={0.5} fillOpacity={0.85}
-            />
-          ))}
+          <g clipPath="url(#wt-openings-clip)">
+            {allLatten.map((l) => (
+              <rect
+                key={l.id}
+                x={sx(l.x)} y={sy(l.y + l.height)}
+                width={l.width * scale} height={l.height * scale}
+                fill={latColor} stroke="#92400e" strokeWidth={0.5} fillOpacity={0.85}
+              />
+            ))}
+          </g>
 
           {groupOpenings.map((op, i) => {
             const poly = op.polyPts;
