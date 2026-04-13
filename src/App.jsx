@@ -592,14 +592,25 @@ export default function App() {
     e.target.value = '';
     setLoadStatus('scanning');
     setLoadError(null);
+    loadLogsRef.current = [];
+    setLoadLogs([]);
+    const addScanLog = (msg) => {
+      const entry = `[${new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}] ${msg}`;
+      loadLogsRef.current = [...loadLogsRef.current.slice(-49), entry];
+      setLoadLogs([...loadLogsRef.current]);
+    };
+    addScanLog(`Bestand: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+    addScanLog('web-ifc engine laden…');
     try {
       const types = await scanIfcWallTypes(file);
+      addScanLog(`✓ ${types.length} wandtype(n) gevonden`);
       if (!types.length) throw new Error('Geen wanden gevonden in IFC-bestand');
       setPendingFile(file);
       setWallTypes(types);
       setSelectedTypes(new Set());
       setLoadStatus('selecting');
     } catch (err) {
+      addScanLog(`✗ Fout: ${err.message}`);
       setLoadError(err.message);
       setLoadStatus('error');
     }
@@ -1007,10 +1018,10 @@ export default function App() {
                 Wandtypen worden gedetecteerd. Even geduld.
               </div>
             )}
-            {loadStatus === 'loading' && loadLogs.length > 0 && (
+            {loadLogs.length > 0 && (
               <div style={{ width: '100%', background: '#0f172a', borderRadius: 6, padding: '8px 10px', maxHeight: 140, overflowY: 'auto', fontFamily: 'monospace', fontSize: 10, color: '#94a3b8', lineHeight: 1.6 }}>
                 {loadLogs.map((l, i) => (
-                  <div key={i} style={{ color: l.startsWith('[') && l.includes('✓') ? '#4ade80' : l.includes('✗') ? '#f87171' : '#94a3b8' }}>{l}</div>
+                  <div key={i} style={{ color: l.includes('✓') ? '#4ade80' : l.includes('✗') ? '#f87171' : '#94a3b8' }}>{l}</div>
                 ))}
               </div>
             )}

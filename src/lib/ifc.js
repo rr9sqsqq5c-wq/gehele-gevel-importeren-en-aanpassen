@@ -1,7 +1,4 @@
 import { getOpeningPoly } from './pattern.js';
-const WEB_IFC_VERSION = "0.0.77";
-const CDN_BASE = `https://cdn.jsdelivr.net/npm/web-ifc@${WEB_IFC_VERSION}`;
-
 let _api = null;
 let _loading = null;
 let _cachedModel = null;
@@ -18,7 +15,7 @@ function addScript(src) {
 
 async function loadWebIFC() {
   if (window.WebIFC) return;
-  await addScript(`${CDN_BASE}/web-ifc-api-iife.js`);
+  await addScript(`/web-ifc-api-iife.js`);
   if (!window.WebIFC) throw new Error("WebIFC niet beschikbaar na laden");
 }
 
@@ -27,7 +24,7 @@ export async function getApi() {
   await _loading;
   if (!_api) {
     _api = new window.WebIFC.IfcAPI();
-    await _api.Init((path) => `${CDN_BASE}/${path}`);
+    await _api.Init((path) => `/${path}`);
   }
   return { IFC: window.WebIFC, api: _api };
 }
