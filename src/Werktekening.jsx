@@ -452,10 +452,11 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           })}
 
           {xBreaks.map((x, i) => (
+            drawingType !== 'achterconstructie' &&
             <line key={i} x1={sx(x)} y1={OY} x2={sx(x)} y2={OY + H + 8} stroke={dimColor} strokeWidth={0.3} strokeDasharray="3,3" opacity={0.5} />
           ))}
 
-          {xBreaks.length >= 2 && xBreaks.slice(0, -1).map((x, i) => {
+          {drawingType !== 'achterconstructie' && xBreaks.length >= 2 && xBreaks.slice(0, -1).map((x, i) => {
             const x2 = xBreaks[i + 1];
             const span = x2 - x;
             if (span < 1) return null;
@@ -473,10 +474,11 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           ))}
 
           {yBreaks.map((y, i) => (
+            drawingType !== 'achterconstructie' &&
             <line key={i} x1={OX - 8} y1={sy(y)} x2={OX + W} y2={sy(y)} stroke={dimColor} strokeWidth={0.3} strokeDasharray="3,3" opacity={0.5} />
           ))}
 
-          {yBreaks.length >= 2 && yBreaks.slice(0, -1).map((y, i) => {
+          {drawingType !== 'achterconstructie' && yBreaks.length >= 2 && yBreaks.slice(0, -1).map((y, i) => {
             const y2 = yBreaks[i + 1];
             const span = y2 - y;
             if (span < 1) return null;
