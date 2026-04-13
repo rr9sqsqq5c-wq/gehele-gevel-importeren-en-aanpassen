@@ -237,32 +237,25 @@ export async function scanIfcWallTypes(file) {
   }
 
   const text = await file.text();
+  const flat = text.replace(/\r?\n/g, ' ');
 
-  const typeCounts = {};
   const typeIdToName = {};
+  const wallIds = new Set();
   const wallObjectType = {};
   const relRecords = [];
 
-  let pos = 0;
-  const len = text.length;
+  const RECORD_RE = /#(\d+)\s*=\s*IFC(WALL(?:STANDARDCASE)?|WALLTYPE|RELDEFINESBYTYPE)\s*\(/gi;
+  let m;
+  while ((m = RECORD_RE.exec(flat)) !== null) {
+    const id = m[1];
+    const ifcType = m[2].toUpperCase();
+    const start = RECORD_RE.lastIndex - 1;
 
-  while (pos < len) {
-    const hashIdx = text.indexOf('#', pos);
-    if (hashIdx === -1) break;
-
-    const eqIdx = text.indexOf('=', hashIdx + 1);
-    if (eqIdx === -1) break;
-
-    const typeStart = eqIdx + 1;
-    let typeEnd = typeStart;
-    while (typeEnd < len && text[typeEnd] !== '(') typeEnd++;
-    const ifcType = text.slice(typeStart, typeEnd).trim().toUpperCase();
-
-    let end = typeEnd + 1;
+    let end = start + 1;
     let depth = 1;
     let inStr = false;
-    while (end < len && depth > 0) {
-      const c = text[end];
+    while (end < flat.length && depth > 0) {
+      const c = flat[end];
       if (c === "'" && !inStr) inStr = true;
       else if (c === "'" && inStr) inStr = false;
       else if (!inStr) {
@@ -271,29 +264,25 @@ export async function scanIfcWallTypes(file) {
       }
       end++;
     }
-
-    const inner = text.slice(typeEnd + 1, end - 1);
+    const inner = flat.slice(start + 1, end - 1);
+    RECORD_RE.lastIndex = end;
 
     if (ifcType === 'WALL' || ifcType === 'WALLSTANDARDCASE') {
+      wallIds.add(id);
       const parts = splitStepArgs(inner);
-      const objectType = unquoteStep(parts[4]);
-      const id = text.slice(hashIdx + 1, eqIdx).trim();
-      wallObjectType[id] = objectType;
+      const objType = unquoteStep(parts[4]);
+      if (objType) wallObjectType[id] = objType;
     } else if (ifcType === 'WALLTYPE') {
       const parts = splitStepArgs(inner);
       const name = unquoteStep(parts[2]) ?? unquoteStep(parts[8]);
-      const id = text.slice(hashIdx + 1, eqIdx).trim();
       if (name) typeIdToName[id] = name;
     } else if (ifcType === 'RELDEFINESBYTYPE') {
-      relRecords.push({ inner, id: text.slice(hashIdx + 1, eqIdx).trim() });
+      relRecords.push(inner);
     }
-
-    const semi = text.indexOf(';', end);
-    pos = semi === -1 ? len : semi + 1;
   }
 
   const wallToType = {};
-  for (const { inner } of relRecords) {
+  for (const inner of relRecords) {
     const parts = splitStepArgs(inner);
     const relatedRaw = parts[4] ?? '';
     const typeRaw = (parts[5] ?? '').trim().replace(/^#/, '');
@@ -302,12 +291,14 @@ export async function scanIfcWallTypes(file) {
     const idMatches = relatedRaw.match(/#(\d+)/g);
     if (!idMatches) continue;
     for (const ref of idMatches) {
-      wallToType[ref.slice(1)] = tName;
+      const wid = ref.slice(1);
+      if (wallIds.has(wid)) wallToType[wid] = tName;
     }
   }
 
-  for (const [wid, objectType] of Object.entries(wallObjectType)) {
-    const name = wallToType[wid] ?? objectType ?? '(geen type)';
+  const typeCounts = {};
+  for (const wid of wallIds) {
+    const name = wallToType[wid] ?? wallObjectType[wid] ?? '(geen type)';
     typeCounts[name] = (typeCounts[name] ?? 0) + 1;
   }
 
