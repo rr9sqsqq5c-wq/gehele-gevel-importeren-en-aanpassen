@@ -954,6 +954,23 @@ export default function App() {
           </div>
         </div>
       )}
+      {(loadStatus === 'loading' || loadStatus === 'scanning') && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.75)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#1e293b', borderRadius: 12, padding: '32px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
+            <div style={{ width: 48, height: 48, border: '4px solid #334155', borderTop: '4px solid #3b82f6', borderRadius: '50%', animation: 'wt-spin 0.8s linear infinite' }} />
+            <style>{`@keyframes wt-spin { to { transform: rotate(360deg); } }`}</style>
+            <div style={{ color: '#f1f5f9', fontSize: 15, fontWeight: 600 }}>
+              {loadStatus === 'scanning' ? 'IFC bestand scannen…' : 'IFC wanden importeren…'}
+            </div>
+            <div style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center', maxWidth: 280 }}>
+              {loadStatus === 'scanning'
+                ? 'Wandtypen worden gedetecteerd. Even geduld.'
+                : 'Geometrie en openingen worden verwerkt.\nDit kan 15–60 seconden duren bij grote bestanden.'}
+            </div>
+          </div>
+        </div>
+      )}
+
       {similarSuggestions && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', borderRadius: 8, padding: 24, width: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
