@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc } from './lib/ifc.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
@@ -516,6 +516,8 @@ export default function App() {
   const [activeGroupId, setActiveGroupId] = useState(null);
   const [loadStatus, setLoadStatus] = useState('idle');
   const [loadProgress, setLoadProgress] = useState({ current: 0, total: 0 });
+  const [loadLogs, setLoadLogs] = useState([]);
+  const loadLogsRef = useRef([]);
   const [loadError, setLoadError] = useState(null);
   const [ifcFileName, setIfcFileName] = useState(null);
   const [showPattern, setShowPattern] = useState(true);
@@ -607,14 +609,29 @@ export default function App() {
     if (!pendingFile) return;
     setLoadStatus('loading');
     setLoadProgress({ current: 0, total: 0 });
+    loadLogsRef.current = [];
+    setLoadLogs([]);
+    const addLog = (msg) => {
+      const entry = `[${new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}] ${msg}`;
+      loadLogsRef.current = [...loadLogsRef.current.slice(-49), entry];
+      setLoadLogs([...loadLogsRef.current]);
+    };
+    addLog(`Bestand: ${pendingFile.name} (${(pendingFile.size / 1024 / 1024).toFixed(1)} MB)`);
     try {
       const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
+      addLog(filter ? `Filter: ${[...filter].join(', ')}` : 'Alle wandtypen worden geladen');
       const walls = await parseIfc(pendingFile, filter, (p) => {
+        if (p.log) { addLog(p.log); return; }
         setLoadProgress({ current: p.current, total: p.total });
+        if (p.total > 0 && p.current === 1) addLog(`${p.total} wanden gevonden, verwerken gestart…`);
+        if (p.total > 0 && p.current === p.total) addLog(`Alle ${p.total} wanden verwerkt`);
       });
       if (!walls.length) throw new Error('Geen wanden gevonden met de geselecteerde types');
+      addLog(`✓ ${walls.length} wanden geladen, aangrenzendheid detecteren…`);
+      const adj = detectAdjacencies(walls);
+      addLog(`✓ Klaar — ${walls.length} wanden, ${Object.keys(adj).length} adjacenties`);
       setAllWalls(walls);
-      setAdjacencies(detectAdjacencies(walls));
+      setAdjacencies(adj);
       setGroups([]);
       setSelectedWallIds(new Set());
       setActiveGroupId(null);
@@ -624,6 +641,7 @@ export default function App() {
       setWallTypes([]);
       _colorIdx = 0;
     } catch (err) {
+      addLog(`✗ Fout: ${err.message}`);
       setLoadError(err.message);
       setLoadStatus('error');
     }
@@ -987,6 +1005,13 @@ export default function App() {
             {loadStatus === 'scanning' && (
               <div style={{ color: '#94a3b8', fontSize: 12, textAlign: 'center', maxWidth: 280 }}>
                 Wandtypen worden gedetecteerd. Even geduld.
+              </div>
+            )}
+            {loadStatus === 'loading' && loadLogs.length > 0 && (
+              <div style={{ width: '100%', background: '#0f172a', borderRadius: 6, padding: '8px 10px', maxHeight: 140, overflowY: 'auto', fontFamily: 'monospace', fontSize: 10, color: '#94a3b8', lineHeight: 1.6 }}>
+                {loadLogs.map((l, i) => (
+                  <div key={i} style={{ color: l.startsWith('[') && l.includes('✓') ? '#4ade80' : l.includes('✗') ? '#f87171' : '#94a3b8' }}>{l}</div>
+                ))}
               </div>
             )}
           </div>

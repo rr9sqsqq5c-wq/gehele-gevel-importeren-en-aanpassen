@@ -373,6 +373,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
       }
     }
 
+    onProgress?.({ phase: 'init', log: `web-ifc model geopend, ${totalWalls} wanden in selectie` });
     onProgress?.({ phase: 'wanden', current: 0, total: totalWalls });
 
     let processed = 0;
