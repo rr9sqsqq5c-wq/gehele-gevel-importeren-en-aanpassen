@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc } from './lib/ifc.js';
-import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls } from './lib/storage.js';
+import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
@@ -521,6 +521,7 @@ export default function App() {
   const loadLogsRef = useRef([]);
   const [loadError, setLoadError] = useState(null);
   const [savedFileInfo, setSavedFileInfo] = useState(null);
+  const [savedHandle, setSavedHandle] = useState(null);
   const [ifcFileName, setIfcFileName] = useState(null);
   const [showPattern, setShowPattern] = useState(true);
   const [viewMode, setViewMode] = useState('3d');
@@ -588,32 +589,49 @@ export default function App() {
     return result;
   }, [groups, getSettings, wallMap, adjacencies, showPattern]);
 
-  async function loadFromStorage() {
-    if (!savedFileInfo?.file) return;
-    const file = savedFileInfo.file;
+  async function startScan(file, handle) {
     setLoadStatus('scanning');
     setLoadError(null);
     loadLogsRef.current = [];
     setLoadLogs([]);
-    const addScanLog = (msg) => {
+    const addLog = (msg) => {
       const entry = `[${new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}] ${msg}`;
       loadLogsRef.current = [...loadLogsRef.current.slice(-49), entry];
       setLoadLogs([...loadLogsRef.current]);
     };
-    addScanLog(`Opgeslagen bestand: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
-    addScanLog('web-ifc engine laden…');
+    addLog(`Bestand: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+    addLog('web-ifc engine laden…');
     try {
       const types = await scanIfcWallTypes(file);
-      addScanLog(`✓ ${types.length} wandtype(n) gevonden`);
-      if (!types.length) throw new Error('Geen wanden gevonden');
+      addLog(`✓ ${types.length} wandtype(n) gevonden`);
+      if (!types.length) throw new Error('Geen wanden gevonden in IFC-bestand');
       setPendingFile(file);
       setWallTypes(types);
       setSelectedTypes(new Set());
       setLoadStatus('selecting');
+      if (handle) {
+        saveFileHandle(handle).then(() => setSavedHandle({ handle, savedAt: Date.now(), name: file.name })).catch(() => {});
+      } else {
+        saveIfcFile(file).then(() => setSavedFileInfo({ name: file.name, size: file.size, savedAt: Date.now(), file })).catch(() => {});
+      }
     } catch (err) {
-      addScanLog(`✗ Fout: ${err.message}`);
+      addLog(`✗ Fout: ${err.message}`);
       setLoadError(err.message);
       setLoadStatus('error');
+    }
+  }
+
+  async function handlePickFile() {
+    if (supportsFileSystemAccess()) {
+      try {
+        const [handle] = await window.showOpenFilePicker({ types: [{ description: 'IFC bestanden', accept: { 'application/x-step': ['.ifc'] } }], multiple: false });
+        const file = await handle.getFile();
+        await startScan(file, handle);
+      } catch (err) {
+        if (err.name !== 'AbortError') { setLoadError(err.message); setLoadStatus('error'); }
+      }
+    } else {
+      document.getElementById('ifc-file-input').click();
     }
   }
 
@@ -621,33 +639,33 @@ export default function App() {
     const file = e.target.files[0];
     if (!file) return;
     e.target.value = '';
-    setLoadStatus('scanning');
-    setLoadError(null);
-    loadLogsRef.current = [];
-    setLoadLogs([]);
-    const addScanLog = (msg) => {
-      const entry = `[${new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}] ${msg}`;
-      loadLogsRef.current = [...loadLogsRef.current.slice(-49), entry];
-      setLoadLogs([...loadLogsRef.current]);
-    };
-    addScanLog(`Bestand: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
-    addScanLog('web-ifc engine laden…');
-    try {
-      const types = await scanIfcWallTypes(file);
-      addScanLog(`✓ ${types.length} wandtype(n) gevonden`);
-      if (!types.length) throw new Error('Geen wanden gevonden in IFC-bestand');
-      setPendingFile(file);
-      setWallTypes(types);
-      setSelectedTypes(new Set());
-      setLoadStatus('selecting');
-      saveIfcFile(file).then(() => {
-        setSavedFileInfo({ name: file.name, size: file.size, savedAt: Date.now(), file });
-      }).catch(() => {});
-    } catch (err) {
-      addScanLog(`✗ Fout: ${err.message}`);
-      setLoadError(err.message);
-      setLoadStatus('error');
+    await startScan(file, null);
+  }
+
+  async function loadFromStorage() {
+    if (savedHandle?.handle) {
+      try {
+        const perm = await savedHandle.handle.queryPermission({ mode: 'read' });
+        let file;
+        if (perm === 'granted') {
+          file = await savedHandle.handle.getFile();
+        } else {
+          const req = await savedHandle.handle.requestPermission({ mode: 'read' });
+          if (req !== 'granted') return;
+          file = await savedHandle.handle.getFile();
+        }
+        await startScan(file, savedHandle.handle);
+      } catch { setLoadError('Geen toegang tot bestand'); setLoadStatus('error'); }
+    } else if (savedFileInfo?.file) {
+      await startScan(savedFileInfo.file, null);
     }
+  }
+
+  function forgetSavedFile() {
+    deleteSavedIfcFile().catch(() => {});
+    deleteFileHandle().catch(() => {});
+    setSavedFileInfo(null);
+    setSavedHandle(null);
   }
 
   async function confirmImport() {
@@ -738,9 +756,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    loadSavedIfcFile().then((rec) => {
-      if (rec) setSavedFileInfo({ name: rec.file.name, size: rec.file.size, savedAt: rec.savedAt, file: rec.file });
-    }).catch(() => {});
+    if (supportsFileSystemAccess()) {
+      loadFileHandle().then((rec) => {
+        if (rec?.handle) setSavedHandle(rec);
+      }).catch(() => {});
+    } else {
+      loadSavedIfcFile().then((rec) => {
+        if (rec) setSavedFileInfo({ name: rec.file.name, size: rec.file.size, savedAt: rec.savedAt, file: rec.file });
+      }).catch(() => {});
+    }
   }, []);
 
   function pushHistory(currentGroups) {
@@ -1156,27 +1180,31 @@ export default function App() {
       <div style={{ background: '#1e293b', color: '#f8fafc', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <span style={{ fontWeight: 700, fontSize: 15 }}>IFC Brickslip Planner</span>
 
-        <Tooltip text={"Laad een IFC-bestand in. Na het selecteren van het bestand kun je kiezen welke wandtypen je wilt importeren.\nAlleen Basic Wall elementen worden weergegeven."}>
-          <label style={{ cursor: 'pointer' }}>
-            <input type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} disabled={loadStatus === 'loading'} />
-            <span style={{ background: (loadStatus === 'loading' || loadStatus === 'scanning') ? '#475569' : '#3b82f6', color: '#fff', padding: '4px 12px', borderRadius: 4, fontSize: 12, display: 'inline-block' }}>
-              {loadStatus === 'scanning' ? '🔍 Scannen…' : loadStatus === 'loading' ? '⏳ Laden…' : '📂 IFC importeren'}
-            </span>
-          </label>
+        <Tooltip text={"Kies een IFC-bestand. De browser onthoudt de locatie zodat je het volgende keer direct kunt laden.\nAlleen Basic Wall elementen worden weergegeven."}>
+          <button
+            onClick={handlePickFile}
+            disabled={loadStatus === 'loading' || loadStatus === 'scanning'}
+            style={{ background: (loadStatus === 'loading' || loadStatus === 'scanning') ? '#475569' : '#3b82f6', color: '#fff', padding: '4px 12px', borderRadius: 4, fontSize: 12, border: 'none', cursor: 'pointer' }}
+          >
+            {loadStatus === 'scanning' ? '🔍 Scannen…' : loadStatus === 'loading' ? '⏳ Laden…' : '📂 IFC kiezen'}
+          </button>
         </Tooltip>
+        <input id="ifc-file-input" type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} />
 
         {ifcFileName && <span style={{ fontSize: 11, color: '#94a3b8' }}>{ifcFileName}.ifc · {allWalls.length} wanden</span>}
         {loadError && <span style={{ fontSize: 11, color: '#f87171' }}>⚠ {loadError}</span>}
 
-        {savedFileInfo && !allWalls.length && loadStatus === 'idle' && (
+        {(savedHandle || savedFileInfo) && !allWalls.length && loadStatus === 'idle' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e3a5f', border: '1px solid #2563eb', borderRadius: 5, padding: '3px 8px' }}>
             <span style={{ fontSize: 11, color: '#93c5fd' }}>
-              💾 {savedFileInfo.name} ({(savedFileInfo.size / 1024 / 1024).toFixed(1)} MB) — opgeslagen {new Date(savedFileInfo.savedAt).toLocaleDateString('nl-NL')}
+              {savedHandle ? '📁' : '💾'} {savedHandle?.name ?? savedFileInfo?.name}
+              {savedFileInfo && ` (${(savedFileInfo.size / 1024 / 1024).toFixed(1)} MB)`}
+              {' — '}{new Date((savedHandle?.savedAt ?? savedFileInfo?.savedAt)).toLocaleDateString('nl-NL')}
             </span>
             <button onClick={loadFromStorage} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 3, padding: '2px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
               Laden
             </button>
-            <button onClick={() => { deleteSavedIfcFile(); setSavedFileInfo(null); }} style={{ background: 'none', color: '#64748b', border: 'none', fontSize: 13, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }} title="Verwijder opgeslagen bestand">
+            <button onClick={forgetSavedFile} style={{ background: 'none', color: '#64748b', border: 'none', fontSize: 13, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }} title="Vergeet opgeslagen bestand">
               ×
             </button>
           </div>

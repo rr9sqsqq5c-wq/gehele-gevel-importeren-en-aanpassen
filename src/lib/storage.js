@@ -80,3 +80,50 @@ export async function loadParsedWalls(fileName, fileSize) {
     req.onerror = () => reject(req.error);
   });
 }
+
+const STORE_HANDLE = 'file-handles';
+
+function openHandleDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('ifc-handles', 1);
+    req.onupgradeneeded = (e) => {
+      e.target.result.createObjectStore(STORE_HANDLE, { keyPath: 'id' });
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function saveFileHandle(handle) {
+  const db = await openHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_HANDLE, 'readwrite');
+    tx.objectStore(STORE_HANDLE).put({ id: 'last', handle, savedAt: Date.now() });
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function loadFileHandle() {
+  const db = await openHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_HANDLE, 'readonly');
+    const req = tx.objectStore(STORE_HANDLE).get('last');
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function deleteFileHandle() {
+  const db = await openHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_HANDLE, 'readwrite');
+    tx.objectStore(STORE_HANDLE).delete('last');
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export function supportsFileSystemAccess() {
+  return typeof window !== 'undefined' && 'showOpenFilePicker' in window;
+}
