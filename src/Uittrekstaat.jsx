@@ -44,26 +44,22 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
 
   let stripCount = { Vol: 0, Kop: 0, Driekwart: 0, Rest: 0, Tegel: 0 };
   let stripAreaMM2 = 0;
-  const steenW = mat.steenL;
-  const steenH = verband === 'tegelverband' ? mat.steenH : mat.steenH;
-  for (const wallRows of Object.values(rows)) {
-    for (const row of wallRows) {
-      for (const piece of row.pieces) {
-        const lbl = piece.label ?? 'Vol';
-        stripCount[lbl] = (stripCount[lbl] ?? 0) + 1;
-        stripAreaMM2 += piece.length * (verband === 'tegelverband' ? mat.steenH : mat.steenH);
-      }
+  for (const row of rows) {
+    for (const piece of row.pieces) {
+      const lbl = piece.label ?? 'Vol';
+      stripCount[lbl] = (stripCount[lbl] ?? 0) + 1;
+      stripAreaMM2 += piece.length * mat.steenH;
     }
   }
 
   let panelList = [];
   if (s.panelen?.enabled) {
     const basePanel = { width: Math.max(100, s.panelen.breedte ?? 3005), height: Math.max(100, s.panelen.hoogte ?? 1200) };
-    const globalPieces = rows.flatMap ? Object.values(rows).flatMap((wallRows) => wallRows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })))) : [];
+    const globalPieces = rows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
     const zones = buildFacadeZones(groupWidth, groupHeight, openingsForZones);
     for (const zone of zones) {
-      const result = panelizeZone(zone, Object.values(rows).flat(), globalPieces, mat.steenH, basePanel);
+      const result = panelizeZone(zone, rows, globalPieces, mat.steenH, basePanel);
       if (result.ok) panelList.push(...result.panels);
     }
   }
