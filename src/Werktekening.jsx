@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
 
-const PAD_LEFT   = 135;
+const PAD_LEFT   = 145;
 const PAD_RIGHT  = 60;
 const PAD_TOP    = 60;
 const PAD_BOTTOM = 70;
@@ -242,9 +242,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
   const dimRowY   = OY + H + 28;
   const dimRow2Y  = dimRowY + DIM_GAP;
-  const peilLineX  = OX - 100;
-  const dimVSpanX  = OX - 60;
-  const dimVTotalX = OX - 28;
+  const peilLineX  = OX - 110;
+  const dimVSpanX  = OX - 65;
+  const dimVTotalX = OX - 32;
 
   const lattenRichting = allLatten.length ? (allLatten[0].richting ?? 'horizontaal') : 'horizontaal';
   const lattenSummary = (() => {
@@ -494,17 +494,26 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           ))}
 
           <line x1={peilLineX} y1={OY} x2={peilLineX} y2={OY + H} stroke="#334155" strokeWidth={0.8} />
-          {yBreaks.map((y, i) => {
-            const absH = (peilmatenBase + y) / 1000;
-            return (
-              <g key={i}>
-                <line x1={peilLineX - 4} y1={sy(y)} x2={peilLineX + 4} y2={sy(y)} stroke="#334155" strokeWidth={0.8} />
-                <text x={peilLineX - 6} y={sy(y) + 3} textAnchor="end" fontSize={FONT_DIM} fill="#334155" fontFamily="Arial, sans-serif">
-                  {absH.toFixed(3)}
-                </text>
-              </g>
-            );
-          })}
+          {(() => {
+            const MIN_GAP = 11;
+            let lastY = -Infinity;
+            return yBreaks.map((y, i) => {
+              const absH = (peilmatenBase + y) / 1000;
+              const screenY = sy(y);
+              const showLabel = (lastY === -Infinity) || (Math.abs(screenY - lastY) >= MIN_GAP);
+              if (showLabel) lastY = screenY;
+              return (
+                <g key={i}>
+                  <line x1={peilLineX - 4} y1={screenY} x2={peilLineX + 4} y2={screenY} stroke="#334155" strokeWidth={0.8} />
+                  {showLabel && (
+                    <text x={peilLineX - 6} y={screenY + 3} textAnchor="end" fontSize={FONT_DIM} fill="#334155" fontFamily="Arial, sans-serif">
+                      {absH.toFixed(3)}
+                    </text>
+                  )}
+                </g>
+              );
+            });
+          })()}
 
           {latYs.map((cy, i) => {
             const absH = (peilmatenBase + cy) / 1000;
