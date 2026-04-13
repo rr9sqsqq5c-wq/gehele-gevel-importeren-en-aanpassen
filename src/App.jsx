@@ -1474,7 +1474,7 @@ export default function App() {
           )}
         </div>
 
-        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <div style={{ flex: 1, position: 'relative', overflow: viewMode === 'uittrekstaat' ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
           {viewMode === '3d' ? (
             <>
               <Viewer3D
