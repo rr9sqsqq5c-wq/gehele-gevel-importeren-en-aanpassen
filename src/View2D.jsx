@@ -117,33 +117,77 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
         }
       }
 
-      return [...allYs]
-        .sort((a, b) => a - b)
-        .map((yr, idx) => {
-          let latY;
-          if (yr === 0) {
-            latY = 0;
-          } else if (yr === gH) {
-            latY = yr - latBreedte;
-          } else if (openingBottomYs.has(yr)) {
-            latY = yr - latBreedte;
-          } else if (openingTopYs.has(yr)) {
-            latY = yr;
-          } else {
-            latY = yr - latBreedte / 2;
+      const INSET = 5;
+      const result = [];
+      let globalIdx = 0;
+
+      for (const yr of [...allYs].sort((a, b) => a - b)) {
+        let latY;
+        if (yr === 0) {
+          latY = 0;
+        } else if (yr === gH) {
+          latY = yr - latBreedte;
+        } else if (openingBottomYs.has(yr)) {
+          latY = yr - latBreedte;
+        } else if (openingTopYs.has(yr)) {
+          latY = yr;
+        } else {
+          latY = yr - latBreedte / 2;
+        }
+
+        const isForced = openingBottomYs.has(yr) || openingTopYs.has(yr) || yr === 0 || yr === gH;
+
+        const latTop = latY;
+        const latBot = latY + latBreedte;
+
+        const openingsAtY = groupOpenings.filter(
+          (op) => op.y < latBot && op.y + op.height > latTop
+        );
+
+        const zones = [];
+        if (openingsAtY.length === 0) {
+          zones.push({ x1: 0, x2: groupWidth });
+        } else {
+          const opRanges = openingsAtY
+            .map((op) => ({ x1: op.x, x2: op.x + op.width }))
+            .sort((a, b) => a.x1 - b.x1);
+          let cursor = 0;
+          for (const op of opRanges) {
+            if (op.x1 > cursor) zones.push({ x1: cursor, x2: op.x1 });
+            cursor = Math.max(cursor, op.x2);
+          }
+          if (cursor < groupWidth) zones.push({ x1: cursor, x2: groupWidth });
+        }
+
+        for (const zone of zones) {
+          let x1 = zone.x1;
+          let x2 = zone.x2;
+
+          if (allPanels.length > 0) {
+            const panelsInZone = allPanels.filter(
+              (p) => p.y < latBot && p.y + p.height > latTop &&
+                     p.x + p.width > zone.x1 && p.x < zone.x2
+            );
+            if (panelsInZone.length > 0) {
+              x1 = Math.min(...panelsInZone.map((p) => p.x)) + INSET;
+              x2 = Math.max(...panelsInZone.map((p) => p.x + p.width)) - INSET;
+            }
           }
 
-          const isForced = openingBottomYs.has(yr) || openingTopYs.has(yr) || yr === 0 || yr === gH;
-          return {
-            id: `lat-h-${idx}`,
+          if (x2 <= x1) continue;
+          result.push({
+            id: `lat-h-${globalIdx++}`,
             richting: 'horizontaal',
-            x: 0,
+            x: x1,
             y: latY,
-            width: groupWidth,
+            width: x2 - x1,
             height: latBreedte,
             forced: isForced,
-          };
-        });
+          });
+        }
+      }
+
+      return result;
     } else {
       const xPositions = new Set();
       xPositions.add(0);
