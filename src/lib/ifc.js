@@ -4,6 +4,7 @@ const CDN_BASE = `https://cdn.jsdelivr.net/npm/web-ifc@${WEB_IFC_VERSION}`;
 
 let _api = null;
 let _loading = null;
+let _cachedModel = null;
 
 function addScript(src) {
   return new Promise((resolve, reject) => {
@@ -76,13 +77,15 @@ function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
   try { mesh = api.GetFlatMesh(modelID, expressID); } catch { return null; }
   if (!mesh || mesh.geometries.size() === 0) return null;
 
-  const GRID = 15;
+  const GRID = 20;
   const wallMinL = wallBB[`min${lAxis.toUpperCase()}`];
   const wallMinH = wallBB[`min${hAxis.toUpperCase()}`];
   const wallLenMM = (wallBB[`max${lAxis.toUpperCase()}`] - wallMinL) * 1000;
   const wallHgtMM = (wallBB[`max${hAxis.toUpperCase()}`] - wallMinH) * 1000;
   const MARGIN = 600;
-  const cellSet = new Set();
+
+  let minGL = Infinity, maxGL = -Infinity, minGH = Infinity, maxGH = -Infinity;
+  const cellArr = [];
 
   for (let gi = 0; gi < mesh.geometries.size(); gi++) {
     const placed = mesh.geometries.get(gi);
@@ -93,91 +96,122 @@ function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
       const idxs  = api.GetIndexArray(geom.GetIndexData(), geom.GetIndexDataSize());
       const m = placed.flatTransformation;
 
-      const project = (vi) => {
+      const lI = lAxis === 'x' ? 0 : lAxis === 'y' ? 1 : 2;
+      const hI = hAxis === 'x' ? 0 : hAxis === 'y' ? 1 : 2;
+      const wallMinLv = wallBB[`min${lAxis.toUpperCase()}`];
+      const wallMinHv = wallBB[`min${hAxis.toUpperCase()}`];
+
+      const projectL = (vi) => {
         const lx = verts[vi], ly = verts[vi+1], lz = verts[vi+2];
         const wx = m[0]*lx+m[4]*ly+m[8]*lz+m[12];
         const wy = m[1]*lx+m[5]*ly+m[9]*lz+m[13];
         const wz = m[2]*lx+m[6]*ly+m[10]*lz+m[14];
-        const w = { x: wx, y: wy, z: wz };
-        return { l: (w[lAxis] - wallMinL) * 1000, h: (w[hAxis] - wallMinH) * 1000 };
+        const wArr = [wx, wy, wz];
+        return (wArr[lI] - wallMinLv) * 1000;
+      };
+      const projectH = (vi) => {
+        const lx = verts[vi], ly = verts[vi+1], lz = verts[vi+2];
+        const wx = m[0]*lx+m[4]*ly+m[8]*lz+m[12];
+        const wy = m[1]*lx+m[5]*ly+m[9]*lz+m[13];
+        const wz = m[2]*lx+m[6]*ly+m[10]*lz+m[14];
+        const wArr = [wx, wy, wz];
+        return (wArr[hI] - wallMinHv) * 1000;
       };
 
-      const inBounds = (p) =>
-        p.l >= -MARGIN && p.l <= wallLenMM + MARGIN &&
-        p.h >= -MARGIN && p.h <= wallHgtMM + MARGIN;
-
-      const addCell = (l, h) => cellSet.add(`${Math.round(l / GRID)},${Math.round(h / GRID)}`);
-      const lerp = (a, b) => {
-        const steps = Math.max(1, Math.ceil(Math.max(Math.abs(b.l - a.l), Math.abs(b.h - a.h)) / GRID));
-        for (let s = 0; s <= steps; s++) {
-          const t = s / steps;
-          addCell(a.l + t * (b.l - a.l), a.h + t * (b.h - a.h));
-        }
-      };
-
+      const tmpSet = new Set();
       for (let ti = 0; ti < idxs.length; ti += 3) {
-        const a = project(idxs[ti] * 6);
-        const b = project(idxs[ti+1] * 6);
-        const c = project(idxs[ti+2] * 6);
-        if (!inBounds(a) && !inBounds(b) && !inBounds(c)) continue;
-        lerp(a, b); lerp(b, c); lerp(a, c);
+        const ai = idxs[ti] * 6, bi = idxs[ti+1] * 6, ci = idxs[ti+2] * 6;
+        const al = projectL(ai), ah = projectH(ai);
+        const bl = projectL(bi), bh = projectH(bi);
+        const cl2 = projectL(ci), ch2 = projectH(ci);
+        if (al < -MARGIN && bl < -MARGIN && cl2 < -MARGIN) continue;
+        if (ah < -MARGIN && bh < -MARGIN && ch2 < -MARGIN) continue;
+        if (al > wallLenMM+MARGIN && bl > wallLenMM+MARGIN && cl2 > wallLenMM+MARGIN) continue;
+        if (ah > wallHgtMM+MARGIN && bh > wallHgtMM+MARGIN && ch2 > wallHgtMM+MARGIN) continue;
+
+        const addSeg = (l1, h1, l2, h2) => {
+          const steps = Math.max(1, Math.ceil(Math.max(Math.abs(l2-l1), Math.abs(h2-h1)) / GRID));
+          for (let s = 0; s <= steps; s++) {
+            const t = s / steps;
+            const gl = Math.round((l1 + t*(l2-l1)) / GRID);
+            const gh = Math.round((h1 + t*(h2-h1)) / GRID);
+            tmpSet.add(gl * 65536 + gh);
+          }
+        };
+        addSeg(al,ah,bl,bh); addSeg(bl,bh,cl2,ch2); addSeg(al,ah,cl2,ch2);
+      }
+      for (const k of tmpSet) {
+        const gl = (k / 65536) | 0, gh = k - gl * 65536;
+        if (gl < minGL) minGL = gl; if (gl > maxGL) maxGL = gl;
+        if (gh < minGH) minGH = gh; if (gh > maxGH) maxGH = gh;
+        cellArr.push(k);
       }
     } finally { geom?.delete(); }
   }
 
-  if (!cellSet.size) {
-    console.log(`[getFacadePolygon] expressID=${expressID} → cellSet empty (no geometry triangles projected)`);
-    return null;
+  if (!cellArr.length) return null;
+
+  minGL -= 1; maxGL += 1; minGH -= 1; maxGH += 1;
+  const gridArea = (maxGL - minGL + 1) * (maxGH - minGH + 1);
+  if (gridArea > 300000) return null;
+
+  const W = maxGL - minGL + 1;
+  const H = maxGH - minGH + 1;
+  const cellBits = new Uint8Array(W * H);
+  for (const k of cellArr) {
+    const gl = (k / 65536) | 0, gh = k - gl * 65536;
+    cellBits[(gl - minGL) * H + (gh - minGH)] = 1;
   }
 
-  const parsed = [...cellSet].map(k => { const [gl, gh] = k.split(',').map(Number); return { gl, gh }; });
-  const minGL = Math.min(...parsed.map(c => c.gl)) - 1;
-  const maxGL = Math.max(...parsed.map(c => c.gl)) + 1;
-  const minGH = Math.min(...parsed.map(c => c.gh)) - 1;
-  const maxGH = Math.max(...parsed.map(c => c.gh)) + 1;
-  const gridArea = (maxGL - minGL) * (maxGH - minGH);
-  console.log(`[getFacadePolygon] expressID=${expressID} cellSet=${cellSet.size} gridArea=${gridArea}`);
-  if (gridArea > 200000) return null;
-
-  const outside = new Set();
-  const queue = [`${minGL},${minGH}`];
-  outside.add(queue[0]);
-  while (queue.length) {
-    const key = queue.shift();
-    const [x, y] = key.split(',').map(Number);
-    for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
-      const nx = x + dx, ny = y + dy;
-      if (nx < minGL || nx > maxGL || ny < minGH || ny > maxGH) continue;
-      const nk = `${nx},${ny}`;
-      if (!outside.has(nk) && !cellSet.has(nk)) { outside.add(nk); queue.push(nk); }
+  const outsideBits = new Uint8Array(W * H);
+  const queue = [];
+  const startIdx = 0;
+  outsideBits[startIdx] = 1;
+  queue.push(startIdx);
+  let qi = 0;
+  while (qi < queue.length) {
+    const idx = queue[qi++];
+    const gx = (idx / H) | 0, gy = idx - gx * H;
+    const neighbors = [
+      gx > 0     ? (gx-1)*H+gy : -1,
+      gx < W-1   ? (gx+1)*H+gy : -1,
+      gy > 0     ? gx*H+(gy-1) : -1,
+      gy < H-1   ? gx*H+(gy+1) : -1,
+    ];
+    for (const ni of neighbors) {
+      if (ni < 0) continue;
+      if (!outsideBits[ni] && !cellBits[ni]) { outsideBits[ni] = 1; queue.push(ni); }
     }
   }
 
-  const filledSet = new Set(cellSet);
-  for (let gl = minGL + 1; gl < maxGL; gl++) {
-    for (let gh = minGH + 1; gh < maxGH; gh++) {
-      if (!outside.has(`${gl},${gh}`)) filledSet.add(`${gl},${gh}`);
+  const filledBits = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) filledBits[i] = cellBits[i] || (outsideBits[i] ? 0 : 1);
+
+  const edgeMap = new Map();
+  for (let gx = 0; gx < W; gx++) {
+    for (let gy = 0; gy < H; gy++) {
+      if (!filledBits[gx * H + gy]) continue;
+      const gl = gx + minGL, gh = gy + minGH;
+      const l0 = gl * GRID, h0 = gh * GRID, l1 = l0 + GRID, h1 = h0 + GRID;
+      const hasTop    = gy < H-1 && filledBits[gx*H+(gy+1)];
+      const hasBottom = gy > 0   && filledBits[gx*H+(gy-1)];
+      const hasRight  = gx < W-1 && filledBits[(gx+1)*H+gy];
+      const hasLeft   = gx > 0   && filledBits[(gx-1)*H+gy];
+      if (!hasTop)    edgeMap.set(`${l0},${h1}`, [l1, h1]);
+      if (!hasBottom) edgeMap.set(`${l1},${h0}`, [l0, h0]);
+      if (!hasRight)  edgeMap.set(`${l1},${h1}`, [l1, h0]);
+      if (!hasLeft)   edgeMap.set(`${l0},${h0}`, [l0, h1]);
     }
   }
 
-  const edgeMap = {};
-  for (const k of filledSet) {
-    const [gl, gh] = k.split(',').map(Number);
-    const l0 = gl * GRID, h0 = gh * GRID, l1 = l0 + GRID, h1 = h0 + GRID;
-    if (!filledSet.has(`${gl},${gh+1}`)) edgeMap[`${l0},${h1}`] = [l1, h1];
-    if (!filledSet.has(`${gl},${gh-1}`)) edgeMap[`${l1},${h0}`] = [l0, h0];
-    if (!filledSet.has(`${gl+1},${gh}`)) edgeMap[`${l1},${h1}`] = [l1, h0];
-    if (!filledSet.has(`${gl-1},${gh}`)) edgeMap[`${l0},${h0}`] = [l0, h1];
-  }
-
-  const startKey = Object.keys(edgeMap)[0];
+  const startKey = edgeMap.keys().next().value;
   if (!startKey) return null;
   const [sl, sh] = startKey.split(',').map(Number);
   const raw = [];
   let cl = sl, ch = sh;
   for (let iter = 0; iter < 100000; iter++) {
     raw.push({ l: cl, h: ch });
-    const next = edgeMap[`${cl},${ch}`];
+    const next = edgeMap.get(`${cl},${ch}`);
     if (!next) break;
     [cl, ch] = next;
     if (cl === sl && ch === sh) break;
@@ -198,58 +232,76 @@ function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
 
 export async function scanIfcWallTypes(file) {
   const { IFC, api } = await getApi();
+
+  if (_cachedModel && _cachedModel.name === file.name && _cachedModel.size === file.size) {
+    return _cachedModel.types;
+  }
+
+  if (_cachedModel) {
+    try { api.CloseModel(_cachedModel.modelID); } catch {}
+    _cachedModel = null;
+  }
+
   const buffer = await file.arrayBuffer();
   const data = new Uint8Array(buffer);
   const modelID = api.OpenModel(data, {});
 
+  const wallTypeMap = {};
   try {
-    const wallTypeMap = {};
-    try {
-      const relDefVec = api.GetLineIDsWithType(modelID, IFC.IFCRELDEFINESBYTYPE);
-      for (let i = 0; i < relDefVec.size(); i++) {
-        try {
-          const rel = api.GetLine(modelID, relDefVec.get(i), false);
-          const typeRef = rel?.RelatingType?.value;
-          if (!typeRef) continue;
-          const typeLine = api.GetLine(modelID, typeRef, false);
-          const tName = typeLine?.Name?.value ?? null;
-          const related = rel?.RelatedObjects;
-          if (!related || !tName) continue;
-          for (let j = 0; j < related.length; j++) {
-            const wid = related[j]?.value;
-            if (wid) wallTypeMap[wid] = tName;
-          }
-        } catch { }
-      }
-    } catch { }
-
-    const typeCounts = {};
-    const wallTypes = [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL];
-    for (const wType of wallTypes) {
-      const idsVec = api.GetLineIDsWithType(modelID, wType);
-      for (let i = 0; i < idsVec.size(); i++) {
-        const wID = idsVec.get(i);
-        const tName = wallTypeMap[wID] ?? '(geen type)';
-        typeCounts[tName] = (typeCounts[tName] ?? 0) + 1;
-      }
+    const relDefVec = api.GetLineIDsWithType(modelID, IFC.IFCRELDEFINESBYTYPE);
+    for (let i = 0; i < relDefVec.size(); i++) {
+      try {
+        const rel = api.GetLine(modelID, relDefVec.get(i), false);
+        const typeRef = rel?.RelatingType?.value;
+        if (!typeRef) continue;
+        const typeLine = api.GetLine(modelID, typeRef, false);
+        const tName = typeLine?.Name?.value ?? null;
+        const related = rel?.RelatedObjects;
+        if (!related || !tName) continue;
+        for (let j = 0; j < related.length; j++) {
+          const wid = related[j]?.value;
+          if (wid) wallTypeMap[wid] = tName;
+        }
+      } catch { }
     }
+  } catch { }
 
-    return Object.entries(typeCounts)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-  } finally {
-    api.CloseModel(modelID);
+  const typeCounts = {};
+  const wallTypesList = [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL];
+  for (const wType of wallTypesList) {
+    const idsVec = api.GetLineIDsWithType(modelID, wType);
+    for (let i = 0; i < idsVec.size(); i++) {
+      const wID = idsVec.get(i);
+      const tName = wallTypeMap[wID] ?? '(geen type)';
+      typeCounts[tName] = (typeCounts[tName] ?? 0) + 1;
+    }
   }
+
+  const types = Object.entries(typeCounts)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+
+  _cachedModel = { name: file.name, size: file.size, modelID, wallTypeMap, types, IFC };
+  return types;
 }
 
 export async function parseIfc(file, allowedTypes = null) {
   const { IFC, api } = await getApi();
-  const buffer = await file.arrayBuffer();
-  const data = new Uint8Array(buffer);
-  const modelID = api.OpenModel(data, {});
 
-  try {
-    const wallTypeMap = {};
+  let modelID, wallTypeMap, ownModel = false;
+  if (_cachedModel && _cachedModel.name === file.name && _cachedModel.size === file.size) {
+    modelID     = _cachedModel.modelID;
+    wallTypeMap = _cachedModel.wallTypeMap;
+  } else {
+    if (_cachedModel) {
+      try { api.CloseModel(_cachedModel.modelID); } catch {}
+      _cachedModel = null;
+    }
+    const buffer = await file.arrayBuffer();
+    const data   = new Uint8Array(buffer);
+    modelID      = api.OpenModel(data, {});
+    wallTypeMap  = {};
+    ownModel     = true;
     try {
       const relDefVec = api.GetLineIDsWithType(modelID, IFC.IFCRELDEFINESBYTYPE);
       for (let i = 0; i < relDefVec.size(); i++) {
@@ -268,6 +320,9 @@ export async function parseIfc(file, allowedTypes = null) {
         } catch { }
       }
     } catch { }
+  }
+
+  try {
 
     const openingType = {};
     const fillerExpressID = {};
@@ -358,7 +413,7 @@ export async function parseIfc(file, allowedTypes = null) {
               if (!polygon && fillID) {
                 polygon = getFacadePolygon(api, modelID, fillID, lengthAxis, heightAxis, wallBB);
               }
-              console.log(`[IFC opening] oID=${oID} fillID=${fillID} polyFromOID=${polyFromOID} polyFromFill=${!polyFromOID && !!polygon} finalPolyPts=${polygon?.length ?? 0}`);
+
 
               const oBB = getBBox(api, modelID, oID) ?? (fillID ? getBBox(api, modelID, fillID) : null);
               if (!oBB && !polygon) continue;
@@ -427,7 +482,12 @@ export async function parseIfc(file, allowedTypes = null) {
 
     return walls;
   } finally {
-    api.CloseModel(modelID);
+    if (ownModel) {
+      api.CloseModel(modelID);
+    } else {
+      try { api.CloseModel(modelID); } catch {}
+      _cachedModel = null;
+    }
   }
 }
 
