@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
+import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 
 const PAD_LEFT   = 145;
 const PAD_RIGHT  = 60;
@@ -13,43 +14,6 @@ const FONT_LBL   = 8;
 
 function mm(v) { return Math.round(v); }
 function m(v)  { return (v / 1000).toFixed(3); }
-
-function polyXRangesAtY(poly, y) {
-  const xs = [];
-  for (let i = 0; i < poly.length; i++) {
-    const a = poly[i], b = poly[(i + 1) % poly.length];
-    const ay = a.h, by = b.h, ax = a.l, bx = b.l;
-    if ((ay < y && by >= y) || (by < y && ay >= y)) {
-      const t = (y - ay) / (by - ay);
-      xs.push(ax + t * (bx - ax));
-    }
-  }
-  xs.sort((p, q) => p - q);
-  const ranges = [];
-  for (let i = 0; i + 1 < xs.length; i += 2) ranges.push([xs[i], xs[i + 1]]);
-  return ranges;
-}
-
-function openingXRangesAtY(op, latTop, latBot) {
-  if (op.polyPts && op.polyPts.length >= 3) {
-    const midY = (latTop + latBot) / 2;
-    let ranges = polyXRangesAtY(op.polyPts, midY);
-    if (!ranges.length) {
-      const r1 = polyXRangesAtY(op.polyPts, latTop + 1);
-      const r2 = polyXRangesAtY(op.polyPts, latBot - 1);
-      ranges = [...r1, ...r2];
-    }
-    if (ranges.length) return ranges.map(([x1, x2]) => ({ x1, x2 }));
-  }
-  return [{ x1: op.x, x2: op.x + op.width }];
-}
-
-function brickColor(label, baseColor) {
-  if (label === 'Kop') return '#b45309';
-  if (label === 'Driekwart') return '#7c3aed';
-  if (label === 'Rest') return '#dc2626';
-  return baseColor ?? '#a64033';
-}
 
 function getStripsForPanel(panel, facadeRows, verband, mat) {
   const stripH = verband === 'tegelverband' ? mat.steenL : mat.steenH;

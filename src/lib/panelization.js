@@ -1,39 +1,7 @@
+import { polyXRangesAtY, openingCoversX, openingXCoordsAtY } from './geometry.js';
+
 function round2(v) {
   return Math.round(v * 100) / 100;
-}
-
-function polyXRangesAtY(poly, y) {
-  const xs = [];
-  for (let i = 0; i < poly.length; i++) {
-    const a = poly[i], b = poly[(i + 1) % poly.length];
-    const ay = a.h, by = b.h, ax = a.l, bx = b.l;
-    if ((ay < y && by >= y) || (by < y && ay >= y)) {
-      const t = (y - ay) / (by - ay);
-      xs.push(ax + t * (bx - ax));
-    }
-  }
-  xs.sort((p, q) => p - q);
-  const ranges = [];
-  for (let i = 0; i + 1 < xs.length; i += 2) ranges.push([xs[i], xs[i + 1]]);
-  return ranges;
-}
-
-function openingCoversX(op, midX, midY) {
-  if (op.polyPts && op.polyPts.length >= 3) {
-    const ranges = polyXRangesAtY(op.polyPts, midY);
-    return ranges.some(([x1, x2]) => midX >= x1 && midX <= x2);
-  }
-  return midX >= op.x && midX <= op.x + op.width;
-}
-
-function openingXCoordsAtY(op, midY) {
-  if (op.polyPts && op.polyPts.length >= 3) {
-    const ranges = polyXRangesAtY(op.polyPts, midY);
-    const xs = [];
-    for (const [x1, x2] of ranges) { xs.push(x1); xs.push(x2); }
-    return xs;
-  }
-  return [op.x, op.x + op.width];
 }
 
 export function buildFacadeZones(facadeWidth, facadeHeight, openings) {
