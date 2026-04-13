@@ -625,6 +625,17 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     if (showCenterLines) {
       const withOrigin = walls.filter((w) => w.wallOrigin);
       const groupMinX = withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart)) : 0;
+      const sorted = [...withOrigin].sort((a, b) => a.wallOrigin.lengthStart - b.wallOrigin.lengthStart);
+      const gapCenters = [];
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const rightEdge = (sorted[i].wallOrigin.lengthStart - groupMinX) + sorted[i].length;
+        const leftEdge  = sorted[i + 1].wallOrigin.lengthStart - groupMinX;
+        gapCenters.push((rightEdge + leftEdge) / 2);
+      }
+      if (!gapCenters.length) {
+        const w = sorted[0];
+        if (w) gapCenters.push((w.wallOrigin.lengthStart - groupMinX) + w.length / 2);
+      }
       ctx.save();
       ctx.setLineDash([4, 4]);
       ctx.lineWidth = 1;
@@ -632,14 +643,13 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       ctx.fillStyle = 'rgba(6,182,212,0.9)';
       ctx.font = '10px monospace';
       ctx.textAlign = 'center';
-      for (const w of withOrigin) {
-        const relCenter = (w.wallOrigin.lengthStart - groupMinX) + w.length / 2;
+      for (const relCenter of gapCenters) {
         const [sx] = toScreen(relCenter, 0);
         ctx.beginPath();
         ctx.moveTo(sx, faceSy);
         ctx.lineTo(sx, faceSy + faceH);
         ctx.stroke();
-        const xLabel = `${Math.round(w.wallOrigin.lengthStart - groupMinX + w.length / 2)}`;
+        const xLabel = `${Math.round(relCenter)}`;
         const tw = ctx.measureText(xLabel).width + 6;
         ctx.fillRect(sx - tw / 2, faceSy + faceH + 2, tw, 14);
         ctx.fillStyle = '#fff';
