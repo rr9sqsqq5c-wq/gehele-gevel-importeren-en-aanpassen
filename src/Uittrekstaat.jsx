@@ -163,32 +163,75 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
 }
 
 const TOL = 60;
+const CLUSTER_TOL = 300;
+
 function openingSizeKey(op) {
   return `${Math.round(op.width / TOL) * TOL}x${Math.round(op.height / TOL) * TOL}`;
 }
 
-function OpeningSvg({ op, size = 100 }) {
-  const pad = 6;
-  const scaleX = (size - pad * 2) / op.width;
-  const scaleY = (size - pad * 2) / op.height;
-  const sc = Math.min(scaleX, scaleY);
+function clusterEntries(entries) {
+  const used = new Array(entries.length).fill(false);
+  const clusters = [];
+  for (let i = 0; i < entries.length; i++) {
+    if (used[i]) continue;
+    const cluster = [entries[i]];
+    used[i] = true;
+    for (let j = i + 1; j < entries.length; j++) {
+      if (used[j]) continue;
+      const a = entries[i].rep, b = entries[j].rep;
+      if (Math.abs(a.width - b.width) <= CLUSTER_TOL && Math.abs(a.height - b.height) <= CLUSTER_TOL) {
+        cluster.push(entries[j]);
+        used[j] = true;
+      }
+    }
+    clusters.push(cluster);
+  }
+  return clusters;
+}
+
+function OpeningSvg({ op, sc, svgW, svgH, pad = 6 }) {
   const w = op.width * sc, h = op.height * sc;
-  const ox = (size - w) / 2, oy = (size - h) / 2;
+  const ox = (svgW - w) / 2, oy = (svgH - h) / 2;
 
   if (op.polyPts && op.polyPts.length >= 3) {
     const minL = Math.min(...op.polyPts.map((p) => p.l));
     const minH = Math.min(...op.polyPts.map((p) => p.h));
     const pts = op.polyPts.map((p) => `${ox + (p.l - minL) * sc},${oy + h - (p.h - minH) * sc}`).join(' ');
     return (
-      <svg width={size} height={size} style={{ display: 'block' }}>
+      <svg width={svgW} height={svgH} style={{ display: 'block' }}>
         <polygon points={pts} fill="#bfdbfe" stroke="#2563eb" strokeWidth={1.5} />
       </svg>
     );
   }
   return (
-    <svg width={size} height={size} style={{ display: 'block' }}>
+    <svg width={svgW} height={svgH} style={{ display: 'block' }}>
       <rect x={ox} y={oy} width={w} height={h} fill="#bfdbfe" stroke="#2563eb" strokeWidth={1.5} />
     </svg>
+  );
+}
+
+function ClusterCard({ cluster }) {
+  const pad = 8;
+  const svgH = 110;
+  const svgW = 80;
+  const maxW = Math.max(...cluster.map((e) => e.rep.width));
+  const maxH = Math.max(...cluster.map((e) => e.rep.height));
+  const sc = Math.min((svgW - pad * 2) / maxW, (svgH - pad * 2) / maxH);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: 10, gap: 6 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+        {cluster.map(({ rep, count }, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <OpeningSvg op={rep} sc={sc} svgW={svgW} svgH={svgH} pad={pad} />
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>{count}×</span>
+            <span style={{ fontSize: 10, color: '#64748b', textAlign: 'center', whiteSpace: 'nowrap' }}>
+              {mm2(rep.width)} × {mm2(rep.height)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -411,18 +454,13 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
             byKey[key].count++;
           }
           const entries = Object.values(byKey).sort((a, b) => b.count - a.count);
+          const clusters = clusterEntries(entries);
           return (
             <div style={{ background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderRadius: 6, overflow: 'hidden', marginBottom: 24 }}>
               <div style={{ padding: '10px 14px', background: '#0f172a', fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>SPARINGTYPES</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, padding: 16 }}>
-                {entries.map(({ rep, count }, i) => (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: 10 }}>
-                    <OpeningSvg op={rep} size={90} />
-                    <span style={{ fontSize: 18, fontWeight: 700, color: '#1e293b' }}>{count}×</span>
-                    <span style={{ fontSize: 10, color: '#64748b', textAlign: 'center' }}>
-                      {mm2(rep.width)} × {mm2(rep.height)} mm
-                    </span>
-                  </div>
+                {clusters.map((cluster, i) => (
+                  <ClusterCard key={i} cluster={cluster} />
                 ))}
               </div>
             </div>
