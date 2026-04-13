@@ -232,58 +232,77 @@ function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
 }
 
 export async function scanIfcWallTypes(file) {
-  const { IFC, api } = await getApi();
-
   if (_cachedModel && _cachedModel.name === file.name && _cachedModel.size === file.size) {
     return _cachedModel.types;
   }
 
-  if (_cachedModel) {
-    try { api.CloseModel(_cachedModel.modelID); } catch {}
-    _cachedModel = null;
+  const text = await file.text();
+
+  const typeIdToName = {};
+  const wallTypeRe = /^#(\d+)\s*=\s*IFCWALLTYPE\s*\(([^)]*)\)/gim;
+  let m;
+  while ((m = wallTypeRe.exec(text)) !== null) {
+    const id = m[1];
+    const args = m[2];
+    const parts = splitStepArgs(args);
+    const name = unquoteStep(parts[2]) ?? unquoteStep(parts[8]) ?? '(geen type)';
+    typeIdToName[id] = name;
   }
 
-  const buffer = await file.arrayBuffer();
-  const data = new Uint8Array(buffer);
-  const modelID = api.OpenModel(data, {});
+  const wallIds = new Set();
+  const wallRe = /^#(\d+)\s*=\s*IFC(?:WALL|WALLSTANDARDCASE)\s*\(/gim;
+  while ((m = wallRe.exec(text)) !== null) wallIds.add(m[1]);
 
-  const wallTypeMap = {};
-  try {
-    const relDefVec = api.GetLineIDsWithType(modelID, IFC.IFCRELDEFINESBYTYPE);
-    for (let i = 0; i < relDefVec.size(); i++) {
-      try {
-        const rel = api.GetLine(modelID, relDefVec.get(i), false);
-        const typeRef = rel?.RelatingType?.value;
-        if (!typeRef) continue;
-        const typeLine = api.GetLine(modelID, typeRef, false);
-        const tName = typeLine?.Name?.value ?? null;
-        const related = rel?.RelatedObjects;
-        if (!related || !tName) continue;
-        for (let j = 0; j < related.length; j++) {
-          const wid = related[j]?.value;
-          if (wid) wallTypeMap[wid] = tName;
-        }
-      } catch { }
+  const wallToType = {};
+  const relRe = /^#\d+\s*=\s*IFCRELDEFINESBYTYPE\s*\(([^)]*)\)/gim;
+  while ((m = relRe.exec(text)) !== null) {
+    const args = m[1];
+    const parts = splitStepArgs(args);
+    const relatedRaw = parts[4] ?? '';
+    const typeRaw = (parts[5] ?? '').trim().replace(/^#/, '');
+    const typeName = typeIdToName[typeRaw];
+    if (!typeName) continue;
+    const idMatches = relatedRaw.match(/#(\d+)/g);
+    if (!idMatches) continue;
+    for (const ref of idMatches) {
+      const wid = ref.slice(1);
+      if (wallIds.has(wid)) wallToType[wid] = typeName;
     }
-  } catch { }
+  }
 
   const typeCounts = {};
-  const wallTypesList = [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL];
-  for (const wType of wallTypesList) {
-    const idsVec = api.GetLineIDsWithType(modelID, wType);
-    for (let i = 0; i < idsVec.size(); i++) {
-      const wID = idsVec.get(i);
-      const tName = wallTypeMap[wID] ?? '(geen type)';
-      typeCounts[tName] = (typeCounts[tName] ?? 0) + 1;
-    }
+  for (const wid of wallIds) {
+    const name = wallToType[wid] ?? '(geen type)';
+    typeCounts[name] = (typeCounts[name] ?? 0) + 1;
   }
 
   const types = Object.entries(typeCounts)
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count);
 
-  _cachedModel = { name: file.name, size: file.size, modelID, wallTypeMap, types, IFC };
   return types;
+}
+
+function splitStepArgs(str) {
+  const parts = [];
+  let depth = 0, cur = '';
+  for (let i = 0; i < str.length; i++) {
+    const c = str[i];
+    if (c === '(' || c === '[') { depth++; cur += c; }
+    else if (c === ')' || c === ']') { depth--; cur += c; }
+    else if (c === ',' && depth === 0) { parts.push(cur.trim()); cur = ''; }
+    else cur += c;
+  }
+  if (cur.trim()) parts.push(cur.trim());
+  return parts;
+}
+
+function unquoteStep(s) {
+  if (!s) return null;
+  s = s.trim();
+  if (s === '$' || s === '') return null;
+  if (s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1);
+  return null;
 }
 
 export async function parseIfc(file, allowedTypes = null, onProgress = null) {
