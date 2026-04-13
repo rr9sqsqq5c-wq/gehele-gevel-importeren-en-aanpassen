@@ -258,11 +258,12 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
       .map(([len, cnt]) => ({ len: Number(len), cnt }));
   })();
   const summaryLines = allLatten.length ? lattenSummary.length + 2 : 0;
-  const SUMMARY_LINE_H = 11;
-  const SUMMARY_PAD = 6;
+  const SUMMARY_LINE_H = 13;
+  const SUMMARY_PAD = 8;
   const summaryBoxH = summaryLines > 0 ? summaryLines * SUMMARY_LINE_H + SUMMARY_PAD * 2 : 0;
+  const LEGEND_H = 28;
 
-  const svgTotal = VIEW_H + 16 + (summaryBoxH > 0 ? summaryBoxH + 8 : 0);
+  const svgTotal = VIEW_H + 16 + (summaryBoxH > 0 ? summaryBoxH + 12 : 0) + LEGEND_H;
 
   function exportSvg() {
     const svgEl = svgRef.current;
@@ -533,18 +534,18 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           {drawingType === 'achterconstructie' && summaryBoxH > 0 && (() => {
             const bx = OX;
             const by = VIEW_H + 16;
-            const bw = 220;
+            const bw = Math.max(260, lattenSummary.length > 0 ? 260 : 260);
             return (
               <g>
                 <rect x={bx} y={by} width={bw} height={summaryBoxH} fill="#fff" stroke="#000" strokeWidth={1} />
                 <text x={bx + SUMMARY_PAD} y={by + SUMMARY_PAD + SUMMARY_LINE_H - 2}
-                  fontSize={9} fontWeight="bold" fill="#000" fontFamily="Arial, sans-serif">
+                  fontSize={10} fontWeight="bold" fill="#000" fontFamily="Arial, sans-serif">
                   Latten samenvatting ({lattenRichting})
                 </text>
                 <line x1={bx} y1={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} x2={bx + bw} y2={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} stroke="#000" strokeWidth={0.5} />
                 {lattenSummary.map(({ len, cnt }, i) => (
                   <text key={i} x={bx + SUMMARY_PAD} y={by + SUMMARY_PAD + (i + 2) * SUMMARY_LINE_H + 2}
-                    fontSize={9} fill="#000" fontFamily="Arial, sans-serif">
+                    fontSize={10} fill="#000" fontFamily="Arial, sans-serif">
                     {cnt}× {len} mm
                   </text>
                 ))}
@@ -560,7 +561,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             }
             const lines = Object.entries(sizeGroups).sort((a, b) => b[1] - a[1]);
             const bh = (lines.length + 2) * SUMMARY_LINE_H + SUMMARY_PAD * 2;
-            const bx = OX, by = VIEW_H + 16, bw = 240;
+            const bx = OX, by = VIEW_H + 16, bw = 280;
             return (
               <g>
                 <rect x={bx} y={by} width={bw} height={bh} fill="#fff" stroke="#000" strokeWidth={1} />
@@ -579,7 +580,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             );
           })()}
 
-          <g transform={`translate(${OX},${svgTotal - 28})`}>
+          <g transform={`translate(${OX},${svgTotal - LEGEND_H + 4})`}>
             {drawingType === 'plaatsing' && <>
               <rect x={0} y={0} width={12} height={8} fill={panelColor} stroke={dimColor} strokeWidth={0.5} />
               <text x={15} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Paneel</text>
