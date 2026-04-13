@@ -238,57 +238,104 @@ export async function scanIfcWallTypes(file) {
 
   const text = await file.text();
 
+  const typeCounts = {};
   const typeIdToName = {};
-  const wallTypeRe = /^#(\d+)\s*=\s*IFCWALLTYPE\s*\(([^)]*)\)/gim;
-  let m;
-  while ((m = wallTypeRe.exec(text)) !== null) {
-    const id = m[1];
-    const args = m[2];
-    const parts = splitStepArgs(args);
-    const name = unquoteStep(parts[2]) ?? unquoteStep(parts[8]) ?? '(geen type)';
-    typeIdToName[id] = name;
+  const wallObjectType = {};
+  const relRecords = [];
+
+  let pos = 0;
+  const len = text.length;
+
+  while (pos < len) {
+    const hashIdx = text.indexOf('#', pos);
+    if (hashIdx === -1) break;
+
+    const eqIdx = text.indexOf('=', hashIdx + 1);
+    if (eqIdx === -1) break;
+
+    const typeStart = eqIdx + 1;
+    let typeEnd = typeStart;
+    while (typeEnd < len && text[typeEnd] !== '(') typeEnd++;
+    const ifcType = text.slice(typeStart, typeEnd).trim().toUpperCase();
+
+    let end = typeEnd + 1;
+    let depth = 1;
+    let inStr = false;
+    while (end < len && depth > 0) {
+      const c = text[end];
+      if (c === "'" && !inStr) inStr = true;
+      else if (c === "'" && inStr) inStr = false;
+      else if (!inStr) {
+        if (c === '(') depth++;
+        else if (c === ')') depth--;
+      }
+      end++;
+    }
+
+    const inner = text.slice(typeEnd + 1, end - 1);
+
+    if (ifcType === 'WALL' || ifcType === 'WALLSTANDARDCASE') {
+      const parts = splitStepArgs(inner);
+      const objectType = unquoteStep(parts[4]);
+      const id = text.slice(hashIdx + 1, eqIdx).trim();
+      wallObjectType[id] = objectType;
+    } else if (ifcType === 'WALLTYPE') {
+      const parts = splitStepArgs(inner);
+      const name = unquoteStep(parts[2]) ?? unquoteStep(parts[8]);
+      const id = text.slice(hashIdx + 1, eqIdx).trim();
+      if (name) typeIdToName[id] = name;
+    } else if (ifcType === 'RELDEFINESBYTYPE') {
+      relRecords.push({ inner, id: text.slice(hashIdx + 1, eqIdx).trim() });
+    }
+
+    const semi = text.indexOf(';', end);
+    pos = semi === -1 ? len : semi + 1;
   }
 
-  const wallIds = new Set();
-  const wallRe = /^#(\d+)\s*=\s*IFC(?:WALL|WALLSTANDARDCASE)\s*\(/gim;
-  while ((m = wallRe.exec(text)) !== null) wallIds.add(m[1]);
-
   const wallToType = {};
-  const relRe = /^#\d+\s*=\s*IFCRELDEFINESBYTYPE\s*\(([^)]*)\)/gim;
-  while ((m = relRe.exec(text)) !== null) {
-    const args = m[1];
-    const parts = splitStepArgs(args);
+  for (const { inner } of relRecords) {
+    const parts = splitStepArgs(inner);
     const relatedRaw = parts[4] ?? '';
     const typeRaw = (parts[5] ?? '').trim().replace(/^#/, '');
-    const typeName = typeIdToName[typeRaw];
-    if (!typeName) continue;
+    const tName = typeIdToName[typeRaw];
+    if (!tName) continue;
     const idMatches = relatedRaw.match(/#(\d+)/g);
     if (!idMatches) continue;
     for (const ref of idMatches) {
-      const wid = ref.slice(1);
-      if (wallIds.has(wid)) wallToType[wid] = typeName;
+      wallToType[ref.slice(1)] = tName;
     }
   }
 
-  const typeCounts = {};
-  for (const wid of wallIds) {
-    const name = wallToType[wid] ?? '(geen type)';
+  for (const [wid, objectType] of Object.entries(wallObjectType)) {
+    const name = wallToType[wid] ?? objectType ?? '(geen type)';
     typeCounts[name] = (typeCounts[name] ?? 0) + 1;
   }
 
-  const types = Object.entries(typeCounts)
+  return Object.entries(typeCounts)
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count);
+}
 
-  return types;
+function extractInner(rec) {
+  const start = rec.indexOf('(');
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < rec.length; i++) {
+    if (rec[i] === '(') depth++;
+    else if (rec[i] === ')') { depth--; if (depth === 0) return rec.slice(start + 1, i); }
+  }
+  return null;
 }
 
 function splitStepArgs(str) {
   const parts = [];
-  let depth = 0, cur = '';
+  let depth = 0, cur = '', inStr = false;
   for (let i = 0; i < str.length; i++) {
     const c = str[i];
-    if (c === '(' || c === '[') { depth++; cur += c; }
+    if (c === "'" && !inStr) { inStr = true; cur += c; }
+    else if (c === "'" && inStr) { inStr = false; cur += c; }
+    else if (inStr) { cur += c; }
+    else if (c === '(' || c === '[') { depth++; cur += c; }
     else if (c === ')' || c === ']') { depth--; cur += c; }
     else if (c === ',' && depth === 0) { parts.push(cur.trim()); cur = ''; }
     else cur += c;
@@ -301,7 +348,7 @@ function unquoteStep(s) {
   if (!s) return null;
   s = s.trim();
   if (s === '$' || s === '') return null;
-  if (s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1);
+  if (s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1).replace(/''/g, "'");
   return null;
 }
 
