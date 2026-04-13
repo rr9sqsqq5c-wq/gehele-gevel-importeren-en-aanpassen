@@ -568,6 +568,79 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
   }
 }
 
+export async function parseIfcGridLines(file) {
+  if (_cachedModel && _cachedModel.name === file.name && _cachedModel.size === file.size && _cachedModel.gridLines) {
+    return _cachedModel.gridLines;
+  }
+
+  const text = await file.text();
+  const flat = text.replace(/\r?\n/g, ' ');
+
+  const records = {};
+  const RE = /#(\d+)\s*=\s*(IFCGRID|IFCGRIDAXIS|IFCLINE|IFCPOLYLINE|IFCCARTESIANPOINT)\s*\(/gi;
+  let m;
+  while ((m = RE.exec(flat)) !== null) {
+    const id = m[1];
+    const type = m[2].toUpperCase();
+    const start = RE.lastIndex - 1;
+    let end = start + 1, depth = 1, inStr = false;
+    while (end < flat.length && depth > 0) {
+      const c = flat[end];
+      if (c === "'" && !inStr) inStr = true;
+      else if (c === "'" && inStr) inStr = false;
+      else if (!inStr) { if (c === '(') depth++; else if (c === ')') depth--; }
+      end++;
+    }
+    records[id] = { type, inner: flat.slice(start + 1, end - 1) };
+    RE.lastIndex = end;
+  }
+
+  function getCartesianPoint(id) {
+    const rec = records[id];
+    if (!rec || rec.type !== 'IFCCARTESIANPOINT') return null;
+    const inner = rec.inner.replace(/^\(/, '').replace(/\)$/, '');
+    const coords = inner.split(',').map((s) => parseFloat(s.trim()));
+    return { x: (coords[0] ?? 0) * 1000, y: (coords[1] ?? 0) * 1000, z: (coords[2] ?? 0) * 1000 };
+  }
+
+  function getCurveFirstPoint(id) {
+    const rec = records[id];
+    if (!rec) return null;
+    const args = splitStepArgs(rec.inner);
+    if (rec.type === 'IFCLINE') {
+      const ref = args[0]?.trim().replace('#', '');
+      return getCartesianPoint(ref);
+    }
+    if (rec.type === 'IFCPOLYLINE') {
+      const pts = args[0]?.match(/#(\d+)/g);
+      if (pts?.length) return getCartesianPoint(pts[0].slice(1));
+    }
+    return null;
+  }
+
+  const result = [];
+  for (const [, rec] of Object.entries(records)) {
+    if (rec.type !== 'IFCGRID') continue;
+    const args = splitStepArgs(rec.inner);
+    const uRefs = (args[7] ?? '').match(/#(\d+)/g) ?? [];
+    const vRefs = (args[8] ?? '').match(/#(\d+)/g) ?? [];
+    for (const [axisType, refs] of [['U', uRefs], ['V', vRefs]]) {
+      for (const ref of refs) {
+        const axisRec = records[ref.slice(1)];
+        if (!axisRec || axisRec.type !== 'IFCGRIDAXIS') continue;
+        const aArgs = splitStepArgs(axisRec.inner);
+        const tag = unquoteStep(aArgs[0]) ?? ref.slice(1);
+        const curveRef = aArgs[2]?.trim().replace(/^#/, '');
+        const pt = getCurveFirstPoint(curveRef);
+        if (pt) result.push({ tag, axisType, x: pt.x, y: pt.y, z: pt.z });
+      }
+    }
+  }
+
+  if (_cachedModel) _cachedModel.gridLines = result;
+  return result;
+}
+
 function r(v) {
   const s = String(Number(v));
   return s.includes('.') ? s : s + '.';

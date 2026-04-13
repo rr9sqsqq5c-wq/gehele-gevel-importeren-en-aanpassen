@@ -42,7 +42,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility }) {
+export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [] }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -525,12 +525,49 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     ctx.lineWidth = 1;
     ctx.strokeRect(faceSx, faceSy, faceW, faceH);
 
+    if (gridLines.length > 0) {
+      const withOrigin = walls.filter((w) => w.wallOrigin);
+      if (withOrigin.length > 0) {
+        const wo = withOrigin[0].wallOrigin;
+        const lenAxis = wo.lengthAxis;
+        const groupMinX = Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart));
+        ctx.save();
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 1.5;
+        for (const gl of gridLines) {
+          const worldMM = gl[lenAxis];
+          if (worldMM == null) continue;
+          const relX = worldMM - groupMinX;
+          if (relX < -500 || relX > groupWidth + 500) continue;
+          const [sx] = toScreen(relX, 0);
+          ctx.strokeStyle = 'rgba(234,88,12,0.8)';
+          ctx.beginPath();
+          ctx.moveTo(sx, 0);
+          ctx.lineTo(sx, H);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = 'rgba(234,88,12,0.9)';
+          ctx.font = 'bold 11px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          const label = gl.tag ?? '';
+          const tw = ctx.measureText(label).width + 8;
+          ctx.fillRect(sx - tw / 2, 2, tw, 16);
+          ctx.fillStyle = '#fff';
+          ctx.fillText(label, sx, 4);
+          ctx.setLineDash([6, 4]);
+          ctx.strokeStyle = 'rgba(234,88,12,0.8)';
+        }
+        ctx.restore();
+      }
+    }
+
     ctx.font = '10px system-ui, sans-serif';
     ctx.fillStyle = '#64748b';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
-  }, [walls, facadeData, allPanels, allLatten, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten]);
+  }, [walls, facadeData, allPanels, allLatten, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, gridLines]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();

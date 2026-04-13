@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC } from './lib/ifc.js';
+import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines } from './lib/ifc.js';
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
@@ -532,6 +532,8 @@ export default function App() {
   const [selectedTypes, setSelectedTypes] = useState(new Set());
   const [similarSuggestions, setSimilarSuggestions] = useState(null);
   const [groupLinks, setGroupLinks] = useState({});
+  const [gridLines, setGridLines] = useState([]);
+  const [showGridLines, setShowGridLines] = useState(true);
   const { get: getSettings, update: updateSettings, initColor, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const wallMap = useMemo(() => Object.fromEntries(allWalls.map((w) => [w.expressID, w])), [allWalls]);
@@ -725,6 +727,11 @@ export default function App() {
       setSelectedWallIds(new Set());
       setActiveGroupId(null);
       setIfcFileName(pendingFile.name.replace(/\.ifc$/i, ''));
+      try {
+        const gl = await parseIfcGridLines(pendingFile);
+        setGridLines(gl);
+        if (gl.length) addLog(`✓ ${gl.length} stramienlijnen geïmporteerd`);
+      } catch { setGridLines([]); }
       setLoadStatus('loaded');
       setPendingFile(null);
       setWallTypes([]);
@@ -1288,6 +1295,14 @@ export default function App() {
               </label>
             </Tooltip>
           )}
+          {viewMode === '2d' && gridLines.length > 0 && (
+            <Tooltip text={"Toont de IFC-stramienlijnen als verticale stippellijnen in het 2D gevelaanzicht.\nElke stramienlijn is voorzien van het bijbehorende label (bijv. A, B, 1, 2)."}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer' }}>
+                <input type="checkbox" checked={showGridLines} onChange={(e) => setShowGridLines(e.target.checked)} />
+                Stramienlijnen
+              </label>
+            </Tooltip>
+          )}
 
           {allWalls.length > 0 && (
             <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', border: '1px solid #334155' }}>
@@ -1528,6 +1543,7 @@ export default function App() {
                     panelen={getSettings(activeGroup.id).panelen}
                     latten={getSettings(activeGroup.id).latten}
                     layerVisibility={getSettings(activeGroup.id).layerVisibility}
+                    gridLines={showGridLines ? gridLines : []}
                   />
                   <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.85)', color: '#94a3b8', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                     {getSettings(activeGroup.id).name} · {activeGroup.wallIds.length} wand{activeGroup.wallIds.length !== 1 ? 'en' : ''} · 2D gevelaanzicht
