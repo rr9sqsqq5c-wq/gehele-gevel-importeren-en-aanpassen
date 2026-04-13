@@ -127,7 +127,7 @@ function useGroupSettings() {
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
-  return { get, update, initColor };
+  return { get, update, initColor, map, setMap };
 }
 
 function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked }) {
@@ -532,7 +532,7 @@ export default function App() {
   const [selectedTypes, setSelectedTypes] = useState(new Set());
   const [similarSuggestions, setSimilarSuggestions] = useState(null);
   const [groupLinks, setGroupLinks] = useState({});
-  const { get: getSettings, update: updateSettings, initColor } = useGroupSettings();
+  const { get: getSettings, update: updateSettings, initColor, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const wallMap = useMemo(() => Object.fromEntries(allWalls.map((w) => [w.expressID, w])), [allWalls]);
 
@@ -872,6 +872,53 @@ export default function App() {
 
   function clearSelection() {
     setSelectedWallIds(new Set());
+  }
+
+  function handleSaveProject() {
+    const projectData = {
+      _version: 1,
+      _savedAt: new Date().toISOString(),
+      ifcFileName: ifcFileName ?? null,
+      groups,
+      groupLinks,
+      groupSettings: settingsMap,
+    };
+    const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const baseName = ifcFileName ? ifcFileName.replace(/\.ifc$/i, '') : 'project';
+    a.download = `${baseName}_gevelbekleding.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleLoadProject(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data._version || !Array.isArray(data.groups)) {
+          alert('Ongeldig projectbestand.');
+          return;
+        }
+        setGroups(data.groups ?? []);
+        setGroupLinks(data.groupLinks ?? {});
+        setSettingsMap(data.groupSettings ?? {});
+        setGroupsHistory([]);
+        setActiveGroupId(null);
+        setSimilarSuggestions(null);
+        if (data.ifcFileName && data.ifcFileName !== ifcFileName) {
+          alert(`Project geladen.\n\nDit project hoort bij IFC-bestand: "${data.ifcFileName}".\nZorg dat dit bestand is geladen om de elementen correct te zien.`);
+        }
+      } catch {
+        alert('Fout bij laden van projectbestand.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   }
 
   function handleExport() {
@@ -1221,6 +1268,17 @@ export default function App() {
             <button onClick={undo} disabled={groupsHistory.length === 0} style={{ background: '#334155', color: groupsHistory.length === 0 ? '#64748b' : '#f1f5f9', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: groupsHistory.length === 0 ? 'default' : 'pointer', opacity: groupsHistory.length === 0 ? 0.5 : 1 }}>
               ↩ Undo
             </button>
+          </Tooltip>
+          <Tooltip text={"Sla het huidige project op als een JSON-bestand.\nHierin worden alle groepen, instellingen en koppelingen bewaard.\nLaad het later opnieuw om verder te werken — het IFC-bestand moet wel opnieuw worden geladen."}>
+            <button onClick={handleSaveProject} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
+              💾 Project opslaan
+            </button>
+          </Tooltip>
+          <Tooltip text={"Laad een eerder opgeslagen projectbestand (.json).\nZorg dat het bijbehorende IFC-bestand al is geladen voordat je het project laadt."}>
+            <label style={{ background: '#1e40af', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
+              📂 Project laden
+              <input type="file" accept=".json" style={{ display: 'none' }} onChange={handleLoadProject} />
+            </label>
           </Tooltip>
           {viewMode === '3d' && (
             <Tooltip text={"Toont het berekende steenstrippatroon als gekleurde vlakken op de wanden in de 3D-viewer.\nUitzetten kan handig zijn voor een beter overzicht van de geometrie."}>
