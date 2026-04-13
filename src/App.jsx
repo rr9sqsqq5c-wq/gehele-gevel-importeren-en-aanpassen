@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc } from './lib/ifc.js';
-import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile } from './lib/storage.js';
+import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
@@ -664,13 +664,33 @@ export default function App() {
     addLog(`Bestand: ${pendingFile.name} (${(pendingFile.size / 1024 / 1024).toFixed(1)} MB)`);
     try {
       const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
+      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}`;
+
       addLog(filter ? `Filter: ${[...filter].join(', ')}` : 'Alle wandtypen worden geladen');
-      const walls = await parseIfc(pendingFile, filter, (p) => {
-        if (p.log) { addLog(p.log); return; }
-        setLoadProgress({ current: p.current, total: p.total });
-        if (p.total > 0 && p.current === 1) addLog(`${p.total} wanden gevonden, verwerken gestart…`);
-        if (p.total > 0 && p.current === p.total) addLog(`Alle ${p.total} wanden verwerkt`);
-      });
+      addLog('Cache controleren…');
+
+      let walls = null;
+      try {
+        const cached = await loadParsedWalls(cacheKey, pendingFile.size);
+        if (cached) {
+          addLog(`✓ Cache gevonden! ${cached.length} wanden direct geladen`);
+          walls = cached;
+          setLoadProgress({ current: cached.length, total: cached.length });
+        }
+      } catch { }
+
+      if (!walls) {
+        addLog('Geen cache — IFC parsen gestart…');
+        walls = await parseIfc(pendingFile, filter, (p) => {
+          if (p.log) { addLog(p.log); return; }
+          setLoadProgress({ current: p.current, total: p.total });
+          if (p.total > 0 && p.current === 1) addLog(`${p.total} wanden gevonden, verwerken gestart…`);
+          if (p.total > 0 && p.current === p.total) addLog(`Alle ${p.total} wanden verwerkt`);
+        });
+        addLog(`Resultaat opslaan in cache…`);
+        saveParsedWalls(cacheKey, pendingFile.size, walls).catch(() => {});
+      }
+
       if (!walls.length) throw new Error('Geen wanden gevonden met de geselecteerde types');
       addLog(`✓ ${walls.length} wanden geladen, aangrenzendheid detecteren…`);
       const adj = detectAdjacencies(walls);
