@@ -42,7 +42,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false }) {
+export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [] }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -211,6 +211,26 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     }
   }, [facadeData, latten, allPanels, mat]);
 
+  const zonePatterns = useMemo(() => {
+    if (!walls?.length || !facadeData) return [];
+    const sortedPenants = [...(groupSettings?.penanten ?? [])].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+    if (sortedPenants.length < 2) return [];
+    const result = [];
+    for (let zi = 0; zi < sortedPenants.length - 1; zi++) {
+      const zs = zoneSettings[zi];
+      if (!zs?.enabled) { result.push(null); continue; }
+      const zoneX1 = (sortedPenants[zi].x ?? 0) + Math.max(1, sortedPenants[zi].breedte ?? 400);
+      const zoneX2 = sortedPenants[zi + 1].x ?? 0;
+      if (zoneX2 <= zoneX1) { result.push(null); continue; }
+      const zoneMat = zs.material ?? mat;
+      const zoneVerband = zs.verband ?? verband;
+      const zoneMaxHoogte = zs.maxHoogte ?? maxHoogte;
+      const patternData = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxHoogte, zetwerk);
+      result.push(patternData ? { patternData, zoneX1, zoneX2, color: zs.color ?? groupColor, zoneMat, zoneVerband } : null);
+    }
+    return result;
+  }, [walls, facadeData, groupSettings, zoneSettings, mat, verband, maxHoogte, zetwerk, groupColor]);
+
   const bounds = useMemo(() => {
     if (!facadeData) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
     return { minX: 0, maxX: facadeData.groupWidth, minY: 0, maxY: facadeData.groupHeight };
@@ -367,6 +387,37 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
           ctx.fillStyle = brickColor(piece.label, color);
           ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
         }
+      }
+
+      for (const zp of zonePatterns) {
+        if (!zp) continue;
+        const { patternData: zPat, zoneX1, zoneX2, color: zColor, zoneMat: zMat, zoneVerband: zVerband } = zp;
+        const [sx1z] = toScreen(zoneX1, 0);
+        const [sx2z] = toScreen(zoneX2, 0);
+        const zW = sx2z - sx1z;
+        if (zW <= 0) continue;
+        const isTZ = zVerband === 'tegelverband';
+        const zStripH = isTZ ? zMat.steenL : zMat.steenH;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(sx1z, faceSy, zW, faceH);
+        ctx.clip();
+        ctx.fillStyle = hexToRgba(zColor, 0.15);
+        ctx.fillRect(sx1z, faceSy, zW, faceH);
+        for (const row of zPat.rows) {
+          const [, rowSy] = toScreen(0, row.y + zStripH);
+          const rowSh = zStripH * scale * 0.001;
+          for (const piece of row.pieces) {
+            const pEnd = piece.start + piece.length;
+            if (pEnd <= zoneX1 || piece.start >= zoneX2) continue;
+            const [pSx] = toScreen(Math.max(piece.start, zoneX1), 0);
+            const [pEx] = toScreen(Math.min(pEnd, zoneX2), 0);
+            const pSw = pEx - pSx;
+            ctx.fillStyle = brickColor(piece.label, zColor);
+            ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
+          }
+        }
+        ctx.restore();
       }
     }
 
@@ -627,7 +678,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
-  }, [walls, facadeData, allPanels, allLatten, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, gridLines, showCenterLines]);
+  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, gridLines, showCenterLines]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();

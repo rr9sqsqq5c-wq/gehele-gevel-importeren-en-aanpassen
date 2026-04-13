@@ -123,7 +123,7 @@ const nextColor = () => GROUP_COLORS[_colorIdx++ % GROUP_COLORS.length];
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, penanten: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 18, gewichtM2: 11, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 18, gewichtM2: 11, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -256,6 +256,80 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
           </div>
         ))}
       </div>
+
+      {(settings.penanten ?? []).length >= 2 && (() => {
+        const sortedPenants = [...(settings.penanten ?? [])].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+        const numZones = sortedPenants.length - 1;
+        const zoneSettings = settings.zoneSettings ?? [];
+        const DEFAULT_ZONE_MAT = { ...DEFAULT_MATERIAL };
+        const updZone = (zi, patch) => {
+          const cur = [...zoneSettings];
+          cur[zi] = { enabled: false, color: settings.color, verband: settings.verband, material: { ...DEFAULT_ZONE_MAT }, maxHoogte: null, ...cur[zi], ...patch };
+          onUpdate({ zoneSettings: cur });
+        };
+        return (
+          <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
+            <SectionLabel tip={"Zones zijn de gebieden tussen twee penanten.\nPer zone kun je een eigen kleur, verband en steenstrip-afmetingen instellen.\nDe rest van de gevel (buiten de zones) gebruikt de groepsinstellingen.\n\nAantal zones = aantal penanten − 1"}>
+              Zones ({numZones})
+            </SectionLabel>
+            {Array.from({ length: numZones }, (_, zi) => {
+              const p1 = sortedPenants[zi], p2 = sortedPenants[zi + 1];
+              const zoneX1 = (p1.x ?? 0) + Math.max(1, p1.breedte ?? 400);
+              const zoneX2 = p2.x ?? 0;
+              const zs = { enabled: false, color: settings.color, verband: settings.verband, material: { ...DEFAULT_ZONE_MAT }, maxHoogte: null, ...(zoneSettings[zi] ?? {}) };
+              const zm = zs.material ?? DEFAULT_ZONE_MAT;
+              return (
+                <div key={zi} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4, padding: 6, marginBottom: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: zs.enabled ? 6 : 0 }}>
+                    <input type="checkbox" id={`zone-en-${zi}`} checked={zs.enabled} onChange={(e) => updZone(zi, { enabled: e.target.checked })} />
+                    <label htmlFor={`zone-en-${zi}`} style={{ fontSize: 11, fontWeight: 600, color: '#334155', cursor: 'pointer', flex: 1 }}>
+                      Zone {zi + 1}
+                      <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 4 }}>
+                        ({Math.round(zoneX1)}–{Math.round(zoneX2)} mm, breedte {Math.max(0, Math.round(zoneX2 - zoneX1))} mm)
+                      </span>
+                    </label>
+                    {zs.enabled && (
+                      <input type="color" value={zs.color} onChange={(e) => updZone(zi, { color: e.target.value })}
+                        style={{ width: 28, height: 22, border: '1px solid #cbd5e1', borderRadius: 3, padding: 1, cursor: 'pointer' }} />
+                    )}
+                  </div>
+                  {zs.enabled && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <Field label="Metselverband" tip="Verband voor deze zone.">
+                        <select value={zs.verband} onChange={(e) => updZone(zi, { verband: e.target.value })} style={inp}>
+                          <option value="halfsteens">Halfsteens</option>
+                          <option value="staand">Staand</option>
+                          <option value="tegelverband">Tegelverband</option>
+                        </select>
+                      </Field>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                        {[['Lengte mm', 'steenL'], ['Hoogte mm', 'steenH'], ['Lintvoeg mm', 'lint'], ['Stootvoeg mm', 'stoot']].map(([lbl, key]) => (
+                          <Field key={key} label={lbl}>
+                            <input type="number" min={1} step={1} value={zm[key] ?? DEFAULT_MATERIAL[key]}
+                              onChange={(e) => updZone(zi, { material: { ...zm, [key]: Number(e.target.value) } })}
+                              style={{ ...inp, width: '100%' }} />
+                          </Field>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input type="checkbox" id={`zone-mh-${zi}`} checked={zs.maxHoogte !== null}
+                          onChange={(e) => updZone(zi, { maxHoogte: e.target.checked ? 1000 : null })} />
+                        <label htmlFor={`zone-mh-${zi}`} style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>Max strip hoogte</label>
+                        {zs.maxHoogte !== null && (
+                          <input type="number" min={0} step={10} value={zs.maxHoogte}
+                            onChange={(e) => updZone(zi, { maxHoogte: Number(e.target.value) })}
+                            style={{ ...inp, width: 60 }} />
+                        )}
+                        {zs.maxHoogte !== null && <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
         {(() => {
@@ -1554,6 +1628,7 @@ export default function App() {
                     layerVisibility={getSettings(activeGroup.id).layerVisibility}
                     gridLines={showGridLines ? gridLines : []}
                     showCenterLines={showCenterLines}
+                    zoneSettings={getSettings(activeGroup.id).zoneSettings ?? []}
                   />
                   <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.85)', color: '#94a3b8', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                     {getSettings(activeGroup.id).name} · {activeGroup.wallIds.length} wand{activeGroup.wallIds.length !== 1 ? 'en' : ''} · 2D gevelaanzicht
