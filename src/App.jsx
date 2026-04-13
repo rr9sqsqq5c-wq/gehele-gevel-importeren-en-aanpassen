@@ -8,6 +8,7 @@ import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
 import { Werktekening } from './Werktekening.jsx';
+import { Uittrekstaat } from './Uittrekstaat.jsx';
 
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 const DEFAULT_VERBAND = 'halfsteens';
@@ -1252,6 +1253,14 @@ export default function App() {
                   📐 Werktekening
                 </button>
               </Tooltip>
+              <Tooltip text={"Uittrekstaat met totaaloverzicht van alle materialen:\noppervlakten, steenstrips, panelen, latten en zetwerk per groep en totaal.\nAfdrukbaar als overzicht voor inkoop en montage."}>
+                <button
+                  onClick={() => setViewMode('uittrekstaat')}
+                  style={{ background: viewMode === 'uittrekstaat' ? '#3b82f6' : '#1e293b', color: viewMode === 'uittrekstaat' ? '#fff' : '#94a3b8', border: 'none', borderLeft: '1px solid #334155', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
+                >
+                  📋 Uittrekstaat
+                </button>
+              </Tooltip>
             </div>
           )}
 
@@ -1470,7 +1479,7 @@ export default function App() {
                 </div>
               )}
             </>
-          ) : (
+          ) : viewMode === 'tekening' ? (
             <>
               {activeGroup ? (() => {
                 const s = getSettings(activeGroup.id);
@@ -1496,7 +1505,14 @@ export default function App() {
                 </div>
               )}
             </>
-          )}
+          ) : viewMode === 'uittrekstaat' ? (
+            <Uittrekstaat
+              groups={groups}
+              walls={allWalls}
+              getSettings={getSettings}
+              adjacencies={adjacencies}
+            />
+          ) : null}
         </div>
 
         {activeGroup && (
