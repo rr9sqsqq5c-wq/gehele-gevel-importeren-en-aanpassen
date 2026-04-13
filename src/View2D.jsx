@@ -521,6 +521,38 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       ctx.restore();
     }
 
+    if (penantFaceData?.length >= 2) {
+      const sorted = [...penantFaceData].sort((a, b) => (a.penant.x ?? 0) - (b.penant.x ?? 0));
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const p1 = sorted[i].penant;
+        const p2 = sorted[i + 1].penant;
+        const zoneX1 = (p1.x ?? 0) + Math.max(1, p1.breedte ?? 400);
+        const zoneX2 = p2.x ?? 0;
+        if (zoneX2 <= zoneX1) continue;
+        const [sx1z] = toScreen(zoneX1, 0);
+        const [sx2z] = toScreen(zoneX2, 0);
+        const zW = sx2z - sx1z;
+        ctx.save();
+        ctx.fillStyle = 'rgba(234,179,8,0.12)';
+        ctx.fillRect(sx1z, faceSy, zW, faceH);
+        ctx.strokeStyle = 'rgba(234,179,8,0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(sx1z, faceSy, zW, faceH);
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(234,179,8,0.9)';
+        ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const zLabel = `Zone ${i + 1}  (${Math.round(zoneX2 - zoneX1)} mm)`;
+        const zlw = ctx.measureText(zLabel).width + 8;
+        ctx.fillRect(sx1z + zW / 2 - zlw / 2, faceSy + 4, zlw, 16);
+        ctx.fillStyle = '#000';
+        ctx.fillText(zLabel, sx1z + zW / 2, faceSy + 6);
+        ctx.restore();
+      }
+    }
+
     ctx.strokeStyle = '#64748b';
     ctx.lineWidth = 1;
     ctx.strokeRect(faceSx, faceSy, faceW, faceH);
