@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
 
@@ -13,6 +13,32 @@ const FONT_LBL   = 8;
 
 function mm(v) { return Math.round(v); }
 function m(v)  { return (v / 1000).toFixed(3); }
+
+function brickColor(label, baseColor) {
+  if (label === 'Kop') return '#b45309';
+  if (label === 'Driekwart') return '#7c3aed';
+  if (label === 'Rest') return '#dc2626';
+  return baseColor ?? '#a64033';
+}
+
+function getStripsForPanel(panel, facadeRows, verband, mat) {
+  const stripH = verband === 'tegelverband' ? mat.steenL : mat.steenH;
+  const strips = [];
+  for (const row of facadeRows) {
+    if (row.y + stripH <= panel.y + 0.5 || row.y >= panel.y + panel.height - 0.5) continue;
+    for (const piece of row.pieces) {
+      if (piece.start + piece.length <= panel.x + 0.5 || piece.start >= panel.x + panel.width - 0.5) continue;
+      const clipX  = Math.max(piece.start, panel.x) - panel.x;
+      const clipX2 = Math.min(piece.start + piece.length, panel.x + panel.width) - panel.x;
+      const clipY  = Math.max(row.y, panel.y) - panel.y;
+      const clipY2 = Math.min(row.y + stripH, panel.y + panel.height) - panel.y;
+      if (clipX2 - clipX > 0.5 && clipY2 - clipY > 0.5) {
+        strips.push({ x: clipX, y: clipY, width: clipX2 - clipX, height: clipY2 - clipY, label: piece.label });
+      }
+    }
+  }
+  return strips;
+}
 
 function arrowHead(x1, y1, x2, y2, size = ARROW_SIZE) {
   const dx = x2 - x1, dy = y2 - y1;
@@ -118,6 +144,8 @@ function computeLatten(facadeData, panelen, latten, mat) {
 
 export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen, latten, groupMinH }) {
   const svgRef = useRef(null);
+  const [drawingType, setDrawingType] = useState('achterconstructie');
+  const [productieGenerated, setProductieGenerated] = useState(false);
 
   const mat     = groupSettings?.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
   const verband = groupSettings?.verband ?? 'halfsteens';
@@ -229,14 +257,89 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#f1f5f9' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a5f', flex: 1 }}>
-          Werktekening — {groupName ?? 'Groep'} · schaal 1:{Math.round(1 / scale * 1000)}
+          Werktekening — {groupName ?? 'Groep'}
         </span>
-        <button onClick={exportSvg} style={{ fontSize: 11, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>⬇ SVG</button>
-        <button onClick={exportPrint} style={{ fontSize: 11, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>🖨 Afdrukken</button>
+        {drawingType !== 'productie' && <>
+          <button onClick={exportSvg} style={{ fontSize: 11, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>⬇ SVG</button>
+          <button onClick={exportPrint} style={{ fontSize: 11, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>🖨 Afdrukken</button>
+        </>}
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-        <svg ref={svgRef} width={VIEW_W} height={svgTotal} viewBox={`0 0 ${VIEW_W} ${svgTotal}`} style={{ background: '#fff', display: 'block', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }} xmlns="http://www.w3.org/2000/svg">
+      <div style={{ display: 'flex', gap: 0, background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
+        {[
+          { key: 'achterconstructie', label: '1. Achterconstructie' },
+          { key: 'plaatsing',         label: '2. Panelen plaatsing' },
+          { key: 'productie',         label: '3. Paneel productie' },
+        ].map(({ key, label }) => (
+          <button key={key} onClick={() => setDrawingType(key)} style={{
+            padding: '6px 14px', fontSize: 11, fontWeight: drawingType === key ? 700 : 400,
+            background: drawingType === key ? '#fff' : 'transparent',
+            border: 'none', borderBottom: drawingType === key ? '2px solid #2563eb' : '2px solid transparent',
+            color: drawingType === key ? '#2563eb' : '#64748b', cursor: 'pointer',
+          }}>{label}</button>
+        ))}
+      </div>
+
+      <div style={{ flex: 1, overflow: 'auto', padding: drawingType === 'productie' ? 8 : 16 }}>
+
+        {drawingType === 'productie' && (
+          <div>
+            {!productieGenerated ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 300, gap: 12 }}>
+                <div style={{ fontSize: 13, color: '#64748b' }}>Genereer individuele paneel-productiematen</div>
+                <button
+                  onClick={() => setProductieGenerated(true)}
+                  style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 5, padding: '8px 20px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+                >
+                  Genereer paneel tekeningen
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '0 4px' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a5f' }}>{allPanels.length} panelen — {groupName ?? 'Groep'}</span>
+                  <button onClick={() => setProductieGenerated(false)} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '3px 8px', cursor: 'pointer' }}>Verberg</button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                  {allPanels.map((panel, idx) => {
+                    const PAD = 40;
+                    const CARD_W = 300;
+                    const CARD_H = Math.round(CARD_W * panel.height / panel.width) + PAD * 2;
+                    const sc = (CARD_W - PAD * 2) / panel.width;
+                    const ox = PAD, oy = PAD;
+                    const px = (x) => ox + x * sc;
+                    const py = (y) => oy + (panel.height - y) * sc;
+                    const strips = getStripsForPanel(panel, facadeData.rows, verband, mat);
+                    const color = groupSettings?.color ?? '#a64033';
+                    return (
+                      <svg key={panel.id ?? idx} width={CARD_W} height={CARD_H + 30}
+                        viewBox={`0 0 ${CARD_W} ${CARD_H + 30}`}
+                        style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
+                        xmlns="http://www.w3.org/2000/svg">
+                        <rect x={ox} y={oy} width={panel.width * sc} height={panel.height * sc} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1} />
+                        {strips.map((s, si) => (
+                          <rect key={si}
+                            x={px(s.x)} y={py(s.y + s.height)}
+                            width={s.width * sc} height={s.height * sc}
+                            fill={brickColor(s.label, color)} stroke="rgba(0,0,0,0.15)" strokeWidth={0.3}
+                          />
+                        ))}
+                        <text x={CARD_W / 2} y={CARD_H + 20} textAnchor="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">
+                          P{idx + 1} · {mm(panel.width)} × {mm(panel.height)} mm
+                        </text>
+                        <text x={ox} y={oy - 4} fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">{mm(panel.width)} mm</text>
+                        <text x={ox - 4} y={oy + panel.height * sc / 2} fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif"
+                          transform={`rotate(-90,${ox - 4},${oy + panel.height * sc / 2})`}>{mm(panel.height)} mm</text>
+                      </svg>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {drawingType !== 'productie' && <svg ref={svgRef} width={VIEW_W} height={svgTotal} viewBox={`0 0 ${VIEW_W} ${svgTotal}`} style={{ background: '#fff', display: 'block', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }} xmlns="http://www.w3.org/2000/svg">
 
           <rect x={0} y={0} width={VIEW_W} height={svgTotal} fill="#fff" />
 
@@ -255,34 +358,36 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             </clipPath>
           </defs>
 
-          <text x={OX} y={20} fontSize={13} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">{groupName ?? 'Groep'} — Werktekening latten & panelen</text>
+          <text x={OX} y={20} fontSize={13} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">
+            {groupName ?? 'Groep'} — {drawingType === 'achterconstructie' ? 'Achterconstructie (houten latten)' : 'Panelen plaatsing op gevel'}
+          </text>
           <text x={OX} y={33} fontSize={8} fill="#64748b" fontFamily="Arial, sans-serif">
             Schaal 1:{Math.round(1 / scale * 1000)} · Afmetingen in mm · Peilmaten in m t.o.v. IFC-nulpunt
           </text>
 
           <rect x={OX} y={OY} width={W} height={H} fill="#f8fafc" stroke={dimColor} strokeWidth={1} />
 
-          {allPanels.map((p, i) => (
+          {drawingType === 'plaatsing' && allPanels.map((p, i) => (
             <g key={p.id ?? i}>
               <rect
                 x={sx(p.x)} y={sy(p.y + p.height)}
                 width={p.width * scale} height={p.height * scale}
-                fill={panelColor} stroke={dimColor} strokeWidth={0.5} fillOpacity={0.7}
+                fill={panelColor} stroke={dimColor} strokeWidth={0.8} fillOpacity={0.8}
               />
-              {p.width * scale > 40 && p.height * scale > 18 && (
+              {p.width * scale > 24 && p.height * scale > 14 && (
                 <text
                   x={sx(p.x + p.width / 2)} y={sy(p.y + p.height / 2)}
                   textAnchor="middle" dominantBaseline="middle"
-                  fontSize={FONT_LBL} fill="#1e3a5f" fontFamily="Arial, sans-serif"
+                  fontSize={FONT_LBL} fill="#1e3a5f" fontFamily="Arial, sans-serif" fontWeight="bold"
                 >
-                  {mm(p.width)}×{mm(p.height)}
+                  P{i + 1}
                 </text>
               )}
             </g>
           ))}
 
           <g clipPath="url(#wt-openings-clip)">
-            {allLatten.map((l) => (
+            {drawingType === 'achterconstructie' && allLatten.map((l) => (
               <rect
                 key={l.id}
                 x={sx(l.x)} y={sy(l.y + l.height)}
@@ -394,7 +499,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
           <text x={peilX} y={OY - 6} textAnchor="middle" fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">PEILMATEN (m)</text>
 
-          {summaryBoxH > 0 && (() => {
+          {drawingType === 'achterconstructie' && summaryBoxH > 0 && (() => {
             const bx = OX;
             const by = VIEW_H + 16;
             const bw = 220;
@@ -407,11 +512,8 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 </text>
                 <line x1={bx} y1={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} x2={bx + bw} y2={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} stroke="#000" strokeWidth={0.5} />
                 {lattenSummary.map(({ len, cnt }, i) => (
-                  <text key={i}
-                    x={bx + SUMMARY_PAD}
-                    y={by + SUMMARY_PAD + (i + 2) * SUMMARY_LINE_H + 2}
-                    fontSize={9} fill="#000" fontFamily="Arial, sans-serif"
-                  >
+                  <text key={i} x={bx + SUMMARY_PAD} y={by + SUMMARY_PAD + (i + 2) * SUMMARY_LINE_H + 2}
+                    fontSize={9} fill="#000" fontFamily="Arial, sans-serif">
                     {cnt}× {len} mm
                   </text>
                 ))}
@@ -419,17 +521,48 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             );
           })()}
 
+          {drawingType === 'plaatsing' && allPanels.length > 0 && (() => {
+            const sizeGroups = {};
+            for (const p of allPanels) {
+              const key = `${mm(p.width)}×${mm(p.height)}`;
+              sizeGroups[key] = (sizeGroups[key] ?? 0) + 1;
+            }
+            const lines = Object.entries(sizeGroups).sort((a, b) => b[1] - a[1]);
+            const bh = (lines.length + 2) * SUMMARY_LINE_H + SUMMARY_PAD * 2;
+            const bx = OX, by = VIEW_H + 16, bw = 240;
+            return (
+              <g>
+                <rect x={bx} y={by} width={bw} height={bh} fill="#fff" stroke="#000" strokeWidth={1} />
+                <text x={bx + SUMMARY_PAD} y={by + SUMMARY_PAD + SUMMARY_LINE_H - 2}
+                  fontSize={9} fontWeight="bold" fill="#000" fontFamily="Arial, sans-serif">
+                  Panelen samenvatting — totaal {allPanels.length} st.
+                </text>
+                <line x1={bx} y1={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} x2={bx + bw} y2={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} stroke="#000" strokeWidth={0.5} />
+                {lines.map(([key, cnt], i) => (
+                  <text key={i} x={bx + SUMMARY_PAD} y={by + SUMMARY_PAD + (i + 2) * SUMMARY_LINE_H + 2}
+                    fontSize={9} fill="#000" fontFamily="Arial, sans-serif">
+                    {cnt}× {key} mm
+                  </text>
+                ))}
+              </g>
+            );
+          })()}
+
           <g transform={`translate(${OX},${svgTotal - 28})`}>
-            <rect x={0} y={0} width={12} height={8} fill={panelColor} stroke={dimColor} strokeWidth={0.5} />
-            <text x={15} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Paneel</text>
-            <rect x={60} y={0} width={12} height={8} fill={latColor} stroke="#92400e" strokeWidth={0.5} />
-            <text x={75} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Houten lat</text>
+            {drawingType === 'plaatsing' && <>
+              <rect x={0} y={0} width={12} height={8} fill={panelColor} stroke={dimColor} strokeWidth={0.5} />
+              <text x={15} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Paneel</text>
+            </>}
+            {drawingType === 'achterconstructie' && <>
+              <rect x={0} y={0} width={12} height={8} fill={latColor} stroke="#92400e" strokeWidth={0.5} />
+              <text x={15} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Houten lat</text>
+              <line x1={60} y1={4} x2={80} y2={4} stroke="#92400e" strokeWidth={0.8} strokeDasharray="4,2" />
+              <text x={83} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Hart lat</text>
+            </>}
             <rect x={130} y={0} width={12} height={8} fill={openColor} fillOpacity={0.5} stroke="#dc2626" strokeWidth={0.5} strokeDasharray="2,1" />
             <text x={145} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Opening (raam/deur)</text>
-            <line x1={240} y1={4} x2={260} y2={4} stroke="#92400e" strokeWidth={0.8} strokeDasharray="4,2" />
-            <text x={263} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Hart lat</text>
           </g>
-        </svg>
+        </svg>}
       </div>
     </div>
   );
