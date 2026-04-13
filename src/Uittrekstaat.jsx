@@ -180,7 +180,30 @@ function SectionHeader({ title }) {
   );
 }
 
+function computeImportTotals(walls) {
+  let brutoMM2 = 0;
+  let openingsMM2 = 0;
+  let wallCount = walls.length;
+  let openingCount = 0;
+
+  for (const wall of walls) {
+    brutoMM2 += wall.length * wall.height;
+    for (const op of (wall.openings ?? [])) {
+      openingCount++;
+      if (op.polyPts && op.polyPts.length >= 3) {
+        openingsMM2 += polyArea(op.polyPts);
+      } else {
+        openingsMM2 += (op.breedte ?? 0) * (op.hoogte ?? 0);
+      }
+    }
+  }
+
+  return { brutoMM2, openingsMM2, nettoMM2: brutoMM2 - openingsMM2, wallCount, openingCount };
+}
+
 export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose }) {
+  const importTotals = useMemo(() => computeImportTotals(walls), [walls]);
+
   const takeoffs = useMemo(() => {
     return groups
       .map((g) => computeGroupTakeoff(g, walls, getSettings, adjacencies))
@@ -213,21 +236,11 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
     window.print();
   }
 
-  if (!takeoffs.length) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', color: '#94a3b8', flexDirection: 'column', gap: 8 }}>
-        <span style={{ fontSize: 28 }}>📋</span>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>Geen groepen aangemaakt</span>
-        <span style={{ fontSize: 12 }}>Maak eerst groepen aan in de 3D-weergave</span>
-      </div>
-    );
-  }
-
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#f8fafc', overflow: 'hidden' }}>
       <div style={{ padding: '10px 16px', background: '#1e293b', color: '#f1f5f9', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <span style={{ fontWeight: 700, fontSize: 14 }}>Uittrekstaat materialen</span>
-        <span style={{ fontSize: 11, color: '#94a3b8', flex: 1 }}>{takeoffs.length} groep{takeoffs.length !== 1 ? 'en' : ''}</span>
+        <span style={{ fontSize: 11, color: '#94a3b8', flex: 1 }}>{importTotals.wallCount} wanden geïmporteerd · {takeoffs.length} groep{takeoffs.length !== 1 ? 'en' : ''}</span>
         <button onClick={printPage} style={{ fontSize: 11, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>Afdrukken</button>
       </div>
 
@@ -236,8 +249,34 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
 
         <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderRadius: 6, overflow: 'hidden', marginBottom: 24 }}>
           <thead>
+            <tr style={{ background: '#0f172a' }}>
+              <th colSpan={99} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>GEÏMPORTEERDE WANDEN</th>
+            </tr>
+            <tr style={{ background: '#f1f5f9' }}>
+              <TH>Omschrijving</TH>
+              <TH right>Waarde</TH>
+              <TH right>Eenheid</TH>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><TD>Aantal geïmporteerde wanden</TD><TD right mono bold>{importTotals.wallCount}</TD><TD right>st</TD></tr>
+            <tr><TD>Aantal sparingen (ramen/deuren)</TD><TD right mono>{importTotals.openingCount}</TD><TD right>st</TD></tr>
+            <tr><TD>Bruto wandoppervlak</TD><TD right mono>{m2(importTotals.brutoMM2)}</TD><TD right>m²</TD></tr>
+            <tr><TD>Sparingenoppervlak</TD><TD right mono>{m2(importTotals.openingsMM2)}</TD><TD right>m²</TD></tr>
+            <tr style={{ background: '#f0fdf4' }}><TD bold>Netto wandoppervlak</TD><TD right mono bold>{m2(importTotals.nettoMM2)}</TD><TD right>m²</TD></tr>
+          </tbody>
+        </table>
+
+        {!takeoffs.length && (
+          <div style={{ textAlign: 'center', color: '#94a3b8', padding: '24px 0', fontSize: 12 }}>
+            Maak groepen aan in de 3D-weergave voor materiaaldetails per groep
+          </div>
+        )}
+
+        {!!takeoffs.length && <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderRadius: 6, overflow: 'hidden', marginBottom: 24 }}>
+          <thead>
             <tr style={{ background: '#1e293b' }}>
-              <th colSpan={99} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>TOTAALOVERZICHT</th>
+              <th colSpan={99} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>TOTAALOVERZICHT GROEPEN</th>
             </tr>
             <tr style={{ background: '#f1f5f9' }}>
               <TH>Omschrijving</TH>
@@ -267,6 +306,8 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
             </> : <tr><TD span={3} color="#94a3b8">Geen latten geconfigureerd</TD></tr>}
           </tbody>
         </table>
+
+        }
 
         {takeoffs.map((to) => {
           const panelEntries = Object.entries(to.panelGroups).sort((a, b) => b[1].count - a[1].count);
