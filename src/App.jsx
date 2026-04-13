@@ -111,15 +111,10 @@ function findSimilarGroups(referenceWalls, allWalls, existingGroups, adjacencies
 
   return results.map((ids) => sortWallsInComponent(ids, allWalls, adjacencies));
 }
-let _gid = 1;
-const newGid = () => `G${_gid++}`;
-
 const GROUP_COLORS = [
   '#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#e67e22',
   '#16a085', '#d35400', '#2471a3', '#1e8449', '#6c3483',
 ];
-let _colorIdx = 0;
-const nextColor = () => GROUP_COLORS[_colorIdx++ % GROUP_COLORS.length];
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
@@ -611,6 +606,11 @@ export default function App() {
   const [showCenterLines, setShowCenterLines] = useState(false);
   const { get: getSettings, update: updateSettings, initColor, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
+  const _gidRef = useRef(1);
+  const _colorIdxRef = useRef(0);
+  const newGid = useCallback(() => `G${_gidRef.current++}`, []);
+  const nextColor = useCallback(() => GROUP_COLORS[_colorIdxRef.current++ % GROUP_COLORS.length], []);
+
   const wallMap = useMemo(() => Object.fromEntries(allWalls.map((w) => [w.expressID, w])), [allWalls]);
 
   const wallGroupMap = useMemo(() => {
@@ -810,7 +810,7 @@ export default function App() {
       setLoadStatus('loaded');
       setPendingFile(null);
       setWallTypes([]);
-      _colorIdx = 0;
+      _colorIdxRef.current = 0;
     } catch (err) {
       addLog(`✗ Fout: ${err.message}`);
       setLoadError(err.message);
@@ -871,7 +871,7 @@ export default function App() {
   function autoGroup() {
     pushHistory(groups);
     const comps = buildConnectedComponents(allWalls, adjacencies);
-    _colorIdx = 0;
+    _colorIdxRef.current = 0;
     const newGroups = comps.map((ids, idx) => {
       const gid = newGid();
       const color = nextColor();
@@ -1379,7 +1379,7 @@ export default function App() {
             </Tooltip>
           )}
           {viewMode === '2d' && (
-            <Tooltip text={"Toont het hart (middelpunt) van elk afzonderlijk wandelement als verticale stippellijn met X-coördinaat in mm.\nHandig voor het controleren van de onderlinge posities van elementen."}>
+            <Tooltip text={"Toont het midden van de tussenruimte tussen wandelementen als verticale stippellijn met X-coördinaat in mm.\nAlleen zichtbaar als er een werkelijke ruimte (gap) tussen elementen bestaat.\nHandig voor het controleren van de onderlinge posities van elementen."}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer' }}>
                 <input type="checkbox" checked={showCenterLines} onChange={(e) => setShowCenterLines(e.target.checked)} />
                 Hartlijnen

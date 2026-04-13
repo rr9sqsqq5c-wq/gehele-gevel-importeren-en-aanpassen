@@ -1,3 +1,5 @@
+import { polyXRangesAtY } from './geometry.js';
+
 function round2(v) {
   return Math.round(v * 100) / 100;
 }
@@ -201,22 +203,6 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const zwS = zwEnabled ? Math.max(0, zetwerk.stripOffset ?? 5) : 0;
   const zwExpandX = zwEnabled ? (zwH + zwB + zwS) : 0;
   const zwExpandY = zwEnabled ? (zwV + zwB + zwS) : 0;
-
-  function polyXRangesAtY(poly, y) {
-    const xs = [];
-    for (let i = 0; i < poly.length; i++) {
-      const a = poly[i], b = poly[(i + 1) % poly.length];
-      const ay = a.h, by = b.h, ax = a.l, bx = b.l;
-      if ((ay < y && by >= y) || (by < y && ay >= y)) {
-        const t = (y - ay) / (by - ay);
-        xs.push(ax + t * (bx - ax));
-      }
-    }
-    xs.sort((p, q) => p - q);
-    const ranges = [];
-    for (let i = 0; i + 1 < xs.length; i += 2) ranges.push([xs[i], xs[i + 1]]);
-    return ranges;
-  }
 
   const rawOpenings = [];
   for (const w of withOrigin) {

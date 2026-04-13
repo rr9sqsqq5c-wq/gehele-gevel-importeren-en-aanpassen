@@ -36,9 +36,6 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
     const result = buildFullGroupFacadePattern(walls, mat, verband, maxHoogte, zetwerk);
-    if (result) {
-      console.log('[View2D] groupOpenings:', result.groupOpenings.map(o => ({ x: o.x, y: o.y, w: o.width, h: o.height, hasPoly: !!o.polyPts, polyLen: o.polyPts?.length })));
-    }
     return result;
   }, [walls, mat, verband, maxHoogte, zetwerk]);
 
@@ -594,11 +591,9 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       for (let i = 0; i < sorted.length - 1; i++) {
         const rightEdge = (sorted[i].wallOrigin.lengthStart - groupMinX) + sorted[i].length;
         const leftEdge  = sorted[i + 1].wallOrigin.lengthStart - groupMinX;
-        gapCenters.push((rightEdge + leftEdge) / 2);
-      }
-      if (!gapCenters.length) {
-        const w = sorted[0];
-        if (w) gapCenters.push((w.wallOrigin.lengthStart - groupMinX) + w.length / 2);
+        if (leftEdge > rightEdge + 1) {
+          gapCenters.push((rightEdge + leftEdge) / 2);
+        }
       }
       ctx.save();
       ctx.setLineDash([4, 4]);
