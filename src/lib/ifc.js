@@ -392,14 +392,22 @@ export async function parseIfc(file, allowedTypes = null) {
 
               if (oWidth < 50 || oHeight < 50) continue;
 
+              const finalX = Math.max(0, oX);
+              const finalY = Math.max(0, oY);
+              const finalPolyPts = polyPts ?? [
+                { l: finalX,           h: finalY },
+                { l: finalX + oWidth,  h: finalY },
+                { l: finalX + oWidth,  h: finalY + oHeight },
+                { l: finalX,           h: finalY + oHeight },
+              ];
               openings.push({
                 id: oID,
                 type: openingType[oID] ?? "sparing",
-                x: Math.max(0, oX),
-                y: Math.max(0, oY),
+                x: finalX,
+                y: finalY,
                 breedte: oWidth,
                 hoogte: oHeight,
-                polyPts: polyPts ?? null,
+                polyPts: finalPolyPts,
               });
             } catch { }
           }
