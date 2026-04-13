@@ -32,6 +32,20 @@ function polyXRangesAtY(poly, y) {
   return ranges;
 }
 
+function openingXRangesAtY(op, latTop, latBot) {
+  if (op.polyPts && op.polyPts.length >= 3) {
+    const midY = (latTop + latBot) / 2;
+    let ranges = polyXRangesAtY(op.polyPts, midY);
+    if (!ranges.length) {
+      const r1 = polyXRangesAtY(op.polyPts, latTop + 1);
+      const r2 = polyXRangesAtY(op.polyPts, latBot - 1);
+      ranges = [...r1, ...r2];
+    }
+    if (ranges.length) return ranges.map(([x1, x2]) => ({ x1, x2 }));
+  }
+  return [{ x1: op.x, x2: op.x + op.width }];
+}
+
 function pickGridStep(scale) {
   const pixelsPerMm = scale * 0.001;
   if (pixelsPerMm < 0.005) return 0;
@@ -149,7 +163,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
           zones.push({ x1: 0, x2: groupWidth });
         } else {
           const opRanges = openingsAtY
-            .map((op) => ({ x1: op.x, x2: op.x + op.width }))
+            .flatMap((op) => openingXRangesAtY(op, latTop, latBot))
             .sort((a, b) => a.x1 - b.x1);
           let cursor = 0;
           for (const op of opRanges) {
