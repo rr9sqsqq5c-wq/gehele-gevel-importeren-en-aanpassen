@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc } from './lib/ifc.js';
+import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
@@ -519,6 +520,7 @@ export default function App() {
   const [loadLogs, setLoadLogs] = useState([]);
   const loadLogsRef = useRef([]);
   const [loadError, setLoadError] = useState(null);
+  const [savedFileInfo, setSavedFileInfo] = useState(null);
   const [ifcFileName, setIfcFileName] = useState(null);
   const [showPattern, setShowPattern] = useState(true);
   const [viewMode, setViewMode] = useState('3d');
@@ -586,6 +588,35 @@ export default function App() {
     return result;
   }, [groups, getSettings, wallMap, adjacencies, showPattern]);
 
+  async function loadFromStorage() {
+    if (!savedFileInfo?.file) return;
+    const file = savedFileInfo.file;
+    setLoadStatus('scanning');
+    setLoadError(null);
+    loadLogsRef.current = [];
+    setLoadLogs([]);
+    const addScanLog = (msg) => {
+      const entry = `[${new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}] ${msg}`;
+      loadLogsRef.current = [...loadLogsRef.current.slice(-49), entry];
+      setLoadLogs([...loadLogsRef.current]);
+    };
+    addScanLog(`Opgeslagen bestand: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+    addScanLog('web-ifc engine laden…');
+    try {
+      const types = await scanIfcWallTypes(file);
+      addScanLog(`✓ ${types.length} wandtype(n) gevonden`);
+      if (!types.length) throw new Error('Geen wanden gevonden');
+      setPendingFile(file);
+      setWallTypes(types);
+      setSelectedTypes(new Set());
+      setLoadStatus('selecting');
+    } catch (err) {
+      addScanLog(`✗ Fout: ${err.message}`);
+      setLoadError(err.message);
+      setLoadStatus('error');
+    }
+  }
+
   async function handleFileChange(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -609,6 +640,9 @@ export default function App() {
       setWallTypes(types);
       setSelectedTypes(new Set());
       setLoadStatus('selecting');
+      saveIfcFile(file).then(() => {
+        setSavedFileInfo({ name: file.name, size: file.size, savedAt: Date.now(), file });
+      }).catch(() => {});
     } catch (err) {
       addScanLog(`✗ Fout: ${err.message}`);
       setLoadError(err.message);
@@ -681,6 +715,12 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  useEffect(() => {
+    loadSavedIfcFile().then((rec) => {
+      if (rec) setSavedFileInfo({ name: rec.file.name, size: rec.file.size, savedAt: rec.savedAt, file: rec.file });
+    }).catch(() => {});
   }, []);
 
   function pushHistory(currentGroups) {
@@ -1107,6 +1147,20 @@ export default function App() {
 
         {ifcFileName && <span style={{ fontSize: 11, color: '#94a3b8' }}>{ifcFileName}.ifc · {allWalls.length} wanden</span>}
         {loadError && <span style={{ fontSize: 11, color: '#f87171' }}>⚠ {loadError}</span>}
+
+        {savedFileInfo && !allWalls.length && loadStatus === 'idle' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e3a5f', border: '1px solid #2563eb', borderRadius: 5, padding: '3px 8px' }}>
+            <span style={{ fontSize: 11, color: '#93c5fd' }}>
+              💾 {savedFileInfo.name} ({(savedFileInfo.size / 1024 / 1024).toFixed(1)} MB) — opgeslagen {new Date(savedFileInfo.savedAt).toLocaleDateString('nl-NL')}
+            </span>
+            <button onClick={loadFromStorage} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 3, padding: '2px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+              Laden
+            </button>
+            <button onClick={() => { deleteSavedIfcFile(); setSavedFileInfo(null); }} style={{ background: 'none', color: '#64748b', border: 'none', fontSize: 13, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }} title="Verwijder opgeslagen bestand">
+              ×
+            </button>
+          </div>
+        )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           <Tooltip text={"Maakt de laatste groepering-actie ongedaan.\nSneltoets: Ctrl+Z"}>
