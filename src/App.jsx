@@ -534,6 +534,7 @@ export default function App() {
   const [groupLinks, setGroupLinks] = useState({});
   const [gridLines, setGridLines] = useState([]);
   const [showGridLines, setShowGridLines] = useState(true);
+  const [showCenterLines, setShowCenterLines] = useState(false);
   const { get: getSettings, update: updateSettings, initColor, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const wallMap = useMemo(() => Object.fromEntries(allWalls.map((w) => [w.expressID, w])), [allWalls]);
@@ -1303,6 +1304,14 @@ export default function App() {
               </label>
             </Tooltip>
           )}
+          {viewMode === '2d' && (
+            <Tooltip text={"Toont het hart (middelpunt) van elk afzonderlijk wandelement als verticale stippellijn met X-coördinaat in mm.\nHandig voor het controleren van de onderlinge posities van elementen."}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer' }}>
+                <input type="checkbox" checked={showCenterLines} onChange={(e) => setShowCenterLines(e.target.checked)} />
+                Hartlijnen
+              </label>
+            </Tooltip>
+          )}
 
           {allWalls.length > 0 && (
             <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', border: '1px solid #334155' }}>
@@ -1544,6 +1553,7 @@ export default function App() {
                     latten={getSettings(activeGroup.id).latten}
                     layerVisibility={getSettings(activeGroup.id).layerVisibility}
                     gridLines={showGridLines ? gridLines : []}
+                    showCenterLines={showCenterLines}
                   />
                   <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.85)', color: '#94a3b8', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                     {getSettings(activeGroup.id).name} · {activeGroup.wallIds.length} wand{activeGroup.wallIds.length !== 1 ? 'en' : ''} · 2D gevelaanzicht

@@ -42,7 +42,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [] }) {
+export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -525,6 +525,34 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     ctx.lineWidth = 1;
     ctx.strokeRect(faceSx, faceSy, faceW, faceH);
 
+    if (showCenterLines) {
+      const withOrigin = walls.filter((w) => w.wallOrigin);
+      const groupMinX = withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart)) : 0;
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(6,182,212,0.75)';
+      ctx.fillStyle = 'rgba(6,182,212,0.9)';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      for (const w of withOrigin) {
+        const relCenter = (w.wallOrigin.lengthStart - groupMinX) + w.length / 2;
+        const [sx] = toScreen(relCenter, 0);
+        ctx.beginPath();
+        ctx.moveTo(sx, faceSy);
+        ctx.lineTo(sx, faceSy + faceH);
+        ctx.stroke();
+        const xLabel = `${Math.round(w.wallOrigin.lengthStart - groupMinX + w.length / 2)}`;
+        const tw = ctx.measureText(xLabel).width + 6;
+        ctx.fillRect(sx - tw / 2, faceSy + faceH + 2, tw, 14);
+        ctx.fillStyle = '#fff';
+        ctx.textBaseline = 'top';
+        ctx.fillText(xLabel, sx, faceSy + faceH + 3);
+        ctx.fillStyle = 'rgba(6,182,212,0.9)';
+      }
+      ctx.restore();
+    }
+
     if (gridLines.length > 0) {
       const withOrigin = walls.filter((w) => w.wallOrigin);
       if (withOrigin.length > 0) {
@@ -567,7 +595,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
-  }, [walls, facadeData, allPanels, allLatten, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, gridLines]);
+  }, [walls, facadeData, allPanels, allLatten, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, gridLines, showCenterLines]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
