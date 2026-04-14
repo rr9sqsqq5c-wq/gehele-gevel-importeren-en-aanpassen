@@ -351,7 +351,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     }
 
     if (vis.strips !== false) {
-      const isTegel = verband === 'tegelverband';
+      const isTegel = verband === 'staand_tegelverband';
       const stripH = isTegel ? mat.steenL : steenH;
       for (const row of rows) {
         const [, rowSy] = toScreen(0, row.y + stripH);
@@ -371,7 +371,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
         const [sx2z] = toScreen(zoneX2, 0);
         const zW = sx2z - sx1z;
         if (zW <= 0) continue;
-        const isTZ = zVerband === 'tegelverband';
+        const isTZ = zVerband === 'staand_tegelverband';
         const zStripH = isTZ ? zMat.steenL : zMat.steenH;
         ctx.save();
         ctx.beginPath();

@@ -16,7 +16,7 @@ function mm(v) { return Math.round(v); }
 function m(v)  { return (v / 1000).toFixed(3); }
 
 function getStripsForPanel(panel, facadeRows, verband, mat) {
-  const stripH = verband === 'tegelverband' ? mat.steenL : mat.steenH;
+  const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
   const strips = [];
   for (const row of facadeRows) {
     if (row.y + stripH <= panel.y + 0.5 || row.y >= panel.y + panel.height - 0.5) continue;

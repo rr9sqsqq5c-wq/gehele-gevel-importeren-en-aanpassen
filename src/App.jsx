@@ -159,11 +159,11 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         </div>
       </Field>
 
-      <Field label="Metselverband" tip={"Halfsteens: stenen verspringen een halve steenlengte per laag — meest gebruikelijk.\nStaand: stenen lopen verticaal door (geen verspinging).\nTegelverband: steenstrips staan verticaal (lange kant omhoog), kolommen naast elkaar zonder verspinging."}>
+      <Field label="Metselverband" tip={"Halfsteens: stenen verspringen een halve steenlengte per laag — meest gebruikelijk.\nTegelverband: stenen lopen horizontaal door zonder verspinging.\nStaand tegelverband: steenstrips staan verticaal (lange kant omhoog), kolommen naast elkaar zonder verspinging."}>
         <select value={settings.verband} onChange={(e) => onUpdate({ verband: e.target.value })} style={inp}>
           <option value="halfsteens">Halfsteens</option>
-          <option value="staand">Staand</option>
-          <option value="tegelverband">Tegelverband (verticaal)</option>
+          <option value="tegelverband">Tegelverband</option>
+          <option value="staand_tegelverband">Staand tegelverband</option>
         </select>
       </Field>
 
@@ -299,8 +299,8 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       <Field label="Metselverband" tip="Verband voor deze zone.">
                         <select value={zs.verband} onChange={(e) => updZone(zi, { verband: e.target.value })} style={inp}>
                           <option value="halfsteens">Halfsteens</option>
-                          <option value="staand">Staand</option>
                           <option value="tegelverband">Tegelverband</option>
+                          <option value="staand_tegelverband">Staand tegelverband</option>
                         </select>
                       </Field>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>

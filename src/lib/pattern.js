@@ -18,7 +18,7 @@ export function getOpeningPoly(op) {
 function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX) {
   const { steenL, steenH, lint, stoot } = material;
 
-  if (verband === 'tegelverband') {
+  if (verband === 'staand_tegelverband') {
     const stepW = steenH + stoot;
     const pieces = [];
     let x = 0;
@@ -86,7 +86,7 @@ function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX)
 }
 
 function getLagenmaat(material, verband) {
-  if (verband === 'tegelverband') return material.steenL + material.lint;
+  if (verband === 'staand_tegelverband') return material.steenL + material.lint;
   return material.steenH + material.lint;
 }
 
@@ -137,7 +137,7 @@ function clipPieceToWall(piece, wallStart, wallEnd, openings, rowY, steenH) {
 export function buildGroupPattern(walls, adjacencies, material, verband) {
   const { steenH, lint } = material;
   const lagenmaat = getLagenmaat(material, verband);
-  const rowH = verband === 'tegelverband' ? material.steenL : steenH;
+  const rowH = verband === 'staand_tegelverband' ? material.steenL : steenH;
 
   if (!walls.length || lagenmaat <= 0) return {};
 
@@ -181,7 +181,7 @@ export function buildGroupPattern(walls, adjacencies, material, verband) {
 export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk) {
   const { steenH, lint } = material;
   const lagenmaat = getLagenmaat(material, verband);
-  const rowH = verband === 'tegelverband' ? material.steenL : steenH;
+  const rowH = verband === 'staand_tegelverband' ? material.steenL : steenH;
 
   const withOrigin = walls.filter((w) => w.wallOrigin);
   if (!withOrigin.length || lagenmaat <= 0) return null;
@@ -353,7 +353,7 @@ export function getGroupPatternLogic(walls, material, verband) {
   const totallagen = Math.floor((groupHeight + lint) / lagenmaat);
 
   const lines = [];
-  const verbandLabel = verband === 'halfsteens' ? 'Halfsteens' : verband === 'tegelverband' ? 'Tegelverband (verticaal)' : 'Staand verband';
+  const verbandLabel = verband === 'halfsteens' ? 'Halfsteens' : verband === 'staand_tegelverband' ? 'Staand tegelverband' : 'Tegelverband';
   lines.push({ label: 'Verband', value: verbandLabel });
   lines.push({ label: 'Gevelbreedte', value: `${groupWidth} mm  (${wallsWithOrigin.length} wand${wallsWithOrigin.length !== 1 ? 'en' : ''})` });
   lines.push({ label: 'Gevelhoogte', value: `${groupHeight} mm` });
@@ -362,7 +362,7 @@ export function getGroupPatternLogic(walls, material, verband) {
   lines.push({ label: 'Steenstrip', value: `${steenL} × ${steenH} mm` });
   lines.push({ label: 'Voegen', value: `lintvoeg ${lint} mm · stootvoeg ${stoot} mm` });
 
-  if (verband === 'tegelverband') {
+  if (verband === 'staand_tegelverband') {
     lines.push({ label: 'Oriëntatie', value: 'Strips verticaal — steenL is hoogte, steenH is breedte per kolom' });
     lines.push({ label: 'Kolombreedte', value: `${steenH} mm + stootvoeg ${stoot} mm = ${steenH + stoot} mm hart-op-hart` });
     lines.push({ label: 'Lagenmaat', value: `${lagenmaat} mm  (steenL + lintvoeg)` });
