@@ -281,6 +281,39 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 </div>
               );
             })()}
+            {(() => {
+              const updP = (patch) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, ...patch } : q) });
+              const gewichtM2 = p.gewichtM2 ?? 11;
+              const maxKg = p.maxKg ?? 50;
+              const pB = Math.max(1, p.breedte ?? 400);
+              const pD = Math.max(1, p.diepte ?? 150);
+              const pH = Math.max(1, p.hoogte ?? 2000);
+              const omtrekM2perMM = (pB + 2 * pD) / 1e6;
+              const kgPerMM = omtrekM2perMM * gewichtM2;
+              const maxSectieH = kgPerMM > 0 ? Math.floor(maxKg / kgPerMM) : pH;
+              const aantalSecties = kgPerMM > 0 ? Math.ceil(pH / maxSectieH) : 1;
+              const sectieH = aantalSecties > 0 ? Math.round(pH / aantalSecties) : pH;
+              return (
+                <div style={{ marginTop: 6, borderTop: '1px dashed #e2e8f0', paddingTop: 5 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>U-secties</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                    <Field label="Gewicht m² kg" tip="Gewicht van de strips/panelen op het penant per m² oppervlak (kg/m²).">
+                      <input type="number" min={1} step={1} value={gewichtM2}
+                        onChange={(e) => updP({ gewichtM2: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                    <Field label="Max gewicht kg" tip="Maximaal gewicht per U-sectie (kg). Het penant wordt verticaal opgedeeld in secties die elk dit gewicht niet overschrijden.">
+                      <input type="number" min={1} step={5} value={maxKg}
+                        onChange={(e) => updP({ maxKg: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                  </div>
+                  <div style={{ marginTop: 4, padding: '4px 6px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 3, fontSize: 10, color: '#166534' }}>
+                    {aantalSecties} U-sectie{aantalSecties !== 1 ? 's' : ''} · ≈ {sectieH} mm/sectie · ≈ {Math.round(sectieH * kgPerMM)} kg/sectie
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         ))}
       </div>
