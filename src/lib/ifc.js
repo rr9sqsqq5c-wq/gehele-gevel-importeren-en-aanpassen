@@ -718,11 +718,11 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     };
 
     const groupToWorld = (gx, depth, gz) => {
-      if (!rwo) return [gx / 1000, depth / 1000, gz / 1000];
+      if (!rwo) return [gx, depth, gz];
       const p = { x: 0, y: 0, z: 0 };
-      p[rwo.lengthAxis]    = (groupMinX + gx) / 1000;
-      p[rwo.thicknessAxis] = (rwo.thicknessStart + depth) / 1000;
-      p[rwo.heightAxis]    = (groupMinH + gz) / 1000;
+      p[rwo.lengthAxis]    = groupMinX + gx;
+      p[rwo.thicknessAxis] = rwo.thicknessStart + depth;
+      p[rwo.heightAxis]    = groupMinH + gz;
       return normalizeZUp(p.x, p.y, p.z, rwo.heightAxis);
     };
 
@@ -732,11 +732,11 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const wo = wall.wallOrigin;
 
         const toWorld = (localX, localDepth, localZ) => {
-          if (!wo) return [localX / 1000, localDepth / 1000, localZ / 1000];
+          if (!wo) return [localX, localDepth, localZ];
           const p = { x: 0, y: 0, z: 0 };
-          p[wo.lengthAxis]    = (wo.lengthStart    + localX) / 1000;
-          p[wo.thicknessAxis] = (wo.thicknessStart + localDepth) / 1000;
-          p[wo.heightAxis]    = (wo.heightStart    + localZ) / 1000;
+          p[wo.lengthAxis]    = wo.lengthStart    + localX;
+          p[wo.thicknessAxis] = wo.thicknessStart + localDepth;
+          p[wo.heightAxis]    = wo.heightStart    + localZ;
           return normalizeZUp(p.x, p.y, p.z, wo.heightAxis);
         };
 
@@ -863,26 +863,19 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const pD  = Math.max(1, pen.diepte  ?? 150);
         const pH  = Math.max(1, pen.hoogte  ?? 2000);
         const depthCenter = wallThickness + pD / 2;
-        const penBoxes = [
-          { cx: pX - pD / 2,       w: pD, label: 'Links'     },
-          { cx: pX + pB / 2,       w: pB, label: 'Voorzijde' },
-          { cx: pX + pB + pD / 2,  w: pD, label: 'Rechts'    },
-        ];
-        for (const box of penBoxes) {
-          const [wx, wy, wz] = groupToWorld(box.cx, depthCenter, 0);
-          const placePt = PT(wx, wy, wz);
-          const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
-          const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
-          const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
-          const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(box.w)},${r(pD)})`);
-          const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(pH)})`);
-          const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
-          const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
-          const safeName = `${group.name ?? 'Groep'} - Penant - ${box.label}`.replace(/'/g, "\\'");
-          const proxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'Penant',#${localPl},#${pds},$,.NOTDEFINED.)`);
-          E(`IFCSTYLEDITEM(#${solid},(#${getStyle('#6366f1')}),$)`);
-          allProxyIds.push(proxy);
-        }
+        const [wx, wy, wz] = groupToWorld(pX + pB / 2, depthCenter, 0);
+        const placePt = PT(wx, wy, wz);
+        const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
+        const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
+        const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
+        const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(pB)},${r(pD)})`);
+        const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(pH)})`);
+        const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
+        const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
+        const safeName = `${group.name ?? 'Groep'} - Penant`.replace(/'/g, "\\'");
+        const proxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'Penant',#${localPl},#${pds},$,.NOTDEFINED.)`);
+        E(`IFCSTYLEDITEM(#${solid},(#${getStyle('#6366f1')}),$)`);
+        allProxyIds.push(proxy);
       }
     }
   }

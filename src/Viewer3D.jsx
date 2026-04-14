@@ -75,28 +75,21 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis) {
   const pD = Math.max(1, penant.diepte ?? 150);
   const pH = Math.max(1, penant.hoogte ?? 2000);
   const wallThickness = Math.max(50, Math.abs((rwo.thicknessEnd ?? rwo.thicknessStart + 200) - rwo.thicknessStart));
-  const depthCenter = wallThickness + pD / 2;
 
-  const makeBox = (cL, cH, cT, w, h, d) => {
-    const ifc = { x: 0, y: 0, z: 0 };
-    ifc[rwo.lengthAxis]    = (groupMinX + cL) / 1000;
-    ifc[rwo.heightAxis]    = (groupMinH + cH) / 1000;
-    ifc[rwo.thicknessAxis] = (rwo.thicknessStart + cT) / 1000;
-    const dims = { x: 0.001, y: 0.001, z: 0.001 };
-    dims[rwo.lengthAxis]    = w / 1000;
-    dims[rwo.heightAxis]    = h / 1000;
-    dims[rwo.thicknessAxis] = d / 1000;
-    return {
-      pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
-      size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
-    };
-  };
+  const ifc = { x: 0, y: 0, z: 0 };
+  ifc[rwo.lengthAxis]    = groupMinX + pX + pB / 2;
+  ifc[rwo.heightAxis]    = groupMinH + pH / 2;
+  ifc[rwo.thicknessAxis] = rwo.thicknessStart + wallThickness + pD / 2;
 
-  return [
-    makeBox(pX - pD / 2,       pH / 2, depthCenter, pD, pH, pD),
-    makeBox(pX + pB / 2,       pH / 2, depthCenter, pB, pH, pD),
-    makeBox(pX + pB + pD / 2,  pH / 2, depthCenter, pD, pH, pD),
-  ];
+  const dims = { x: 10, y: 10, z: 10 };
+  dims[rwo.lengthAxis]    = pB;
+  dims[rwo.heightAxis]    = pH;
+  dims[rwo.thicknessAxis] = pD;
+
+  return [{
+    pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
+    size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+  }];
 }
 
 function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis }) {
