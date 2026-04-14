@@ -852,6 +852,39 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         }
       }
     }
+
+    const penanten = (wallSettings[group.id] ?? {}).penanten ?? [];
+    if (penanten.length && rwo) {
+      const { axisStr, refStr } = makeGroupAxes();
+      const wallThickness = Math.max(50, Math.abs((rwo.thicknessEnd ?? rwo.thicknessStart + 200) - rwo.thicknessStart));
+      for (const pen of penanten) {
+        const pX  = pen.x   ?? 0;
+        const pB  = Math.max(1, pen.breedte ?? 400);
+        const pD  = Math.max(1, pen.diepte  ?? 150);
+        const pH  = Math.max(1, pen.hoogte  ?? 2000);
+        const depthCenter = wallThickness + pD / 2;
+        const penBoxes = [
+          { cx: pX - pD / 2,       w: pD, label: 'Links'     },
+          { cx: pX + pB / 2,       w: pB, label: 'Voorzijde' },
+          { cx: pX + pB + pD / 2,  w: pD, label: 'Rechts'    },
+        ];
+        for (const box of penBoxes) {
+          const [wx, wy, wz] = groupToWorld(box.cx, depthCenter, 0);
+          const placePt = PT(wx, wy, wz);
+          const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
+          const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
+          const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
+          const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(box.w)},${r(pD)})`);
+          const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(pH)})`);
+          const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
+          const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
+          const safeName = `${group.name ?? 'Groep'} - Penant - ${box.label}`.replace(/'/g, "\\'");
+          const proxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'Penant',#${localPl},#${pds},$,.NOTDEFINED.)`);
+          E(`IFCSTYLEDITEM(#${solid},(#${getStyle('#6366f1')}),$)`);
+          allProxyIds.push(proxy);
+        }
+      }
+    }
   }
 
   if (allProxyIds.length) {

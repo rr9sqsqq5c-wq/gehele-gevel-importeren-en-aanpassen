@@ -68,6 +68,55 @@ function getBrickPos(wall, pieceStart, pieceLen, rowY, steenH, brickD, upAxis = 
   };
 }
 
+function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis) {
+  if (!rwo) return [];
+  const pX = penant.x ?? 0;
+  const pB = Math.max(1, penant.breedte ?? 400);
+  const pD = Math.max(1, penant.diepte ?? 150);
+  const pH = Math.max(1, penant.hoogte ?? 2000);
+  const wallThickness = Math.max(50, Math.abs((rwo.thicknessEnd ?? rwo.thicknessStart + 200) - rwo.thicknessStart));
+  const depthCenter = wallThickness + pD / 2;
+
+  const makeBox = (cL, cH, cT, w, h, d) => {
+    const ifc = { x: 0, y: 0, z: 0 };
+    ifc[rwo.lengthAxis]    = (groupMinX + cL) / 1000;
+    ifc[rwo.heightAxis]    = (groupMinH + cH) / 1000;
+    ifc[rwo.thicknessAxis] = (rwo.thicknessStart + cT) / 1000;
+    const dims = { x: 0.001, y: 0.001, z: 0.001 };
+    dims[rwo.lengthAxis]    = w / 1000;
+    dims[rwo.heightAxis]    = h / 1000;
+    dims[rwo.thicknessAxis] = d / 1000;
+    return {
+      pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
+      size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+    };
+  };
+
+  return [
+    makeBox(pX - pD / 2,       pH / 2, depthCenter, pD, pH, pD),
+    makeBox(pX + pB / 2,       pH / 2, depthCenter, pB, pH, pD),
+    makeBox(pX + pB + pD / 2,  pH / 2, depthCenter, pD, pH, pD),
+  ];
+}
+
+function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis }) {
+  const boxes = useMemo(
+    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis),
+    [penant, rwo, groupMinX, groupMinH, upAxis]
+  );
+  if (!boxes.length) return null;
+  return (
+    <group>
+      {boxes.map((box, i) => (
+        <mesh key={i} position={box.pos}>
+          <boxGeometry args={box.size} />
+          <meshStandardMaterial color={groupColor ?? '#6366f1'} transparent opacity={0.7} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 function WallMesh({ wall, isSelected, isHovered, groupColor, pattern, material, brickD, onSelect, onHover, upAxis }) {
   const box = useMemo(() => getWallBox(wall, upAxis), [wall, upAxis]);
   if (!box) return null;
@@ -455,6 +504,28 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
             <OpeningMesh key={`${wall.expressID}-${op.id}`} wall={wall} opening={op} upAxis={upAxis} />
           ))
         )}
+
+        {groups.flatMap((group) => {
+          const settings = groupSettings(group.id);
+          const penanten = settings?.penanten ?? [];
+          if (!penanten.length) return [];
+          const groupWalls = walls.filter((w) => group.wallIds.includes(w.expressID) && w.wallOrigin);
+          if (!groupWalls.length) return [];
+          const groupMinX = Math.min(...groupWalls.map((w) => w.wallOrigin.lengthStart));
+          const groupMinH = Math.min(...groupWalls.map((w) => w.wallOrigin.heightStart));
+          const rwo = groupWalls[0].wallOrigin;
+          return penanten.map((penant) => (
+            <PenantMesh3D
+              key={`penant-${group.id}-${penant.id ?? penant.x}`}
+              penant={penant}
+              rwo={rwo}
+              groupMinX={groupMinX}
+              groupMinH={groupMinH}
+              groupColor={settings?.color ?? '#6366f1'}
+              upAxis={upAxis}
+            />
+          ));
+        })}
       </Canvas>
 
       {dragRect && (
