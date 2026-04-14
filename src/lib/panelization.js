@@ -76,24 +76,26 @@ export function buildFacadeZones(facadeWidth, facadeHeight, openings) {
 }
 
 function collectVerticalCandidates(zone, globalPieces) {
-  const xs = new Set([round2(zone.x), round2(zone.x + zone.width)]);
+  const stripJoints = new Set();
   for (const p of globalPieces) {
     const x1 = round2(p.x);
     const x2 = round2(p.x + p.width);
-    if (x1 >= zone.x && x1 <= zone.x + zone.width) xs.add(x1);
-    if (x2 >= zone.x && x2 <= zone.x + zone.width) xs.add(x2);
+    if (x1 > zone.x + 0.001 && x1 < zone.x + zone.width - 0.001) stripJoints.add(x1);
+    if (x2 > zone.x + 0.001 && x2 < zone.x + zone.width - 0.001) stripJoints.add(x2);
   }
+  const xs = new Set([round2(zone.x), round2(zone.x + zone.width), ...stripJoints]);
   return [...xs].sort((a, b) => a - b);
 }
 
 function collectHorizontalCandidates(zone, globalRows, steenH) {
-  const ys = new Set([round2(zone.y), round2(zone.y + zone.height)]);
+  const stripJoints = new Set();
   for (const row of globalRows) {
     const y1 = round2(row.y);
     const y2 = round2(row.y + steenH);
-    if (y1 >= zone.y && y1 <= zone.y + zone.height) ys.add(y1);
-    if (y2 >= zone.y && y2 <= zone.y + zone.height) ys.add(y2);
+    if (y1 > zone.y + 0.001 && y1 < zone.y + zone.height - 0.001) stripJoints.add(y1);
+    if (y2 > zone.y + 0.001 && y2 < zone.y + zone.height - 0.001) stripJoints.add(y2);
   }
+  const ys = new Set([round2(zone.y), round2(zone.y + zone.height), ...stripJoints]);
   return [...ys].sort((a, b) => a - b);
 }
 
@@ -103,7 +105,11 @@ function chooseBreaks(start, end, candidates, maxSpan, targetSpan) {
   let current = start;
 
   while (current < end - 0.001) {
-    const options = valid.filter((v) => v > current && v - current <= maxSpan + 0.001);
+    const inRange = valid.filter((v) => v > current + 0.001 && v - current <= maxSpan + 0.001);
+    const allAhead = valid.filter((v) => v > current + 0.001);
+
+    const options = inRange.length > 0 ? inRange : allAhead;
+
     if (!options.length) {
       if (breaks[breaks.length - 1] !== end) breaks.push(end);
       break;
