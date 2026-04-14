@@ -73,12 +73,18 @@ function DimV({ x, y1, y2, label, color = '#1e3a5f', side = 'left' }) {
   );
 }
 
-function computeLatten(facadeData, panelen, latten, mat) {
+function computeLatten(facadeData, panelen, latten, mat, penanten) {
   if (!facadeData || !latten?.enabled) return [];
   const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
   const richting = latten.richting ?? 'horizontaal';
   const latBreedte = Math.max(5, latten.breedte ?? 50);
   const MAX_HOC = latten.maxInterval ?? 400;
+
+  const PENANT_GAP = 10;
+  const penantRanges = (penanten ?? []).map((p) => ({
+    x1: Math.max(0, (p.x ?? 0) - PENANT_GAP),
+    x2: Math.min(groupWidth, (p.x ?? 0) + (p.breedte ?? 400) + PENANT_GAP),
+  }));
 
   let allPanels = [];
   if (panelen?.enabled) {
@@ -131,7 +137,7 @@ function computeLatten(facadeData, panelen, latten, mat) {
       const isForced = openingBottomYs.has(yr) || openingTopYs.has(yr) || yr === 0 || yr === gH;
       const latTop = latY, latBot = latY + latBreedte;
       const openingsAtY = groupOpenings.filter((op) => op.y < latBot && op.y + op.height > latTop);
-      const zones = [];
+      let zones = [];
       if (openingsAtY.length === 0) {
         zones.push({ x1: 0, x2: groupWidth });
       } else {
@@ -142,6 +148,26 @@ function computeLatten(facadeData, panelen, latten, mat) {
           cursor = Math.max(cursor, op.x2);
         }
         if (cursor < groupWidth) zones.push({ x1: cursor, x2: groupWidth });
+      }
+      if (penantRanges.length > 0) {
+        const splitZones = [];
+        for (const zone of zones) {
+          let segments = [{ x1: zone.x1, x2: zone.x2 }];
+          for (const pr of penantRanges) {
+            const next = [];
+            for (const seg of segments) {
+              if (pr.x2 <= seg.x1 || pr.x1 >= seg.x2) {
+                next.push(seg);
+              } else {
+                if (pr.x1 > seg.x1) next.push({ x1: seg.x1, x2: pr.x1 });
+                if (pr.x2 < seg.x2) next.push({ x1: pr.x2, x2: seg.x2 });
+              }
+            }
+            segments = next;
+          }
+          splitZones.push(...segments);
+        }
+        zones = splitZones;
       }
       for (const zone of zones) {
         let x1 = zone.x1, x2 = zone.x2;
@@ -196,7 +222,8 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
     return panels;
   }, [facadeData, panelen, mat]);
 
-  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat), [facadeData, panelen, latten, mat]);
+  const penanten = groupSettings?.penanten ?? [];
+  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten), [facadeData, panelen, latten, mat, penanten]);
 
   if (!facadeData) {
     return (

@@ -61,6 +61,12 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
     const richting = latten.richting ?? 'horizontaal';
     const latBreedte = Math.max(5, latten.breedte ?? 50);
 
+    const PENANT_GAP = 10;
+    const penantRanges = (groupSettings?.penanten ?? []).map((p) => ({
+      x1: Math.max(0, (p.x ?? 0) - PENANT_GAP),
+      x2: Math.min(groupWidth, (p.x ?? 0) + (p.breedte ?? 400) + PENANT_GAP),
+    }));
+
     if (richting === 'horizontaal') {
       const MAX_HOC = latten.maxInterval ?? 400;
       const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
@@ -119,7 +125,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
           (op) => op.y < latBot && op.y + op.height > latTop
         );
 
-        const zones = [];
+        let zones = [];
         if (openingsAtY.length === 0) {
           zones.push({ x1: 0, x2: groupWidth });
         } else {
@@ -132,6 +138,27 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
             cursor = Math.max(cursor, op.x2);
           }
           if (cursor < groupWidth) zones.push({ x1: cursor, x2: groupWidth });
+        }
+
+        if (penantRanges.length > 0) {
+          const splitZones = [];
+          for (const zone of zones) {
+            let segments = [{ x1: zone.x1, x2: zone.x2 }];
+            for (const pr of penantRanges) {
+              const next = [];
+              for (const seg of segments) {
+                if (pr.x2 <= seg.x1 || pr.x1 >= seg.x2) {
+                  next.push(seg);
+                } else {
+                  if (pr.x1 > seg.x1) next.push({ x1: seg.x1, x2: pr.x1 });
+                  if (pr.x2 < seg.x2) next.push({ x1: pr.x2, x2: seg.x2 });
+                }
+              }
+              segments = next;
+            }
+            splitZones.push(...segments);
+          }
+          zones = splitZones;
         }
 
         for (const zone of zones) {
