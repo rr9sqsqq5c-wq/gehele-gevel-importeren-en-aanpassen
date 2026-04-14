@@ -194,7 +194,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const groupWidth = round2(groupMaxX - groupMinX);
   const groupHeight = round2(groupMaxH - groupMinH);
   const effectiveHeight = maxHoogte != null && maxHoogte > 0 ? Math.min(groupHeight, maxHoogte) : groupHeight;
-  const totalLagen = Math.floor((effectiveHeight + lint) / lagenmaat);
+  const totalLagen = Math.ceil((effectiveHeight) / lagenmaat);
 
   const zwEnabled = zetwerk?.enabled;
   const zwB = zwEnabled ? Math.max(1, zetwerk.breedte ?? 50) : 0;
@@ -447,7 +447,7 @@ export function buildSingleWallPattern(wall, material, verband) {
 export function buildFacePattern(width, height, material, verband, rowOffset = 0) {
   const { steenH, lint } = material;
   const lagenmaat = steenH + lint;
-  const lagen = lagenmaat > 0 ? Math.floor((height + lint) / lagenmaat) : 0;
+  const lagen = lagenmaat > 0 ? Math.ceil(height / lagenmaat) : 0;
   const rows = [];
   for (let r = 0; r < lagen; r++) {
     const rowY = round2(r * lagenmaat);
@@ -466,7 +466,7 @@ function mirrorPieces(pieces, totalWidth) {
 export function buildSymmetricFacePattern(width, height, material, verband, rowOffset = 0) {
   const { steenH, lint } = material;
   const lagenmaat = steenH + lint;
-  const lagen = lagenmaat > 0 ? Math.floor((height + lint) / lagenmaat) : 0;
+  const lagen = lagenmaat > 0 ? Math.ceil(height / lagenmaat) : 0;
   const half = width / 2;
   const rows = [];
   for (let r = 0; r < lagen; r++) {

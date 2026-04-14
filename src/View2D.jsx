@@ -381,8 +381,11 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       const isTegel = verband === 'staand_tegelverband';
       const stripH = isTegel ? mat.steenL : steenH;
       for (const row of rows) {
-        const [, rowSy] = toScreen(0, row.y + stripH);
-        const rowSh = stripH * scale * 0.001;
+        const clippedTop = Math.min(row.y + stripH, groupHeight);
+        const actualH = clippedTop - row.y;
+        if (actualH <= 0) continue;
+        const [, rowSy] = toScreen(0, clippedTop);
+        const rowSh = actualH * scale * 0.001;
         for (const piece of row.pieces) {
           const [pSx] = toScreen(piece.start, 0);
           const pSw = piece.length * scale * 0.001;
@@ -407,8 +410,11 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
         ctx.fillStyle = hexToRgba(zColor, 0.15);
         ctx.fillRect(sx1z, faceSy, zW, faceH);
         for (const row of zPat.rows) {
-          const [, rowSy] = toScreen(0, row.y + zStripH);
-          const rowSh = zStripH * scale * 0.001;
+          const zClippedTop = Math.min(row.y + zStripH, groupHeight);
+          const zActualH = zClippedTop - row.y;
+          if (zActualH <= 0) continue;
+          const [, rowSy] = toScreen(0, zClippedTop);
+          const rowSh = zActualH * scale * 0.001;
           for (const piece of row.pieces) {
             const pEnd = piece.start + piece.length;
             if (pEnd <= zoneX1 || piece.start >= zoneX2) continue;
