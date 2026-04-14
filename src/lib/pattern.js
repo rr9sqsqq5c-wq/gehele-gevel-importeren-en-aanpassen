@@ -456,3 +456,37 @@ export function buildFacePattern(width, height, material, verband, rowOffset = 0
   }
   return rows;
 }
+
+function mirrorPieces(pieces, totalWidth) {
+  return pieces
+    .map((p) => ({ ...p, start: round2(totalWidth - p.start - p.length) }))
+    .sort((a, b) => a.start - b.start);
+}
+
+export function buildSymmetricFacePattern(width, height, material, verband, rowOffset = 0) {
+  const { steenH, lint } = material;
+  const lagenmaat = steenH + lint;
+  const lagen = lagenmaat > 0 ? Math.floor((height + lint) / lagenmaat) : 0;
+  const half = width / 2;
+  const rows = [];
+  for (let r = 0; r < lagen; r++) {
+    const rowY = round2(r * lagenmaat);
+    const rightPieces = buildRowPiecesForWidth(half, material, verband, r + rowOffset, 0)
+      .map((p) => ({ ...p, start: round2(p.start + half) }));
+    const leftPieces = mirrorPieces(
+      rightPieces.map((p) => ({ ...p, start: round2(p.start - half) })),
+      half
+    );
+    const all = [...leftPieces, ...rightPieces].sort((a, b) => a.start - b.start);
+    if (all.length) rows.push({ y: rowY, pieces: all });
+  }
+  return rows;
+}
+
+export function buildMirroredFacePattern(width, height, material, verband, rowOffset = 0) {
+  const rows = buildFacePattern(width, height, material, verband, rowOffset);
+  return rows.map((row) => ({
+    ...row,
+    pieces: mirrorPieces(row.pieces, width),
+  }));
+}

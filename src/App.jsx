@@ -3,7 +3,7 @@ import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGr
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
-import { buildGroupPattern, buildFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
+import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
@@ -1223,7 +1223,7 @@ export default function App() {
 
       let frontRows;
       if (p.gavelVolgend !== false) {
-        frontRows = [];
+        const rawRows = [];
         for (const wall of walls) {
           const wallLeft = wall.wallOrigin?.lengthStart ?? 0;
           const wallRight = wallLeft + wall.length;
@@ -1240,15 +1240,32 @@ export default function App() {
               if (oe - os < 0.001) return [];
               return [{ ...piece, start: os - maskStart, length: oe - os }];
             });
-            if (clipped.length) frontRows.push({ y: row.y, pieces: clipped });
+            if (clipped.length) rawRows.push({ y: row.y, pieces: clipped });
           }
         }
+        const half = pB / 2;
+        frontRows = rawRows.map((row) => {
+          const rightPieces = row.pieces
+            .filter((pc) => pc.start + pc.length > half - 0.001)
+            .map((pc) => {
+              const s = Math.max(pc.start, half);
+              const e = Math.min(pc.start + pc.length, pB);
+              return e - s > 0.001 ? { ...pc, start: Math.round((s - half) * 100) / 100, length: Math.round((e - s) * 100) / 100 } : null;
+            })
+            .filter(Boolean);
+          const leftPieces = rightPieces
+            .map((pc) => ({ ...pc, start: Math.round((half - pc.start - pc.length) * 100) / 100 }))
+            .sort((a, b) => a.start - b.start);
+          const shiftedRight = rightPieces.map((pc) => ({ ...pc, start: Math.round((pc.start + half) * 100) / 100 }));
+          return { ...row, pieces: [...leftPieces, ...shiftedRight].sort((a, b) => a.start - b.start) };
+        });
       } else {
-        frontRows = buildFacePattern(pB, effectiveH, mat, verband);
+        frontRows = buildSymmetricFacePattern(pB, effectiveH, mat, verband);
       }
 
-      const sideRows = buildFacePattern(pD, effectiveH, mat, verband);
-      return { penant: p, front: frontRows, left: sideRows, right: sideRows, height: effectiveH, groupMinH };
+      const leftRows = buildFacePattern(pD, effectiveH, mat, verband);
+      const rightRows = buildMirroredFacePattern(pD, effectiveH, mat, verband);
+      return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: effectiveH, groupMinH };
     });
   }, [activeGroup, getSettings, wallMap, adjacencies]);
   const adjWallIds = useMemo(() => new Set(adjacencies.flatMap((a) => [a.wallIdA, a.wallIdB])), [adjacencies]);
