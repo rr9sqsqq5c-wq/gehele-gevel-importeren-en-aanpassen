@@ -219,7 +219,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <SectionLabel tip={"Een penant is een uitstekende verticale lijst in de gevel.\nGeef de X-positie, breedte, diepte en hoogte op in mm.\n· X positie = afstand van de linker groepsrand\n· Breedte = breedte van het penant\n· Diepte = uitsteek t.o.v. het gevelvlak\n· Hoogte = hoogte van het penant\n· Patroon volgt gevel = strips lopen door als op de gevel"}>Penanten</SectionLabel>
           <button
-            onClick={() => onUpdate({ penanten: [...(settings.penanten ?? []), { id: Date.now(), x: 500, breedte: 400, diepte: 150, hoogte: 2000, gavelVolgend: true }] })}
+            onClick={() => onUpdate({ penanten: [...(settings.penanten ?? []), { id: Date.now(), x: 500, breedte: 400, diepte: 150, hoogte: 2000, gavelVolgend: true, hoekprofiel: { enabled: true, dikte: 2, breedteZijkant: 40, breedteVoorkant: 40 } }] })}
             style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '2px 8px', cursor: 'pointer' }}>
             + Toevoegen
           </button>
@@ -254,6 +254,33 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 onChange={(e) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, gavelVolgend: e.target.checked } : q) })} />
               Patroon volgt gevel
             </label>
+            {(() => {
+              const hp = p.hoekprofiel ?? { enabled: false, dikte: 2, breedteZijkant: 40, breedteVoorkant: 40 };
+              const updHp = (patch) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, hoekprofiel: { ...hp, ...patch } } : q) });
+              return (
+                <div style={{ marginTop: 6, borderTop: '1px dashed #e2e8f0', paddingTop: 5 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', marginBottom: 4 }}>
+                    <input type="checkbox" checked={hp.enabled !== false} onChange={(e) => updHp({ enabled: e.target.checked })} />
+                    <span title="Aluminium L-profiel in de binnenhoek aan weerszijden van het penant, vlak tegen de achterkant van het paneel. Verbindt de zijkant met de voorkant.">Aluminium hoekprofiel (L)</span>
+                  </label>
+                  {hp.enabled !== false && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 3 }}>
+                      {[
+                        ['Dikte', 'dikte', 'Materiaaldikte van het L-profiel (mm).'],
+                        ['Br. zijkant', 'breedteZijkant', 'Breedte van de zijkantflens van het L-profiel (mm) — loopt langs de zijkant van het penant.'],
+                        ['Br. voorkant', 'breedteVoorkant', 'Breedte van de voorkantflens van het L-profiel (mm) — loopt langs de voorkant van het penant.'],
+                      ].map(([lbl, key, tip]) => (
+                        <Field key={key} label={`${lbl} mm`} tip={tip}>
+                          <input type="number" min={1} step={1} value={hp[key] ?? 0}
+                            onChange={(e) => updHp({ [key]: Number(e.target.value) })}
+                            style={{ ...inp, width: '100%' }} />
+                        </Field>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ))}
       </div>
