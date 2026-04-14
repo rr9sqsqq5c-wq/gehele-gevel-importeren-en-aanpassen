@@ -168,6 +168,7 @@ function computeLatten(facadeData, panelen, latten, mat) {
 
 export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen, latten, groupMinH }) {
   const svgRef = useRef(null);
+  const productiePrintRef = useRef(null);
   const [drawingType, setDrawingType] = useState('achterconstructie');
   const [productieGenerated, setProductieGenerated] = useState(false);
 
@@ -275,7 +276,26 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
     if (!svgEl) return;
     const xml = new XMLSerializer().serializeToString(svgEl);
     const w = window.open('', '_blank');
+    if (!w) {
+      alert('Sta pop-ups toe voor deze pagina om af te drukken.');
+      return;
+    }
     w.document.write(`<!DOCTYPE html><html><head><title>Werktekening ${groupName}</title><style>body{margin:0;padding:16px;background:#fff} svg{max-width:100%;height:auto} @media print{body{padding:0}}</style></head><body>${xml}<script>window.onload=()=>window.print()<\/script></body></html>`);
+    w.document.close();
+  }
+
+  function exportPrintProductie() {
+    const container = productiePrintRef.current;
+    if (!container) return;
+    const svgs = container.querySelectorAll('svg');
+    if (!svgs.length) return;
+    const svgXmls = Array.from(svgs).map((s) => new XMLSerializer().serializeToString(s)).join('<br style="page-break-after:always">');
+    const w = window.open('', '_blank');
+    if (!w) {
+      alert('Sta pop-ups toe voor deze pagina om af te drukken.');
+      return;
+    }
+    w.document.write(`<!DOCTYPE html><html><head><title>Paneeltekeningen ${groupName}</title><style>body{margin:0;padding:12px;background:#fff;display:flex;flex-wrap:wrap;gap:12px} svg{border:1px solid #ccc;border-radius:4px;page-break-inside:avoid} @media print{body{padding:4px}}</style></head><body>${svgXmls}<script>window.onload=()=>window.print()<\/script></body></html>`);
     w.document.close();
   }
 
@@ -285,10 +305,12 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
         <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a5f', flex: 1 }}>
           Werktekening — {groupName ?? 'Groep'}
         </span>
-        {drawingType !== 'productie' && <>
+        {drawingType !== 'productie' ? <>
           <button onClick={exportSvg} style={{ fontSize: 11, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>⬇ SVG</button>
           <button onClick={exportPrint} style={{ fontSize: 11, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>🖨 Afdrukken</button>
-        </>}
+        </> : productieGenerated && (
+          <button onClick={exportPrintProductie} style={{ fontSize: 11, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>🖨 Afdrukken panelen</button>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 0, background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
@@ -326,7 +348,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a5f' }}>{allPanels.length} panelen — {groupName ?? 'Groep'}</span>
                   <button onClick={() => setProductieGenerated(false)} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '3px 8px', cursor: 'pointer' }}>Verberg</button>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                <div ref={productiePrintRef} style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                   {allPanels.map((panel, idx) => {
                     const PAD = 40;
                     const CARD_W = 300;
