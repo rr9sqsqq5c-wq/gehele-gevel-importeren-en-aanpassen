@@ -20,7 +20,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [] }) {
+export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [] }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -35,9 +35,9 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
 
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
-    const result = buildFullGroupFacadePattern(walls, mat, verband, maxHoogte, zetwerk);
+    const result = buildFullGroupFacadePattern(walls, mat, verband, maxHoogte, zetwerk, minHoogte);
     return result;
-  }, [walls, mat, verband, maxHoogte, zetwerk]);
+  }, [walls, mat, verband, maxHoogte, minHoogte, zetwerk]);
 
   const allPanels = useMemo(() => {
     if (!facadeData || !panelen?.enabled) return [];
@@ -312,7 +312,7 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       return;
     }
 
-    const { rows, groupWidth, groupHeight, groupOpenings, zetwerkParams } = facadeData;
+    const { rows, groupWidth, groupHeight, groupOpenings, zetwerkParams, patternStartH = 0 } = facadeData;
     const steenH = mat.steenH;
 
     const [faceSx, faceSy] = toScreen(0, groupHeight);
@@ -382,7 +382,8 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       const stripH = isTegel ? mat.steenL : steenH;
       for (const row of rows) {
         const clippedTop = Math.min(row.y + stripH, groupHeight);
-        const actualH = clippedTop - row.y;
+        const clippedBottom = Math.max(row.y, patternStartH);
+        const actualH = clippedTop - clippedBottom;
         if (actualH <= 0) continue;
         const [, rowSy] = toScreen(0, clippedTop);
         const rowSh = actualH * scale * 0.001;
@@ -577,6 +578,27 @@ export function View2D({ walls, groupSettings, maxHoogte, penantFaceData, groupC
       ctx.textAlign = 'left';
       ctx.textBaseline = 'bottom';
       ctx.fillText(`▲ max ${maxHoogte} mm`, Math.max(4, sx1), sy - 2);
+      ctx.restore();
+    }
+
+    if (patternStartH > 0) {
+      const [, sy] = toScreen(0, patternStartH);
+      const [sx1] = toScreen(0, 0);
+      const [sx2] = toScreen(groupWidth, 0);
+      ctx.save();
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 5]);
+      ctx.beginPath();
+      ctx.moveTo(Math.max(0, sx1 - 20), sy);
+      ctx.lineTo(Math.min(W, sx2 + 20), sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#22d3ee';
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`▼ vanaf ${patternStartH} mm`, Math.max(4, sx1), sy + 2);
       ctx.restore();
     }
 

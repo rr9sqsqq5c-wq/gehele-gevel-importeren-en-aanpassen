@@ -201,11 +201,12 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const mat     = groupSettings?.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
   const verband = groupSettings?.verband ?? 'halfsteens';
   const maxH    = groupSettings?.maxHoogte ?? null;
+  const minH    = groupSettings?.minHoogte ?? null;
 
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
-    return buildFullGroupFacadePattern(walls, mat, verband, maxH, zetwerk);
-  }, [walls, mat, verband, maxH, zetwerk]);
+    return buildFullGroupFacadePattern(walls, mat, verband, maxH, zetwerk, minH);
+  }, [walls, mat, verband, maxH, minH, zetwerk]);
 
   const allPanels = useMemo(() => {
     if (!facadeData || !panelen?.enabled) return [];

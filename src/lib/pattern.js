@@ -178,7 +178,7 @@ export function buildGroupPattern(walls, adjacencies, material, verband) {
   return result;
 }
 
-export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk) {
+export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk, minHoogte) {
   const { steenH, lint } = material;
   const lagenmaat = getLagenmaat(material, verband);
   const rowH = verband === 'staand_tegelverband' ? material.steenL : steenH;
@@ -195,6 +195,8 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const groupHeight = round2(groupMaxH - groupMinH);
   const effectiveHeight = maxHoogte != null && maxHoogte > 0 ? Math.min(groupHeight, maxHoogte) : groupHeight;
   const totalLagen = Math.ceil((effectiveHeight) / lagenmaat);
+  const effectiveMinH = (minHoogte != null && minHoogte > 0 && minHoogte < effectiveHeight) ? minHoogte : 0;
+  const startLaag = effectiveMinH > 0 ? Math.floor(effectiveMinH / lagenmaat) : 0;
 
   const zwEnabled = zetwerk?.enabled;
   const zwB = zwEnabled ? Math.max(1, zetwerk.breedte ?? 50) : 0;
@@ -322,7 +324,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   }
 
   const rows = [];
-  for (let r = 0; r < totalLagen; r++) {
+  for (let r = startLaag; r < totalLagen; r++) {
     const rowY = round2(r * lagenmaat);
     const rawPieces = buildRowPiecesForWidth(groupWidth, material, verband, r, 0);
     const clipped = [];
@@ -333,7 +335,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     if (clipped.length) rows.push({ y: rowY, pieces: clipped });
   }
 
-  return { rows, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, groupOpenings, zetwerkParams: zwEnabled ? { breedte: zwB, offsetH: zwH, offsetV: zwV } : null };
+  return { rows, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, patternStartH: effectiveMinH, groupOpenings, zetwerkParams: zwEnabled ? { breedte: zwB, offsetH: zwH, offsetV: zwV } : null };
 }
 
 export function getGroupPatternLogic(walls, material, verband) {

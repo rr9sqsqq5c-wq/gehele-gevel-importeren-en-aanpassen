@@ -118,7 +118,7 @@ const GROUP_COLORS = [
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 18, gewichtM2: 11, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, minHoogte: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 18, gewichtM2: 11, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -210,6 +210,25 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
           <Field label="Hoogte (mm)">
             <input type="number" min={0} step={10} value={settings.maxHoogte}
               onChange={(e) => onUpdate({ maxHoogte: Number(e.target.value) })}
+              style={{ ...inp, width: 80 }} />
+          </Field>
+        )}
+      </div>
+
+      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+          <input type="checkbox" id="minh-enable"
+            checked={settings.minHoogte !== null}
+            onChange={(e) => onUpdate({ minHoogte: e.target.checked ? 200 : null })} />
+          <label htmlFor="minh-enable" style={{ fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
+            Minimale strip hoogte (vanaf lijn)
+            <InfoIcon tip={"Begrenst het steenstrippatroon aan de onderkant.\nStrips onder deze hoogte worden niet getoond.\nHandig als de onderkant van de gevel een ander materiaal heeft of een drempel."} />
+          </label>
+        </div>
+        {settings.minHoogte !== null && (
+          <Field label="Hoogte (mm)">
+            <input type="number" min={0} step={10} value={settings.minHoogte}
+              onChange={(e) => onUpdate({ minHoogte: Number(e.target.value) })}
               style={{ ...inp, width: 80 }} />
           </Field>
         )}
@@ -1115,7 +1134,7 @@ export default function App() {
       const groupMinH = withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart)) : 0;
       const refWallOrigin = withOrigin[0]?.wallOrigin ?? null;
 
-      const facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk);
+      const facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte);
 
       let panels = [];
       let lattenData = [];
@@ -1735,6 +1754,7 @@ export default function App() {
                     walls={activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean)}
                     groupSettings={getSettings(activeGroup.id)}
                     maxHoogte={getSettings(activeGroup.id).maxHoogte}
+                    minHoogte={getSettings(activeGroup.id).minHoogte}
                     penantFaceData={penantFaceData}
                     groupColor={getSettings(activeGroup.id).color}
                     zetwerk={getSettings(activeGroup.id).zetwerk}
