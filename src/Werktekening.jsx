@@ -192,7 +192,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten) {
   }
 }
 
-export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen, latten, groupMinH }) {
+export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen, latten, groupMinH, penantFaceData }) {
   const svgRef = useRef(null);
   const productiePrintRef = useRef(null);
   const [drawingType, setDrawingType] = useState('achterconstructie');
@@ -373,133 +373,207 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
         {drawingType === 'penanten' && (() => {
           const pens = groupSettings?.penanten ?? [];
           if (!pens.length) return <div style={{ color: '#64748b', fontSize: 13, padding: 20 }}>Geen penanten geconfigureerd.</div>;
-          const CARD_PAD_L = 80;
-          const CARD_PAD_R = 40;
-          const CARD_PAD_T = 40;
-          const CARD_PAD_B = 60;
-          const MAX_CARD_W = 440;
-          const MAX_CARD_H = 560;
-          return (
-            <div id="penanten-print-container" style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-              {pens.map((p, idx) => {
-                const pB = Math.max(1, p.breedte ?? 400);
-                const pD = Math.max(1, p.diepte ?? 150);
-                const pH = Math.max(1, p.hoogte ?? 2000);
-                const gewichtM2 = p.gewichtM2 ?? 11;
-                const maxKg = p.maxKg ?? 50;
-                const omtrekM2perMM = (pB + 2 * pD) / 1e6;
-                const kgPerMM = omtrekM2perMM * gewichtM2;
-                const maxSectieH = kgPerMM > 0 ? Math.floor(maxKg / kgPerMM) : pH;
-                const aantalSecties = kgPerMM > 0 ? Math.ceil(pH / maxSectieH) : 1;
-                const sectieH = aantalSecties > 0 ? Math.round(pH / aantalSecties) : pH;
-                const hp = p.hoekprofiel ?? {};
-                const vl = p.verticaleLat ?? {};
 
-                const scH = Math.min((MAX_CARD_H - CARD_PAD_T - CARD_PAD_B) / pH, (MAX_CARD_W - CARD_PAD_L - CARD_PAD_R) / pB);
-                const scV = scH;
-                const drawW_p = Math.round(pB * scH);
-                const drawH_p = Math.round(pH * scV);
-                const svgW = drawW_p + CARD_PAD_L + CARD_PAD_R;
-                const svgH = drawH_p + CARD_PAD_T + CARD_PAD_B;
-                const ox = CARD_PAD_L;
-                const oy = CARD_PAD_T;
+          const PAD_L = 100; const PAD_R = 50; const PAD_T = 50; const PAD_B = 55;
+          const MAX_UNFOLD_W = 860; const MAX_UNFOLD_H = 480;
+          const color = groupSettings?.color ?? '#a64033';
 
-                const sx2 = (x) => ox + x * scH;
-                const sy2 = (y) => oy + drawH_p - y * scV;
+          const svgs = [];
 
-                const sectionYs = [];
-                for (let s = 0; s <= aantalSecties; s++) sectionYs.push(Math.round(Math.min(s * sectieH, pH)));
+          pens.forEach((p, idx) => {
+            const pB = Math.max(1, p.breedte ?? 400);
+            const pD = Math.max(1, p.diepte ?? 150);
+            const pH = Math.max(1, p.hoogte ?? 2000);
+            const gewichtM2 = p.gewichtM2 ?? 11;
+            const maxKg = p.maxKg ?? 50;
+            const omtrekM2perMM = (pB + 2 * pD) / 1e6;
+            const kgPerMM = omtrekM2perMM * gewichtM2;
+            const maxSectieH = kgPerMM > 0 ? Math.floor(maxKg / kgPerMM) : pH;
+            const aantalSecties = kgPerMM > 0 ? Math.ceil(pH / maxSectieH) : 1;
+            const sectieH = aantalSecties > 0 ? Math.round(pH / aantalSecties) : pH;
+            const hp = p.hoekprofiel ?? {};
+            const vl = p.verticaleLat ?? {};
+            const vlEnabled = vl.enabled !== false;
+            const vlD = vl.dikte ?? 50;
+            const vlB = vl.breedte ?? 90;
+            const hpEnabled = hp.enabled !== false;
+            const hpD = hp.dikte ?? 2;
 
-                const vlEnabled = vl.enabled !== false;
-                const vlB = vl.breedte ?? 90;
-                const vlD = vl.dikte ?? 50;
-                const hpEnabled = hp.enabled !== false;
-                const hpD = hp.dikte ?? 2;
-                const hpV = hp.breedteVoorkant ?? 40;
+            const totalUnfoldW = 2 * pD + pB;
+            const sc = Math.min((MAX_UNFOLD_W - PAD_L - PAD_R) / totalUnfoldW, (MAX_UNFOLD_H - PAD_T - PAD_B) / pH);
+            const dW = Math.round(totalUnfoldW * sc);
+            const dH = Math.round(pH * sc);
+            const svgW = dW + PAD_L + PAD_R;
+            const svgH = dH + PAD_T + PAD_B;
+            const ox = PAD_L; const oy = PAD_T;
 
-                return (
-                  <svg key={p.id ?? idx} width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`}
+            const ux = (x) => ox + x * sc;
+            const uy = (y) => oy + dH - y * sc;
+            const leftX = 0; const frontX = pD; const rightX = pD + pB;
+
+            const sectionYs = [];
+            for (let s = 0; s <= aantalSecties; s++) sectionYs.push(Math.round(Math.min(s * sectieH, pH)));
+
+            const faceData = (penantFaceData ?? []).find((fd) => fd.penant.id === p.id);
+
+            svgs.push(
+              <svg key={`construct-${p.id ?? idx}`} width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`}
+                style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', display: 'block' }}
+                xmlns="http://www.w3.org/2000/svg">
+
+                <text x={ox} y={18} fontSize={10} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">
+                  Penant {idx + 1} — uitgeslagen constructie · X={mm(p.x ?? 0)} mm
+                </text>
+                <text x={ox} y={30} fontSize={7.5} fill="#64748b" fontFamily="Arial, sans-serif">
+                  Uitgeslagen breedte: {mm(totalUnfoldW)} mm · Hoogte: {mm(pH)} mm · {aantalSecties} U-sectie{aantalSecties !== 1 ? 's' : ''} · ≈{mm(sectieH)} mm/sectie
+                </text>
+
+                <rect x={ux(leftX)} y={uy(pH)} width={pD * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                <text x={ux(leftX + pD / 2)} y={uy(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={7} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${ux(leftX + pD / 2)},${uy(pH / 2)})`}>LINKERZIJDE</text>
+
+                <rect x={ux(frontX)} y={uy(pH)} width={pB * sc} height={dH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1.2} />
+                <text x={ux(frontX + pB / 2)} y={uy(pH) - 6} textAnchor="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">VOORZIJDE</text>
+
+                <rect x={ux(rightX)} y={uy(pH)} width={pD * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                <text x={ux(rightX + pD / 2)} y={uy(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={7} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${ux(rightX + pD / 2)},${uy(pH / 2)})`}>RECHTERZIJDE</text>
+
+                <line x1={ux(frontX)} y1={uy(pH)} x2={ux(frontX)} y2={uy(0)} stroke="#475569" strokeWidth={0.8} strokeDasharray="4,3" />
+                <line x1={ux(rightX)} y1={uy(pH)} x2={ux(rightX)} y2={uy(0)} stroke="#475569" strokeWidth={0.8} strokeDasharray="4,3" />
+
+                {sectionYs.slice(1, -1).map((sy_val, si) => (
+                  <g key={si}>
+                    <line x1={ux(leftX)} y1={uy(sy_val)} x2={ux(rightX + pD)} y2={uy(sy_val)} stroke="#dc2626" strokeWidth={1} strokeDasharray="6,3" />
+                    <text x={ux(rightX + pD) + 4} y={uy(sy_val) + 3} fontSize={7} fill="#dc2626" fontFamily="Arial, sans-serif">U{si + 1}|U{si + 2}</text>
+                  </g>
+                ))}
+
+                {sectionYs.slice(0, -1).map((sy_val, si) => {
+                  const sMid = (sy_val + sectionYs[si + 1]) / 2;
+                  return (
+                    <text key={si} x={ux(frontX + pB / 2)} y={uy(sMid)} textAnchor="middle" dominantBaseline="middle"
+                      fontSize={8} fontWeight="bold" fill="#334155" fontFamily="Arial, sans-serif">U{si + 1}</text>
+                  );
+                })}
+
+                {vlEnabled && [leftX, rightX].map((fx, fi) => (
+                  <g key={fi}>
+                    <rect x={fi === 0 ? ux(fx + pD - vlD) : ux(fx)} y={uy(pH)} width={vlD * sc} height={dH} fill="#92400e" fillOpacity={0.3} stroke="#92400e" strokeWidth={0.5} />
+                    <text x={fi === 0 ? ux(fx + pD - vlD / 2) : ux(fx + vlD / 2)} y={uy(pH) - 4} textAnchor="middle" fontSize={6} fill="#92400e" fontFamily="Arial, sans-serif">{mm(vlD)}</text>
+                  </g>
+                ))}
+
+                {hpEnabled && [
+                  { fx: frontX, corner: 'tl' }, { fx: frontX + pB - hpD, corner: 'tr' },
+                ].map(({ fx, corner }) => (
+                  <g key={corner}>
+                    <rect x={ux(fx)} y={uy(pH)} width={hpD * sc} height={dH} fill="#6366f1" fillOpacity={0.6} stroke="#4338ca" strokeWidth={0.5} />
+                  </g>
+                ))}
+
+                <DimH x1={ux(leftX)} x2={ux(frontX)} y={uy(0) + 28} label={`${mm(pD)} mm`} />
+                <DimH x1={ux(frontX)} x2={ux(rightX)} y={uy(0) + 28} label={`${mm(pB)} mm`} />
+                <DimH x1={ux(rightX)} x2={ux(rightX + pD)} y={uy(0) + 28} label={`${mm(pD)} mm`} />
+                <DimH x1={ux(leftX)} x2={ux(rightX + pD)} y={uy(0) + 42} label={`${mm(totalUnfoldW)} mm`} />
+                <DimV x={ox - 20} y1={uy(pH)} y2={uy(0)} label={`${mm(pH)} mm`} side="left" />
+
+                {sectionYs.slice(1, -1).map((sy_val, si) => (
+                  <DimV key={si} x={ox - 50} y1={uy(sectionYs[si])} y2={uy(sy_val)} label={`${mm(sy_val - sectionYs[si])} mm`} side="left" />
+                ))}
+                {aantalSecties > 0 && (
+                  <DimV x={ox - 50} y1={uy(sectionYs[aantalSecties - 1])} y2={uy(pH)} label={`${mm(pH - sectionYs[aantalSecties - 1])} mm`} side="left" />
+                )}
+
+                <g transform={`translate(${ox},${svgH - 20})`}>
+                  <rect x={0} y={0} width={10} height={7} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.5} />
+                  <text x={13} y={6.5} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">Zijvlak (diepte)</text>
+                  <rect x={80} y={0} width={10} height={7} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={0.5} />
+                  <text x={93} y={6.5} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">Voorzijde</text>
+                  {vlEnabled && <><rect x={150} y={0} width={10} height={7} fill="#92400e" fillOpacity={0.3} stroke="#92400e" strokeWidth={0.5} /><text x={163} y={6.5} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">Vert. lat {mm(vlB)}×{mm(vlD)}</text></>}
+                  {hpEnabled && <><rect x={260} y={0} width={10} height={7} fill="#6366f1" fillOpacity={0.6} stroke="#4338ca" strokeWidth={0.5} /><text x={273} y={6.5} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">Alu. L {mm(hpD)}mm</text></>}
+                  <line x1={350} y1={3.5} x2={370} y2={3.5} stroke="#dc2626" strokeWidth={1} strokeDasharray="4,2" />
+                  <text x={373} y={6.5} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">U-sectie grens</text>
+                </g>
+              </svg>
+            );
+
+            if (faceData) {
+              const { front, left, right } = faceData;
+              const stripH_px = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+
+              sectionYs.slice(0, -1).forEach((secBottom, si) => {
+                const secTop = sectionYs[si + 1];
+                const secH = secTop - secBottom;
+                const secSc = Math.min((MAX_UNFOLD_W - PAD_L - PAD_R) / totalUnfoldW, (MAX_UNFOLD_H - PAD_T - PAD_B) / secH);
+                const sdW = Math.round(totalUnfoldW * secSc);
+                const sdH = Math.round(secH * secSc);
+                const ssvgW = sdW + PAD_L + PAD_R;
+                const ssvgH = sdH + PAD_T + PAD_B;
+                const sox = PAD_L; const soy = PAD_T;
+                const sux = (x) => sox + x * secSc;
+                const suy = (y) => soy + sdH - (y - secBottom) * secSc;
+
+                const renderFaceStrips = (rows, faceOffsetX, faceWidth) =>
+                  rows.flatMap((row, ri) => {
+                    if (row.y + stripH_px <= secBottom - 0.5 || row.y >= secTop + 0.5) return [];
+                    return row.pieces.map((pc, pi) => {
+                      const clipY1 = Math.max(row.y, secBottom);
+                      const clipY2 = Math.min(row.y + stripH_px, secTop);
+                      if (clipY2 - clipY1 < 0.5) return null;
+                      const rx = sux(faceOffsetX + pc.start);
+                      const ry = suy(clipY2);
+                      const rw = pc.length * secSc;
+                      const rh = (clipY2 - clipY1) * secSc;
+                      return (
+                        <g key={`${ri}-${pi}`}>
+                          <rect x={rx} y={ry} width={rw} height={rh} fill={brickColor(pc.label, color)} stroke="rgba(0,0,0,0.2)" strokeWidth={0.3} />
+                          {rw > 14 && rh > 7 && (
+                            <text x={rx + rw / 2} y={ry + rh / 2} textAnchor="middle" dominantBaseline="middle"
+                              fontSize={Math.min(5.5, rh * 0.5)} fill="#000" fontFamily="Arial, sans-serif">{pc.label}</text>
+                          )}
+                        </g>
+                      );
+                    }).filter(Boolean);
+                  });
+
+                svgs.push(
+                  <svg key={`strip-${p.id ?? idx}-${si}`} width={ssvgW} height={ssvgH} viewBox={`0 0 ${ssvgW} ${ssvgH}`}
                     style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', display: 'block' }}
                     xmlns="http://www.w3.org/2000/svg">
 
-                    <text x={ox} y={16} fontSize={10} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">
-                      Penant {idx + 1} — voorzijde · X={mm(p.x ?? 0)} mm
+                    <text x={sox} y={18} fontSize={10} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">
+                      Penant {idx + 1} — U{si + 1} steenstrips uitgeslagen · {mm(secH)} mm hoog
                     </text>
-                    <text x={ox} y={27} fontSize={7.5} fill="#64748b" fontFamily="Arial, sans-serif">
-                      {mm(pB)} × {mm(pH)} mm · {aantalSecties} U-sectie{aantalSecties !== 1 ? 's' : ''} · ≈{mm(sectieH)} mm/sectie
+                    <text x={sox} y={30} fontSize={7.5} fill="#64748b" fontFamily="Arial, sans-serif">
+                      Hoogte U{si + 1}: {mm(secBottom)}–{mm(secTop)} mm · {mm(totalUnfoldW)} mm breed uitgeslagen · Verband: {verband}
                     </text>
 
-                    <rect x={ox} y={oy} width={drawW_p} height={drawH_p} fill="#f1f5f9" stroke="#1e3a5f" strokeWidth={1} />
+                    <rect x={sux(leftX)} y={suy(secTop)} width={pD * secSc} height={sdH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.7} fillOpacity={0.3} />
+                    <text x={sux(leftX + pD / 2)} y={suy(secTop + secH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={6.5} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${sux(leftX + pD / 2)},${suy(secTop + secH / 2)})`}>LINKS</text>
 
-                    {sectionYs.slice(1, -1).map((sy_val, si) => (
-                      <g key={si}>
-                        <line x1={ox} y1={sy2(sy_val)} x2={ox + drawW_p} y2={sy2(sy_val)} stroke="#dc2626" strokeWidth={1} strokeDasharray="6,3" />
-                        <text x={ox + drawW_p + 4} y={sy2(sy_val) + 3} fontSize={7} fill="#dc2626" fontFamily="Arial, sans-serif">U{si + 1}|U{si + 2}</text>
-                      </g>
-                    ))}
+                    <rect x={sux(frontX)} y={suy(secTop)} width={pB * secSc} height={sdH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1} fillOpacity={0.4} />
+                    <text x={sux(frontX + pB / 2)} y={suy(secTop) - 6} textAnchor="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">VOORZIJDE</text>
 
-                    {sectionYs.slice(0, -1).map((sy_val, si) => {
-                      const sTop = sy_val;
-                      const sBot = sectionYs[si + 1];
-                      const sMid = (sTop + sBot) / 2;
-                      const secKg = Math.round(sectieH * kgPerMM);
-                      return (
-                        <g key={si}>
-                          <text x={ox + drawW_p / 2} y={sy2(sMid)} textAnchor="middle" dominantBaseline="middle"
-                            fontSize={7.5} fill="#334155" fontFamily="Arial, sans-serif" fontWeight="bold">U{si + 1}</text>
-                          <text x={ox + drawW_p / 2} y={sy2(sMid) + 10} textAnchor="middle"
-                            fontSize={6.5} fill="#64748b" fontFamily="Arial, sans-serif">
-                            {mm(sectionYs[si + 1] - sTop)} mm · ≈{secKg} kg
-                          </text>
-                        </g>
-                      );
-                    })}
+                    <rect x={sux(rightX)} y={suy(secTop)} width={pD * secSc} height={sdH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.7} fillOpacity={0.3} />
+                    <text x={sux(rightX + pD / 2)} y={suy(secTop + secH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={6.5} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${sux(rightX + pD / 2)},${suy(secTop + secH / 2)})`}>RECHTS</text>
 
-                    {vlEnabled && (
-                      <>
-                        <rect x={sx2(0)} y={oy} width={vlD * scH} height={drawH_p} fill="#92400e" fillOpacity={0.25} stroke="#92400e" strokeWidth={0.5} />
-                        <rect x={sx2(pB) - vlD * scH} y={oy} width={vlD * scH} height={drawH_p} fill="#92400e" fillOpacity={0.25} stroke="#92400e" strokeWidth={0.5} />
-                        <text x={sx2(0) + vlD * scH / 2} y={oy - 4} textAnchor="middle" fontSize={6} fill="#92400e" fontFamily="Arial, sans-serif">{mm(vlD)}</text>
-                        <text x={sx2(pB) - vlD * scH / 2} y={oy - 4} textAnchor="middle" fontSize={6} fill="#92400e" fontFamily="Arial, sans-serif">{mm(vlD)}</text>
-                      </>
-                    )}
+                    <line x1={sux(frontX)} y1={suy(secTop)} x2={sux(frontX)} y2={suy(secBottom)} stroke="#475569" strokeWidth={0.7} strokeDasharray="3,2" />
+                    <line x1={sux(rightX)} y1={suy(secTop)} x2={sux(rightX)} y2={suy(secBottom)} stroke="#475569" strokeWidth={0.7} strokeDasharray="3,2" />
 
-                    {hpEnabled && (
-                      <>
-                        <rect x={sx2(0)} y={oy} width={hpV * scH} height={hpD * scV} fill="#6366f1" fillOpacity={0.5} stroke="#4338ca" strokeWidth={0.5} />
-                        <rect x={sx2(pB) - hpV * scH} y={oy} width={hpV * scH} height={hpD * scV} fill="#6366f1" fillOpacity={0.5} stroke="#4338ca" strokeWidth={0.5} />
-                        <rect x={sx2(0)} y={oy + drawH_p - hpD * scV} width={hpV * scH} height={hpD * scV} fill="#6366f1" fillOpacity={0.5} stroke="#4338ca" strokeWidth={0.5} />
-                        <rect x={sx2(pB) - hpV * scH} y={oy + drawH_p - hpD * scV} width={hpV * scH} height={hpD * scV} fill="#6366f1" fillOpacity={0.5} stroke="#4338ca" strokeWidth={0.5} />
-                      </>
-                    )}
+                    {renderFaceStrips(left ?? [], leftX, pD)}
+                    {renderFaceStrips(front ?? [], frontX, pB)}
+                    {renderFaceStrips(right ?? [], rightX, pD)}
 
-                    <DimH x1={ox} x2={ox + drawW_p} y={oy + drawH_p + 18} label={`${mm(pB)} mm`} />
-                    <DimV x={ox - 20} y1={oy} y2={oy + drawH_p} label={`${mm(pH)} mm`} side="left" />
-
-                    {sectionYs.slice(1, -1).map((sy_val, si) => (
-                      <DimV key={si} x={ox - 46} y1={sy2(sectionYs[si])} y2={sy2(sy_val)} label={`${mm(sy_val - sectionYs[si])} mm`} side="left" />
-                    ))}
-                    {aantalSecties > 0 && (
-                      <DimV x={ox - 46} y1={sy2(sectionYs[aantalSecties - 1])} y2={sy2(pH)} label={`${mm(pH - sectionYs[aantalSecties - 1])} mm`} side="left" />
-                    )}
-
-                    <g transform={`translate(${ox},${svgH - 28})`}>
-                      {vlEnabled && <>
-                        <rect x={0} y={2} width={10} height={7} fill="#92400e" fillOpacity={0.25} stroke="#92400e" strokeWidth={0.5} />
-                        <text x={13} y={9} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">Vert. lat {mm(vlB)}×{mm(vlD)} mm</text>
-                      </>}
-                      {hpEnabled && <>
-                        <rect x={vlEnabled ? 120 : 0} y={2} width={10} height={7} fill="#6366f1" fillOpacity={0.5} stroke="#4338ca" strokeWidth={0.5} />
-                        <text x={(vlEnabled ? 120 : 0) + 13} y={9} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">Alu. L-profiel {mm(hpD)}mm dik</text>
-                      </>}
-                      <line x1={vlEnabled || hpEnabled ? 240 : 0} y1={5} x2={(vlEnabled || hpEnabled ? 240 : 0) + 20} y2={5} stroke="#dc2626" strokeWidth={1} strokeDasharray="4,2" />
-                      <text x={(vlEnabled || hpEnabled ? 240 : 0) + 23} y={9} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">U-sectie grens</text>
-                    </g>
+                    <DimH x1={sux(leftX)} x2={sux(frontX)} y={suy(secBottom) + 28} label={`${mm(pD)} mm`} />
+                    <DimH x1={sux(frontX)} x2={sux(rightX)} y={suy(secBottom) + 28} label={`${mm(pB)} mm`} />
+                    <DimH x1={sux(rightX)} x2={sux(rightX + pD)} y={suy(secBottom) + 28} label={`${mm(pD)} mm`} />
+                    <DimV x={sox - 20} y1={suy(secTop)} y2={suy(secBottom)} label={`${mm(secH)} mm`} side="left" />
                   </svg>
                 );
-              })}
-            </div>
-          );
+              });
+            }
+          });
+
+          return <div id="penanten-print-container" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>{svgs}</div>;
         })()}
 
         {drawingType === 'productie' && (

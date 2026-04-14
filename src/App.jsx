@@ -1773,6 +1773,7 @@ export default function App() {
                     panelen={s.panelen}
                     latten={s.latten}
                     groupMinH={gMinH}
+                    penantFaceData={penantFaceData}
                   />
                 );
               })() : (
