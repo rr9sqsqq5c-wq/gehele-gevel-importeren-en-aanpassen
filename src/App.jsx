@@ -351,8 +351,8 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                   {[
                     ['Breedte', 'breedte', 50, 'Breedte van het zetwerk profiel (mm).'],
                     ['Dikte', 'dikte', 2, 'Materiaaldikte van het zetwerk profiel (mm).'],
-                    ['Offset H', 'offsetH', 0, 'Horizontale ruimte tussen de openingsrand en het profiel (mm).'],
-                    ['Offset V', 'offsetV', 0, 'Verticale ruimte boven en onder de opening (mm).'],
+                    ['Offset H', 'offsetH', 0, 'Horizontale ruimte tussen de kozijnrand en het profiel (mm).'],
+                    ['Offset V', 'offsetV', 0, 'Verticale ruimte boven en onder de kozijnrand (mm).'],
                     ['Strip gap', 'stripOffset', 5, 'Extra ruimte die de steenstrips vrijhouden van het profiel (mm).'],
                   ].map(([lbl, key, def, tip]) => (
                     <Field key={key} label={`${lbl} mm`} tip={tip}>
