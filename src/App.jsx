@@ -231,8 +231,14 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
           <div key={p.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4, padding: 6, marginBottom: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: '#334155' }}>Penant {idx + 1}</span>
-              <button onClick={() => onUpdate({ penanten: (settings.penanten ?? []).filter((q) => q.id !== p.id) })}
-                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 12 }}>✕</button>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  title="Kopieer penant"
+                  onClick={() => onUpdate({ penanten: [...(settings.penanten ?? []), { ...p, id: Date.now(), x: (p.x ?? 0) + (p.breedte ?? 400) + 200 }] })}
+                  style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: 12 }}>⧉</button>
+                <button onClick={() => onUpdate({ penanten: (settings.penanten ?? []).filter((q) => q.id !== p.id) })}
+                  style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 12 }}>✕</button>
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
               {[['X positie', 'x'], ['Breedte', 'breedte'], ['Diepte', 'diepte'], ['Hoogte', 'hoogte']].map(([lbl, key]) => (
