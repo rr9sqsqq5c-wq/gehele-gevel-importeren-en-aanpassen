@@ -332,12 +332,24 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
         <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a5f', flex: 1 }}>
           Werktekening — {groupName ?? 'Groep'}
         </span>
-        {drawingType !== 'productie' ? <>
+        {drawingType === 'productie' ? (productieGenerated && (
+          <button onClick={exportPrintProductie} style={{ fontSize: 11, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>🖨 Afdrukken panelen</button>
+        )) : drawingType === 'penanten' ? (
+          <button onClick={() => {
+            const container = document.getElementById('penanten-print-container');
+            if (!container) return;
+            const svgs = container.querySelectorAll('svg');
+            if (!svgs.length) return;
+            const xmls = Array.from(svgs).map((s) => new XMLSerializer().serializeToString(s)).join('<div style="page-break-after:always"></div>');
+            const w = window.open('', '_blank');
+            if (!w) { alert('Sta pop-ups toe voor deze pagina.'); return; }
+            w.document.write(`<!DOCTYPE html><html><head><title>Penanten ${groupName}</title><style>body{margin:0;padding:12px;background:#fff} svg{max-width:100%;height:auto;display:block;margin-bottom:16px} @media print{body{padding:4px}}</style></head><body>${xmls}<script>window.onload=()=>window.print()<\/script></body></html>`);
+            w.document.close();
+          }} style={{ fontSize: 11, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>🖨 Afdrukken penanten</button>
+        ) : <>
           <button onClick={exportSvg} style={{ fontSize: 11, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>⬇ SVG</button>
           <button onClick={exportPrint} style={{ fontSize: 11, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>🖨 Afdrukken</button>
-        </> : productieGenerated && (
-          <button onClick={exportPrintProductie} style={{ fontSize: 11, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>🖨 Afdrukken panelen</button>
-        )}
+        </>}
       </div>
 
       <div style={{ display: 'flex', gap: 0, background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
@@ -345,6 +357,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           { key: 'achterconstructie', label: '1. Achterconstructie' },
           { key: 'plaatsing',         label: '2. Panelen plaatsing' },
           { key: 'productie',         label: '3. Paneel productie' },
+          ...((groupSettings?.penanten ?? []).length > 0 ? [{ key: 'penanten', label: '4. Penanten' }] : []),
         ].map(({ key, label }) => (
           <button key={key} onClick={() => setDrawingType(key)} style={{
             padding: '6px 14px', fontSize: 11, fontWeight: drawingType === key ? 700 : 400,
@@ -356,6 +369,138 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: drawingType === 'productie' ? 8 : 16 }}>
+
+        {drawingType === 'penanten' && (() => {
+          const pens = groupSettings?.penanten ?? [];
+          if (!pens.length) return <div style={{ color: '#64748b', fontSize: 13, padding: 20 }}>Geen penanten geconfigureerd.</div>;
+          const CARD_PAD_L = 80;
+          const CARD_PAD_R = 40;
+          const CARD_PAD_T = 40;
+          const CARD_PAD_B = 60;
+          const MAX_CARD_W = 440;
+          const MAX_CARD_H = 560;
+          return (
+            <div id="penanten-print-container" style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+              {pens.map((p, idx) => {
+                const pB = Math.max(1, p.breedte ?? 400);
+                const pD = Math.max(1, p.diepte ?? 150);
+                const pH = Math.max(1, p.hoogte ?? 2000);
+                const gewichtM2 = p.gewichtM2 ?? 11;
+                const maxKg = p.maxKg ?? 50;
+                const omtrekM2perMM = (pB + 2 * pD) / 1e6;
+                const kgPerMM = omtrekM2perMM * gewichtM2;
+                const maxSectieH = kgPerMM > 0 ? Math.floor(maxKg / kgPerMM) : pH;
+                const aantalSecties = kgPerMM > 0 ? Math.ceil(pH / maxSectieH) : 1;
+                const sectieH = aantalSecties > 0 ? Math.round(pH / aantalSecties) : pH;
+                const hp = p.hoekprofiel ?? {};
+                const vl = p.verticaleLat ?? {};
+
+                const scH = Math.min((MAX_CARD_H - CARD_PAD_T - CARD_PAD_B) / pH, (MAX_CARD_W - CARD_PAD_L - CARD_PAD_R) / pB);
+                const scV = scH;
+                const drawW_p = Math.round(pB * scH);
+                const drawH_p = Math.round(pH * scV);
+                const svgW = drawW_p + CARD_PAD_L + CARD_PAD_R;
+                const svgH = drawH_p + CARD_PAD_T + CARD_PAD_B;
+                const ox = CARD_PAD_L;
+                const oy = CARD_PAD_T;
+
+                const sx2 = (x) => ox + x * scH;
+                const sy2 = (y) => oy + drawH_p - y * scV;
+
+                const sectionYs = [];
+                for (let s = 0; s <= aantalSecties; s++) sectionYs.push(Math.round(Math.min(s * sectieH, pH)));
+
+                const vlEnabled = vl.enabled !== false;
+                const vlB = vl.breedte ?? 90;
+                const vlD = vl.dikte ?? 50;
+                const hpEnabled = hp.enabled !== false;
+                const hpD = hp.dikte ?? 2;
+                const hpV = hp.breedteVoorkant ?? 40;
+
+                return (
+                  <svg key={p.id ?? idx} width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`}
+                    style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', display: 'block' }}
+                    xmlns="http://www.w3.org/2000/svg">
+
+                    <text x={ox} y={16} fontSize={10} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">
+                      Penant {idx + 1} — voorzijde · X={mm(p.x ?? 0)} mm
+                    </text>
+                    <text x={ox} y={27} fontSize={7.5} fill="#64748b" fontFamily="Arial, sans-serif">
+                      {mm(pB)} × {mm(pH)} mm · {aantalSecties} U-sectie{aantalSecties !== 1 ? 's' : ''} · ≈{mm(sectieH)} mm/sectie
+                    </text>
+
+                    <rect x={ox} y={oy} width={drawW_p} height={drawH_p} fill="#f1f5f9" stroke="#1e3a5f" strokeWidth={1} />
+
+                    {sectionYs.slice(1, -1).map((sy_val, si) => (
+                      <g key={si}>
+                        <line x1={ox} y1={sy2(sy_val)} x2={ox + drawW_p} y2={sy2(sy_val)} stroke="#dc2626" strokeWidth={1} strokeDasharray="6,3" />
+                        <text x={ox + drawW_p + 4} y={sy2(sy_val) + 3} fontSize={7} fill="#dc2626" fontFamily="Arial, sans-serif">U{si + 1}|U{si + 2}</text>
+                      </g>
+                    ))}
+
+                    {sectionYs.slice(0, -1).map((sy_val, si) => {
+                      const sTop = sy_val;
+                      const sBot = sectionYs[si + 1];
+                      const sMid = (sTop + sBot) / 2;
+                      const secKg = Math.round(sectieH * kgPerMM);
+                      return (
+                        <g key={si}>
+                          <text x={ox + drawW_p / 2} y={sy2(sMid)} textAnchor="middle" dominantBaseline="middle"
+                            fontSize={7.5} fill="#334155" fontFamily="Arial, sans-serif" fontWeight="bold">U{si + 1}</text>
+                          <text x={ox + drawW_p / 2} y={sy2(sMid) + 10} textAnchor="middle"
+                            fontSize={6.5} fill="#64748b" fontFamily="Arial, sans-serif">
+                            {mm(sectionYs[si + 1] - sTop)} mm · ≈{secKg} kg
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    {vlEnabled && (
+                      <>
+                        <rect x={sx2(0)} y={oy} width={vlD * scH} height={drawH_p} fill="#92400e" fillOpacity={0.25} stroke="#92400e" strokeWidth={0.5} />
+                        <rect x={sx2(pB) - vlD * scH} y={oy} width={vlD * scH} height={drawH_p} fill="#92400e" fillOpacity={0.25} stroke="#92400e" strokeWidth={0.5} />
+                        <text x={sx2(0) + vlD * scH / 2} y={oy - 4} textAnchor="middle" fontSize={6} fill="#92400e" fontFamily="Arial, sans-serif">{mm(vlD)}</text>
+                        <text x={sx2(pB) - vlD * scH / 2} y={oy - 4} textAnchor="middle" fontSize={6} fill="#92400e" fontFamily="Arial, sans-serif">{mm(vlD)}</text>
+                      </>
+                    )}
+
+                    {hpEnabled && (
+                      <>
+                        <rect x={sx2(0)} y={oy} width={hpV * scH} height={hpD * scV} fill="#6366f1" fillOpacity={0.5} stroke="#4338ca" strokeWidth={0.5} />
+                        <rect x={sx2(pB) - hpV * scH} y={oy} width={hpV * scH} height={hpD * scV} fill="#6366f1" fillOpacity={0.5} stroke="#4338ca" strokeWidth={0.5} />
+                        <rect x={sx2(0)} y={oy + drawH_p - hpD * scV} width={hpV * scH} height={hpD * scV} fill="#6366f1" fillOpacity={0.5} stroke="#4338ca" strokeWidth={0.5} />
+                        <rect x={sx2(pB) - hpV * scH} y={oy + drawH_p - hpD * scV} width={hpV * scH} height={hpD * scV} fill="#6366f1" fillOpacity={0.5} stroke="#4338ca" strokeWidth={0.5} />
+                      </>
+                    )}
+
+                    <DimH x1={ox} x2={ox + drawW_p} y={oy + drawH_p + 18} label={`${mm(pB)} mm`} />
+                    <DimV x={ox - 20} y1={oy} y2={oy + drawH_p} label={`${mm(pH)} mm`} side="left" />
+
+                    {sectionYs.slice(1, -1).map((sy_val, si) => (
+                      <DimV key={si} x={ox - 46} y1={sy2(sectionYs[si])} y2={sy2(sy_val)} label={`${mm(sy_val - sectionYs[si])} mm`} side="left" />
+                    ))}
+                    {aantalSecties > 0 && (
+                      <DimV x={ox - 46} y1={sy2(sectionYs[aantalSecties - 1])} y2={sy2(pH)} label={`${mm(pH - sectionYs[aantalSecties - 1])} mm`} side="left" />
+                    )}
+
+                    <g transform={`translate(${ox},${svgH - 28})`}>
+                      {vlEnabled && <>
+                        <rect x={0} y={2} width={10} height={7} fill="#92400e" fillOpacity={0.25} stroke="#92400e" strokeWidth={0.5} />
+                        <text x={13} y={9} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">Vert. lat {mm(vlB)}×{mm(vlD)} mm</text>
+                      </>}
+                      {hpEnabled && <>
+                        <rect x={vlEnabled ? 120 : 0} y={2} width={10} height={7} fill="#6366f1" fillOpacity={0.5} stroke="#4338ca" strokeWidth={0.5} />
+                        <text x={(vlEnabled ? 120 : 0) + 13} y={9} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">Alu. L-profiel {mm(hpD)}mm dik</text>
+                      </>}
+                      <line x1={vlEnabled || hpEnabled ? 240 : 0} y1={5} x2={(vlEnabled || hpEnabled ? 240 : 0) + 20} y2={5} stroke="#dc2626" strokeWidth={1} strokeDasharray="4,2" />
+                      <text x={(vlEnabled || hpEnabled ? 240 : 0) + 23} y={9} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">U-sectie grens</text>
+                    </g>
+                  </svg>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {drawingType === 'productie' && (
           <div>
