@@ -483,11 +483,25 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             <DimH x1={sx(0)} x2={sx(groupWidth)} y={dimRow2Y} label={`TOTAAL ${mm(groupWidth)}`} color="#dc2626" />
           )}
 
-          {groupOpenings.map((op, i) => (
+          {drawingType !== 'achterconstructie' && groupOpenings.map((op, i) => (
             op.width > 1 && (
               <DimH key={`op-h-${i}`} x1={sx(op.x)} x2={sx(op.x + op.width)} y={OY + H + 48} label={`raam ${mm(op.width)}`} color="#dc2626" />
             )
           ))}
+
+          {drawingType === 'achterconstructie' && allLatten.map((l) => {
+            const len = Math.round(lattenRichting === 'horizontaal' ? l.width : l.height);
+            const cx = sx(l.x + l.width / 2);
+            const ty = sy(l.y + l.height) - 3;
+            if (l.width * scale < 14) return null;
+            return (
+              <text key={`dim-${l.id}`}
+                x={cx} y={ty}
+                textAnchor="middle" fontSize={FONT_LBL} fill="#92400e"
+                fontFamily="Arial, sans-serif" fontWeight="600"
+              >{len}</text>
+            );
+          })}
 
           {yBreaks.map((y, i) => (
             drawingType !== 'achterconstructie' &&
