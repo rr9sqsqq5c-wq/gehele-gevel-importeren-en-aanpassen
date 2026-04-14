@@ -141,6 +141,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
   let penantAreaMM2 = 0;
   let hoekprofielLengthMM = 0;
   let uSectiesCount = 0;
+  let vertikaleLattenLengthMM = 0;
   if (s.penanten?.length) {
     for (const p of s.penanten) {
       const pB = Math.max(1, p.breedte ?? 400);
@@ -156,13 +157,15 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
       const kgPerMM = omtrekM2perMM * gewichtM2;
       const maxSectieH = kgPerMM > 0 ? Math.floor(maxKg / kgPerMM) : pH;
       uSectiesCount += kgPerMM > 0 ? Math.ceil(pH / maxSectieH) : 1;
+      const vl = p.verticaleLat;
+      if (vl?.enabled !== false) vertikaleLattenLengthMM += 2 * pH;
     }
   }
 
   return {
     groupId: group.id, name, color,
     groupWidth, groupHeight,
-    facadeAreaMM2, openingsAreaMM2, netFacadeAreaMM2, penantAreaMM2, hoekprofielLengthMM, uSectiesCount,
+    facadeAreaMM2, openingsAreaMM2, netFacadeAreaMM2, penantAreaMM2, hoekprofielLengthMM, uSectiesCount, vertikaleLattenLengthMM,
     stripCount, stripAreaMM2,
     panelGroups,
     lattenSummary,
@@ -292,7 +295,7 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
   }, [groups, walls, getSettings, adjacencies]);
 
   const totals = useMemo(() => {
-    const t = { facadeAreaMM2: 0, openingsAreaMM2: 0, netFacadeAreaMM2: 0, penantAreaMM2: 0, hoekprofielLengthMM: 0, uSectiesCount: 0, stripAreaMM2: 0, zetWerkAreaMM2: 0, panelCount: 0, panelAreaMM2: 0, panelWeightKg: 0, lattenCount: 0, lattenLengthMM: 0 };
+    const t = { facadeAreaMM2: 0, openingsAreaMM2: 0, netFacadeAreaMM2: 0, penantAreaMM2: 0, hoekprofielLengthMM: 0, uSectiesCount: 0, vertikaleLattenLengthMM: 0, stripAreaMM2: 0, zetWerkAreaMM2: 0, panelCount: 0, panelAreaMM2: 0, panelWeightKg: 0, lattenCount: 0, lattenLengthMM: 0 };
     for (const to of takeoffs) {
       t.facadeAreaMM2 += to.facadeAreaMM2;
       t.openingsAreaMM2 += to.openingsAreaMM2;
@@ -300,6 +303,7 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
       t.penantAreaMM2 += to.penantAreaMM2;
       t.hoekprofielLengthMM += (to.hoekprofielLengthMM ?? 0);
       t.uSectiesCount += (to.uSectiesCount ?? 0);
+      t.vertikaleLattenLengthMM += (to.vertikaleLattenLengthMM ?? 0);
       t.stripAreaMM2 += to.stripAreaMM2;
       t.zetWerkAreaMM2 += to.zetWerkAreaMM2;
       for (const pg of Object.values(to.panelGroups)) {
@@ -375,6 +379,7 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
             {totals.penantAreaMM2 > 0 && <tr><TD>Penant oppervlak (voor + zijkanten)</TD><TD right mono>{m2(totals.penantAreaMM2)}</TD><TD right>m²</TD></tr>}
             {totals.hoekprofielLengthMM > 0 && <tr><TD>Alu. hoekprofiel (L) penanten</TD><TD right mono>{(totals.hoekprofielLengthMM / 1000).toFixed(2)}</TD><TD right>m¹</TD></tr>}
             {totals.uSectiesCount > 0 && <tr><TD>Penant U-secties (totaal)</TD><TD right mono>{totals.uSectiesCount}</TD><TD right>st.</TD></tr>}
+            {totals.vertikaleLattenLengthMM > 0 && <tr><TD>Vert. bevestigingslatten penanten (90×50)</TD><TD right mono>{(totals.vertikaleLattenLengthMM / 1000).toFixed(2)}</TD><TD right>m¹</TD></tr>}
             {totals.zetWerkAreaMM2 > 0 && <tr><TD>Zetwerk oppervlak</TD><TD right mono>{m2(totals.zetWerkAreaMM2)}</TD><TD right>m²</TD></tr>}
 
             <SectionHeader title="Panelen" />

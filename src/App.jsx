@@ -311,6 +311,38 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                   <div style={{ marginTop: 4, padding: '4px 6px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 3, fontSize: 10, color: '#166534' }}>
                     {aantalSecties} U-sectie{aantalSecties !== 1 ? 's' : ''} · ≈ {sectieH} mm/sectie · ≈ {Math.round(sectieH * kgPerMM)} kg/sectie
                   </div>
+                  {(() => {
+                    const vl = p.verticaleLat ?? { enabled: true, breedte: 90, dikte: 50 };
+                    const updVL = (patch) => updP({ verticaleLat: { ...vl, ...patch } });
+                    const latLengthMM = pH;
+                    return (
+                      <div style={{ marginTop: 6 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', marginBottom: 4 }}>
+                          <input type="checkbox" checked={vl.enabled !== false} onChange={(e) => updVL({ enabled: e.target.checked })} />
+                          <span title="Verticale houten lat aan weerszijden van de U-sectie, aan de binnenkant van het penant. Loopt over de volledige hoogte van het penant en wordt gebruikt om de U-sectie aan de achterconstructie te bevestigen. Standaard 90×50 mm verduurzaamd zwart.">Verticale bevestigingslat (2×)</span>
+                        </label>
+                        {vl.enabled !== false && (
+                          <>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                              <Field label="Breedte mm" tip="Breedte van de verticale houten lat (mm) — de zijde die langs de binnenwand van het penant loopt.">
+                                <input type="number" min={1} step={5} value={vl.breedte ?? 90}
+                                  onChange={(e) => updVL({ breedte: Number(e.target.value) })}
+                                  style={{ ...inp, width: '100%' }} />
+                              </Field>
+                              <Field label="Dikte mm" tip="Dikte van de verticale houten lat (mm) — de zijde die haaks op de wand staat.">
+                                <input type="number" min={1} step={5} value={vl.dikte ?? 50}
+                                  onChange={(e) => updVL({ dikte: Number(e.target.value) })}
+                                  style={{ ...inp, width: '100%' }} />
+                              </Field>
+                            </div>
+                            <div style={{ marginTop: 3, padding: '3px 6px', background: '#fefce8', border: '1px solid #fde68a', borderRadius: 3, fontSize: 10, color: '#713f12' }}>
+                              2 latten × {latLengthMM} mm = {Math.round(2 * latLengthMM / 1000 * 100) / 100} m¹ per penant
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}
