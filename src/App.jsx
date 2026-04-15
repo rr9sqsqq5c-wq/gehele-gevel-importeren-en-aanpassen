@@ -249,7 +249,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         )}
       </CollapsibleSection>
 
-      <CollapsibleSection title="Penanten" tip={"Een penant is een uitstekende verticale lijst in de gevel.\nGeef de X-positie, breedte, diepte en hoogte op in mm.\n· X positie = afstand van de linker groepsrand\n· Breedte = breedte van het penant\n· Diepte = uitsteek t.o.v. het gevelvlak\n· Hoogte = hoogte van het penant\n· Patroon volgt gevel = strips lopen door als op de gevel"} isOpen={isOpen('penanten')} onToggle={() => toggle('penanten')} badge={(settings.penanten ?? []).length > 0 ? `${(settings.penanten ?? []).length}` : null} extra={<button onClick={() => onUpdate({ penanten: [...(settings.penanten ?? []), { id: Date.now(), x: 500, breedte: 400, diepte: 150, hoogte: 2000, gavelVolgend: true, hoekprofiel: { enabled: true, dikte: 2, breedteZijkant: 40, breedteVoorkant: 40 } }] })} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '2px 8px', cursor: 'pointer' }}>+ Toevoegen</button>}>
+      <CollapsibleSection title="Penanten" tip={"Een penant is een uitstekende verticale lijst in de gevel.\nGeef de X-positie, breedte, diepte en hoogte op in mm.\n· X positie = afstand van de linker groepsrand\n· Breedte = breedte van het penant\n· Diepte = uitsteek t.o.v. het gevelvlak\n· Hoogte = hoogte van het penant\n· Steenstrips starten symmetrisch vanuit het midden van de voorzijde"} isOpen={isOpen('penanten')} onToggle={() => toggle('penanten')} badge={(settings.penanten ?? []).length > 0 ? `${(settings.penanten ?? []).length}` : null} extra={<button onClick={() => onUpdate({ penanten: [...(settings.penanten ?? []), { id: Date.now(), x: 500, breedte: 400, diepte: 150, hoogte: 2000, hoekprofiel: { enabled: true, dikte: 2, breedteZijkant: 40, breedteVoorkant: 40 } }] })} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '2px 8px', cursor: 'pointer' }}>+ Toevoegen</button>}>
         <div>
         {(settings.penanten ?? []).length === 0 && (
           <div style={{ fontSize: 11, color: '#94a3b8' }}>Geen penanten</div>
@@ -276,11 +276,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 </Field>
               ))}
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginTop: 4, cursor: 'pointer' }}>
-              <input type="checkbox" checked={p.gavelVolgend !== false}
-                onChange={(e) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, gavelVolgend: e.target.checked } : q) })} />
-              Patroon volgt gevel
-            </label>
+
             {(() => {
               const hp = p.hoekprofiel ?? { enabled: false, dikte: 2, breedteZijkant: 40, breedteVoorkant: 40 };
               const updHp = (patch) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, hoekprofiel: { ...hp, ...patch } } : q) });
@@ -1226,56 +1222,13 @@ export default function App() {
     const verband = s.verband ?? DEFAULT_VERBAND;
     const walls = activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean);
     const groupMinH = walls.length ? Math.min(...walls.map((w) => w.wallOrigin?.heightStart ?? 0)) : 0;
-    const groupMinX = walls.length ? Math.min(...walls.map((w) => w.wallOrigin?.lengthStart ?? 0)) : 0;
-    const gAdj = adjacencies.filter((a) => activeGroup.wallIds.includes(a.wallIdA) && activeGroup.wallIds.includes(a.wallIdB));
-    const facadeRows = buildGroupPattern(walls, gAdj, mat, verband);
 
     return s.penanten.map((p) => {
       const pX = p.x ?? 0;
       const pB = Math.max(1, p.breedte ?? 400);
       const pD = Math.max(1, p.diepte ?? 150);
       const pH = Math.max(1, p.hoogte ?? 2000);
-      let frontRows;
-      if (p.gavelVolgend !== false) {
-        const rawRows = [];
-        for (const wall of walls) {
-          const wallLeft = (wall.wallOrigin?.lengthStart ?? 0) - groupMinX;
-          const wallRight = wallLeft + wall.length;
-          const pEnd = pX + pB;
-          if (pEnd <= wallLeft || pX >= wallRight) continue;
-          const wRows = facadeRows[wall.expressID] ?? [];
-          const maskStart = Math.max(0, pX - wallLeft);
-          const maskEnd = Math.min(wall.length, pEnd - wallLeft);
-          for (const row of wRows) {
-            if (row.y >= pH) continue;
-            const clipped = row.pieces.flatMap((piece) => {
-              const ps = piece.start, pe = piece.start + piece.length;
-              const os = Math.max(ps, maskStart), oe = Math.min(pe, maskEnd);
-              if (oe - os < 0.001) return [];
-              return [{ ...piece, start: os - maskStart, length: oe - os }];
-            });
-            if (clipped.length) rawRows.push({ y: row.y, pieces: clipped });
-          }
-        }
-        const half = pB / 2;
-        frontRows = rawRows.map((row) => {
-          const rightPieces = row.pieces
-            .filter((pc) => pc.start + pc.length > half - 0.001)
-            .map((pc) => {
-              const s = Math.max(pc.start, half);
-              const e = Math.min(pc.start + pc.length, pB);
-              return e - s > 0.001 ? { ...pc, start: Math.round((s - half) * 100) / 100, length: Math.round((e - s) * 100) / 100 } : null;
-            })
-            .filter(Boolean);
-          const leftPieces = rightPieces
-            .map((pc) => ({ ...pc, start: Math.round((half - pc.start - pc.length) * 100) / 100 }))
-            .sort((a, b) => a.start - b.start);
-          const shiftedRight = rightPieces.map((pc) => ({ ...pc, start: Math.round((pc.start + half) * 100) / 100 }));
-          return { ...row, pieces: [...leftPieces, ...shiftedRight].sort((a, b) => a.start - b.start) };
-        });
-      } else {
-        frontRows = buildSymmetricFacePattern(pB, pH, mat, verband);
-      }
+      const frontRows = buildSymmetricFacePattern(pB, pH, mat, verband);
 
       const panelDikte = s.panelen?.dikte ?? 18;
       const stoot = mat.stoot ?? 10;
