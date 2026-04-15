@@ -1230,13 +1230,15 @@ export default function App() {
       const pH = Math.max(1, p.hoogte ?? 2000);
       const frontRows = buildCenteredFacePattern(pB, pH, mat, verband);
 
+      const brickDepth = s.brickDepth ?? 20;
       const panelDikte = s.panelen?.dikte ?? 8;
       const stoot = mat.stoot ?? 10;
+      const panelDepth = Math.max(1, pD - brickDepth - stoot);
       const sideClipOffset = Math.max(stoot, panelDikte);
       const clipLeft = (rows) => rows.map((row) => ({
         ...row,
         pieces: row.pieces.flatMap((pc) => {
-          const clipEnd = pD - sideClipOffset;
+          const clipEnd = panelDepth - sideClipOffset;
           if (pc.start >= clipEnd) return [];
           if (pc.start + pc.length <= clipEnd) return [pc];
           return [{ ...pc, length: Math.round((clipEnd - pc.start) * 100) / 100 }];
@@ -1251,8 +1253,8 @@ export default function App() {
           return [{ ...pc, start: newStart, length: Math.round((pc.start + pc.length - newStart) * 100) / 100 }];
         }),
       })).filter((row) => row.pieces.length > 0);
-      const leftRows = clipLeft(buildFacePattern(pD, pH, mat, verband));
-      const rightRows = clipRight(buildMirroredFacePattern(pD, pH, mat, verband));
+      const leftRows = clipLeft(buildFacePattern(panelDepth, pH, mat, verband));
+      const rightRows = clipRight(buildMirroredFacePattern(panelDepth, pH, mat, verband));
       return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: pH, groupMinH, sideClipOffset };
     });
   }, [activeGroup, getSettings, wallMap, adjacencies]);
