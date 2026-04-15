@@ -3,7 +3,7 @@ import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGr
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
-import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
+import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel } from './lib/panelization.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
@@ -1228,7 +1228,7 @@ export default function App() {
       const pB = Math.max(1, p.breedte ?? 400);
       const pD = Math.max(1, p.diepte ?? 150);
       const pH = Math.max(1, p.hoogte ?? 2000);
-      const frontRows = buildSymmetricFacePattern(pB, pH, mat, verband);
+      const frontRows = buildCenteredFacePattern(pB, pH, mat, verband);
 
       const panelDikte = s.panelen?.dikte ?? 8;
       const stoot = mat.stoot ?? 10;

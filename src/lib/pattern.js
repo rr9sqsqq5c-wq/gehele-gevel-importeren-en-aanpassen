@@ -465,6 +465,69 @@ function mirrorPieces(pieces, totalWidth) {
     .sort((a, b) => a.start - b.start);
 }
 
+export function buildCenteredFacePattern(width, height, material, verband, rowOffset = 0) {
+  const { steenL, steenH, steenW, lint, stoot } = material;
+
+  if (verband === 'staand_tegelverband') {
+    const tileW = steenH + stoot;
+    const lagenmaat = (steenW ?? steenH) + lint;
+    const lagen = lagenmaat > 0 ? Math.ceil(height / lagenmaat) : 0;
+    const center = width / 2;
+    const kop = round2((steenL - stoot) / 2);
+    const rows = [];
+    for (let r = 0; r < lagen; r++) {
+      const rowY = round2(r * lagenmaat);
+      const refStart = round2(center - steenH / 2);
+      const pieces = [];
+      let x = refStart;
+      while (x - tileW >= -tileW + 0.001) x = round2(x - tileW);
+      while (x < width - 0.001) {
+        const realStart = Math.max(0, round2(x));
+        const realEnd = Math.min(width, round2(x + steenH));
+        const len = round2(realEnd - realStart);
+        if (len > 0.001) pieces.push({ start: realStart, length: len, label: len < steenH - 0.001 ? 'Rest' : 'Tegel' });
+        x = round2(x + tileW);
+      }
+      if (pieces.length) rows.push({ y: rowY, pieces });
+    }
+    return rows;
+  }
+
+  const unit = steenL + stoot;
+  const kop = round2((steenL - stoot) / 2);
+  const lagenmaat = steenH + lint;
+  const lagen = lagenmaat > 0 ? Math.ceil(height / lagenmaat) : 0;
+  const center = width / 2;
+  const rows = [];
+
+  for (let r = 0; r < lagen; r++) {
+    const rowY = round2(r * lagenmaat);
+    const isOdd = (r + rowOffset) % 2 !== 0;
+    const shift = verband === 'halfsteens' && isOdd ? unit / 2 : 0;
+    const refStart = round2(center - steenL / 2 + shift);
+
+    let x = refStart;
+    while (x - unit >= -unit + 0.001) x = round2(x - unit);
+
+    const pieces = [];
+    while (x < width - 0.001) {
+      const realStart = Math.max(0, round2(x));
+      const realEnd = Math.min(width, round2(x + steenL));
+      const len = round2(realEnd - realStart);
+      if (len > 0.001) {
+        let label = 'Vol';
+        if (len < steenL - 0.001) {
+          label = Math.abs(len - kop) < 1 ? 'Kop' : 'Rest';
+        }
+        pieces.push({ start: realStart, length: len, label });
+      }
+      x = round2(x + unit);
+    }
+    if (pieces.length) rows.push({ y: rowY, pieces });
+  }
+  return rows;
+}
+
 export function buildSymmetricFacePattern(width, height, material, verband, rowOffset = 0) {
   const { steenH, lint } = material;
   const lagenmaat = steenH + lint;
