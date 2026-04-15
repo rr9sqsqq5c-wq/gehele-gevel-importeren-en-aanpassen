@@ -125,8 +125,27 @@ function useGroupSettings() {
   return { get, update, initColor, map, setMap };
 }
 
+function CollapsibleSection({ title, tip, children, isOpen, onToggle, badge, extra }) {
+  return (
+    <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
+      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', userSelect: 'none', marginBottom: isOpen ? 6 : 0 }}>
+        <span style={{ fontSize: 9, color: '#94a3b8', width: 10, flexShrink: 0 }}>{isOpen ? '▼' : '▶'}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#475569', flex: 1, display: 'flex', alignItems: 'center', gap: 3 }}>
+          {title}{tip && <InfoIcon tip={tip} />}
+        </span>
+        {badge != null && <span style={{ fontSize: 10, color: '#64748b', background: '#f1f5f9', borderRadius: 3, padding: '1px 5px', flexShrink: 0 }}>{badge}</span>}
+        {extra && <span onClick={(e) => e.stopPropagation()}>{extra}</span>}
+      </div>
+      {isOpen && <div>{children}</div>}
+    </div>
+  );
+}
+
 function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked }) {
   const mat = settings.material ?? { ...DEFAULT_MATERIAL };
+  const [openSections, setOpenSections] = useState({});
+  const toggle = (k) => setOpenSections((p) => ({ ...p, [k]: !(p[k] ?? false) }));
+  const isOpen = (k) => openSections[k] ?? false;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
@@ -167,43 +186,40 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         </select>
       </Field>
 
-      <SectionLabel tip={"Afmetingen van de brickslip (steenstrip):\n· Lengte = zichtbare lengte van de strip\n· Hoogte = zichtbare hoogte van de strip\n· Lintvoeg = horizontale voeg tussen lagen\n· Stootvoeg = verticale voeg tussen stenen"}>
-        Steenstrip afmetingen
-      </SectionLabel>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-        {[
-          ['Lengte', 'steenL', 'Zichtbare lengte van de brickslip (mm).'],
-          ['Hoogte', 'steenH', 'Zichtbare hoogte van de brickslip (mm).'],
-          ['Lintvoeg', 'lint', 'Breedte van de horizontale voeg tussen lagen (mm).'],
-          ['Stootvoeg', 'stoot', 'Breedte van de verticale voeg tussen stenen (mm).'],
-        ].map(([label, key, tip]) => (
-          <Field key={key} label={`${label} mm`} tip={tip}>
-            <input type="number" value={mat[key] ?? DEFAULT_MATERIAL[key]}
-              onChange={(e) => onUpdate({ material: { ...mat, [key]: Number(e.target.value) } })}
+      <CollapsibleSection title="Steenstrip afmetingen" tip={"Afmetingen van de brickslip (steenstrip):\n· Lengte = zichtbare lengte van de strip\n· Hoogte = zichtbare hoogte van de strip\n· Lintvoeg = horizontale voeg tussen lagen\n· Stootvoeg = verticale voeg tussen stenen"} isOpen={isOpen('strips')} onToggle={() => toggle('strips')}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+          {[
+            ['Lengte', 'steenL', 'Zichtbare lengte van de brickslip (mm).'],
+            ['Hoogte', 'steenH', 'Zichtbare hoogte van de brickslip (mm).'],
+            ['Lintvoeg', 'lint', 'Breedte van de horizontale voeg tussen lagen (mm).'],
+            ['Stootvoeg', 'stoot', 'Breedte van de verticale voeg tussen stenen (mm).'],
+          ].map(([label, key, tip]) => (
+            <Field key={key} label={`${label} mm`} tip={tip}>
+              <input type="number" value={mat[key] ?? DEFAULT_MATERIAL[key]}
+                onChange={(e) => onUpdate({ material: { ...mat, [key]: Number(e.target.value) } })}
+                style={{ ...inp, width: '100%' }} />
+            </Field>
+          ))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginTop: 4 }}>
+          <Field label="Dikte IFC (mm)" tip="Dikte van de brickslip zoals geëxporteerd naar IFC. Dit is de uitsteek van de strip op de wand (mm).">
+            <input type="number" min={1} step={1} value={settings.brickDepth ?? 20} onChange={(e) => onUpdate({ brickDepth: Number(e.target.value) })}
               style={{ ...inp, width: '100%' }} />
           </Field>
-        ))}
-      </div>
+          <Field label="Gewicht (kg/m²)" tip="Gewicht van de steenstrips per vierkante meter (kg/m²). Wordt gebruikt voor de berekening van het maximale paneelgewicht.">
+            <input type="number" min={0} step={1} value={mat.brickWeightM2 ?? 40} onChange={(e) => onUpdate({ material: { ...mat, brickWeightM2: Number(e.target.value) } })}
+              style={{ ...inp, width: '100%' }} />
+          </Field>
+        </div>
+      </CollapsibleSection>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-        <Field label="Dikte IFC (mm)" tip="Dikte van de brickslip zoals geëxporteerd naar IFC. Dit is de uitsteek van de strip op de wand (mm).">
-          <input type="number" min={1} step={1} value={settings.brickDepth ?? 20} onChange={(e) => onUpdate({ brickDepth: Number(e.target.value) })}
-            style={{ ...inp, width: '100%' }} />
-        </Field>
-        <Field label="Gewicht (kg/m²)" tip="Gewicht van de steenstrips per vierkante meter (kg/m²). Wordt gebruikt voor de berekening van het maximale paneelgewicht.">
-          <input type="number" min={0} step={1} value={mat.brickWeightM2 ?? 40} onChange={(e) => onUpdate({ material: { ...mat, brickWeightM2: Number(e.target.value) } })}
-            style={{ ...inp, width: '100%' }} />
-        </Field>
-      </div>
-
-      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
+      <CollapsibleSection title="Maximale strip hoogte" tip={"Begrenst het steenstrippatroon tot een bepaalde hoogte boven de onderkant van de groep.\nHandig voor een waterslag of als strips niet tot de bovenkant hoeven."} isOpen={isOpen('maxhoogte')} onToggle={() => toggle('maxhoogte')} badge={settings.maxHoogte !== null ? `${settings.maxHoogte} mm` : null}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
           <input type="checkbox" id="mh-enable"
             checked={settings.maxHoogte !== null}
             onChange={(e) => onUpdate({ maxHoogte: e.target.checked ? 1000 : null })} />
-          <label htmlFor="mh-enable" style={{ fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
-            Maximale strip hoogte
-            <InfoIcon tip={"Begrenst het steenstrippatroon tot een bepaalde hoogte boven de onderkant van de groep.\nHandig voor een waterslag of als strips niet tot de bovenkant hoeven."} />
+          <label htmlFor="mh-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>
+            Inschakelen
           </label>
         </div>
         {settings.maxHoogte !== null && (
@@ -213,16 +229,15 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               style={{ ...inp, width: 80 }} />
           </Field>
         )}
-      </div>
+      </CollapsibleSection>
 
-      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
+      <CollapsibleSection title="Minimale strip hoogte (vanaf lijn)" tip={"Begrenst het steenstrippatroon aan de onderkant.\nStrips onder deze hoogte worden niet getoond.\nHandig als de onderkant van de gevel een ander materiaal heeft of een drempel."} isOpen={isOpen('minhoogte')} onToggle={() => toggle('minhoogte')} badge={settings.minHoogte !== null ? `${settings.minHoogte} mm` : null}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
           <input type="checkbox" id="minh-enable"
             checked={settings.minHoogte !== null}
             onChange={(e) => onUpdate({ minHoogte: e.target.checked ? 200 : null })} />
-          <label htmlFor="minh-enable" style={{ fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
-            Minimale strip hoogte (vanaf lijn)
-            <InfoIcon tip={"Begrenst het steenstrippatroon aan de onderkant.\nStrips onder deze hoogte worden niet getoond.\nHandig als de onderkant van de gevel een ander materiaal heeft of een drempel."} />
+          <label htmlFor="minh-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>
+            Inschakelen
           </label>
         </div>
         {settings.minHoogte !== null && (
@@ -232,17 +247,10 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               style={{ ...inp, width: 80 }} />
           </Field>
         )}
-      </div>
+      </CollapsibleSection>
 
-      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <SectionLabel tip={"Een penant is een uitstekende verticale lijst in de gevel.\nGeef de X-positie, breedte, diepte en hoogte op in mm.\n· X positie = afstand van de linker groepsrand\n· Breedte = breedte van het penant\n· Diepte = uitsteek t.o.v. het gevelvlak\n· Hoogte = hoogte van het penant\n· Patroon volgt gevel = strips lopen door als op de gevel"}>Penanten</SectionLabel>
-          <button
-            onClick={() => onUpdate({ penanten: [...(settings.penanten ?? []), { id: Date.now(), x: 500, breedte: 400, diepte: 150, hoogte: 2000, gavelVolgend: true, hoekprofiel: { enabled: true, dikte: 2, breedteZijkant: 40, breedteVoorkant: 40 } }] })}
-            style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '2px 8px', cursor: 'pointer' }}>
-            + Toevoegen
-          </button>
-        </div>
+      <CollapsibleSection title="Penanten" tip={"Een penant is een uitstekende verticale lijst in de gevel.\nGeef de X-positie, breedte, diepte en hoogte op in mm.\n· X positie = afstand van de linker groepsrand\n· Breedte = breedte van het penant\n· Diepte = uitsteek t.o.v. het gevelvlak\n· Hoogte = hoogte van het penant\n· Patroon volgt gevel = strips lopen door als op de gevel"} isOpen={isOpen('penanten')} onToggle={() => toggle('penanten')} badge={(settings.penanten ?? []).length > 0 ? `${(settings.penanten ?? []).length}` : null} extra={<button onClick={() => onUpdate({ penanten: [...(settings.penanten ?? []), { id: Date.now(), x: 500, breedte: 400, diepte: 150, hoogte: 2000, gavelVolgend: true, hoekprofiel: { enabled: true, dikte: 2, breedteZijkant: 40, breedteVoorkant: 40 } }] })} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '2px 8px', cursor: 'pointer' }}>+ Toevoegen</button>}>
+        <div>
         {(settings.penanten ?? []).length === 0 && (
           <div style={{ fontSize: 11, color: '#94a3b8' }}>Geen penanten</div>
         )}
@@ -367,7 +375,8 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
             })()}
           </div>
         ))}
-      </div>
+        </div>
+      </CollapsibleSection>
 
       {(settings.penanten ?? []).length >= 2 && (() => {
         const sortedPenants = [...(settings.penanten ?? [])].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
@@ -380,10 +389,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
           onUpdate({ zoneSettings: cur });
         };
         return (
-          <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
-            <SectionLabel tip={"Zones zijn de gebieden tussen twee penanten.\nPer zone kun je een eigen kleur, verband en steenstrip-afmetingen instellen.\nDe rest van de gevel (buiten de zones) gebruikt de groepsinstellingen.\n\nAantal zones = aantal penanten − 1"}>
-              Zones ({numZones})
-            </SectionLabel>
+          <CollapsibleSection title={`Zones (${numZones})`} tip={"Zones zijn de gebieden tussen twee penanten.\nPer zone kun je een eigen kleur, verband en steenstrip-afmetingen instellen.\nDe rest van de gevel (buiten de zones) gebruikt de groepsinstellingen.\n\nAantal zones = aantal penanten − 1"} isOpen={isOpen('zones')} onToggle={() => toggle('zones')}>
             {Array.from({ length: numZones }, (_, zi) => {
               const p1 = sortedPenants[zi], p2 = sortedPenants[zi + 1];
               const zoneX1 = (p1.x ?? 0) + Math.max(1, p1.breedte ?? 400);
@@ -439,186 +445,171 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 </div>
               );
             })}
-          </div>
+          </CollapsibleSection>
         );
       })()}
 
-      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
-        {(() => {
-          const zw = settings.zetwerk ?? {};
-          const upd = (patch) => onUpdate({ zetwerk: { ...(settings.zetwerk ?? {}), ...patch } });
-          return (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                <input type="checkbox" id="zw-enable" checked={zw.enabled ?? false}
-                  onChange={(e) => upd({ enabled: e.target.checked })} />
-                <label htmlFor="zw-enable" style={{ fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
-                  Zetwerk rondom openingen
-                  <InfoIcon tip={"Aluminium of stalen randprofiel rondom ramen en deuren.\nWordt in 2D als grijs frame getekend rondom elke sparing.\nDe steenstrips worden automatisch op afstand gehouden.\n\n· Breedte = breedte van het profiel\n· Offset H = ruimte tussen opening en profiel (horizontaal)\n· Offset V = ruimte boven/onder de opening\n· Strip gap = extra vrije ruimte tussen profiel en strips"} />
-                </label>
+      {(() => {
+        const zw = settings.zetwerk ?? {};
+        const upd = (patch) => onUpdate({ zetwerk: { ...(settings.zetwerk ?? {}), ...patch } });
+        return (
+          <CollapsibleSection title="Zetwerk rondom openingen" tip={"Aluminium of stalen randprofiel rondom ramen en deuren.\nWordt in 2D als grijs frame getekend rondom elke sparing.\nDe steenstrips worden automatisch op afstand gehouden.\n\n· Breedte = breedte van het profiel\n· Offset H = ruimte tussen opening en profiel (horizontaal)\n· Offset V = ruimte boven/onder de opening\n· Strip gap = extra vrije ruimte tussen profiel en strips"} isOpen={isOpen('zetwerk')} onToggle={() => toggle('zetwerk')} badge={zw.enabled ? 'Aan' : 'Uit'}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <input type="checkbox" id="zw-enable" checked={zw.enabled ?? false}
+                onChange={(e) => upd({ enabled: e.target.checked })} />
+              <label htmlFor="zw-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>Inschakelen</label>
+            </div>
+            {zw.enabled && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                {[
+                  ['Breedte', 'breedte', 50, 'Breedte van het zetwerk profiel (mm).'],
+                  ['Dikte', 'dikte', 2, 'Materiaaldikte van het zetwerk profiel (mm).'],
+                  ['Offset H', 'offsetH', 0, 'Horizontale ruimte tussen de kozijnrand en het profiel (mm).'],
+                  ['Offset V', 'offsetV', 0, 'Verticale ruimte boven en onder de kozijnrand (mm).'],
+                  ['Strip gap', 'stripOffset', 5, 'Extra ruimte die de steenstrips vrijhouden van het profiel (mm).'],
+                ].map(([lbl, key, def, tip]) => (
+                  <Field key={key} label={`${lbl} mm`} tip={tip}>
+                    <input type="number" min={0} step={1} value={zw[key] ?? def}
+                      onChange={(e) => upd({ [key]: Number(e.target.value) })}
+                      style={{ ...inp, width: '100%' }} />
+                  </Field>
+                ))}
               </div>
-              {(zw.enabled) && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-                  {[
-                    ['Breedte', 'breedte', 50, 'Breedte van het zetwerk profiel (mm).'],
-                    ['Dikte', 'dikte', 2, 'Materiaaldikte van het zetwerk profiel (mm).'],
-                    ['Offset H', 'offsetH', 0, 'Horizontale ruimte tussen de kozijnrand en het profiel (mm).'],
-                    ['Offset V', 'offsetV', 0, 'Verticale ruimte boven en onder de kozijnrand (mm).'],
-                    ['Strip gap', 'stripOffset', 5, 'Extra ruimte die de steenstrips vrijhouden van het profiel (mm).'],
-                  ].map(([lbl, key, def, tip]) => (
-                    <Field key={key} label={`${lbl} mm`} tip={tip}>
-                      <input type="number" min={0} step={1} value={zw[key] ?? def}
-                        onChange={(e) => upd({ [key]: Number(e.target.value) })}
-                        style={{ ...inp, width: '100%' }} />
-                    </Field>
-                  ))}
-                </div>
-              )}
-            </>
-          );
-        })()}
-      </div>
-      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
-        {(() => {
-          const pan = settings.panelen ?? {};
-          const upd = (patch) => onUpdate({ panelen: { ...(settings.panelen ?? {}), ...patch } });
-          return (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                <input type="checkbox" id="pan-enable" checked={pan.enabled ?? false}
-                  onChange={(e) => upd({ enabled: e.target.checked })} />
-                <label htmlFor="pan-enable" style={{ fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
-                  Panelen (basisplaat)
-                  <InfoIcon tip={"Verdeelt de geveloppervlakte in draagsysteem-panelen.\nDe panelen vormen de achterste laag waarop de brickslips worden gemonteerd.\nDe indeling volgt de steenstripvoegen voor optimaal snijverlies.\n\n· Breedte = maximale breedte van een basispaneel\n· Hoogte = maximale hoogte van een basispaneel"} />
-                </label>
-              </div>
-              {pan.enabled && (() => {
-                const brickW = (settings.material ?? DEFAULT_MATERIAL).brickWeightM2 ?? 40;
-                const panW = pan.gewichtM2 ?? 11;
-                const maxKg = pan.maxKg ?? 50;
-                const totalW = Math.max(0.001, brickW + panW);
-                const maxM2 = Math.round(maxKg / totalW * 100) / 100;
-                const effPanel = computeEffectiveBasePanel(pan, brickW);
-                const effectiveH = effPanel.height;
-                const inputH = Math.max(100, pan.hoogte ?? 1200);
-                const hLimited = effectiveH < inputH;
-                return (
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-                      <Field label="Breedte mm" tip="Maximale breedte van het basispaneel (mm). Standaard 3005 mm.">
-                        <input type="number" min={100} step={50} value={pan.breedte ?? 3005}
-                          onChange={(e) => upd({ breedte: Number(e.target.value) })}
-                          style={{ ...inp, width: '100%' }} />
-                      </Field>
-                      <Field label="Hoogte mm" tip="Maximale hoogte van het basispaneel (mm). Standaard 1200 mm.">
-                        <input type="number" min={100} step={50} value={pan.hoogte ?? 1200}
-                          onChange={(e) => upd({ hoogte: Number(e.target.value) })}
-                          style={{ ...inp, width: '100%' }} />
-                      </Field>
-                      <Field label="Dikte mm" tip="Dikte van het basispaneel (mm). Standaard 18 mm.">
-                        <input type="number" min={1} step={1} value={pan.dikte ?? 18}
-                          onChange={(e) => upd({ dikte: Number(e.target.value) })}
-                          style={{ ...inp, width: '100%' }} />
-                      </Field>
-                      <Field label="Gewicht (kg/m²)" tip="Gewicht van het basispaneel per vierkante meter (kg/m²). Standaard 11 kg/m².">
-                        <input type="number" min={0} step={1} value={pan.gewichtM2 ?? 11}
-                          onChange={(e) => upd({ gewichtM2: Number(e.target.value) })}
-                          style={{ ...inp, width: '100%' }} />
-                      </Field>
-                      <Field label="Max gewicht (kg)" tip="Maximaal gewicht per paneel inclusief brickslips (kg). Bepaalt de maximale paneeloppervlakte en paneel hoogte.">
-                        <input type="number" min={1} step={5} value={pan.maxKg ?? 50}
-                          onChange={(e) => upd({ maxKg: Number(e.target.value) })}
-                          style={{ ...inp, width: '100%' }} />
-                      </Field>
-                    </div>
-                    <div style={{ fontSize: 11, color: hLimited ? '#dc2626' : '#64748b', marginTop: 4 }}>
-                      → max {maxM2} m²/paneel · eff. hoogte {effectiveH} mm{hLimited ? ' (gewicht begrensd)' : ''}
-                    </div>
-                  </>
-                );
-              })()}
-            </>
-          );
-        })()}
-      </div>
-      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
-        {(() => {
-          const lat = settings.latten ?? {};
-          const upd = (patch) => onUpdate({ latten: { ...(settings.latten ?? {}), ...patch } });
-          return (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                <input type="checkbox" id="lat-enable" checked={lat.enabled ?? false}
-                  onChange={(e) => upd({ enabled: e.target.checked })} />
-                <label htmlFor="lat-enable" style={{ fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
-                  Achterconstructie hout
-                  <InfoIcon tip={"Houten latten als dragerstructuur achter de basisplaat.\nHorizontale latten: maximaal interval in hoogte, altijd boven en onder ramen/deuren.\nVerticale latten: op paneelgrenzen (links, midden, rechts).\n\n· Breedte = breedte van de lat (zichtbaar in gevelaanzicht)\n· Dikte = diepte van de lat (loodrecht op gevel)\n· Max interval = max. hartafstand tussen horizontale latten"} />
-                </label>
-              </div>
-              {lat.enabled && (
+            )}
+          </CollapsibleSection>
+        );
+      })()}
+
+      {(() => {
+        const pan = settings.panelen ?? {};
+        const upd = (patch) => onUpdate({ panelen: { ...(settings.panelen ?? {}), ...patch } });
+        return (
+          <CollapsibleSection title="Panelen (basisplaat)" tip={"Verdeelt de geveloppervlakte in draagsysteem-panelen.\nDe panelen vormen de achterste laag waarop de brickslips worden gemonteerd.\nDe indeling volgt de steenstripvoegen voor optimaal snijverlies.\n\n· Breedte = maximale breedte van een basispaneel\n· Hoogte = maximale hoogte van een basispaneel"} isOpen={isOpen('panelen')} onToggle={() => toggle('panelen')} badge={pan.enabled ? 'Aan' : 'Uit'}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <input type="checkbox" id="pan-enable" checked={pan.enabled ?? false}
+                onChange={(e) => upd({ enabled: e.target.checked })} />
+              <label htmlFor="pan-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>Inschakelen</label>
+            </div>
+            {pan.enabled && (() => {
+              const brickW = (settings.material ?? DEFAULT_MATERIAL).brickWeightM2 ?? 40;
+              const panW = pan.gewichtM2 ?? 11;
+              const maxKg = pan.maxKg ?? 50;
+              const totalW = Math.max(0.001, brickW + panW);
+              const maxM2 = Math.round(maxKg / totalW * 100) / 100;
+              const effPanel = computeEffectiveBasePanel(pan, brickW);
+              const effectiveH = effPanel.height;
+              const inputH = Math.max(100, pan.hoogte ?? 1200);
+              const hLimited = effectiveH < inputH;
+              return (
                 <>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-                    {['horizontaal', 'verticaal'].map((r) => (
-                      <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer', color: '#334155' }}>
-                        <input type="radio" name={`lat-richting-${groupId}`} value={r}
-                          checked={(lat.richting ?? 'horizontaal') === r}
-                          onChange={() => upd({ richting: r })} />
-                        {r.charAt(0).toUpperCase() + r.slice(1)}
-                      </label>
-                    ))}
-                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-                    <Field label="Breedte mm" tip="Breedte van de houten lat (mm). Dit is de zichtbare maat in het gevelaanzicht.">
-                      <input type="number" min={10} step={5} value={lat.breedte ?? 50}
+                    <Field label="Breedte mm" tip="Maximale breedte van het basispaneel (mm). Standaard 3005 mm.">
+                      <input type="number" min={100} step={50} value={pan.breedte ?? 3005}
                         onChange={(e) => upd({ breedte: Number(e.target.value) })}
                         style={{ ...inp, width: '100%' }} />
                     </Field>
-                    <Field label="Dikte mm" tip="Dikte van de houten lat loodrecht op de gevel (mm).">
-                      <input type="number" min={5} step={5} value={lat.dikte ?? 28}
+                    <Field label="Hoogte mm" tip="Maximale hoogte van het basispaneel (mm). Standaard 1200 mm.">
+                      <input type="number" min={100} step={50} value={pan.hoogte ?? 1200}
+                        onChange={(e) => upd({ hoogte: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                    <Field label="Dikte mm" tip="Dikte van het basispaneel (mm). Standaard 18 mm.">
+                      <input type="number" min={1} step={1} value={pan.dikte ?? 18}
                         onChange={(e) => upd({ dikte: Number(e.target.value) })}
                         style={{ ...inp, width: '100%' }} />
                     </Field>
-                    {(lat.richting ?? 'horizontaal') === 'horizontaal' && (
-                      <Field label="Max interval mm" tip="Maximale hartafstand tussen horizontale latten (mm). Standaard 400 mm.">
-                        <input type="number" min={50} step={50} value={lat.maxInterval ?? 400}
-                          onChange={(e) => upd({ maxInterval: Number(e.target.value) })}
-                          style={{ ...inp, width: '100%' }} />
-                      </Field>
-                    )}
+                    <Field label="Gewicht (kg/m²)" tip="Gewicht van het basispaneel per vierkante meter (kg/m²). Standaard 11 kg/m².">
+                      <input type="number" min={0} step={1} value={pan.gewichtM2 ?? 11}
+                        onChange={(e) => upd({ gewichtM2: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                    <Field label="Max gewicht (kg)" tip="Maximaal gewicht per paneel inclusief brickslips (kg). Bepaalt de maximale paneeloppervlakte en paneel hoogte.">
+                      <input type="number" min={1} step={5} value={pan.maxKg ?? 50}
+                        onChange={(e) => upd({ maxKg: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                  </div>
+                  <div style={{ fontSize: 11, color: hLimited ? '#dc2626' : '#64748b', marginTop: 4 }}>
+                    → max {maxM2} m²/paneel · eff. hoogte {effectiveH} mm{hLimited ? ' (gewicht begrensd)' : ''}
                   </div>
                 </>
-              )}
-            </>
-          );
-        })()}
-      </div>
-      <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 4, paddingTop: 6 }}>
-        {(() => {
-          const vis = settings.layerVisibility ?? {};
-          const updVis = (patch) => onUpdate({ layerVisibility: { ...(settings.layerVisibility ?? {}), ...patch } });
-          return (
-            <>
-              <SectionLabel tip={"Schakel lagen aan of uit in het 2D gevelaanzicht.\nEen laag uitzetten verbergt deze in de 2D visualisatie maar beïnvloedt de instellingen niet.\n\n· Steenstrips = de brickslip-stenen op de gevel\n· Zetwerk = het randprofiel rondom sparingen\n· Panelen = de draagpanelen achter de strips\n· Latten = de houten achterconstructie-latten"}>Laagzichtbaarheid 2D</SectionLabel>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 6 }}>
-                {[
-                  ['strips', 'Steenstrips', 'De brickslip-steenstrips op de gevel zichtbaar tonen.'],
-                  ['zetwerk', 'Zetwerk', 'Het aluminium of stalen randprofiel rondom sparingen tonen.'],
-                  ['panelen', 'Panelen', 'De draagpanelen achter de brickslips tonen.'],
-                  ['latten', 'Latten', 'De houten achterconstructie-latten tonen.'],
-                ].map(([key, label, tip]) => (
-                  <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', color: '#334155' }}>
-                    <input type="checkbox"
-                      checked={vis[key] !== false}
-                      onChange={(e) => updVis({ [key]: e.target.checked })} />
-                    {label}
-                    <InfoIcon tip={tip} />
-                  </label>
-                ))}
-              </div>
-            </>
-          );
-        })()}
-      </div>
+              );
+            })()}
+          </CollapsibleSection>
+        );
+      })()}
+
+      {(() => {
+        const lat = settings.latten ?? {};
+        const upd = (patch) => onUpdate({ latten: { ...(settings.latten ?? {}), ...patch } });
+        return (
+          <CollapsibleSection title="Achterconstructie hout" tip={"Houten latten als dragerstructuur achter de basisplaat.\nHorizontale latten: maximaal interval in hoogte, altijd boven en onder ramen/deuren.\nVerticale latten: op paneelgrenzen (links, midden, rechts).\n\n· Breedte = breedte van de lat (zichtbaar in gevelaanzicht)\n· Dikte = diepte van de lat (loodrecht op gevel)\n· Max interval = max. hartafstand tussen horizontale latten"} isOpen={isOpen('latten')} onToggle={() => toggle('latten')} badge={lat.enabled ? 'Aan' : 'Uit'}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <input type="checkbox" id="lat-enable" checked={lat.enabled ?? false}
+                onChange={(e) => upd({ enabled: e.target.checked })} />
+              <label htmlFor="lat-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>Inschakelen</label>
+            </div>
+            {lat.enabled && (
+              <>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                  {['horizontaal', 'verticaal'].map((r) => (
+                    <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer', color: '#334155' }}>
+                      <input type="radio" name={`lat-richting-${groupId}`} value={r}
+                        checked={(lat.richting ?? 'horizontaal') === r}
+                        onChange={() => upd({ richting: r })} />
+                      {r.charAt(0).toUpperCase() + r.slice(1)}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                  <Field label="Breedte mm" tip="Breedte van de houten lat (mm). Dit is de zichtbare maat in het gevelaanzicht.">
+                    <input type="number" min={10} step={5} value={lat.breedte ?? 50}
+                      onChange={(e) => upd({ breedte: Number(e.target.value) })}
+                      style={{ ...inp, width: '100%' }} />
+                  </Field>
+                  <Field label="Dikte mm" tip="Dikte van de houten lat loodrecht op de gevel (mm).">
+                    <input type="number" min={5} step={5} value={lat.dikte ?? 28}
+                      onChange={(e) => upd({ dikte: Number(e.target.value) })}
+                      style={{ ...inp, width: '100%' }} />
+                  </Field>
+                  {(lat.richting ?? 'horizontaal') === 'horizontaal' && (
+                    <Field label="Max interval mm" tip="Maximale hartafstand tussen horizontale latten (mm). Standaard 400 mm.">
+                      <input type="number" min={50} step={50} value={lat.maxInterval ?? 400}
+                        onChange={(e) => upd({ maxInterval: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                  )}
+                </div>
+              </>
+            )}
+          </CollapsibleSection>
+        );
+      })()}
+
+      {(() => {
+        const vis = settings.layerVisibility ?? {};
+        const updVis = (patch) => onUpdate({ layerVisibility: { ...(settings.layerVisibility ?? {}), ...patch } });
+        return (
+          <CollapsibleSection title="Laagzichtbaarheid 2D" tip={"Schakel lagen aan of uit in het 2D gevelaanzicht.\nEen laag uitzetten verbergt deze in de 2D visualisatie maar beïnvloedt de instellingen niet.\n\n· Steenstrips = de brickslip-stenen op de gevel\n· Zetwerk = het randprofiel rondom sparingen\n· Panelen = de draagpanelen achter de strips\n· Latten = de houten achterconstructie-latten"} isOpen={isOpen('lagen')} onToggle={() => toggle('lagen')}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {[
+                ['strips', 'Steenstrips', 'De brickslip-steenstrips op de gevel zichtbaar tonen.'],
+                ['zetwerk', 'Zetwerk', 'Het aluminium of stalen randprofiel rondom sparingen tonen.'],
+                ['panelen', 'Panelen', 'De draagpanelen achter de brickslips tonen.'],
+                ['latten', 'Latten', 'De houten achterconstructie-latten tonen.'],
+              ].map(([key, label, tip]) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', color: '#334155' }}>
+                  <input type="checkbox"
+                    checked={vis[key] !== false}
+                    onChange={(e) => updVis({ [key]: e.target.checked })} />
+                  {label}
+                  <InfoIcon tip={tip} />
+                </label>
+              ))}
+            </div>
+          </CollapsibleSection>
+        );
+      })()}
     </div>
   );
 }
