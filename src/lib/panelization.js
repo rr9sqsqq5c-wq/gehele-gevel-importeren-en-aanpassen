@@ -106,9 +106,15 @@ function chooseBreaks(start, end, candidates, maxSpan, targetSpan) {
 
   while (current < end - 0.001) {
     const inRange = valid.filter((v) => v > current + 0.001 && v - current <= maxSpan + 0.001);
-    const allAhead = valid.filter((v) => v > current + 0.001);
 
-    const options = inRange.length > 0 ? inRange : allAhead;
+    const forcedBreak = current + maxSpan;
+    if (!inRange.length && forcedBreak < end - 0.001) {
+      breaks.push(round2(forcedBreak));
+      current = round2(forcedBreak);
+      continue;
+    }
+
+    const options = inRange.length > 0 ? inRange : valid.filter((v) => v > current + 0.001);
 
     if (!options.length) {
       if (breaks[breaks.length - 1] !== end) breaks.push(end);
