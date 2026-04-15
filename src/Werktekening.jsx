@@ -261,7 +261,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
   const xBreaks = [...new Set([0, groupWidth, ...allPanels.map((p) => p.x), ...allPanels.map((p) => p.x + p.width)])].sort((a, b) => a - b);
   const yBreaks = [...new Set([0, groupHeight, ...allPanels.map((p) => p.y), ...allPanels.map((p) => p.y + p.height)])].sort((a, b) => a - b);
-  const latYs   = [...new Set(allLatten.filter((l) => l.richting === 'horizontaal').map((l) => Math.round(l.y + l.height / 2)))].sort((a, b) => a - b);
+  const latYs   = [...new Set(allLatten.filter((l) => l.richting === 'horizontaal').map((l) => Math.round(l.y + l.height)))].sort((a, b) => a - b);
 
   const dimRowY   = OY + H + 28;
   const dimRow2Y  = dimRowY + DIM_GAP;
