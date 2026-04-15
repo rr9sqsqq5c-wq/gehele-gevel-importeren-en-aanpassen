@@ -1280,9 +1280,30 @@ export default function App() {
         frontRows = buildSymmetricFacePattern(pB, effectiveH, mat, verband);
       }
 
-      const leftRows = buildFacePattern(pD, effectiveH, mat, verband);
-      const rightRows = buildMirroredFacePattern(pD, effectiveH, mat, verband);
-      return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: effectiveH, groupMinH };
+      const panelDikte = s.panelen?.dikte ?? 18;
+      const stoot = mat.stoot ?? 10;
+      const sideClipOffset = Math.max(stoot, panelDikte);
+      const clipLeft = (rows) => rows.map((row) => ({
+        ...row,
+        pieces: row.pieces.flatMap((pc) => {
+          const clipEnd = pD - sideClipOffset;
+          if (pc.start >= clipEnd) return [];
+          if (pc.start + pc.length <= clipEnd) return [pc];
+          return [{ ...pc, length: Math.round((clipEnd - pc.start) * 100) / 100 }];
+        }),
+      })).filter((row) => row.pieces.length > 0);
+      const clipRight = (rows) => rows.map((row) => ({
+        ...row,
+        pieces: row.pieces.flatMap((pc) => {
+          if (pc.start + pc.length <= sideClipOffset) return [];
+          if (pc.start >= sideClipOffset) return [pc];
+          const newStart = Math.round(sideClipOffset * 100) / 100;
+          return [{ ...pc, start: newStart, length: Math.round((pc.start + pc.length - newStart) * 100) / 100 }];
+        }),
+      })).filter((row) => row.pieces.length > 0);
+      const leftRows = clipLeft(buildFacePattern(pD, effectiveH, mat, verband));
+      const rightRows = clipRight(buildMirroredFacePattern(pD, effectiveH, mat, verband));
+      return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: effectiveH, groupMinH, sideClipOffset };
     });
   }, [activeGroup, getSettings, wallMap, adjacencies]);
   const adjWallIds = useMemo(() => new Set(adjacencies.flatMap((a) => [a.wallIdA, a.wallIdB])), [adjacencies]);

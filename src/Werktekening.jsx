@@ -434,25 +434,30 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             (() => {
               const brickDepth = groupSettings?.brickDepth ?? 20;
               const stoot = mat.stoot ?? 10;
-              const hpD = (p.hoekprofiel?.enabled !== false) ? (p.hoekprofiel?.dikte ?? 2) : 0;
+              const hpD_cs = (p.hoekprofiel?.enabled !== false) ? (p.hoekprofiel?.dikte ?? 2) : 0;
+              const panelDikte_cs = groupSettings?.panelen?.dikte ?? 18;
+              const sideClipOffset = Math.max(stoot, panelDikte_cs);
               const zijPaneel = pD + stoot;
 
-              const CSW = 680; const CSH = 260;
-              const pad = { t: 38, b: 50, l: 60, r: 60 };
+              const CSW = 720; const CSH = 280;
+              const pad = { t: 44, b: 56, l: 64, r: 64 };
               const drawW = CSW - pad.l - pad.r;
               const drawH = CSH - pad.t - pad.b;
 
-              const scH = drawH / (brickDepth + 8 + zijPaneel + 10);
-              const scW = drawW / (brickDepth + 8 + pB + 8 + brickDepth);
+              const totalCSW = brickDepth + panelDikte_cs + pB + panelDikte_cs + brickDepth;
+              const totalCSH = brickDepth + zijPaneel + 14;
+              const scH = drawH / totalCSH;
+              const scW = drawW / totalCSW;
               const sc2 = Math.min(scH, scW);
 
               const bd2  = brickDepth * sc2;
               const sv2  = stoot * sc2;
-              const pT   = 8 * sc2;
+              const pT   = panelDikte_cs * sc2;
               const pB2  = pB * sc2;
               const pD2  = pD * sc2;
               const zij2 = zijPaneel * sc2;
-              const hp2  = hpD * sc2;
+              const hp2  = hpD_cs * sc2;
+              const clip2 = sideClipOffset * sc2;
 
               const cx = CSW / 2;
               const buitenY = pad.t + bd2;
@@ -484,13 +489,16 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     {`Penant ${idx + 1} — dwarsdoorsnede U-vorm (bovenaanzicht)`}
                   </text>
                   <text x={cx} y={27} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
-                    {`Voorzijde paneel = pB = ${mm(pB)} mm  ·  Zijpaneel = pD ${mm(pD)} + stootvoeg ${mm(stoot)} = ${mm(zijPaneel)} mm  ·  Strip dikte = ${mm(brickDepth)} mm`}
+                    {`Voorzijde paneel = ${mm(pB)} mm  ·  Voorzijde strips = ${mm(pB + 2 * brickDepth)} mm  ·  Zijpaneel = ${mm(pD)} + sv ${mm(stoot)} = ${mm(zijPaneel)} mm  ·  Strip diepte = ${mm(brickDepth)} mm`}
+                  </text>
+                  <text x={cx} y={37} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
+                    {`Paneeldikte = ${mm(panelDikte_cs)} mm  ·  Clip offset = max(sv, pD) = max(${mm(stoot)}, ${mm(panelDikte_cs)}) = ${mm(sideClipOffset)} mm`}
                   </text>
 
                   <text x={cx} y={svgTop + 4} textAnchor="middle" fontSize={7} fill="#94a3b8" fontFamily="Arial, sans-serif">▲ BUITEN</text>
                   <text x={cx} y={gevelY + 16} textAnchor="middle" fontSize={7} fill="#94a3b8" fontFamily="Arial, sans-serif">▼ GEVEL</text>
 
-                  <rect x={fpL} y={fpTopY - bd2} width={pB2} height={bd2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
+                  <rect x={lStripL} y={fpTopY - bd2} width={rStripR - lStripL} height={bd2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
                   <rect x={fpL} y={fpTopY} width={pB2} height={pT} fill="#dbeafe" stroke="#3b82f6" strokeWidth={1.2} />
 
                   <rect x={lStripL} y={fpTopY - bd2} width={bd2} height={bd2 + zij2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
@@ -501,17 +509,20 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   <rect x={rPanelL} y={fpBotY + pD2} width={pT} height={sv2} fill="#fff7ed" stroke="#f59e0b" strokeWidth={0.8} strokeDasharray="2,2" />
                   <rect x={rPanelR} y={fpTopY - bd2} width={bd2} height={bd2 + zij2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
 
-                  {hpD > 0 && <>
+                  {hpD_cs > 0 && <>
                     <rect x={fpL - hp2} y={fpTopY} width={hp2} height={zij2} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
                     <rect x={fpR} y={fpTopY} width={hp2} height={zij2} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
                   </>}
 
+                  <rect x={lPanelL} y={fpTopY + pD2} width={pT} height={clip2 - pD2} fill="#fca5a5" fillOpacity={0.4} stroke="#dc2626" strokeWidth={0.4} strokeDasharray="2,2" />
+                  <rect x={rPanelL} y={fpTopY + pD2} width={pT} height={clip2 - pD2} fill="#fca5a5" fillOpacity={0.4} stroke="#dc2626" strokeWidth={0.4} strokeDasharray="2,2" />
+
                   <line x1={lStripL - 2} y1={fpTopY - bd2 - 1} x2={rStripR + 2} y2={fpTopY - bd2 - 1} stroke="#d97706" strokeWidth={0.5} strokeDasharray="3,3" />
 
                   {[
-                    [lStripL, fpTopY - bd2, rStripR, fpTopY - bd2, '#d97706', `pB_buiten = ${mm(pB + 2 * brickDepth)} mm (incl. strips)`],
+                    [lStripL, fpTopY - bd2 - 6, rStripR, fpTopY - bd2 - 6, '#d97706', `voorzijde strips = ${mm(pB + 2 * brickDepth)} mm`],
                     [fpL, fpBotY + 12, fpR, fpBotY + 12, '#3b82f6', `voorzijde paneel = ${mm(pB)} mm`],
-                    [lPanelL, gevelY + 6, rPanelR, gevelY + 6, '#1e3a5f', `buitenmaat incl. panelen = ${mm(pB + 2 * 8)} mm`],
+                    [lPanelL, gevelY + 6, rPanelR, gevelY + 6, '#1e3a5f', `buitenmaat incl. panelen = ${mm(pB + 2 * panelDikte_cs)} mm`],
                   ].map(([x1, y1, x2, y2, color, label], i) => (
                     <g key={i}>
                       <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={0.8} />
@@ -529,13 +540,14 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   <line x1={lPanelL - 2} y1={fpBotY + pD2} x2={lPanelR + 2} y2={fpBotY + pD2} stroke="#f59e0b" strokeWidth={0.5} strokeDasharray="3,3" />
                   <text x={lPanelL - 6} y={fpBotY + pD2 + sv2 / 2} textAnchor="end" dominantBaseline="middle" fontSize={6} fill="#b45309" fontFamily="Arial, sans-serif">{`sv ${mm(stoot)}`}</text>
 
-                  <g transform={`translate(18, ${CSH - 38})`}>
+                  <g transform={`translate(18, ${CSH - 40})`}>
                     <rect x={0} y={0} width={10} height={7} fill="#dbeafe" stroke="#3b82f6" strokeWidth={0.8} /><text x={13} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">Voorzijde paneel</text>
                     <rect x={100} y={0} width={10} height={7} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.8} /><text x={113} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">Zijpaneel</text>
-                    <rect x={170} y={0} width={10} height={7} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} /><text x={183} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`Strip (${mm(brickDepth)} mm)`}</text>
-                    <rect x={270} y={0} width={10} height={7} fill="#fff7ed" stroke="#f59e0b" strokeWidth={0.8} strokeDasharray="2,2" /><text x={283} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`Stootvoeg ext. (${mm(stoot)} mm)`}</text>
-                    {hpD > 0 && <><rect x={420} y={0} width={10} height={7} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} /><text x={433} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`L-profiel (${mm(hpD)} mm)`}</text></>}
-                    <text x={0} y={20} fontSize={6.5} fill="#475569" fontFamily="Arial, sans-serif">{`Formules: voorzijde paneel = pB = ${mm(pB)} mm  ·  zijpaneel = pD + stootvoeg = ${mm(pD)} + ${mm(stoot)} = ${mm(zijPaneel)} mm`}</text>
+                    <rect x={170} y={0} width={10} height={7} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} /><text x={183} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`Strip (${mm(brickDepth)} mm diepte)`}</text>
+                    <rect x={280} y={0} width={10} height={7} fill="#fff7ed" stroke="#f59e0b" strokeWidth={0.8} strokeDasharray="2,2" /><text x={293} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`Stootvoeg ext. (${mm(stoot)} mm)`}</text>
+                    <rect x={420} y={0} width={10} height={7} fill="#fca5a5" fillOpacity={0.4} stroke="#dc2626" strokeWidth={0.4} strokeDasharray="2,2" /><text x={433} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`Geen strip zone (${mm(sideClipOffset)} mm)`}</text>
+                    {hpD_cs > 0 && <><rect x={560} y={0} width={10} height={7} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} /><text x={573} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`L-profiel (${mm(hpD_cs)} mm)`}</text></>}
+                    <text x={0} y={18} fontSize={6.5} fill="#475569" fontFamily="Arial, sans-serif">{`Voorzijde strips = pB + 2×strip = ${mm(pB)} + 2×${mm(brickDepth)} = ${mm(pB + 2 * brickDepth)} mm  ·  Zijpaneel = pD + sv = ${mm(pD)} + ${mm(stoot)} = ${mm(zijPaneel)} mm  ·  Clip offset = max(sv,pd) = ${mm(sideClipOffset)} mm`}</text>
                   </g>
                 </svg>
               );
