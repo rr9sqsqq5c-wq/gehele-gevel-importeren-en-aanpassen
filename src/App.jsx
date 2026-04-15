@@ -1235,9 +1235,6 @@ export default function App() {
       const pB = Math.max(1, p.breedte ?? 400);
       const pD = Math.max(1, p.diepte ?? 150);
       const pH = Math.max(1, p.hoogte ?? 2000);
-      const maxH = s.maxHoogte !== null && s.maxHoogte > 0 ? s.maxHoogte : null;
-      const effectiveH = maxH !== null ? Math.min(pH, maxH) : pH;
-
       let frontRows;
       if (p.gavelVolgend !== false) {
         const rawRows = [];
@@ -1250,7 +1247,7 @@ export default function App() {
           const maskStart = Math.max(0, pX - wallLeft);
           const maskEnd = Math.min(wall.length, pEnd - wallLeft);
           for (const row of wRows) {
-            if (row.y >= effectiveH) continue;
+            if (row.y >= pH) continue;
             const clipped = row.pieces.flatMap((piece) => {
               const ps = piece.start, pe = piece.start + piece.length;
               const os = Math.max(ps, maskStart), oe = Math.min(pe, maskEnd);
@@ -1277,7 +1274,7 @@ export default function App() {
           return { ...row, pieces: [...leftPieces, ...shiftedRight].sort((a, b) => a.start - b.start) };
         });
       } else {
-        frontRows = buildSymmetricFacePattern(pB, effectiveH, mat, verband);
+        frontRows = buildSymmetricFacePattern(pB, pH, mat, verband);
       }
 
       const panelDikte = s.panelen?.dikte ?? 18;
@@ -1301,9 +1298,9 @@ export default function App() {
           return [{ ...pc, start: newStart, length: Math.round((pc.start + pc.length - newStart) * 100) / 100 }];
         }),
       })).filter((row) => row.pieces.length > 0);
-      const leftRows = clipLeft(buildFacePattern(pD, effectiveH, mat, verband));
-      const rightRows = clipRight(buildMirroredFacePattern(pD, effectiveH, mat, verband));
-      return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: effectiveH, groupMinH, sideClipOffset };
+      const leftRows = clipLeft(buildFacePattern(pD, pH, mat, verband));
+      const rightRows = clipRight(buildMirroredFacePattern(pD, pH, mat, verband));
+      return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: pH, groupMinH, sideClipOffset };
     });
   }, [activeGroup, getSettings, wallMap, adjacencies]);
   const adjWallIds = useMemo(() => new Set(adjacencies.flatMap((a) => [a.wallIdA, a.wallIdB])), [adjacencies]);
