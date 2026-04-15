@@ -1235,6 +1235,7 @@ export default function App() {
     const verband = s.verband ?? DEFAULT_VERBAND;
     const walls = activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean);
     const groupMinH = walls.length ? Math.min(...walls.map((w) => w.wallOrigin?.heightStart ?? 0)) : 0;
+    const groupMinX = walls.length ? Math.min(...walls.map((w) => w.wallOrigin?.lengthStart ?? 0)) : 0;
     const gAdj = adjacencies.filter((a) => activeGroup.wallIds.includes(a.wallIdA) && activeGroup.wallIds.includes(a.wallIdB));
     const facadeRows = buildGroupPattern(walls, gAdj, mat, verband);
 
@@ -1250,7 +1251,7 @@ export default function App() {
       if (p.gavelVolgend !== false) {
         const rawRows = [];
         for (const wall of walls) {
-          const wallLeft = wall.wallOrigin?.lengthStart ?? 0;
+          const wallLeft = (wall.wallOrigin?.lengthStart ?? 0) - groupMinX;
           const wallRight = wallLeft + wall.length;
           const pEnd = pX + pB;
           if (pEnd <= wallLeft || pX >= wallRight) continue;
