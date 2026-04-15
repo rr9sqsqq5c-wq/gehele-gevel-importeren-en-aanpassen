@@ -86,12 +86,19 @@ function computeLatten(facadeData, panelen, latten, mat, penanten) {
     x2: Math.min(groupWidth, (p.x ?? 0) + (p.breedte ?? 400) + PENANT_GAP),
   }));
 
+  const PENANT_PANEL_INSET = 20;
   let allPanels = [];
   if (panelen?.enabled) {
     const basePanel = computeEffectiveBasePanel(panelen, mat.brickWeightM2 ?? 40);
     const globalPieces = rows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
-    const zones = buildFacadeZones(groupWidth, groupHeight, openingsForZones);
+    const penantOpenings = (penanten ?? []).map((p, i) => {
+      const px = (p.x ?? 0) + PENANT_PANEL_INSET;
+      const pw = Math.max(1, p.breedte ?? 400) - 2 * PENANT_PANEL_INSET;
+      if (pw <= 0) return null;
+      return { id: `pen_${i}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null };
+    }).filter(Boolean);
+    const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
     for (const zone of zones) {
       const res = panelizeZone(zone, rows, globalPieces, mat.steenH, basePanel);
       if (res.ok) allPanels.push(...res.panels);
@@ -214,14 +221,21 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
     const basePanel = computeEffectiveBasePanel(panelen, mat.brickWeightM2 ?? 40);
     const globalPieces = rows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
-    const zones = buildFacadeZones(groupWidth, groupHeight, openingsForZones);
+    const INSET = 20;
+    const penantOpenings = (groupSettings?.penanten ?? []).map((p, i) => {
+      const px = (p.x ?? 0) + INSET;
+      const pw = Math.max(1, p.breedte ?? 400) - 2 * INSET;
+      if (pw <= 0) return null;
+      return { id: `pen_${i}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null };
+    }).filter(Boolean);
+    const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
     const panels = [];
     for (const zone of zones) {
       const res = panelizeZone(zone, rows, globalPieces, mat.steenH, basePanel);
       if (res.ok) panels.push(...res.panels);
     }
     return panels;
-  }, [facadeData, panelen, mat]);
+  }, [facadeData, panelen, mat, groupSettings]);
 
   const penanten = groupSettings?.penanten ?? [];
   const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten), [facadeData, panelen, latten, mat, penanten]);

@@ -39,6 +39,8 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
     return result;
   }, [walls, mat, verband, maxHoogte, minHoogte, zetwerk]);
 
+  const PENANT_PANEL_INSET = 20;
+
   const allPanels = useMemo(() => {
     if (!facadeData || !panelen?.enabled) return [];
     const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
@@ -46,7 +48,13 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
     const steenH = mat.steenH;
     const globalPieces = rows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
-    const zones = buildFacadeZones(groupWidth, groupHeight, openingsForZones);
+    const penantOpenings = (groupSettings?.penanten ?? []).map((p, i) => {
+      const px = (p.x ?? 0) + PENANT_PANEL_INSET;
+      const pw = Math.max(1, p.breedte ?? 400) - 2 * PENANT_PANEL_INSET;
+      if (pw <= 0) return null;
+      return { id: `pen_${i}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null };
+    }).filter(Boolean);
+    const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
     const panels = [];
     for (const zone of zones) {
       const result = panelizeZone(zone, rows, globalPieces, steenH, basePanel);
