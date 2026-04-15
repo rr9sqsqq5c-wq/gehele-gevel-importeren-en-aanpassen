@@ -498,31 +498,44 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   <text x={cx} y={svgTop + 4} textAnchor="middle" fontSize={7} fill="#94a3b8" fontFamily="Arial, sans-serif">▲ BUITEN</text>
                   <text x={cx} y={gevelY + 16} textAnchor="middle" fontSize={7} fill="#94a3b8" fontFamily="Arial, sans-serif">▼ GEVEL</text>
 
+                  {/* Voorzijde strips - volle breedte (doorlopen) */}
                   <rect x={lStripL} y={fpTopY - bd2} width={rStripR - lStripL} height={bd2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
-                  <rect x={fpL} y={fpTopY} width={pB2} height={pT} fill="#dbeafe" stroke="#3b82f6" strokeWidth={1.2} />
 
-                  <rect x={lStripL} y={fpTopY - bd2} width={bd2} height={bd2 + zij2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
-                  <rect x={lPanelL} y={fpTopY} width={pT} height={zij2} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                  {/* Voorzijde paneel - volle breedte (doorlopen, voor de zijpanelen) */}
+                  <rect x={lPanelL} y={fpTopY} width={pB2 + 2 * pT} height={pT} fill="#dbeafe" stroke="#3b82f6" strokeWidth={1.2} />
+
+                  {/* Linkerzijde strip - van BUITEN af, hoogte = bd + pT + pD */}
+                  <rect x={lStripL} y={fpTopY - bd2} width={bd2} height={bd2 + pT + pD2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
+
+                  {/* Linkerzijde paneel - begint ACHTER voorzijde paneel (fpBotY) */}
+                  <rect x={lPanelL} y={fpBotY} width={pT} height={pD2} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
                   <rect x={lPanelL} y={fpBotY + pD2} width={pT} height={sv2} fill="#fff7ed" stroke="#f59e0b" strokeWidth={0.8} strokeDasharray="2,2" />
 
-                  <rect x={rPanelL} y={fpTopY} width={pT} height={zij2} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                  {/* Rechterzijde paneel - begint ACHTER voorzijde paneel */}
+                  <rect x={rPanelL} y={fpBotY} width={pT} height={pD2} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
                   <rect x={rPanelL} y={fpBotY + pD2} width={pT} height={sv2} fill="#fff7ed" stroke="#f59e0b" strokeWidth={0.8} strokeDasharray="2,2" />
-                  <rect x={rPanelR} y={fpTopY - bd2} width={bd2} height={bd2 + zij2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
 
+                  {/* Rechterzijde strip - van BUITEN af */}
+                  <rect x={rPanelR} y={fpTopY - bd2} width={bd2} height={bd2 + pT + pD2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
+
+                  {/* L-profielen in de binnenhoeken */}
                   {hpD_cs > 0 && <>
-                    <rect x={fpL - hp2} y={fpTopY} width={hp2} height={zij2} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
-                    <rect x={fpR} y={fpTopY} width={hp2} height={zij2} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
+                    <rect x={fpL - hp2} y={fpBotY} width={hp2} height={pD2} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
+                    <rect x={fpR} y={fpBotY} width={hp2} height={pD2} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
                   </>}
 
-                  <rect x={lPanelL} y={fpTopY + pD2} width={pT} height={clip2 - pD2} fill="#fca5a5" fillOpacity={0.4} stroke="#dc2626" strokeWidth={0.4} strokeDasharray="2,2" />
-                  <rect x={rPanelL} y={fpTopY + pD2} width={pT} height={clip2 - pD2} fill="#fca5a5" fillOpacity={0.4} stroke="#dc2626" strokeWidth={0.4} strokeDasharray="2,2" />
+                  {/* Geen-strip zone op zijpaneel (alleen als clip offset > paneeldikte) */}
+                  {clip2 > pT + 0.5 && <>
+                    <rect x={lPanelL} y={fpBotY} width={pT} height={clip2 - pT} fill="#fca5a5" fillOpacity={0.4} stroke="#dc2626" strokeWidth={0.4} strokeDasharray="2,2" />
+                    <rect x={rPanelL} y={fpBotY} width={pT} height={clip2 - pT} fill="#fca5a5" fillOpacity={0.4} stroke="#dc2626" strokeWidth={0.4} strokeDasharray="2,2" />
+                  </>}
 
                   <line x1={lStripL - 2} y1={fpTopY - bd2 - 1} x2={rStripR + 2} y2={fpTopY - bd2 - 1} stroke="#d97706" strokeWidth={0.5} strokeDasharray="3,3" />
 
                   {[
-                    [lStripL, fpTopY - bd2 - 6, rStripR, fpTopY - bd2 - 6, '#d97706', `voorzijde strips = ${mm(pB + 2 * brickDepth)} mm`],
-                    [fpL, fpBotY + 12, fpR, fpBotY + 12, '#3b82f6', `voorzijde paneel = ${mm(pB)} mm`],
-                    [lPanelL, gevelY + 6, rPanelR, gevelY + 6, '#1e3a5f', `buitenmaat incl. panelen = ${mm(pB + 2 * panelDikte_cs)} mm`],
+                    [lStripL, fpTopY - bd2 - 6, rStripR, fpTopY - bd2 - 6, '#d97706', `strips buiten = ${mm(pB + 2 * brickDepth)} mm`],
+                    [lPanelL, fpBotY + 8, rPanelR, fpBotY + 8, '#3b82f6', `voorzijde paneel (doorlopend) = ${mm(pB + 2 * panelDikte_cs)} mm`],
+                    [fpL, gevelY + 6, fpR, gevelY + 6, '#475569', `pB = ${mm(pB)} mm`],
                   ].map(([x1, y1, x2, y2, color, label], i) => (
                     <g key={i}>
                       <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={0.8} />
@@ -532,11 +545,13 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     </g>
                   ))}
 
-                  <line x1={lPanelL - 2} y1={fpTopY} x2={lPanelL - 2} y2={sideBot} stroke="#1e3a5f" strokeWidth={0.8} />
-                  <line x1={lPanelL - 6} y1={fpTopY} x2={lPanelL + 2} y2={fpTopY} stroke="#1e3a5f" strokeWidth={0.8} />
-                  <line x1={lPanelL - 6} y1={sideBot} x2={lPanelL + 2} y2={sideBot} stroke="#1e3a5f" strokeWidth={0.8} />
-                  <text x={lPanelL - 8} y={(fpTopY + sideBot) / 2} textAnchor="end" dominantBaseline="middle" fontSize={7} fill="#1e3a5f" fontFamily="Arial, sans-serif" transform={`rotate(-90,${lPanelL - 8},${(fpTopY + sideBot) / 2})`}>{`pD ${mm(pD)} + sv ${mm(stoot)} = ${mm(zijPaneel)} mm`}</text>
+                  {/* Maatlijn: zijpaneel diepte */}
+                  <line x1={lPanelL - 2} y1={fpBotY} x2={lPanelL - 2} y2={fpBotY + pD2} stroke="#1e3a5f" strokeWidth={0.8} />
+                  <line x1={lPanelL - 6} y1={fpBotY} x2={lPanelL + 2} y2={fpBotY} stroke="#1e3a5f" strokeWidth={0.8} />
+                  <line x1={lPanelL - 6} y1={fpBotY + pD2} x2={lPanelL + 2} y2={fpBotY + pD2} stroke="#1e3a5f" strokeWidth={0.8} />
+                  <text x={lPanelL - 8} y={(fpBotY + fpBotY + pD2) / 2} textAnchor="end" dominantBaseline="middle" fontSize={7} fill="#1e3a5f" fontFamily="Arial, sans-serif" transform={`rotate(-90,${lPanelL - 8},${(fpBotY + fpBotY + pD2) / 2})`}>{`pD = ${mm(pD)} mm`}</text>
 
+                  {/* Maatlijn: stootvoeg */}
                   <line x1={lPanelL - 2} y1={fpBotY + pD2} x2={lPanelR + 2} y2={fpBotY + pD2} stroke="#f59e0b" strokeWidth={0.5} strokeDasharray="3,3" />
                   <text x={lPanelL - 6} y={fpBotY + pD2 + sv2 / 2} textAnchor="end" dominantBaseline="middle" fontSize={6} fill="#b45309" fontFamily="Arial, sans-serif">{`sv ${mm(stoot)}`}</text>
 
