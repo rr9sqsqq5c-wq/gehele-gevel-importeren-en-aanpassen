@@ -646,7 +646,30 @@ function r(v) {
   return s.includes('.') ? s : s + '.';
 }
 
+function getExteriorDepth(rwo, pD, allWallOrigins) {
+  if (!rwo) return (Math.abs((rwo?.thicknessEnd ?? 200) - (rwo?.thicknessStart ?? 0))) + pD / 2;
+  const axis = rwo.thicknessAxis;
+  const tStart = rwo.thicknessStart;
+  const tEnd = rwo.thicknessEnd ?? rwo.thicknessStart + 200;
+  const wallsOnAxis = (allWallOrigins ?? []).filter((wo) => wo?.thicknessAxis === axis);
+  const buildingMin = wallsOnAxis.length
+    ? Math.min(...wallsOnAxis.map((wo) => wo.thicknessStart))
+    : tStart;
+  const buildingMax = wallsOnAxis.length
+    ? Math.max(...wallsOnAxis.map((wo) => wo.thicknessEnd ?? wo.thicknessStart + 200))
+    : tEnd;
+  const distToMin = tStart - buildingMin;
+  const distToMax = buildingMax - tEnd;
+  if (distToMin <= distToMax) {
+    return -pD / 2;
+  }
+  return Math.abs(tEnd - tStart) + pD / 2;
+}
+
 export function exportGroupsToIfc(groups, wallSettings, fileName) {
+  const allWallOrigins = groups.flatMap((g) =>
+    (g.wallsWithRows ?? []).map((wd) => wd.wall?.wallOrigin).filter(Boolean)
+  );
   let eid = 1;
   const dataLines = [];
   const E  = (str) => { const id = eid++; dataLines.push(`#${id}=${str};`); return id; };
@@ -862,7 +885,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const pB  = Math.max(1, pen.breedte ?? 400);
         const pD  = Math.max(1, pen.diepte  ?? 150);
         const pH  = Math.max(1, pen.hoogte  ?? 2000);
-        const depthCenter = wallThickness + pD / 2;
+        const depthCenter = getExteriorDepth(rwo, pD, allWallOrigins);
         const [wx, wy, wz] = groupToWorld(pX + pB / 2, depthCenter, 0);
         const placePt = PT(wx, wy, wz);
         const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);

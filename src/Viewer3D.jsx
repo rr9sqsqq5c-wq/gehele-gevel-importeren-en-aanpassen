@@ -68,18 +68,38 @@ function getBrickPos(wall, pieceStart, pieceLen, rowY, steenH, brickD, upAxis = 
   };
 }
 
-function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis) {
+function getOutsideFaceInfo(rwo, allWalls) {
+  const axis = rwo.thicknessAxis;
+  const tStart = rwo.thicknessStart;
+  const tEnd = rwo.thicknessEnd ?? rwo.thicknessStart + 200;
+  const wallsOnAxis = (allWalls ?? []).filter((w) => w.wallOrigin?.thicknessAxis === axis);
+  const buildingMin = wallsOnAxis.length
+    ? Math.min(...wallsOnAxis.map((w) => w.wallOrigin.thicknessStart))
+    : tStart;
+  const buildingMax = wallsOnAxis.length
+    ? Math.max(...wallsOnAxis.map((w) => w.wallOrigin.thicknessEnd ?? w.wallOrigin.thicknessStart + 200))
+    : tEnd;
+  const distToMin = tStart - buildingMin;
+  const distToMax = buildingMax - tEnd;
+  if (distToMin <= distToMax) {
+    return { outsidePos: tStart, outsideDir: -1 };
+  }
+  return { outsidePos: tEnd, outsideDir: +1 };
+}
+
+function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls) {
   if (!rwo) return [];
   const pX = penant.x ?? 0;
   const pB = Math.max(1, penant.breedte ?? 400);
   const pD = Math.max(1, penant.diepte ?? 150);
   const pH = Math.max(1, penant.hoogte ?? 2000);
-  const wallThickness = Math.max(50, Math.abs((rwo.thicknessEnd ?? rwo.thicknessStart + 200) - rwo.thicknessStart));
+
+  const { outsidePos, outsideDir } = getOutsideFaceInfo(rwo, allWalls);
 
   const ifc = { x: 0, y: 0, z: 0 };
   ifc[rwo.lengthAxis]    = groupMinX + pX + pB / 2;
   ifc[rwo.heightAxis]    = groupMinH + pH / 2;
-  ifc[rwo.thicknessAxis] = rwo.thicknessStart + wallThickness + pD / 2;
+  ifc[rwo.thicknessAxis] = outsidePos + outsideDir * pD / 2;
 
   const dims = { x: 10, y: 10, z: 10 };
   dims[rwo.lengthAxis]    = pB;
@@ -92,10 +112,10 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis) {
   }];
 }
 
-function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis }) {
+function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, allWalls }) {
   const boxes = useMemo(
-    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis),
-    [penant, rwo, groupMinX, groupMinH, upAxis]
+    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls),
+    [penant, rwo, groupMinX, groupMinH, upAxis, allWalls]
   );
   if (!boxes.length) return null;
   return (
@@ -524,6 +544,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
               groupMinH={groupMinH}
               groupColor={settings?.color ?? '#6366f1'}
               upAxis={upAxis}
+              allWalls={walls}
             />
           ));
         })}
