@@ -434,59 +434,108 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             (() => {
               const brickDepth = groupSettings?.brickDepth ?? 20;
               const stoot = mat.stoot ?? 10;
-              const panelVoorzijde = Math.max(0, pB - stoot - brickDepth);
-              const CSW = 600; const CSH = 160;
-              const csPad = 40;
-              const depthScale = Math.min(80, (CSW - 2 * csPad) * 0.12);
-              const frontScale = (CSW - 2 * csPad - 2 * depthScale) / pB;
-              const wallThick = 20;
-              const lSideX = csPad;
-              const frontStartX = csPad + depthScale;
-              const frontEndX = frontStartX + pB * frontScale;
-              const rSideX = frontEndX;
-              const cyMid = 60;
-              const cyTop = cyMid - wallThick / 2;
-              const cyBot = cyMid + wallThick / 2;
-              const stootW = stoot * frontScale;
-              const bdW = brickDepth * frontScale;
-              const panelW = panelVoorzijde * frontScale;
-              const panelStartX = frontStartX + stootW;
+              const hpD = (p.hoekprofiel?.enabled !== false) ? (p.hoekprofiel?.dikte ?? 2) : 0;
+              const zijPaneel = pD + stoot;
+
+              const CSW = 680; const CSH = 260;
+              const pad = { t: 38, b: 50, l: 60, r: 60 };
+              const drawW = CSW - pad.l - pad.r;
+              const drawH = CSH - pad.t - pad.b;
+
+              const scH = drawH / (brickDepth + 8 + zijPaneel + 10);
+              const scW = drawW / (brickDepth + 8 + pB + 8 + brickDepth);
+              const sc2 = Math.min(scH, scW);
+
+              const bd2  = brickDepth * sc2;
+              const sv2  = stoot * sc2;
+              const pT   = 8 * sc2;
+              const pB2  = pB * sc2;
+              const pD2  = pD * sc2;
+              const zij2 = zijPaneel * sc2;
+              const hp2  = hpD * sc2;
+
+              const cx = CSW / 2;
+              const buitenY = pad.t + bd2;
+              const fpTopY  = buitenY;
+              const fpBotY  = fpTopY + pT;
+              const sideBot = fpBotY + zij2;
+              const gevelY  = sideBot;
+
+              const fpL = cx - pB2 / 2;
+              const fpR = cx + pB2 / 2;
+
+              const lPanelR = fpL;
+              const lPanelL = fpL - pT;
+              const lStripL = lPanelL - bd2;
+
+              const rPanelL = fpR;
+              const rPanelR = fpR + pT;
+              const rStripR = rPanelR + bd2;
+
+              const svgTop = pad.t - bd2 - 4;
+
               svgs.push(
                 <svg key={`cs-${p.id ?? idx}`} width={CSW} height={CSH}
                   viewBox={`0 0 ${CSW} ${CSH}`}
                   style={{ background: '#fff', border: '1px solid #93c5fd', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', display: 'block' }}
                   xmlns="http://www.w3.org/2000/svg">
-                  <text x={csPad} y={16} fontSize={9.5} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">
-                    Penant {idx + 1} — dwarsdoorsnede voorzijde (bovenaanzicht)
+
+                  <text x={cx} y={16} textAnchor="middle" fontSize={9.5} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">
+                    {`Penant ${idx + 1} — dwarsdoorsnede U-vorm (bovenaanzicht)`}
                   </text>
-                  <rect x={lSideX} y={cyTop} width={depthScale} height={wallThick} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
-                  <text x={lSideX + depthScale / 2} y={cyMid + 1} textAnchor="middle" dominantBaseline="middle" fontSize={6} fill="#0369a1" fontFamily="Arial, sans-serif">zij ({mm(pD)})</text>
-                  <rect x={frontStartX} y={cyTop} width={pB * frontScale} height={wallThick} fill="#f1f5f9" stroke="#1e3a5f" strokeWidth={1.2} />
-                  <rect x={frontStartX} y={cyTop} width={stootW} height={wallThick} fill="none" stroke="#f59e0b" strokeWidth={1} strokeDasharray="3,2" />
-                  <text x={frontStartX + stootW / 2} y={cyMid + 1} textAnchor="middle" dominantBaseline="middle" fontSize={5} fill="#b45309" fontFamily="Arial, sans-serif">sv</text>
-                  <rect x={panelStartX} y={cyTop + 2} width={panelW} height={wallThick - 4} fill="#dbeafe" stroke="#3b82f6" strokeWidth={1} />
-                  <text x={panelStartX + panelW / 2} y={cyMid + 1} textAnchor="middle" dominantBaseline="middle" fontSize={6} fill="#1d4ed8" fontFamily="Arial, sans-serif">paneel</text>
-                  <rect x={frontEndX - bdW} y={cyTop} width={bdW} height={wallThick} fill="none" stroke="#ef4444" strokeWidth={1} strokeDasharray="3,2" />
-                  <text x={frontEndX - bdW / 2} y={cyMid + 1} textAnchor="middle" dominantBaseline="middle" fontSize={5} fill="#b91c1c" fontFamily="Arial, sans-serif">bd</text>
-                  <rect x={rSideX} y={cyTop} width={depthScale} height={wallThick} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
-                  <text x={rSideX + depthScale / 2} y={cyMid + 1} textAnchor="middle" dominantBaseline="middle" fontSize={6} fill="#0369a1" fontFamily="Arial, sans-serif">zij ({mm(pD)})</text>
-                  <line x1={frontStartX} y1={cyBot + 10} x2={frontEndX} y2={cyBot + 10} stroke="#475569" strokeWidth={1} />
-                  <line x1={frontStartX} y1={cyBot + 6} x2={frontStartX} y2={cyBot + 14} stroke="#475569" strokeWidth={1} />
-                  <line x1={frontEndX} y1={cyBot + 6} x2={frontEndX} y2={cyBot + 14} stroke="#475569" strokeWidth={1} />
-                  <text x={(frontStartX + frontEndX) / 2} y={cyBot + 22} textAnchor="middle" fontSize={8} fill="#475569" fontFamily="Arial, sans-serif">pB = {mm(pB)} mm (strippen)</text>
-                  <line x1={panelStartX} y1={cyBot + 32} x2={panelStartX + panelW} y2={cyBot + 32} stroke="#3b82f6" strokeWidth={1} />
-                  <line x1={panelStartX} y1={cyBot + 28} x2={panelStartX} y2={cyBot + 36} stroke="#3b82f6" strokeWidth={1} />
-                  <line x1={panelStartX + panelW} y1={cyBot + 28} x2={panelStartX + panelW} y2={cyBot + 36} stroke="#3b82f6" strokeWidth={1} />
-                  <text x={panelStartX + panelW / 2} y={cyBot + 44} textAnchor="middle" fontSize={8} fill="#1d4ed8" fontFamily="Arial, sans-serif">
-                    {`paneel = ${mm(panelVoorzijde)} mm (pB ${mm(pB)} − sv ${mm(stoot)} − bd ${mm(brickDepth)})`}
+                  <text x={cx} y={27} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
+                    {`Voorzijde paneel = pB = ${mm(pB)} mm  ·  Zijpaneel = pD ${mm(pD)} + stootvoeg ${mm(stoot)} = ${mm(zijPaneel)} mm  ·  Strip dikte = ${mm(brickDepth)} mm`}
                   </text>
-                  <g transform={`translate(${csPad}, ${CSH - 22})`}>
-                    <rect x={0} y={0} width={10} height={7} fill="#dbeafe" stroke="#3b82f6" strokeWidth={0.5} />
-                    <text x={13} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">Paneel voorzijde</text>
-                    <rect x={100} y={0} width={10} height={7} fill="none" stroke="#f59e0b" strokeWidth={1} strokeDasharray="3,2" />
-                    <text x={113} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`Stootvoeg (${mm(stoot)} mm)`}</text>
-                    <rect x={230} y={0} width={10} height={7} fill="none" stroke="#ef4444" strokeWidth={1} strokeDasharray="3,2" />
-                    <text x={243} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`Strip dikte/brickDepth (${mm(brickDepth)} mm)`}</text>
+
+                  <text x={cx} y={svgTop + 4} textAnchor="middle" fontSize={7} fill="#94a3b8" fontFamily="Arial, sans-serif">▲ BUITEN</text>
+                  <text x={cx} y={gevelY + 16} textAnchor="middle" fontSize={7} fill="#94a3b8" fontFamily="Arial, sans-serif">▼ GEVEL</text>
+
+                  <rect x={fpL} y={fpTopY - bd2} width={pB2} height={bd2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
+                  <rect x={fpL} y={fpTopY} width={pB2} height={pT} fill="#dbeafe" stroke="#3b82f6" strokeWidth={1.2} />
+
+                  <rect x={lStripL} y={fpTopY - bd2} width={bd2} height={bd2 + zij2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
+                  <rect x={lPanelL} y={fpTopY} width={pT} height={zij2} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                  <rect x={lPanelL} y={fpBotY + pD2} width={pT} height={sv2} fill="#fff7ed" stroke="#f59e0b" strokeWidth={0.8} strokeDasharray="2,2" />
+
+                  <rect x={rPanelL} y={fpTopY} width={pT} height={zij2} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                  <rect x={rPanelL} y={fpBotY + pD2} width={pT} height={sv2} fill="#fff7ed" stroke="#f59e0b" strokeWidth={0.8} strokeDasharray="2,2" />
+                  <rect x={rPanelR} y={fpTopY - bd2} width={bd2} height={bd2 + zij2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
+
+                  {hpD > 0 && <>
+                    <rect x={fpL - hp2} y={fpTopY} width={hp2} height={zij2} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
+                    <rect x={fpR} y={fpTopY} width={hp2} height={zij2} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
+                  </>}
+
+                  <line x1={lStripL - 2} y1={fpTopY - bd2 - 1} x2={rStripR + 2} y2={fpTopY - bd2 - 1} stroke="#d97706" strokeWidth={0.5} strokeDasharray="3,3" />
+
+                  {[
+                    [lStripL, fpTopY - bd2, rStripR, fpTopY - bd2, '#d97706', `pB_buiten = ${mm(pB + 2 * brickDepth)} mm (incl. strips)`],
+                    [fpL, fpBotY + 12, fpR, fpBotY + 12, '#3b82f6', `voorzijde paneel = ${mm(pB)} mm`],
+                    [lPanelL, gevelY + 6, rPanelR, gevelY + 6, '#1e3a5f', `buitenmaat incl. panelen = ${mm(pB + 2 * 8)} mm`],
+                  ].map(([x1, y1, x2, y2, color, label], i) => (
+                    <g key={i}>
+                      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={0.8} />
+                      <line x1={x1} y1={y1 - 3} x2={x1} y2={y1 + 3} stroke={color} strokeWidth={0.8} />
+                      <line x1={x2} y1={y1 - 3} x2={x2} y2={y1 + 3} stroke={color} strokeWidth={0.8} />
+                      <text x={(x1 + x2) / 2} y={y1 - 3} textAnchor="middle" fontSize={7} fill={color} fontFamily="Arial, sans-serif">{label}</text>
+                    </g>
+                  ))}
+
+                  <line x1={lPanelL - 2} y1={fpTopY} x2={lPanelL - 2} y2={sideBot} stroke="#1e3a5f" strokeWidth={0.8} />
+                  <line x1={lPanelL - 6} y1={fpTopY} x2={lPanelL + 2} y2={fpTopY} stroke="#1e3a5f" strokeWidth={0.8} />
+                  <line x1={lPanelL - 6} y1={sideBot} x2={lPanelL + 2} y2={sideBot} stroke="#1e3a5f" strokeWidth={0.8} />
+                  <text x={lPanelL - 8} y={(fpTopY + sideBot) / 2} textAnchor="end" dominantBaseline="middle" fontSize={7} fill="#1e3a5f" fontFamily="Arial, sans-serif" transform={`rotate(-90,${lPanelL - 8},${(fpTopY + sideBot) / 2})`}>{`pD ${mm(pD)} + sv ${mm(stoot)} = ${mm(zijPaneel)} mm`}</text>
+
+                  <line x1={lPanelL - 2} y1={fpBotY + pD2} x2={lPanelR + 2} y2={fpBotY + pD2} stroke="#f59e0b" strokeWidth={0.5} strokeDasharray="3,3" />
+                  <text x={lPanelL - 6} y={fpBotY + pD2 + sv2 / 2} textAnchor="end" dominantBaseline="middle" fontSize={6} fill="#b45309" fontFamily="Arial, sans-serif">{`sv ${mm(stoot)}`}</text>
+
+                  <g transform={`translate(18, ${CSH - 38})`}>
+                    <rect x={0} y={0} width={10} height={7} fill="#dbeafe" stroke="#3b82f6" strokeWidth={0.8} /><text x={13} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">Voorzijde paneel</text>
+                    <rect x={100} y={0} width={10} height={7} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.8} /><text x={113} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">Zijpaneel</text>
+                    <rect x={170} y={0} width={10} height={7} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} /><text x={183} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`Strip (${mm(brickDepth)} mm)`}</text>
+                    <rect x={270} y={0} width={10} height={7} fill="#fff7ed" stroke="#f59e0b" strokeWidth={0.8} strokeDasharray="2,2" /><text x={283} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`Stootvoeg ext. (${mm(stoot)} mm)`}</text>
+                    {hpD > 0 && <><rect x={420} y={0} width={10} height={7} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} /><text x={433} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`L-profiel (${mm(hpD)} mm)`}</text></>}
+                    <text x={0} y={20} fontSize={6.5} fill="#475569" fontFamily="Arial, sans-serif">{`Formules: voorzijde paneel = pB = ${mm(pB)} mm  ·  zijpaneel = pD + stootvoeg = ${mm(pD)} + ${mm(stoot)} = ${mm(zijPaneel)} mm`}</text>
                   </g>
                 </svg>
               );
