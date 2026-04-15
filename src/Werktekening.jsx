@@ -433,6 +433,30 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 <text x={ux(leftX + pD / 2)} y={uy(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={7} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${ux(leftX + pD / 2)},${uy(pH / 2)})`}>LINKERZIJDE</text>
 
                 <rect x={ux(frontX)} y={uy(pH)} width={pB * sc} height={dH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1.2} />
+                {faceData?.front && (() => {
+                  const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+                  return faceData.front.flatMap((row, ri) => {
+                    if (row.y + stripH <= 0 || row.y >= pH) return [];
+                    return row.pieces.map((pc, pi) => {
+                      const clipY1 = Math.max(row.y, 0);
+                      const clipY2 = Math.min(row.y + stripH, pH);
+                      if (clipY2 - clipY1 < 0.5) return null;
+                      const rx = ux(frontX + pc.start);
+                      const ry = uy(clipY2);
+                      const rw = pc.length * sc;
+                      const rh = (clipY2 - clipY1) * sc;
+                      return (
+                        <g key={`fs-${ri}-${pi}`}>
+                          <rect x={rx} y={ry} width={rw} height={rh} fill={brickColor(pc.label, color)} stroke="rgba(0,0,0,0.2)" strokeWidth={0.3} />
+                          {rw > 12 && rh > 5 && (
+                            <text x={rx + rw / 2} y={ry + rh / 2} textAnchor="middle" dominantBaseline="middle"
+                              fontSize={Math.min(5, rh * 0.45)} fill="#000" fontFamily="Arial, sans-serif">{pc.label}</text>
+                          )}
+                        </g>
+                      );
+                    }).filter(Boolean);
+                  });
+                })()}
                 <text x={ux(frontX + pB / 2)} y={uy(pH) - 6} textAnchor="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">VOORZIJDE</text>
 
                 <rect x={ux(rightX)} y={uy(pH)} width={pD * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
