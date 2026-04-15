@@ -399,7 +399,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             const pB = Math.max(1, p.breedte ?? 400);
             const pD = Math.max(1, p.diepte ?? 150);
             const pH = Math.max(1, p.hoogte ?? 2000);
-            const gewichtM2 = p.gewichtM2 ?? 11;
+            const gewichtM2 = p.gewichtM2 ?? 9.4;
             const maxKg = p.maxKg ?? 50;
             const omtrekM2perMM = (pB + 2 * pD) / 1e6;
             const kgPerMM = omtrekM2perMM * gewichtM2;
@@ -435,7 +435,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             (() => {
               const stoot = mat.stoot ?? 10;
               const hpD_cs = (p.hoekprofiel?.enabled !== false) ? (p.hoekprofiel?.dikte ?? 2) : 0;
-              const panelDikte_cs = groupSettings?.panelen?.dikte ?? 18;
+              const panelDikte_cs = groupSettings?.panelen?.dikte ?? 8;
               const sideClipOffset = Math.max(stoot, panelDikte_cs);
               const zijPaneel = pD + stoot;
 

@@ -723,7 +723,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     const brickColor = settings.color ?? '#a64033';
     const brickD = settings.brickDepth ?? 20;
     const material = settings.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
-    const panelDikte = settings.panelen?.dikte ?? 18;
+    const panelDikte = settings.panelen?.dikte ?? 8;
     const vis = group.layerVisibility ?? {};
     const rwo = group.refWallOrigin;
     const groupMinX = group.groupMinX ?? 0;

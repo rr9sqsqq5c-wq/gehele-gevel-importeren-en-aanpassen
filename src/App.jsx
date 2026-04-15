@@ -118,7 +118,7 @@ const GROUP_COLORS = [
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, minHoogte: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 18, gewichtM2: 11, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, minHoogte: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -306,7 +306,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
             })()}
             {(() => {
               const updP = (patch) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, ...patch } : q) });
-              const gewichtM2 = p.gewichtM2 ?? 11;
+              const gewichtM2 = p.gewichtM2 ?? 9.4;
               const maxKg = p.maxKg ?? 50;
               const pB = Math.max(1, p.breedte ?? 400);
               const pD = Math.max(1, p.diepte ?? 150);
@@ -488,7 +488,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
             </div>
             {pan.enabled && (() => {
               const brickW = (settings.material ?? DEFAULT_MATERIAL).brickWeightM2 ?? 40;
-              const panW = pan.gewichtM2 ?? 11;
+              const panW = pan.gewichtM2 ?? 9.4;
               const maxKg = pan.maxKg ?? 50;
               const totalW = Math.max(0.001, brickW + panW);
               const maxM2 = Math.round(maxKg / totalW * 100) / 100;
@@ -510,12 +510,12 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                         style={{ ...inp, width: '100%' }} />
                     </Field>
                     <Field label="Dikte mm" tip="Dikte van het basispaneel (mm). Standaard 18 mm.">
-                      <input type="number" min={1} step={1} value={pan.dikte ?? 18}
+                      <input type="number" min={1} step={1} value={pan.dikte ?? 8}
                         onChange={(e) => upd({ dikte: Number(e.target.value) })}
                         style={{ ...inp, width: '100%' }} />
                     </Field>
                     <Field label="Gewicht (kg/m²)" tip="Gewicht van het basispaneel per vierkante meter (kg/m²). Standaard 11 kg/m².">
-                      <input type="number" min={0} step={1} value={pan.gewichtM2 ?? 11}
+                      <input type="number" min={0} step={0.1} value={pan.gewichtM2 ?? 9.4}
                         onChange={(e) => upd({ gewichtM2: Number(e.target.value) })}
                         style={{ ...inp, width: '100%' }} />
                     </Field>
@@ -1230,7 +1230,7 @@ export default function App() {
       const pH = Math.max(1, p.hoogte ?? 2000);
       const frontRows = buildSymmetricFacePattern(pB, pH, mat, verband);
 
-      const panelDikte = s.panelen?.dikte ?? 18;
+      const panelDikte = s.panelen?.dikte ?? 8;
       const stoot = mat.stoot ?? 10;
       const sideClipOffset = Math.max(stoot, panelDikte);
       const clipLeft = (rows) => rows.map((row) => ({

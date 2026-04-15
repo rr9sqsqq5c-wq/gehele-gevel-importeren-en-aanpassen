@@ -71,7 +71,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
     if (!panelGroups[key]) panelGroups[key] = { width: p.width, height: p.height, count: 0, areaMM2: 0, weightKg: 0 };
     panelGroups[key].count++;
     panelGroups[key].areaMM2 += p.width * p.height;
-    const pWeight = s.panelen?.gewichtM2 ?? 11;
+    const pWeight = s.panelen?.gewichtM2 ?? 9.4;
     panelGroups[key].weightKg += (p.width * p.height / 1e6) * pWeight;
   }
 
@@ -151,7 +151,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
       penantAreaMM2 += pB * pH + 2 * pD * pH;
       const hp = p.hoekprofiel;
       if (hp?.enabled !== false) hoekprofielLengthMM += 2 * pH;
-      const gewichtM2 = p.gewichtM2 ?? 11;
+      const gewichtM2 = p.gewichtM2 ?? 9.4;
       const maxKg = p.maxKg ?? 50;
       const omtrekM2perMM = (pB + 2 * pD) / 1e6;
       const kgPerMM = omtrekM2perMM * gewichtM2;
