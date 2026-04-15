@@ -4,7 +4,7 @@ warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel } from './lib/panelization.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
 import { Werktekening } from './Werktekening.jsx';
@@ -498,6 +498,10 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 const maxKg = pan.maxKg ?? 50;
                 const totalW = Math.max(0.001, brickW + panW);
                 const maxM2 = Math.round(maxKg / totalW * 100) / 100;
+                const effPanel = computeEffectiveBasePanel(pan, brickW);
+                const effectiveH = effPanel.height;
+                const inputH = Math.max(100, pan.hoogte ?? 1200);
+                const hLimited = effectiveH < inputH;
                 return (
                   <>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
@@ -521,13 +525,15 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                           onChange={(e) => upd({ gewichtM2: Number(e.target.value) })}
                           style={{ ...inp, width: '100%' }} />
                       </Field>
-                      <Field label="Max gewicht (kg)" tip="Maximaal gewicht per paneel inclusief brickslips (kg). Bepaalt de maximale paneeloppervlakte.">
+                      <Field label="Max gewicht (kg)" tip="Maximaal gewicht per paneel inclusief brickslips (kg). Bepaalt de maximale paneeloppervlakte en paneel hoogte.">
                         <input type="number" min={1} step={5} value={pan.maxKg ?? 50}
                           onChange={(e) => upd({ maxKg: Number(e.target.value) })}
                           style={{ ...inp, width: '100%' }} />
                       </Field>
                     </div>
-                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>→ max {maxM2} m²/paneel</div>
+                    <div style={{ fontSize: 11, color: hLimited ? '#dc2626' : '#64748b', marginTop: 4 }}>
+                      → max {maxM2} m²/paneel · eff. hoogte {effectiveH} mm{hLimited ? ' (gewicht begrensd)' : ''}
+                    </div>
                   </>
                 );
               })()}
@@ -1143,7 +1149,7 @@ export default function App() {
         const { rows: facRows, groupWidth, groupHeight, groupOpenings } = facadeData;
 
         if (s.panelen?.enabled && vis.panelen !== false) {
-          const basePanel = { width: Math.max(100, s.panelen.breedte ?? 3005), height: Math.max(100, s.panelen.hoogte ?? 1200) };
+          const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40);
           const globalPieces = facRows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
           const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
           const zones = buildFacadeZones(groupWidth, groupHeight, openingsForZones);

@@ -217,3 +217,15 @@ export function computeWasteStats(allPanels, basePanel) {
   const wastePct = totalSheetArea > 0 ? Math.round((wasteArea / totalSheetArea) * 100) : 0;
   return { totalPanels: allPanels.length, fullPanels, uniqueSizes, totalUsedArea: Math.round(totalUsedArea), wastePct };
 }
+
+export function computeEffectiveBasePanel(panelen, brickWeightM2) {
+  const w = Math.max(100, panelen?.breedte ?? 3005);
+  const h = Math.max(100, panelen?.hoogte ?? 1200);
+  const maxKg = panelen?.maxKg ?? 50;
+  const panelW = panelen?.gewichtM2 ?? 11;
+  const brickW = brickWeightM2 ?? 40;
+  const totalW = Math.max(0.001, panelW + brickW);
+  const maxAreaMM2 = (maxKg / totalW) * 1e6;
+  const effectiveH = Math.min(h, Math.max(100, Math.floor(maxAreaMM2 / w)));
+  return { width: w, height: effectiveH };
+}

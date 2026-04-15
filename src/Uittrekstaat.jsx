@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel } from './lib/panelization.js';
 import { openingXRangesAtY } from './lib/geometry.js';
 
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
@@ -55,7 +55,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
 
   let panelList = [];
   if (s.panelen?.enabled) {
-    const basePanel = { width: Math.max(100, s.panelen.breedte ?? 3005), height: Math.max(100, s.panelen.hoogte ?? 1200) };
+    const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40);
     const globalPieces = rows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
     const zones = buildFacadeZones(groupWidth, groupHeight, openingsForZones);
