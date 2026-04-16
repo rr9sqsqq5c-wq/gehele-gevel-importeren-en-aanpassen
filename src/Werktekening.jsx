@@ -442,8 +442,8 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               const frontPanelW_cs = Math.max(0, pB - 2 * brickDepth);
               const innerClearW_cs = Math.max(0, frontPanelW_cs - 2 * panelDikte_cs);
 
-              const CSW = 720; const CSH = 280;
-              const pad = { t: 44, b: 56, l: 64, r: 64 };
+              const CSW = 720; const CSH = 310;
+              const pad = { t: 62, b: 56, l: 64, r: 64 };
               const drawW = CSW - pad.l - pad.r;
               const drawH = CSH - pad.t - pad.b;
 
@@ -528,6 +528,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   {/* Voorzijde strips - als LAATSTE tekenen zodat ze voor de zijstrips liggen */}
                   <rect x={lStripL} y={fpTopY - bd2} width={rStripR - lStripL} height={bd2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
 
+                  {/* Stootvoeg hoeken: naad tussen voorzijde strip en zijstrip */}
+                  <line x1={lPanelL} y1={fpTopY - bd2} x2={lPanelL} y2={fpTopY} stroke="#92400e" strokeWidth={1.4} />
+                  <line x1={rPanelR} y1={fpTopY - bd2} x2={rPanelR} y2={fpTopY} stroke="#92400e" strokeWidth={1.4} />
+
                   {/* Geen-strip zone op zijpaneel (alleen als clip offset > paneeldikte) */}
                   {clip2 > pT + 0.5 && <>
                     <rect x={lPanelL} y={fpBotY} width={pT} height={clip2 - pT} fill="#fca5a5" fillOpacity={0.4} stroke="#dc2626" strokeWidth={0.4} strokeDasharray="2,2" />
@@ -549,15 +553,15 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     </g>
                   ))}
 
-                  {/* Maatlijn: zijpaneel diepte */}
-                  <line x1={lPanelL - 2} y1={fpBotY} x2={lPanelL - 2} y2={fpBotY + pD2} stroke="#1e3a5f" strokeWidth={0.8} />
-                  <line x1={lPanelL - 6} y1={fpBotY} x2={lPanelL + 2} y2={fpBotY} stroke="#1e3a5f" strokeWidth={0.8} />
-                  <line x1={lPanelL - 6} y1={fpBotY + pD2} x2={lPanelL + 2} y2={fpBotY + pD2} stroke="#1e3a5f" strokeWidth={0.8} />
-                  <text x={lPanelL - 8} y={(fpBotY + fpBotY + pD2) / 2} textAnchor="end" dominantBaseline="middle" fontSize={7} fill="#1e3a5f" fontFamily="Arial, sans-serif" transform={`rotate(-90,${lPanelL - 8},${(fpBotY + fpBotY + pD2) / 2})`}>{`paneel = ${mm(panelDepth_cs)} mm`}</text>
+                  {/* Maatlijn: zijpaneel diepte - rechts van het rechter zijpaneel */}
+                  <line x1={rStripR + 2} y1={fpBotY} x2={rStripR + 2} y2={fpBotY + pD2} stroke="#1e3a5f" strokeWidth={0.8} />
+                  <line x1={rStripR - 2} y1={fpBotY} x2={rStripR + 6} y2={fpBotY} stroke="#1e3a5f" strokeWidth={0.8} />
+                  <line x1={rStripR - 2} y1={fpBotY + pD2} x2={rStripR + 6} y2={fpBotY + pD2} stroke="#1e3a5f" strokeWidth={0.8} />
+                  <text x={rStripR + 10} y={(fpBotY + fpBotY + pD2) / 2} textAnchor="start" dominantBaseline="middle" fontSize={7} fill="#1e3a5f" fontFamily="Arial, sans-serif" transform={`rotate(-90,${rStripR + 10},${(fpBotY + fpBotY + pD2) / 2})`}>{`paneel = ${mm(panelDepth_cs)} mm`}</text>
 
-                  {/* Maatlijn: stootvoeg */}
-                  <line x1={lPanelL - 2} y1={fpBotY + pD2} x2={lPanelR + 2} y2={fpBotY + pD2} stroke="#f59e0b" strokeWidth={0.5} strokeDasharray="3,3" />
-                  <text x={lPanelL - 6} y={fpBotY + pD2 + sv2 / 2} textAnchor="end" dominantBaseline="middle" fontSize={6} fill="#b45309" fontFamily="Arial, sans-serif">{`sv ${mm(stoot)}`}</text>
+                  {/* Maatlijn: stootvoeg - ook rechts */}
+                  <line x1={rStripR + 2} y1={fpBotY + pD2} x2={rStripR + 2} y2={fpBotY + pD2 + sv2} stroke="#f59e0b" strokeWidth={0.5} strokeDasharray="3,3" />
+                  <text x={rStripR + 6} y={fpBotY + pD2 + sv2 / 2} textAnchor="start" dominantBaseline="middle" fontSize={6} fill="#b45309" fontFamily="Arial, sans-serif">{`sv ${mm(stoot)}`}</text>
 
                   <g transform={`translate(18, ${CSH - 40})`}>
                     <rect x={0} y={0} width={10} height={7} fill="#dbeafe" stroke="#3b82f6" strokeWidth={0.8} /><text x={13} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">Voorzijde paneel</text>
