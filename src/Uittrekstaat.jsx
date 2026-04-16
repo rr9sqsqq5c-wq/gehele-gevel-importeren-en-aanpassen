@@ -285,7 +285,72 @@ function computeImportTotals(walls) {
   return { brutoMM2, openingsMM2, nettoMM2: brutoMM2 - openingsMM2, wallCount, openingCount };
 }
 
-export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose }) {
+function downloadCsv(takeoffs, totals, importTotals, filename) {
+  const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const row = (...cols) => cols.map(q).join(',');
+  const lines = [];
+
+  lines.push(row('Groep', 'Omschrijving', 'Waarde', 'Eenheid'));
+  lines.push(row('', '', '', ''));
+  lines.push(row('GEÏMPORTEERDE WANDEN', 'Aantal wanden', importTotals.wallCount, 'st'));
+  lines.push(row('GEÏMPORTEERDE WANDEN', 'Aantal sparingen', importTotals.openingCount, 'st'));
+  lines.push(row('GEÏMPORTEERDE WANDEN', 'Bruto wandoppervlak', (importTotals.brutoMM2 / 1e6).toFixed(3), 'm²'));
+  lines.push(row('GEÏMPORTEERDE WANDEN', 'Sparingenoppervlak', (importTotals.openingsMM2 / 1e6).toFixed(3), 'm²'));
+  lines.push(row('GEÏMPORTEERDE WANDEN', 'Netto wandoppervlak', (importTotals.nettoMM2 / 1e6).toFixed(3), 'm²'));
+
+  if (takeoffs.length) {
+    lines.push(row('', '', '', ''));
+    lines.push(row('TOTAAL GROEPEN', 'Bruto geveloppervlak', (totals.facadeAreaMM2 / 1e6).toFixed(3), 'm²'));
+    lines.push(row('TOTAAL GROEPEN', 'Sparingen', (totals.openingsAreaMM2 / 1e6).toFixed(3), 'm²'));
+    lines.push(row('TOTAAL GROEPEN', 'Netto geveloppervlak', (totals.netFacadeAreaMM2 / 1e6).toFixed(3), 'm²'));
+    if (totals.penantAreaMM2 > 0) lines.push(row('TOTAAL GROEPEN', 'Penant oppervlak', (totals.penantAreaMM2 / 1e6).toFixed(3), 'm²'));
+    if (totals.zetWerkAreaMM2 > 0) lines.push(row('TOTAAL GROEPEN', 'Zetwerk oppervlak', (totals.zetWerkAreaMM2 / 1e6).toFixed(3), 'm²'));
+    if (totals.panelCount > 0) {
+      lines.push(row('TOTAAL GROEPEN', 'Aantal panelen', totals.panelCount, 'st'));
+      lines.push(row('TOTAAL GROEPEN', 'Totaal paneeloppervlak', (totals.panelAreaMM2 / 1e6).toFixed(3), 'm²'));
+      lines.push(row('TOTAAL GROEPEN', 'Totaal paneelgewicht', totals.panelWeightKg.toFixed(1), 'kg'));
+    }
+    if (totals.lattenCount > 0) {
+      lines.push(row('TOTAAL GROEPEN', 'Aantal latten', totals.lattenCount, 'st'));
+      lines.push(row('TOTAAL GROEPEN', 'Totale latlengte', (totals.lattenLengthMM / 1000).toFixed(1), 'm'));
+    }
+
+    for (const to of takeoffs) {
+      lines.push(row('', '', '', ''));
+      lines.push(row(to.name, 'Bruto geveloppervlak', (to.facadeAreaMM2 / 1e6).toFixed(3), 'm²'));
+      lines.push(row(to.name, 'Sparingen', (to.openingsAreaMM2 / 1e6).toFixed(3), 'm²'));
+      lines.push(row(to.name, 'Netto geveloppervlak', (to.netFacadeAreaMM2 / 1e6).toFixed(3), 'm²'));
+      if (to.penantAreaMM2 > 0) lines.push(row(to.name, 'Penant oppervlak', (to.penantAreaMM2 / 1e6).toFixed(3), 'm²'));
+      if (to.zetWerkAreaMM2 > 0) lines.push(row(to.name, 'Zetwerk oppervlak', (to.zetWerkAreaMM2 / 1e6).toFixed(3), 'm²'));
+      const totalStrips = Object.values(to.stripCount).reduce((s, n) => s + n, 0);
+      lines.push(row(to.name, 'Steenstrips totaal', totalStrips, 'st'));
+      if (to.stripCount.Vol > 0) lines.push(row(to.name, '— Vol', to.stripCount.Vol, 'st'));
+      if (to.stripCount.Kop > 0) lines.push(row(to.name, '— Kop', to.stripCount.Kop, 'st'));
+      if (to.stripCount.Driekwart > 0) lines.push(row(to.name, '— Driekwart', to.stripCount.Driekwart, 'st'));
+      if (to.stripCount.Rest > 0) lines.push(row(to.name, '— Snijstrip (rest)', to.stripCount.Rest, 'st'));
+      if (to.stripCount.Tegel > 0) lines.push(row(to.name, '— Tegel', to.stripCount.Tegel, 'st'));
+      for (const pg of Object.values(to.panelGroups).sort((a, b) => b.count - a.count)) {
+        lines.push(row(to.name, `Paneel ${Math.round(pg.width)}x${Math.round(pg.height)} mm`, pg.count, 'st'));
+        lines.push(row(to.name, `Paneel ${Math.round(pg.width)}x${Math.round(pg.height)} oppervlak`, (pg.areaMM2 / 1e6).toFixed(3), 'm²'));
+        lines.push(row(to.name, `Paneel ${Math.round(pg.width)}x${Math.round(pg.height)} gewicht`, pg.weightKg.toFixed(1), 'kg'));
+      }
+      for (const [len, cnt] of Object.entries(to.lattenSummary).sort((a, b) => b[1] - a[1])) {
+        lines.push(row(to.name, `Lat ${(Number(len) / 1000).toFixed(3)} m`, cnt, 'st'));
+      }
+    }
+  }
+
+  const csv = '\ufeff' + lines.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filename ?? 'uittrekstaat'}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose, filename }) {
   const importTotals = useMemo(() => computeImportTotals(walls), [walls]);
 
   const takeoffs = useMemo(() => {
@@ -328,6 +393,7 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
       <div style={{ padding: '10px 16px', background: '#1e293b', color: '#f1f5f9', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <span style={{ fontWeight: 700, fontSize: 14 }}>Uittrekstaat materialen</span>
         <span style={{ fontSize: 11, color: '#94a3b8', flex: 1 }}>{importTotals.wallCount} wanden geïmporteerd · {takeoffs.length} groep{takeoffs.length !== 1 ? 'en' : ''}</span>
+        <button onClick={() => downloadCsv(takeoffs, totals, importTotals, filename ?? 'uittrekstaat')} style={{ fontSize: 11, background: '#059669', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>↓ CSV</button>
         <button onClick={printPage} style={{ fontSize: 11, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', fontWeight: 600 }}>Afdrukken</button>
       </div>
 

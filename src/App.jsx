@@ -1848,6 +1848,7 @@ export default function App() {
               walls={allWalls}
               getSettings={getSettings}
               adjacencies={adjacencies}
+              filename={ifcFileName ?? 'uittrekstaat'}
             />
           ) : null}
         </div>

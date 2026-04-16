@@ -716,6 +716,62 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     return psa;
   };
 
+  function wallIFCBBox(wall) {
+    const wo = wall.wallOrigin;
+    if (!wo) return null;
+    const mins = { x: 0, y: 0, z: 0 };
+    const maxs = { x: 0, y: 0, z: 0 };
+    mins[wo.lengthAxis] = wo.lengthStart;
+    maxs[wo.lengthAxis] = wo.lengthStart + wall.length;
+    mins[wo.heightAxis] = wo.heightStart;
+    maxs[wo.heightAxis] = wo.heightStart + wall.height;
+    const tMin = Math.min(wo.thicknessStart, wo.thicknessEnd ?? wo.thicknessStart + 200);
+    const tMax = Math.max(wo.thicknessStart, wo.thicknessEnd ?? wo.thicknessStart + 200);
+    mins[wo.thicknessAxis] = tMin;
+    maxs[wo.thicknessAxis] = tMax;
+    const norm = (v) => wo.heightAxis === 'y'
+      ? { x: v.x, y: v.z, z: v.y }
+      : { x: v.x, y: v.y, z: v.z };
+    const mn = norm(mins), mx = norm(maxs);
+    return {
+      minX: Math.min(mn.x, mx.x), maxX: Math.max(mn.x, mx.x),
+      minY: Math.min(mn.y, mx.y), maxY: Math.max(mn.y, mx.y),
+      minZ: Math.min(mn.z, mx.z), maxZ: Math.max(mn.z, mx.z),
+    };
+  }
+
+  const wallEntityIds = [];
+  const seenWallExprIDs = new Set();
+
+  for (const group of groups) {
+    for (const { wall } of (group.wallsWithRows ?? [])) {
+      if (seenWallExprIDs.has(wall.expressID)) continue;
+      seenWallExprIDs.add(wall.expressID);
+      const bb = wallIFCBBox(wall);
+      if (!bb) continue;
+      const dx = bb.maxX - bb.minX;
+      const dy = bb.maxY - bb.minY;
+      const dz = bb.maxZ - bb.minZ;
+      if (dx < 1 || dy < 1 || dz < 1) continue;
+      const placePt = PT(bb.minX + dx / 2, bb.minY + dy / 2, bb.minZ);
+      const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},$,$)`);
+      const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
+      const profAx = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
+      const prof = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(dx)},${r(dy)})`);
+      const solid = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(dz)})`);
+      const shRep = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
+      const pds = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
+      const safeName = (wall.name ?? 'Wand').replace(/'/g, "\\'");
+      const wallEnt = E(`IFCWALL(${G()},#${owH},'${safeName}',$,$,#${localPl},#${pds},$)`);
+      E(`IFCSTYLEDITEM(#${solid},(#${getStyle('#c8c8c8')}),$)`);
+      wallEntityIds.push(wallEnt);
+    }
+  }
+
+  if (wallEntityIds.length) {
+    E(`IFCRELCONTAINEDINSPATIALSTRUCTURE(${G()},#${owH},$,$,(${wallEntityIds.map(i => `#${i}`).join(',')}),#${storey})`);
+  }
+
   const allProxyIds = [];
 
   for (const group of groups) {
