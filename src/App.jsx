@@ -118,7 +118,7 @@ const GROUP_COLORS = [
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, minHoogte: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', brickslipEnabled: false, verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, minHoogte: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -151,6 +151,18 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
         <span style={{ fontWeight: 600, fontSize: 13 }}>Groep configuratie</span>
         <button onClick={onDelete} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 13 }} title="Groep verwijderen">🗑</button>
+      </div>
+
+      <div style={{ background: settings.brickslipEnabled ? '#f0fdf4' : '#fef9c3', border: `1px solid ${settings.brickslipEnabled ? '#86efac' : '#fde68a'}`, borderRadius: 6, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12, flex: 1, color: settings.brickslipEnabled ? '#15803d' : '#92400e', fontWeight: 500 }}>
+          {settings.brickslipEnabled ? '✅ Gevelbekleding actief' : '⏸ Gevelbekleding niet toegewezen'}
+        </span>
+        <button
+          onClick={() => onUpdate({ brickslipEnabled: !settings.brickslipEnabled })}
+          style={{ fontSize: 11, background: settings.brickslipEnabled ? '#ef4444' : '#16a34a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+        >
+          {settings.brickslipEnabled ? 'Uitschakelen' : '+ Gevelbekleding toewijzen'}
+        </button>
       </div>
 
       {linkedCount > 0 && (
@@ -734,6 +746,7 @@ export default function App() {
     const result = {};
     for (const group of groups) {
       const s = getSettings(group.id);
+      if (!s.brickslipEnabled) continue;
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const gAdj = adjacencies.filter((a) => group.wallIds.includes(a.wallIdA) && group.wallIds.includes(a.wallIdB));
       const rows = buildGroupPattern(walls, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND);
@@ -816,25 +829,23 @@ export default function App() {
 
       addLog('Aangrenzendheid detecteren…');
       const adj = detectAdjacencies(walls);
-      addLog(`✓ Aangrenzendheid klaar`);
+      addLog(`✓ ${adj.length} aangrenzende relaties gevonden`);
 
-      addLog('Automatisch groeperen via Agent 2…');
       _colorIdxRef.current = 0;
-      const agent2Walls = wallsToGroupFormat(walls);
-      const rawGroups = buildGroups(agent2Walls);
-      const newGroups = rawGroups.map((g) => {
+      const newGroups = walls.map((w) => {
         const gid = newGid();
         const color = nextColor();
-        initColor(gid, color, g.label);
-        return { id: gid, wallIds: sortWallsInComponent(g.wallIds, walls, adj) };
+        const label = w.name ?? `Wand #${w.expressID}`;
+        initColor(gid, color, label);
+        return { id: gid, wallIds: [w.expressID] };
       });
-      addLog(`✓ ${newGroups.length} groepen aangemaakt`);
+      addLog(`✓ ${walls.length} wanden klaar — gebruik "Auto-groeperen" om gevelelementen te groeperen`);
 
       setAllWalls(walls);
       setAdjacencies(adj);
       setGroups(newGroups);
       setSelectedWallIds(new Set());
-      setActiveGroupId(newGroups[0]?.id ?? null);
+      setActiveGroupId(null);
       setIfcFileName(file.name.replace(/\.ifc$/i, ''));
 
       try {
@@ -928,25 +939,23 @@ export default function App() {
 
       addLog('Aangrenzendheid detecteren…');
       const adj = detectAdjacencies(walls);
-      addLog(`✓ Aangrenzendheid klaar`);
+      addLog(`✓ ${adj.length} aangrenzende relaties gevonden`);
 
-      addLog('Automatisch groeperen via Agent 2…');
       _colorIdxRef.current = 0;
-      const agent2Walls = wallsToGroupFormat(walls);
-      const rawGroups = buildGroups(agent2Walls);
-      const newGroups = rawGroups.map((g) => {
+      const newGroups = walls.map((w) => {
         const gid = newGid();
         const color = nextColor();
-        initColor(gid, color, g.label);
-        return { id: gid, wallIds: sortWallsInComponent(g.wallIds, walls, adj) };
+        const label = w.name ?? `Wand #${w.expressID}`;
+        initColor(gid, color, label);
+        return { id: gid, wallIds: [w.expressID] };
       });
-      addLog(`✓ ${newGroups.length} groepen aangemaakt`);
+      addLog(`✓ ${walls.length} wanden klaar — gebruik "Auto-groeperen" om gevelelementen te groeperen`);
 
       setAllWalls(walls);
       setAdjacencies(adj);
       setGroups(newGroups);
       setSelectedWallIds(new Set());
-      setActiveGroupId(newGroups[0]?.id ?? null);
+      setActiveGroupId(null);
       setIfcFileName(pendingFile.name.replace(/\.ifc$/i, ''));
 
       try {
@@ -1029,6 +1038,90 @@ export default function App() {
     setGroups(newGroups);
     setSelectedWallIds(new Set());
     setActiveGroupId(newGroups[0]?.id ?? null);
+  }
+
+  function groupByWindDirection() {
+    if (!allWalls.length) return;
+    pushHistory(groups);
+
+    const DIRS = [
+      { key: 'N', label: 'Noord', color: '#3b82f6' },
+      { key: 'O', label: 'Oost',  color: '#10b981' },
+      { key: 'Z', label: 'Zuid',  color: '#f59e0b' },
+      { key: 'W', label: 'West',  color: '#ef4444' },
+    ];
+
+    const axisCounts = { x: 0, y: 0, z: 0 };
+    for (const w of allWalls) {
+      const ha = w.wallOrigin?.heightAxis;
+      if (ha) axisCounts[ha] = (axisCounts[ha] ?? 0) + 1;
+    }
+    const heightAxis = Object.entries(axisCounts).sort((a, b) => b[1] - a[1])[0][0];
+
+    let planAxisNS, planAxisEW;
+    if (heightAxis === 'z') {
+      planAxisNS = 'y';
+      planAxisEW = 'x';
+    } else if (heightAxis === 'y') {
+      planAxisNS = 'z';
+      planAxisEW = 'x';
+    } else {
+      planAxisNS = 'y';
+      planAxisEW = 'z';
+    }
+
+    const wallsNS = allWalls.filter(w => w.wallOrigin?.thicknessAxis === planAxisNS);
+    const wallsEW = allWalls.filter(w => w.wallOrigin?.thicknessAxis === planAxisEW);
+
+    const getAxisCenter = (walls) => {
+      if (!walls.length) return 0;
+      return walls.reduce((s, w) => {
+        const wo = w.wallOrigin;
+        const start = wo[`thicknessStart`];
+        const end = wo[`thicknessEnd`] ?? start;
+        return s + (start + end) / 2;
+      }, 0) / walls.length;
+    };
+
+    const centerNS = getAxisCenter(wallsNS);
+    const centerEW = getAxisCenter(wallsEW);
+
+    function wallDirection(w) {
+      const wo = w.wallOrigin;
+      if (!wo) return 'N';
+      const ta = wo.thicknessAxis;
+      const tStart = wo.thicknessStart;
+      const tEnd = wo.thicknessEnd ?? tStart;
+      const tCenter = (tStart + tEnd) / 2;
+      if (ta === planAxisNS) {
+        if (heightAxis === 'y') {
+          return tCenter <= centerNS ? 'N' : 'Z';
+        }
+        return tCenter >= centerNS ? 'N' : 'Z';
+      }
+      if (ta === planAxisEW) {
+        return tCenter >= centerEW ? 'O' : 'W';
+      }
+      return null;
+    }
+
+    const buckets = { N: [], O: [], Z: [], W: [] };
+    for (const w of allWalls) {
+      const dir = wallDirection(w);
+      if (dir) buckets[dir].push(w.expressID);
+    }
+
+    const newGroups = [];
+    for (const { key, label, color } of DIRS) {
+      if (!buckets[key].length) continue;
+      const gid = newGid();
+      initColor(gid, color, `Gevel ${label}`);
+      newGroups.push({ id: gid, wallIds: sortWallsInComponent(buckets[key], allWalls, adjacencies) });
+    }
+
+    setGroups(newGroups);
+    setSelectedWallIds(new Set());
+    setActiveGroupId(null);
   }
 
   function createGroup() {
@@ -1597,6 +1690,11 @@ export default function App() {
               )}
 
               <div style={{ padding: '8px 10px', borderBottom: '1px solid #e2e8f0', background: '#fff', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <Tooltip block text={"Groepeert alle buitenwanden per windrichting: Noord, Oost, Zuid, West.\nElke gevel krijgt een aparte groep op basis van de oriëntatie van de muur.\nGebruik dit als startpunt voor gevelbekleding per gevelzijde."}>
+                  <button onClick={groupByWindDirection} style={btn('#0891b2')}>
+                    🧭 Groeperen op windrichting (N/O/Z/W)
+                  </button>
+                </Tooltip>
                 <Tooltip block text={"Detecteert automatisch welke wanden aan elkaar grenzen en maakt voor elke verbonden groep een aparte groep.\nHandig als een heel gebouw in één keer gegroepeerd moet worden."}>
                   <button onClick={autoGroup} style={btn('#6366f1')}>
                     🔗 Auto-groeperen op aangrenzendheid

@@ -1,11 +1,12 @@
 import { getOpeningPoly } from './pattern.js';
 let _api = null;
-let _loading = null;
+let _initPromise = null;
 let _cachedModel = null;
 
-function addScript(src) {
+function _addScript(src) {
   return new Promise((resolve, reject) => {
-    const s = document.createElement("script");
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement('script');
     s.src = src;
     s.onload = resolve;
     s.onerror = () => reject(new Error(`Kon ${src} niet laden`));
@@ -13,23 +14,24 @@ function addScript(src) {
   });
 }
 
-async function loadWebIFC() {
-  if (window.WebIFC) return;
-  await addScript(`/web-ifc-api-iife.js`);
-  if (!window.WebIFC) throw new Error("WebIFC niet beschikbaar na laden");
+async function _initializeWebIFC() {
+  await _addScript('/web-ifc-api-iife.js');
+  const IFC = window.WebIFC;
+  if (!IFC) throw new Error('WebIFC niet beschikbaar na laden');
+  if (!_api) {
+    _api = new IFC.IfcAPI();
+    _api.SetWasmPath('/');
+    await _api.Init();
+  }
 }
 
 export function warmupWebIFC() {
-  if (!_loading) _loading = loadWebIFC();
+  if (!_initPromise) _initPromise = _initializeWebIFC();
 }
 
 export async function getApi() {
-  if (!_loading) _loading = loadWebIFC();
-  await _loading;
-  if (!_api) {
-    _api = new window.WebIFC.IfcAPI();
-    await _api.Init((path) => `/${path}`);
-  }
+  if (!_initPromise) _initPromise = _initializeWebIFC();
+  await _initPromise;
   return { IFC: window.WebIFC, api: _api };
 }
 
@@ -1004,10 +1006,95 @@ function getWallOriginFromMesh(api, modelID, wID) {
   }
 }
 
+function extractThicknessFromName(name) {
+  const typePart = name.replace(/:\d+\s*$/, '');
+  const numbers = typePart.match(/(\d+(?:\.\d+)?)/g);
+  if (!numbers || numbers.length === 0) return null;
+  return parseFloat(numbers[numbers.length - 1]);
+}
+
+function findExternalWallIDsFromText(text, minThicknessMm = 80) {
+  const lines = text.split('\n');
+  const externalPropIDs = new Set();
+  const psetToProps = {};
+  const relMap = {};
+  const wallThickness = {};
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const idMatch = trimmed.match(/^#(\d+)=/);
+    if (!idMatch) continue;
+    const id = idMatch[1];
+
+    if (/IFCWALL(STANDARDCASE)?\(/.test(trimmed)) {
+      const nameMatch = trimmed.match(/IFCWALL(?:STANDARDCASE)?\s*\(\s*'[^']*'\s*,\s*[^,]*,\s*'([^']*)'/);
+      if (nameMatch) {
+        const thickness = extractThicknessFromName(nameMatch[1]);
+        wallThickness[id] = thickness;
+      }
+    }
+
+    if (trimmed.includes("'IsExternal'") && trimmed.includes('.T.')) {
+      externalPropIDs.add(id);
+    }
+    if (trimmed.includes("'Pset_WallCommon'") && trimmed.includes('IFCPROPERTYSET')) {
+      const refs = trimmed.match(/#(\d+)/g)?.map(r => r.slice(1)).filter(r => r !== id) ?? [];
+      if (refs.length) {
+        psetToProps[id] = refs;
+      }
+    }
+    if (trimmed.startsWith('#') && trimmed.includes('IFCRELDEFINESBYPROPERTIES')) {
+      const psetRef = trimmed.match(/,#(\d+)\s*\)\s*;/)?.[1];
+      const objsMatch = trimmed.match(/,\(([^)]+)\),#\d+\s*\)\s*;/);
+      if (psetRef && objsMatch) {
+        const wallRefs = objsMatch[1].match(/#(\d+)/g)?.map(r => r.slice(1)) ?? [];
+        if (!relMap[psetRef]) relMap[psetRef] = [];
+        relMap[psetRef].push(...wallRefs);
+      }
+    }
+  }
+
+  const externalWallIDs = new Set();
+  for (const [psetId, propIds] of Object.entries(psetToProps)) {
+    if (propIds.some(pid => externalPropIDs.has(pid))) {
+      const wallRefs = relMap[psetId] ?? [];
+      wallRefs.forEach(wid => {
+        const thickness = wallThickness[wid];
+        if (thickness == null || thickness >= minThicknessMm) {
+          externalWallIDs.add(Number(wid));
+        }
+      });
+    }
+  }
+  return externalWallIDs;
+}
+
+function findOuterWallIDsFromText(text) {
+  const lines = text.split('\n');
+  const outerWallIDs = new Set();
+  for (const line of lines) {
+    const t = line.trim();
+    const idM = t.match(/^#(\d+)=/);
+    if (!idM) continue;
+    if (!/IFCWALL(STANDARDCASE)?\(/.test(t)) continue;
+    const nameMatch = t.match(/IFCWALL(?:STANDARDCASE)?\s*\(\s*'[^']*'\s*,\s*[^,]*,\s*'([^']*)'/);
+    if (!nameMatch) continue;
+    const typePart = nameMatch[1].replace(/^Basic Wall:\s*/i, '');
+    if (/^21[._]/.test(typePart)) {
+      outerWallIDs.add(Number(idM[1]));
+    }
+  }
+  return outerWallIDs;
+}
+
 export async function loadWalls(file, onProgress = null) {
   const { IFC, api } = await getApi();
 
   const buffer = await file.arrayBuffer();
+  const text = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
+  const outerWallIDs = findOuterWallIDsFromText(text);
+  const externalWallIDs = outerWallIDs.size > 0 ? outerWallIDs : findExternalWallIDsFromText(text);
+
   const data = new Uint8Array(buffer);
   const modelID = api.OpenModel(data, {});
 
@@ -1062,13 +1149,17 @@ export async function loadWalls(file, onProgress = null) {
       }
     }
 
-    onProgress?.({ phase: 'init', total: allWallIDs.length });
+    const filteredWallIDs = externalWallIDs.size > 0
+      ? allWallIDs.filter(id => externalWallIDs.has(id))
+      : allWallIDs;
+
+    onProgress?.({ phase: 'init', total: filteredWallIDs.length });
 
     const rawWalls = [];
     let processed = 0;
     let lastYield = Date.now();
 
-    for (const wID of allWallIDs) {
+    for (const wID of filteredWallIDs) {
       try {
         const bb = getBBox(api, modelID, wID);
         if (!bb) continue;
@@ -1128,7 +1219,7 @@ export async function loadWalls(file, onProgress = null) {
       } catch { }
 
       processed++;
-      onProgress?.({ phase: 'wanden', current: processed, total: allWallIDs.length });
+      onProgress?.({ phase: 'wanden', current: processed, total: filteredWallIDs.length });
       const now = Date.now();
       if (now - lastYield > 50) {
         lastYield = now;
@@ -1155,6 +1246,7 @@ export function convertToAppWall(w) {
     storey: w.storey ?? null,
     length: dimensions.length,
     height: dimensions.height,
+    rotation: w.rotation ?? 0,
     openings: [],
     wallOrigin: {
       lengthAxis: axes.lengthAxis,
