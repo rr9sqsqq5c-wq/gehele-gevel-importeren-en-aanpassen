@@ -1765,7 +1765,7 @@ export default function App() {
                               );
                             })}
                             <div style={{ padding: '5px 10px', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                              {groups.filter(og => og.id !== g.id).map(og => {
+                              {[...groups].filter(og => og.id !== g.id).sort((a, b) => b.wallIds.length - a.wallIds.length).slice(0, 8).map(og => {
                                 const os = getSettings(og.id);
                                 return (
                                   <button key={og.id} onClick={() => {
