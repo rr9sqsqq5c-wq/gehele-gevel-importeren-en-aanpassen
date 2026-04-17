@@ -340,14 +340,25 @@ function CameraInit({ walls, upAxis }) {
     let minY = Infinity, maxY = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
 
+    let validBoxCount = 0;
     for (const wall of walls) {
       const box = getWallBox(wall, upAxis);
       if (!box) continue;
+      validBoxCount++;
       const [px, py, pz] = box.pos;
       const [sx, sy, sz] = box.size;
       minX = Math.min(minX, px - sx / 2); maxX = Math.max(maxX, px + sx / 2);
       minY = Math.min(minY, py - sy / 2); maxY = Math.max(maxY, py + sy / 2);
       minZ = Math.min(minZ, pz - sz / 2); maxZ = Math.max(maxZ, pz + sz / 2);
+    }
+
+    console.log('[Viewer3D CameraInit] walls:', walls.length, 'validBoxes:', validBoxCount, 'upAxis:', upAxis);
+
+    if (validBoxCount === 0 || !isFinite(minX)) {
+      console.warn('[Viewer3D CameraInit] geen geldige muurboxen — camera op standaardpositie');
+      camera.position.set(10, 10, 10);
+      camera.lookAt(0, 0, 0);
+      return;
     }
 
     const cx = (minX + maxX) / 2;
@@ -356,6 +367,8 @@ function CameraInit({ walls, upAxis }) {
     const spanX = maxX - minX;
     const spanZ = maxZ - minZ;
     const spanAll = Math.max(spanX, maxY - minY, spanZ, 0.1);
+
+    console.log('[Viewer3D CameraInit] center:', cx, cy, cz, 'span:', spanAll);
 
     camera.position.set(
       cx + spanX * 0.6,
@@ -409,6 +422,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
       minY = Math.min(minY, py - sy / 2); maxY = Math.max(maxY, py + sy / 2);
       minZ = Math.min(minZ, pz - sz / 2); maxZ = Math.max(maxZ, pz + sz / 2);
     }
+    if (!isFinite(minX)) return { center: [0, 0, 0], span: 10 };
     return {
       center: [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2],
       span: Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1),
