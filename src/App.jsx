@@ -5,6 +5,7 @@ import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loa
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent, buildGroups, mergeGroups, splitGroup, wallsToGroupFormat } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern, computeFacadeZone } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel } from './lib/panelization.js';
+import { loadClashElements, detectClashesForGroup, buildClashExclusions } from './lib/clash.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
 import { Werktekening } from './Werktekening.jsx';
@@ -819,6 +820,9 @@ export default function App() {
   const [showGridLines, setShowGridLines] = useState(true);
   const [showCenterLines, setShowCenterLines] = useState(false);
   const [pakketdikte, setPakketdikte] = useState({ tolerantie: 5, achterconstructie: 40, paneel: 8, lijm: 3, steenstrip: 15 });
+  const [clashFiles, setClashFiles] = useState([]);
+  const [clashResults, setClashResults] = useState({});
+  const [clashLoading, setClashLoading] = useState(false);
   const { get: getSettings, update: updateSettings, initColor, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
@@ -841,6 +845,10 @@ export default function App() {
   const buildingCorners = useMemo(() =>
     groups.length >= 2 ? detectBuildingCorners(groups, wallMap) : {},
   [groups, wallMap]);
+
+  const allClashElements = useMemo(() =>
+    clashFiles.flatMap(f => f.elements),
+  [clashFiles]);
 
   const facadeZones = useMemo(() => {
     const result = {};
@@ -899,8 +907,32 @@ export default function App() {
           }
         }
       }
+      const clashExcls = buildClashExclusions(clashResults[group.id] ?? [], s.zetwerk);
+      const wallsForPattern = clashExcls.length
+        ? wallsWithCorners.map(w => {
+            if (!w.wallOrigin) return w;
+            const groupMinX = Math.min(...wallsWithCorners.filter(x => x.wallOrigin).map(x => x.wallOrigin.lengthStart));
+            const groupMinH2 = Math.min(...wallsWithCorners.filter(x => x.wallOrigin).map(x => x.wallOrigin.heightStart));
+            const gc2 = buildingCorners[group.id];
+            const leftExt = gc2?.leftCorner ? pakketdikteTotal : 0;
+            const wStart = w.wallOrigin.lengthStart - groupMinX + leftExt;
+            const wEnd = wStart + w.length;
+            const wHStart = w.wallOrigin.heightStart - groupMinH2;
+            const extraOps = clashExcls
+              .filter(ex => ex.x < wEnd && ex.x + ex.width > wStart && ex.y < wHStart + w.height && ex.y + ex.height > wHStart)
+              .map(ex => ({
+                x: Math.max(0, ex.x - wStart),
+                y: Math.max(0, ex.y - wHStart),
+                breedte: Math.min(wEnd, ex.x + ex.width) - Math.max(wStart, ex.x),
+                hoogte:  Math.min(wHStart + w.height, ex.y + ex.height) - Math.max(wHStart, ex.y),
+                type: 'clash',
+                label: ex.label,
+              }));
+            return extraOps.length ? { ...w, openings: [...(w.openings ?? []), ...extraOps] } : w;
+          })
+        : wallsWithCorners;
       const gAdj = adjacencies.filter((a) => group.wallIds.includes(a.wallIdA) && group.wallIds.includes(a.wallIdB));
-      const rows = buildGroupPattern(wallsWithCorners, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND);
+      const rows = buildGroupPattern(wallsForPattern, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND);
       if (s.maxHoogte !== null && s.maxHoogte > 0) {
         const groupMinH = Math.min(...wallsWithCorners.map((w) => w.wallOrigin?.heightStart ?? 0));
         for (const wall of wallsWithCorners) {
@@ -1071,6 +1103,55 @@ export default function App() {
     deleteFileHandle().catch(() => {});
     setSavedFileInfo(null);
     setSavedHandle(null);
+  }
+
+  async function handleLoadClashFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setClashLoading(true);
+    try {
+      const elements = await loadClashElements(file);
+      const entry = { name: file.name, elements };
+      setClashFiles(prev => [...prev, entry]);
+      const newResults = {};
+      for (const group of groups) {
+        const walls = group.wallIds.map(id => wallMap[id]).filter(Boolean);
+        const clashes = detectClashesForGroup(group, walls, elements, pakketdikteTotal, buildingCorners);
+        if (clashes.length) newResults[group.id] = clashes;
+      }
+      setClashResults(prev => {
+        const merged = { ...prev };
+        for (const [gid, clashes] of Object.entries(newResults)) {
+          merged[gid] = [...(merged[gid] ?? []), ...clashes];
+        }
+        return merged;
+      });
+    } catch (err) {
+      alert(`Fout bij laden clash-bestand: ${err.message}`);
+    } finally {
+      setClashLoading(false);
+    }
+  }
+
+  function toggleClash(groupId, idx, accepted) {
+    setClashResults(prev => {
+      const list = [...(prev[groupId] ?? [])];
+      list[idx] = { ...list[idx], accepted };
+      return { ...prev, [groupId]: list };
+    });
+  }
+
+  function acceptAllClashes(groupId) {
+    setClashResults(prev => ({
+      ...prev,
+      [groupId]: (prev[groupId] ?? []).map(c => ({ ...c, accepted: true })),
+    }));
+  }
+
+  function removeClashFile(name) {
+    setClashFiles(prev => prev.filter(f => f.name !== name));
+    setClashResults({});
   }
 
   async function confirmImport() {
@@ -1685,6 +1766,15 @@ export default function App() {
         )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {allWalls.length > 0 && (
+            <Tooltip text={"Laad een extra IFC-bestand (constructief model, architectuurmodel) voor clash-detectie.\nBalkon-platen, balken en kolommen die de gevel kruisen worden automatisch gedetecteerd en als uitsluitingszone toegevoegd."}>
+              <label style={{ background: clashLoading ? '#78350f' : '#b45309', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: clashLoading ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                {clashLoading ? '⏳ Laden…' : '🔍 Extra IFC (clashes)'}
+                {clashFiles.length > 0 && <span style={{ background: '#fbbf24', color: '#78350f', borderRadius: 10, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>{clashFiles.length}</span>}
+                <input type="file" accept=".ifc" style={{ display: 'none' }} onChange={handleLoadClashFile} disabled={clashLoading} />
+              </label>
+            </Tooltip>
+          )}
           <Tooltip text={"Maakt de laatste groepering-actie ongedaan.\nSneltoets: Ctrl+Z"}>
             <button onClick={undo} disabled={groupsHistory.length === 0} style={{ background: '#334155', color: groupsHistory.length === 0 ? '#64748b' : '#f1f5f9', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: groupsHistory.length === 0 ? 'default' : 'pointer', opacity: groupsHistory.length === 0 ? 0.5 : 1 }}>
               ↩ Undo
@@ -1879,6 +1969,7 @@ export default function App() {
                           <span style={{ width: 10, height: 10, borderRadius: 2, background: s.color, display: 'inline-block', flexShrink: 0 }} />
                           <span style={{ flex: 1, fontSize: 12, fontWeight: isActive ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
                           {cornerTag && <span title={`Gebouwhoeken gedetecteerd — uitsteek ${pakketdikteTotal}mm`} style={{ fontSize: 9, color: '#0891b2', flexShrink: 0 }}>{cornerTag}</span>}
+                          {(clashResults[g.id]?.length > 0) && <span title={`${clashResults[g.id].length} clash(es) gedetecteerd`} style={{ fontSize: 9, background: clashResults[g.id].some(c => c.accepted === null) ? '#f97316' : '#94a3b8', color: '#fff', borderRadius: 8, padding: '0 4px', flexShrink: 0 }}>🔍{clashResults[g.id].length}</span>}
                           <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>{g.wallIds.length} wand{g.wallIds.length !== 1 ? 'en' : ''}</span>
                           <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>{isActive ? '▲' : '▼'}</span>
                         </div>
@@ -1914,6 +2005,48 @@ export default function App() {
                                     {zone.openings.length > 0 && <><span>Sparingen</span><span style={{ fontWeight: 600 }}>{zone.openings.length}× ({zone.openingAreaM2.toFixed(2)} m²)</span></>}
                                     {(gc2?.leftCorner || gc2?.rightCorner) && <><span>Hoekuitsteek</span><span style={{ fontWeight: 600 }}>{[gc2.leftCorner && '◄', gc2.rightCorner && '►'].filter(Boolean).join('')} {pakketdikteTotal}mm</span></>}
                                   </div>
+                                </div>
+                              );
+                            })()}
+                            {(() => {
+                              const groupClashes = clashResults[g.id] ?? [];
+                              if (!groupClashes.length) return null;
+                              const pendingCount = groupClashes.filter(c => c.accepted === null).length;
+                              const acceptedCount = groupClashes.filter(c => c.accepted === true).length;
+                              return (
+                                <div style={{ margin: '4px 10px', background: '#fff7ed', border: '1px solid #fb923c', borderRadius: 4, padding: '5px 8px', fontSize: 10, color: '#7c2d12' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                    <span style={{ fontWeight: 600 }}>🔍 Clashes ({groupClashes.length})</span>
+                                    {pendingCount > 0 && <span style={{ color: '#ea580c' }}>{pendingCount} onbeoordeeld</span>}
+                                    {pendingCount > 0 && (
+                                      <button onClick={() => acceptAllClashes(g.id)}
+                                        style={{ marginLeft: 'auto', fontSize: 9, background: '#f97316', color: '#fff', border: 'none', borderRadius: 3, padding: '1px 5px', cursor: 'pointer' }}>
+                                        Alles accepteren
+                                      </button>
+                                    )}
+                                  </div>
+                                  {groupClashes.map((c, idx) => (
+                                    <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 4, padding: '3px 0', borderTop: idx > 0 ? '1px solid #fed7aa' : 'none' }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#9a3412' }} title={c.name}>{c.name}</div>
+                                        <div style={{ color: '#c2410c', fontSize: 9 }}>{c.label} · {Math.round(c.zoneWidth)}×{Math.round(c.zoneHeight)} mm</div>
+                                      </div>
+                                      <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                                        <button onClick={() => toggleClash(g.id, idx, true)}
+                                          style={{ fontSize: 9, padding: '1px 4px', border: 'none', borderRadius: 2, cursor: 'pointer', background: c.accepted === true ? '#16a34a' : '#e2e8f0', color: c.accepted === true ? '#fff' : '#475569', fontWeight: c.accepted === true ? 700 : 400 }}>
+                                          ✓
+                                        </button>
+                                        <button onClick={() => toggleClash(g.id, idx, null)}
+                                          style={{ fontSize: 9, padding: '1px 4px', border: 'none', borderRadius: 2, cursor: 'pointer', background: c.accepted === null ? '#f59e0b' : '#e2e8f0', color: c.accepted === null ? '#fff' : '#475569', fontWeight: c.accepted === null ? 700 : 400 }}>
+                                          ?
+                                        </button>
+                                        <button onClick={() => toggleClash(g.id, idx, false)}
+                                          style={{ fontSize: 9, padding: '1px 4px', border: 'none', borderRadius: 2, cursor: 'pointer', background: c.accepted === false ? '#dc2626' : '#e2e8f0', color: c.accepted === false ? '#fff' : '#475569', fontWeight: c.accepted === false ? 700 : 400 }}>
+                                          ✗
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               );
                             })()}
@@ -2053,6 +2186,7 @@ export default function App() {
                     gridLines={showGridLines ? gridLines : []}
                     showCenterLines={showCenterLines}
                     zoneSettings={getSettings(activeGroup.id).zoneSettings ?? []}
+                    clashZones={clashResults[activeGroup.id] ?? []}
                   />
                   <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.85)', color: '#94a3b8', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                     {getSettings(activeGroup.id).name} · {activeGroup.wallIds.length} wand{activeGroup.wallIds.length !== 1 ? 'en' : ''} · 2D gevelaanzicht

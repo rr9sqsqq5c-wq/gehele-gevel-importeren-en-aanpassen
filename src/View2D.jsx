@@ -20,7 +20,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [] }) {
+export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [], clashZones = [] }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -475,6 +475,43 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
       }
     }
 
+    if (clashZones.length > 0) {
+      for (const cz of clashZones) {
+        const [csx, csy] = toScreen(cz.zoneX, cz.zoneY + cz.zoneHeight);
+        const csw = cz.zoneWidth * scale * 0.001;
+        const csh = cz.zoneHeight * scale * 0.001;
+        if (cz.accepted === false) {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(239,68,68,0.4)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 4]);
+          ctx.strokeRect(csx, csy, csw, csh);
+          ctx.setLineDash([]);
+          ctx.restore();
+        } else {
+          const fill = cz.accepted === true ? 'rgba(249,115,22,0.35)' : 'rgba(251,191,36,0.3)';
+          const stroke = cz.accepted === true ? '#f97316' : '#f59e0b';
+          ctx.save();
+          ctx.fillStyle = fill;
+          ctx.fillRect(csx, csy, csw, csh);
+          ctx.strokeStyle = stroke;
+          ctx.lineWidth = 1.5;
+          if (cz.accepted === null) ctx.setLineDash([5, 3]);
+          ctx.strokeRect(csx, csy, csw, csh);
+          ctx.setLineDash([]);
+          if (csw > 24 && csh > 14) {
+            ctx.fillStyle = cz.accepted === true ? '#7c2d12' : '#78350f';
+            ctx.font = 'bold 9px system-ui, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            const clabel = cz.name ?? cz.label ?? '';
+            ctx.fillText(clabel.length > 18 ? clabel.slice(0, 17) + '…' : clabel, csx + 3, csy + 2);
+          }
+          ctx.restore();
+        }
+      }
+    }
+
     if (zetwerkParams && vis.zetwerk !== false) {
       const { breedte: zwB, offsetH: zwH, offsetV: zwV } = zetwerkParams;
       for (const op of groupOpenings) {
@@ -724,7 +761,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
-  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, gridLines, showCenterLines]);
+  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, gridLines, showCenterLines, clashZones]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
