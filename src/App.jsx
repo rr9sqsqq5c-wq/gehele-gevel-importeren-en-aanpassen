@@ -3,7 +3,7 @@ import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGr
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent, buildGroups, mergeGroups, splitGroup, wallsToGroupFormat } from './lib/adjacency.js';
-import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
+import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern, computeFacadeZone } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel } from './lib/panelization.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
@@ -116,12 +116,104 @@ const GROUP_COLORS = [
   '#16a085', '#d35400', '#2471a3', '#1e8449', '#6c3483',
 ];
 
+const WIND_DIRS = [
+  { key: 'N', label: 'Noord', color: '#3b82f6' },
+  { key: 'O', label: 'Oost',  color: '#10b981' },
+  { key: 'Z', label: 'Zuid',  color: '#f59e0b' },
+  { key: 'W', label: 'West',  color: '#ef4444' },
+];
+
+function buildWindDirectionGroups(walls) {
+  if (!walls.length) return [];
+  const axisCounts = { x: 0, y: 0, z: 0 };
+  for (const w of walls) {
+    const ha = w.wallOrigin?.heightAxis;
+    if (ha) axisCounts[ha] = (axisCounts[ha] ?? 0) + 1;
+  }
+  const heightAxis = Object.entries(axisCounts).sort((a, b) => b[1] - a[1])[0][0];
+  let planAxisNS, planAxisEW;
+  if (heightAxis === 'z') { planAxisNS = 'y'; planAxisEW = 'x'; }
+  else if (heightAxis === 'y') { planAxisNS = 'z'; planAxisEW = 'x'; }
+  else { planAxisNS = 'y'; planAxisEW = 'z'; }
+
+  const wallsNS = walls.filter(w => w.wallOrigin?.thicknessAxis === planAxisNS);
+  const wallsEW = walls.filter(w => w.wallOrigin?.thicknessAxis === planAxisEW);
+
+  const getAxisCenter = (wl) => {
+    if (!wl.length) return 0;
+    return wl.reduce((s, w) => {
+      const wo = w.wallOrigin;
+      const start = wo.thicknessStart;
+      const end = wo.thicknessEnd ?? start;
+      return s + (start + end) / 2;
+    }, 0) / wl.length;
+  };
+  const centerNS = getAxisCenter(wallsNS);
+  const centerEW = getAxisCenter(wallsEW);
+
+  function wallDir(w) {
+    const wo = w.wallOrigin;
+    if (!wo) return null;
+    const ta = wo.thicknessAxis;
+    const tCenter = ((wo.thicknessEnd ?? wo.thicknessStart) + wo.thicknessStart) / 2;
+    if (ta === planAxisNS) {
+      return (heightAxis === 'y' ? tCenter <= centerNS : tCenter >= centerNS) ? 'N' : 'Z';
+    }
+    if (ta === planAxisEW) return tCenter >= centerEW ? 'O' : 'W';
+    return null;
+  }
+
+  const buckets = { N: [], O: [], Z: [], W: [] };
+  for (const w of walls) {
+    const d = wallDir(w);
+    if (d) buckets[d].push(w.expressID);
+  }
+  return WIND_DIRS
+    .filter(({ key }) => buckets[key].length > 0)
+    .map(({ key, label, color }) => ({ key, label, color, wallIds: buckets[key] }));
+}
+
+function detectBuildingCorners(groups, wallMap) {
+  const meta = {};
+  for (const g of groups) {
+    const walls = g.wallIds.map(id => wallMap[id]).filter(w => w?.wallOrigin);
+    if (!walls.length) continue;
+    const wo0 = walls[0].wallOrigin;
+    const lenAxis = wo0.lengthAxis;
+    const thickAxis = wo0.thicknessAxis;
+    const leftEdge = Math.min(...walls.map(w => w.wallOrigin.lengthStart));
+    const rightEdge = Math.max(...walls.map(w => w.wallOrigin.lengthStart + w.length));
+    const thickPos = walls.reduce((s, w) => {
+      const wo = w.wallOrigin;
+      return s + (wo.thicknessStart + (wo.thicknessEnd ?? wo.thicknessStart)) / 2;
+    }, 0) / walls.length;
+    meta[g.id] = { lenAxis, thickAxis, leftEdge, rightEdge, thickPos };
+  }
+
+  const corners = {};
+  const TOL = 500;
+  for (const [gid, m] of Object.entries(meta)) {
+    let leftCorner = false;
+    let rightCorner = false;
+    for (const [otherId, om] of Object.entries(meta)) {
+      if (otherId === gid) continue;
+      if (om.thickAxis !== m.lenAxis || om.lenAxis !== m.thickAxis) continue;
+      const ourThickInRange = m.thickPos >= om.leftEdge - TOL && m.thickPos <= om.rightEdge + TOL;
+      if (!ourThickInRange) continue;
+      if (Math.abs(om.thickPos - m.leftEdge) < TOL) leftCorner = true;
+      if (Math.abs(om.thickPos - m.rightEdge) < TOL) rightCorner = true;
+    }
+    corners[gid] = { leftCorner, rightCorner };
+  }
+  return corners;
+}
+
 function useGroupSettings() {
   const [map, setMap] = useState({});
   const defaults = (id) => ({ name: id, color: '#a64033', brickslipEnabled: false, verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, minHoogte: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
-  const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
+  const initColor = useCallback((id, color, name, extra = {}) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}), ...extra } }), []);
   return { get, update, initColor, map, setMap };
 }
 
@@ -726,6 +818,7 @@ export default function App() {
   const [gridLines, setGridLines] = useState([]);
   const [showGridLines, setShowGridLines] = useState(true);
   const [showCenterLines, setShowCenterLines] = useState(false);
+  const [pakketdikte, setPakketdikte] = useState({ tolerantie: 5, achterconstructie: 40, paneel: 8, lijm: 3, steenstrip: 15 });
   const { get: getSettings, update: updateSettings, initColor, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
@@ -741,6 +834,33 @@ export default function App() {
     return m;
   }, [groups]);
 
+  const pakketdikteTotal = useMemo(() =>
+    Object.values(pakketdikte).reduce((s, v) => s + v, 0),
+  [pakketdikte]);
+
+  const buildingCorners = useMemo(() =>
+    groups.length >= 2 ? detectBuildingCorners(groups, wallMap) : {},
+  [groups, wallMap]);
+
+  const facadeZones = useMemo(() => {
+    const result = {};
+    for (const group of groups) {
+      const s = getSettings(group.id);
+      if (!s.brickslipEnabled) continue;
+      const walls = group.wallIds.map(id => wallMap[id]).filter(Boolean);
+      const gc = buildingCorners[group.id];
+      const zone = computeFacadeZone(
+        walls,
+        pakketdikteTotal,
+        gc?.leftCorner ?? false,
+        gc?.rightCorner ?? false,
+        s.zetwerk,
+      );
+      if (zone) result[group.id] = zone;
+    }
+    return result;
+  }, [groups, wallMap, buildingCorners, pakketdikteTotal, getSettings]);
+
   const allPatterns = useMemo(() => {
     if (!showPattern) return {};
     const result = {};
@@ -748,11 +868,42 @@ export default function App() {
       const s = getSettings(group.id);
       if (!s.brickslipEnabled) continue;
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
+      const gc = buildingCorners[group.id];
+      const wallsWithCorners = [...walls];
+      if (gc && pakketdikteTotal > 0) {
+        const withOrigin = walls.filter(w => w.wallOrigin);
+        if (withOrigin.length) {
+          const sorted = [...withOrigin].sort((a, b) => a.wallOrigin.lengthStart - b.wallOrigin.lengthStart);
+          const first = sorted[0];
+          const last = sorted[sorted.length - 1];
+          const groupMinH = Math.min(...withOrigin.map(w => w.wallOrigin.heightStart));
+          const groupMaxH = Math.max(...withOrigin.map(w => w.wallOrigin.heightStart + w.height));
+          const groupH = groupMaxH - groupMinH;
+          if (gc.leftCorner) {
+            wallsWithCorners.push({
+              expressID: `CORNER_L_${group.id}`,
+              length: pakketdikteTotal,
+              height: groupH,
+              openings: [],
+              wallOrigin: { ...first.wallOrigin, lengthStart: first.wallOrigin.lengthStart - pakketdikteTotal, heightStart: groupMinH },
+            });
+          }
+          if (gc.rightCorner) {
+            wallsWithCorners.push({
+              expressID: `CORNER_R_${group.id}`,
+              length: pakketdikteTotal,
+              height: groupH,
+              openings: [],
+              wallOrigin: { ...last.wallOrigin, lengthStart: last.wallOrigin.lengthStart + last.length, heightStart: groupMinH },
+            });
+          }
+        }
+      }
       const gAdj = adjacencies.filter((a) => group.wallIds.includes(a.wallIdA) && group.wallIds.includes(a.wallIdB));
-      const rows = buildGroupPattern(walls, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND);
+      const rows = buildGroupPattern(wallsWithCorners, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND);
       if (s.maxHoogte !== null && s.maxHoogte > 0) {
-        const groupMinH = Math.min(...walls.map((w) => w.wallOrigin?.heightStart ?? 0));
-        for (const wall of walls) {
+        const groupMinH = Math.min(...wallsWithCorners.map((w) => w.wallOrigin?.heightStart ?? 0));
+        for (const wall of wallsWithCorners) {
           const wid = wall.expressID;
           if (!rows[wid]) continue;
           const wallOffset = (wall.wallOrigin?.heightStart ?? 0) - groupMinH;
@@ -762,7 +913,7 @@ export default function App() {
       }
       if (s.penanten?.length) {
         const steenL = (s.material ?? DEFAULT_MATERIAL).steenL ?? 210;
-        for (const wall of walls) {
+        for (const wall of wallsWithCorners) {
           const wid = wall.expressID;
           if (!rows[wid]) continue;
           const wallLeft = wall.wallOrigin?.lengthStart ?? 0;
@@ -832,14 +983,25 @@ export default function App() {
       addLog(`✓ ${adj.length} aangrenzende relaties gevonden`);
 
       _colorIdxRef.current = 0;
-      const newGroups = walls.map((w) => {
-        const gid = newGid();
-        const color = nextColor();
-        const label = w.name ?? `Wand #${w.expressID}`;
-        initColor(gid, color, label);
-        return { id: gid, wallIds: [w.expressID] };
-      });
-      addLog(`✓ ${walls.length} wanden klaar — gebruik "Auto-groeperen" om gevelelementen te groeperen`);
+      const windGroups = buildWindDirectionGroups(walls);
+      let newGroups;
+      if (windGroups.length >= 2) {
+        newGroups = windGroups.map(({ label, color, wallIds }) => {
+          const gid = newGid();
+          initColor(gid, color, `Gevel ${label}`, { brickslipEnabled: true });
+          return { id: gid, wallIds: sortWallsInComponent(wallIds, walls, adj) };
+        });
+        addLog(`✓ ${walls.length} wanden automatisch gegroepeerd: ${windGroups.map(g => `Gevel ${g.label} (${g.wallIds.length})`).join(', ')}`);
+      } else {
+        newGroups = walls.map((w) => {
+          const gid = newGid();
+          const color = nextColor();
+          const label = w.name ?? `Wand #${w.expressID}`;
+          initColor(gid, color, label);
+          return { id: gid, wallIds: [w.expressID] };
+        });
+        addLog(`✓ ${walls.length} wanden klaar — gebruik "Groeperen op windrichting" om gevels in te delen`);
+      }
 
       setAllWalls(walls);
       setAdjacencies(adj);
@@ -942,14 +1104,25 @@ export default function App() {
       addLog(`✓ ${adj.length} aangrenzende relaties gevonden`);
 
       _colorIdxRef.current = 0;
-      const newGroups = walls.map((w) => {
-        const gid = newGid();
-        const color = nextColor();
-        const label = w.name ?? `Wand #${w.expressID}`;
-        initColor(gid, color, label);
-        return { id: gid, wallIds: [w.expressID] };
-      });
-      addLog(`✓ ${walls.length} wanden klaar — gebruik "Auto-groeperen" om gevelelementen te groeperen`);
+      const windGroups2 = buildWindDirectionGroups(walls);
+      let newGroups;
+      if (windGroups2.length >= 2) {
+        newGroups = windGroups2.map(({ label, color, wallIds }) => {
+          const gid = newGid();
+          initColor(gid, color, `Gevel ${label}`, { brickslipEnabled: true });
+          return { id: gid, wallIds: sortWallsInComponent(wallIds, walls, adj) };
+        });
+        addLog(`✓ ${walls.length} wanden automatisch gegroepeerd: ${windGroups2.map(g => `Gevel ${g.label} (${g.wallIds.length})`).join(', ')}`);
+      } else {
+        newGroups = walls.map((w) => {
+          const gid = newGid();
+          const color = nextColor();
+          const label = w.name ?? `Wand #${w.expressID}`;
+          initColor(gid, color, label);
+          return { id: gid, wallIds: [w.expressID] };
+        });
+        addLog(`✓ ${walls.length} wanden klaar — gebruik "Groeperen op windrichting" om gevels in te delen`);
+      }
 
       setAllWalls(walls);
       setAdjacencies(adj);
@@ -1043,82 +1216,12 @@ export default function App() {
   function groupByWindDirection() {
     if (!allWalls.length) return;
     pushHistory(groups);
-
-    const DIRS = [
-      { key: 'N', label: 'Noord', color: '#3b82f6' },
-      { key: 'O', label: 'Oost',  color: '#10b981' },
-      { key: 'Z', label: 'Zuid',  color: '#f59e0b' },
-      { key: 'W', label: 'West',  color: '#ef4444' },
-    ];
-
-    const axisCounts = { x: 0, y: 0, z: 0 };
-    for (const w of allWalls) {
-      const ha = w.wallOrigin?.heightAxis;
-      if (ha) axisCounts[ha] = (axisCounts[ha] ?? 0) + 1;
-    }
-    const heightAxis = Object.entries(axisCounts).sort((a, b) => b[1] - a[1])[0][0];
-
-    let planAxisNS, planAxisEW;
-    if (heightAxis === 'z') {
-      planAxisNS = 'y';
-      planAxisEW = 'x';
-    } else if (heightAxis === 'y') {
-      planAxisNS = 'z';
-      planAxisEW = 'x';
-    } else {
-      planAxisNS = 'y';
-      planAxisEW = 'z';
-    }
-
-    const wallsNS = allWalls.filter(w => w.wallOrigin?.thicknessAxis === planAxisNS);
-    const wallsEW = allWalls.filter(w => w.wallOrigin?.thicknessAxis === planAxisEW);
-
-    const getAxisCenter = (walls) => {
-      if (!walls.length) return 0;
-      return walls.reduce((s, w) => {
-        const wo = w.wallOrigin;
-        const start = wo[`thicknessStart`];
-        const end = wo[`thicknessEnd`] ?? start;
-        return s + (start + end) / 2;
-      }, 0) / walls.length;
-    };
-
-    const centerNS = getAxisCenter(wallsNS);
-    const centerEW = getAxisCenter(wallsEW);
-
-    function wallDirection(w) {
-      const wo = w.wallOrigin;
-      if (!wo) return 'N';
-      const ta = wo.thicknessAxis;
-      const tStart = wo.thicknessStart;
-      const tEnd = wo.thicknessEnd ?? tStart;
-      const tCenter = (tStart + tEnd) / 2;
-      if (ta === planAxisNS) {
-        if (heightAxis === 'y') {
-          return tCenter <= centerNS ? 'N' : 'Z';
-        }
-        return tCenter >= centerNS ? 'N' : 'Z';
-      }
-      if (ta === planAxisEW) {
-        return tCenter >= centerEW ? 'O' : 'W';
-      }
-      return null;
-    }
-
-    const buckets = { N: [], O: [], Z: [], W: [] };
-    for (const w of allWalls) {
-      const dir = wallDirection(w);
-      if (dir) buckets[dir].push(w.expressID);
-    }
-
-    const newGroups = [];
-    for (const { key, label, color } of DIRS) {
-      if (!buckets[key].length) continue;
+    const windGroups = buildWindDirectionGroups(allWalls);
+    const newGroups = windGroups.map(({ label, color, wallIds }) => {
       const gid = newGid();
-      initColor(gid, color, `Gevel ${label}`);
-      newGroups.push({ id: gid, wallIds: sortWallsInComponent(buckets[key], allWalls, adjacencies) });
-    }
-
+      initColor(gid, color, `Gevel ${label}`, { brickslipEnabled: true });
+      return { id: gid, wallIds: sortWallsInComponent(wallIds, allWalls, adjacencies) };
+    });
     setGroups(newGroups);
     setSelectedWallIds(new Set());
     setActiveGroupId(null);
@@ -1729,6 +1832,33 @@ export default function App() {
               </div>
 
               {groups.length > 0 && (
+                <div style={{ flexShrink: 0, borderBottom: '1px solid #e2e8f0' }}>
+                  <details style={{ background: '#f0f9ff' }}>
+                    <summary style={{ padding: '6px 10px', fontSize: 11, fontWeight: 600, color: '#0369a1', cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>📐 Pakketdikte</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, color: '#0369a1', background: '#bae6fd', borderRadius: 3, padding: '1px 6px' }}>{pakketdikteTotal} mm totaal</span>
+                    </summary>
+                    <div style={{ padding: '6px 10px 8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 8px' }}>
+                      {[
+                        ['tolerantie', 'Tolerantie'],
+                        ['achterconstructie', 'Achterconstructie'],
+                        ['paneel', 'Paneel'],
+                        ['lijm', 'Lijm'],
+                        ['steenstrip', 'Steenstrip'],
+                      ].map(([key, label]) => (
+                        <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 1, fontSize: 11 }}>
+                          <span style={{ color: '#64748b' }}>{label} mm</span>
+                          <input type="number" min={0} step={1} value={pakketdikte[key]}
+                            onChange={(e) => setPakketdikte(p => ({ ...p, [key]: Number(e.target.value) }))}
+                            style={{ ...inp, width: '100%' }} />
+                        </label>
+                      ))}
+                    </div>
+                  </details>
+                </div>
+              )}
+
+              {groups.length > 0 && (
                 <div style={{ flexShrink: 0 }}>
                   <div style={{ padding: '5px 10px', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
                     Groepen ({groups.length})
@@ -1736,6 +1866,10 @@ export default function App() {
                   {groups.map((g) => {
                     const s = getSettings(g.id);
                     const isActive = activeGroupId === g.id;
+                    const gc = buildingCorners[g.id];
+                    const cornerTag = gc && (gc.leftCorner || gc.rightCorner)
+                      ? `${gc.leftCorner ? '◄' : ''}${gc.rightCorner ? '►' : ''}`
+                      : null;
                     return (
                       <div key={g.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                         <div
@@ -1744,6 +1878,7 @@ export default function App() {
                         >
                           <span style={{ width: 10, height: 10, borderRadius: 2, background: s.color, display: 'inline-block', flexShrink: 0 }} />
                           <span style={{ flex: 1, fontSize: 12, fontWeight: isActive ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                          {cornerTag && <span title={`Gebouwhoeken gedetecteerd — uitsteek ${pakketdikteTotal}mm`} style={{ fontSize: 9, color: '#0891b2', flexShrink: 0 }}>{cornerTag}</span>}
                           <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>{g.wallIds.length} wand{g.wallIds.length !== 1 ? 'en' : ''}</span>
                           <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>{isActive ? '▲' : '▼'}</span>
                         </div>
@@ -1764,6 +1899,24 @@ export default function App() {
                                 </div>
                               );
                             })}
+                            {(() => {
+                              const zone = facadeZones[g.id];
+                              if (!zone) return null;
+                              const gc2 = buildingCorners[g.id];
+                              return (
+                                <div style={{ margin: '4px 10px', background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 4, padding: '5px 8px', fontSize: 10, color: '#065f46' }}>
+                                  <div style={{ fontWeight: 600, marginBottom: 2 }}>Zone brickboard</div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 8px' }}>
+                                    <span>Breedte</span><span style={{ fontWeight: 600 }}>{(zone.width / 1000).toFixed(2)} m</span>
+                                    <span>Hoogte</span><span style={{ fontWeight: 600 }}>{(zone.height / 1000).toFixed(2)} m</span>
+                                    <span>Netto opp.</span><span style={{ fontWeight: 600 }}>{zone.netAreaM2.toFixed(2)} m²</span>
+                                    {zone.hsbGaps.length > 0 && <><span>HSB-spleten</span><span style={{ fontWeight: 600 }}>{zone.hsbGaps.length}× ({zone.hsbGaps.map(g2 => `${g2.size}mm`).join(', ')})</span></>}
+                                    {zone.openings.length > 0 && <><span>Sparingen</span><span style={{ fontWeight: 600 }}>{zone.openings.length}× ({zone.openingAreaM2.toFixed(2)} m²)</span></>}
+                                    {(gc2?.leftCorner || gc2?.rightCorner) && <><span>Hoekuitsteek</span><span style={{ fontWeight: 600 }}>{[gc2.leftCorner && '◄', gc2.rightCorner && '►'].filter(Boolean).join('')} {pakketdikteTotal}mm</span></>}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                             <div style={{ padding: '5px 10px', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                               {[...groups].filter(og => og.id !== g.id).sort((a, b) => b.wallIds.length - a.wallIds.length).slice(0, 8).map(og => {
                                 const os = getSettings(og.id);

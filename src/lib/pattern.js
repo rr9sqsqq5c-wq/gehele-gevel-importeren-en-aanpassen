@@ -555,3 +555,98 @@ export function buildMirroredFacePattern(width, height, material, verband, rowOf
     pieces: mirrorPieces(row.pieces, width),
   }));
 }
+
+export function computeFacadeZone(walls, pakketdikte = 0, cornerLeft = false, cornerRight = false, zetwerk = null) {
+  const withOrigin = walls.filter(w => w.wallOrigin);
+  if (!withOrigin.length) return null;
+
+  const sorted = [...withOrigin].sort((a, b) => a.wallOrigin.lengthStart - b.wallOrigin.lengthStart);
+
+  const rawMinX = sorted[0].wallOrigin.lengthStart;
+  const rawMaxX = sorted[sorted.length - 1].wallOrigin.lengthStart + sorted[sorted.length - 1].length;
+  const groupMinH = Math.min(...withOrigin.map(w => w.wallOrigin.heightStart));
+  const groupMaxH = Math.max(...withOrigin.map(w => w.wallOrigin.heightStart + w.height));
+
+  const leftExt = cornerLeft ? pakketdikte : 0;
+  const rightExt = cornerRight ? pakketdikte : 0;
+  const zoneStart = rawMinX - leftExt;
+  const zoneEnd = rawMaxX + rightExt;
+  const zoneWidth = round2(zoneEnd - zoneStart);
+  const zoneHeight = round2(groupMaxH - groupMinH);
+
+  const wallSegments = sorted.map(w => ({
+    wallId: w.expressID,
+    start: round2(w.wallOrigin.lengthStart - zoneStart),
+    end: round2(w.wallOrigin.lengthStart + w.length - zoneStart),
+    heightStart: round2(w.wallOrigin.heightStart - groupMinH),
+    height: w.height,
+  }));
+
+  const hsbGaps = [];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const wA = sorted[i];
+    const wB = sorted[i + 1];
+    const gapStart = round2(wA.wallOrigin.lengthStart + wA.length - zoneStart);
+    const gapEnd = round2(wB.wallOrigin.lengthStart - zoneStart);
+    const gapSize = round2(gapEnd - gapStart);
+    if (gapSize > 0) {
+      hsbGaps.push({ start: gapStart, end: gapEnd, size: gapSize, wallIdA: wA.expressID, wallIdB: wB.expressID });
+    }
+  }
+
+  const zwEnabled = zetwerk?.enabled;
+  const zwH = zwEnabled ? Math.max(0, zetwerk.offsetH ?? 0) : 0;
+  const zwV = zwEnabled ? Math.max(0, zetwerk.offsetV ?? 0) : 0;
+  const zwB = zwEnabled ? Math.max(1, zetwerk.breedte ?? 50) : 0;
+  const zwS = zwEnabled ? Math.max(0, zetwerk.stripOffset ?? 5) : 0;
+  const zwExpandX = zwEnabled ? (zwH + zwB + zwS) : 0;
+  const zwExpandY = zwEnabled ? (zwV + zwB + zwS) : 0;
+
+  const openings = [];
+  for (const w of withOrigin) {
+    const wallOffX = round2(w.wallOrigin.lengthStart - zoneStart);
+    const wallOffH = round2(w.wallOrigin.heightStart - groupMinH);
+    for (const op of (w.openings ?? [])) {
+      const ow = op.breedte ?? op.width ?? 0;
+      const oh = op.hoogte ?? op.height ?? 0;
+      if (ow < 400 || oh < 400) continue;
+      openings.push({
+        x: round2(wallOffX + (op.x ?? 0)),
+        y: round2(wallOffH + (op.y ?? 0)),
+        width: ow,
+        height: oh,
+        type: op.type,
+      });
+    }
+  }
+
+  const wallArea = wallSegments.reduce((s, seg) => s + (seg.end - seg.start) * seg.height, 0);
+  const gapArea = hsbGaps.reduce((s, g) => s + g.size * zoneHeight, 0);
+  const cornerArea = (leftExt + rightExt) * zoneHeight;
+  const openingArea = openings.reduce((s, op) => s + op.width * op.height, 0);
+  const openingZetwerkArea = zwEnabled
+    ? openings.reduce((s, op) => {
+        const mw = op.width + 2 * zwExpandX;
+        const mh = op.height + 2 * zwExpandY;
+        return s + (mw * mh - op.width * op.height);
+      }, 0)
+    : 0;
+  const netArea = round2((wallArea + gapArea + cornerArea - openingArea - openingZetwerkArea) / 1e6);
+
+  return {
+    start: zoneStart,
+    end: zoneEnd,
+    width: zoneWidth,
+    height: zoneHeight,
+    leftExt,
+    rightExt,
+    wallSegments,
+    hsbGaps,
+    openings,
+    netAreaM2: netArea,
+    wallAreaM2: round2(wallArea / 1e6),
+    gapAreaM2: round2(gapArea / 1e6),
+    cornerAreaM2: round2(cornerArea / 1e6),
+    openingAreaM2: round2(openingArea / 1e6),
+  };
+}
