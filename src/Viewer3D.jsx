@@ -3,6 +3,20 @@ import { OrbitControls, Html } from '@react-three/drei';
 import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 
+function checkWebGL() {
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (!ctx) return false;
+    const ext = ctx.getExtension('WEBGL_lose_context');
+    if (ext) ext.loseContext();
+    return true;
+  } catch {
+    return false;
+  }
+}
+const WEBGL_AVAILABLE = checkWebGL();
+
 function CameraAccessor({ cameraRef }) {
   const { camera } = useThree();
   cameraRef.current = camera;
@@ -493,6 +507,32 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
       const frontIds = candidates.filter((c) => c.ndcZ <= minZ + DEPTH_TOLERANCE).map((c) => c.id);
       onSelectMultiple(frontIds);
     }
+  }
+
+  if (!WEBGL_AVAILABLE) {
+    return (
+      <div style={{ width: '100%', height: '100%', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ maxWidth: 480, padding: 32, background: '#1e293b', borderRadius: 12, border: '1px solid #334155', color: '#f1f5f9', textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>⚠️</div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>3D-weergave niet beschikbaar</div>
+          <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, marginBottom: 20 }}>
+            WebGL (GPU-acceleratie) is uitgeschakeld in deze browser. De 2D-weergave en alle andere functies werken wel normaal.
+          </div>
+          <div style={{ background: '#0f172a', borderRadius: 8, padding: 16, textAlign: 'left', fontSize: 12, color: '#cbd5e1', lineHeight: 1.8 }}>
+            <strong style={{ color: '#60a5fa' }}>Oplossing in Edge/Chrome:</strong><br />
+            1. Ga naar <code style={{ color: '#f472b6' }}>edge://settings/system</code> of <code style={{ color: '#f472b6' }}>chrome://settings/system</code><br />
+            2. Zet <strong>Hardware-acceleratie gebruiken</strong> aan<br />
+            3. Start de browser opnieuw op<br /><br />
+            Of open de app in een andere browser (bijv. Chrome).
+          </div>
+          {walls.length > 0 && (
+            <div style={{ marginTop: 16, fontSize: 12, color: '#64748b' }}>
+              {walls.length} wanden geladen — gebruik de 2D-weergave om te werken
+            </div>
+          )}
+        </div>
+      </div>
+    );
   }
 
   return (
