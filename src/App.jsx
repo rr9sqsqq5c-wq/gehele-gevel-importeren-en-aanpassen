@@ -809,7 +809,7 @@ export default function App() {
   const [savedFileInfo, setSavedFileInfo] = useState(null);
   const [savedHandle, setSavedHandle] = useState(null);
   const [ifcFileName, setIfcFileName] = useState(null);
-  const [showPattern, setShowPattern] = useState(true);
+  const [showPattern, setShowPattern] = useState(false);
   const [viewMode, setViewMode] = useState('3d');
   const [pendingFile, setPendingFile] = useState(null);
   const [wallTypes, setWallTypes] = useState([]);
