@@ -232,11 +232,12 @@ function OpeningMesh({ wall, opening, upAxis }) {
 
   const polyPts = opening.polyPts ?? null;
 
-  const lineObj = useMemo(() => {
-    const color = opening.type === 'raam' ? '#93c5fd' : '#fde68a';
-    const mat = new THREE.LineBasicMaterial({ color, depthTest: false });
+  const { lineObj, bboxFrontPos } = useMemo(() => {
+    const polyColor = opening.type === 'raam' ? '#93c5fd' : '#fde68a';
+    const polyMat = new THREE.LineBasicMaterial({ color: polyColor, depthTest: false });
+    const bboxMat = new THREE.LineDashedMaterial({ color: '#94a3b8', dashSize: 0.05, gapSize: 0.03, depthTest: false });
 
-    const makePoly = (tVal, pts2d) => {
+    const makeLine = (tVal, pts2d, mat) => {
       const pts = [...pts2d, pts2d[0]].map(({ l, h }) => {
         const ifc = { x: 0, y: 0, z: 0 };
         ifc[wo.lengthAxis]    = wo.lengthStart + l;
@@ -245,7 +246,9 @@ function OpeningMesh({ wall, opening, upAxis }) {
         const [tx, ty, tz] = ifcToThree(ifc.x, ifc.y, ifc.z, upAxis);
         return new THREE.Vector3(tx, ty, tz);
       });
-      return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+      line.computeLineDistances();
+      return line;
     };
 
     const rectPts = [
@@ -253,14 +256,43 @@ function OpeningMesh({ wall, opening, upAxis }) {
       { l: ox + ow, h: oy + oh }, { l: ox, h: oy + oh },
     ];
     const pts2d = (polyPts && polyPts.length >= 3) ? polyPts : rectPts;
+    const hasDistinctPoly = polyPts && polyPts.length >= 3;
 
     const group = new THREE.Group();
-    group.add(makePoly(frontFace, pts2d));
-    group.add(makePoly(backFace, pts2d));
-    return group;
+    group.add(makeLine(frontFace, pts2d, polyMat));
+    group.add(makeLine(backFace, pts2d, polyMat));
+    if (hasDistinctPoly) {
+      group.add(makeLine(frontFace, rectPts, bboxMat));
+    }
+
+    const bboxIfc = { x: 0, y: 0, z: 0 };
+    bboxIfc[wo.lengthAxis]    = wo.lengthStart + ox + ow / 2;
+    bboxIfc[wo.heightAxis]    = wo.heightStart + oy + oh;
+    bboxIfc[wo.thicknessAxis] = frontFace + 10;
+    const bboxFrontPos = ifcToThree(bboxIfc.x, bboxIfc.y, bboxIfc.z, upAxis);
+
+    return { lineObj: group, bboxFrontPos };
   }, [wo, ox, oy, ow, oh, frontFace, backFace, upAxis, opening.type, polyPts]);
 
-  return <primitive object={lineObj} />;
+  return (
+    <group>
+      <primitive object={lineObj} />
+      <Html position={bboxFrontPos} center style={{ pointerEvents: 'none' }}>
+        <div style={{
+          background: 'rgba(15,23,42,0.8)',
+          color: '#7dd3fc',
+          fontSize: 9,
+          padding: '1px 5px',
+          borderRadius: 3,
+          whiteSpace: 'nowrap',
+          border: `1px solid ${opening.type === 'raam' ? '#93c5fd' : '#fde68a'}`,
+          lineHeight: 1.3,
+        }}>
+          <div style={{ fontWeight: 700 }}>{opening.type === 'raam' ? '🪟' : '🚪'} {Math.round(ow)}×{Math.round(oh)} mm</div>
+        </div>
+      </Html>
+    </group>
+  );
 }
 
 function SceneLights() {

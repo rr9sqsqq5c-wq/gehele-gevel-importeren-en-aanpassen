@@ -455,24 +455,60 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
       ctx.fillStyle = 'rgba(147,197,253,0.18)';
       ctx.fillRect(opSx - 2, opSy - 2, opSw + 4, opSh + 4);
       ctx.restore();
+
       ctx.strokeStyle = '#93c5fd';
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
       ctx.closePath();
       ctx.stroke();
 
-      if (opSw > 20) {
-        const labelY = opSy - 2;
-        ctx.font = '9px system-ui, sans-serif';
+      ctx.save();
+      ctx.strokeStyle = 'rgba(148,163,184,0.55)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(opSx, opSy, opSw, opSh);
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      if (opSw > 18) {
+        ctx.font = 'bold 9px system-ui, sans-serif';
         ctx.fillStyle = '#7dd3fc';
         ctx.textBaseline = 'bottom';
-        ctx.textAlign = 'left';
-        ctx.fillText(`${Math.round(op.x)}`, opSx + 2, labelY);
-        ctx.textAlign = 'right';
-        ctx.fillText(`${Math.round(op.x + op.width)}`, opSx + opSw - 2, labelY);
+        ctx.textAlign = 'center';
+        const wLabel = `${Math.round(op.width)} mm`;
+        ctx.fillText(wLabel, opSx + opSw / 2, opSy - 1);
       }
+      if (opSh > 18) {
+        ctx.save();
+        ctx.font = 'bold 9px system-ui, sans-serif';
+        ctx.fillStyle = '#7dd3fc';
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center';
+        const hLabel = `${Math.round(op.height)} mm`;
+        ctx.translate(opSx - 2, opSy + opSh / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText(hLabel, 0, 0);
+        ctx.restore();
+      }
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(148,163,184,0.6)';
+      ctx.lineWidth = 0.5;
+      if (opSw > 24) {
+        const ay = opSy - 8;
+        ctx.beginPath(); ctx.moveTo(opSx, ay); ctx.lineTo(opSx + opSw, ay); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(opSx, ay - 4); ctx.lineTo(opSx, ay + 4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(opSx + opSw, ay - 4); ctx.lineTo(opSx + opSw, ay + 4); ctx.stroke();
+      }
+      if (opSh > 24) {
+        const ax = opSx - 10;
+        ctx.beginPath(); ctx.moveTo(ax, opSy); ctx.lineTo(ax, opSy + opSh); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ax - 4, opSy); ctx.lineTo(ax + 4, opSy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ax - 4, opSy + opSh); ctx.lineTo(ax + 4, opSy + opSh); ctx.stroke();
+      }
+      ctx.restore();
     }
 
     if (clashZones.length > 0) {
