@@ -763,23 +763,27 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           const penLatDikte = settings?.latten?.dikte ?? 28;
           const penBrickD   = settings?.brickDepth ?? 20;
           const penPanelDikte = settings?.panelen?.dikte ?? 8;
-          const penantShift = penLatDikte + penPanelDikte + 6;
-          return penanten.map((penant) => (
-            <PenantMesh3D
-              key={`penant-${group.id}-${penant.id ?? penant.x}`}
-              penant={penant}
-              rwo={rwo}
-              groupMinX={groupMinX}
-              groupMinH={groupMinH}
-              groupColor={settings?.color ?? '#6366f1'}
-              upAxis={upAxis}
-              allWalls={walls}
-              latDikte={penLatDikte}
-              brickDepth={penBrickD}
-              panelDikte={penPanelDikte}
-              penantShift={penantShift}
-            />
-          ));
+          const penStoot = settings?.material?.stoot ?? 10;
+          return penanten.map((penant) => {
+            const pD = Math.max(1, penant.diepte ?? 150);
+            const penantShift = penLatDikte + penPanelDikte + penBrickD + penStoot + pD;
+            return (
+              <PenantMesh3D
+                key={`penant-${group.id}-${penant.id ?? penant.x}`}
+                penant={penant}
+                rwo={rwo}
+                groupMinX={groupMinX}
+                groupMinH={groupMinH}
+                groupColor={settings?.color ?? '#6366f1'}
+                upAxis={upAxis}
+                allWalls={walls}
+                latDikte={penLatDikte}
+                brickDepth={penBrickD}
+                panelDikte={penPanelDikte}
+                penantShift={penantShift}
+              />
+            );
+          });
         })}
       </Canvas>
 

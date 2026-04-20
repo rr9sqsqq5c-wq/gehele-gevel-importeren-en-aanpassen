@@ -917,8 +917,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const penFrontW = Math.max(1, pB - 2 * brickD);
         const penSideD  = Math.max(1, pD - brickD - penStoot);
         const penPanelT = panelDikte;
-        const PENANT_GAP = 6;
-        const penShift = latDikte + panelDikte + PENANT_GAP;
+        const penShift = latDikte + panelDikte + brickD + penStoot + pD;
 
         const emitPenantBox = (gxCenter, depthCenter, boxW, boxThick, label) => {
           const [bwx, bwy, bwz] = groupToWorld(gxCenter, depthCenter, 0);
