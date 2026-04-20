@@ -154,9 +154,6 @@ export function buildGroupPattern(walls, adjacencies, material, verband) {
     const wallEnd = round2(wallStart + wall.length);
     const wallLagen = Math.floor((wall.height + lint) / lagenmaat);
     const verticalOffset = Math.floor(((wall.wallOrigin?.heightStart ?? 0) - groupMinH) / lagenmaat);
-    if ((wall.openings ?? []).length) {
-      console.log('[buildGroupPattern] wall', wall.expressID, 'openings:', (wall.openings ?? []).map((o) => ({ id: o.id, type: o.type, w: o.breedte, h: o.hoogte })));
-    }
     const rows = [];
 
     for (let r = 0; r < wallLagen; r++) {

@@ -583,10 +583,8 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
         {groups.flatMap((group) => {
           const settings = groupSettings(group.id);
           const penanten = settings?.penanten ?? [];
-          console.log('[Penant3D] group', group.id, 'penanten:', penanten.length, penanten);
           if (!penanten.length) return [];
           const groupWalls = walls.filter((w) => group.wallIds.includes(w.expressID) && w.wallOrigin);
-          console.log('[Penant3D] groupWalls:', groupWalls.length);
           if (!groupWalls.length) return [];
           const groupMinX = Math.min(...groupWalls.map((w) => w.wallOrigin.lengthStart));
           const groupMinH = Math.min(...groupWalls.map((w) => w.wallOrigin.heightStart));
