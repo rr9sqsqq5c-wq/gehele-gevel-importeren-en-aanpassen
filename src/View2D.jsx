@@ -249,8 +249,8 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
   const fitToView = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !canvas.width || !canvas.height) return;
-    const W = canvas.width;
-    const H = canvas.height;
+    const W = size.w;
+    const H = size.h;
     const PAD = 32;
     const bw = bounds.maxX - bounds.minX || 1;
     const bh = bounds.maxY - bounds.minY || 1;
@@ -279,9 +279,11 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
     const ctx = canvas.getContext('2d');
-    const W = canvas.width;
-    const H = canvas.height;
+    const W = size.w;
+    const H = size.h;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const { scale, tx, ty } = transform.current;
 
     const toScreen = (vX, vY) => [
@@ -762,9 +764,9 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', background: '#1e293b' }}>
       <canvas
         ref={canvasRef}
-        width={size.w}
-        height={size.h}
-        style={{ display: 'block' }}
+        width={Math.round(size.w * (window.devicePixelRatio || 1))}
+        height={Math.round(size.h * (window.devicePixelRatio || 1))}
+        style={{ display: 'block', width: size.w, height: size.h }}
         onWheel={onWheel}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
