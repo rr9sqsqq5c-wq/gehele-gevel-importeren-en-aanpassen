@@ -838,6 +838,8 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
       }
     }
 
+    const maxHoogte = group.maxHoogte ?? null;
+
     if (vis.zetwerk !== false && group.zetwerk?.enabled && group.facadeData) {
       const zw = group.zetwerk;
       const zwB = Math.max(1, zw.breedte ?? 50);
@@ -850,6 +852,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const opLs = opPoly.map(p => p.l), opHs = opPoly.map(p => p.h);
         const opMinL = Math.min(...opLs), opMaxL = Math.max(...opLs);
         const opMinH = Math.min(...opHs), opMaxH = Math.max(...opHs);
+        if (maxHoogte != null && maxHoogte > 0 && opMinH >= maxHoogte) continue;
         const ox1 = opMinL - zwH - zwB, ox2 = opMaxL + zwH + zwB;
         const oy1 = opMinH - zwV - zwB, oy2 = opMaxH + zwV + zwB;
         const totalW = ox2 - ox1;
@@ -861,7 +864,9 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
           { lx: ox2 - zwB / 2,    lz: op.y - zwV + innerH / 2, lw: zwB, lh: innerH },
         ];
         for (const bar of bars) {
-          const [wx, wy, wz] = groupToWorld(bar.lx, depth, bar.lz - bar.lh / 2);
+          const barBottom = bar.lz - bar.lh / 2;
+          if (maxHoogte != null && maxHoogte > 0 && barBottom >= maxHoogte) continue;
+          const [wx, wy, wz] = groupToWorld(bar.lx, depth, barBottom);
           const placePt = PT(wx, wy, wz);
           const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
           const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
@@ -879,9 +884,11 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     }
 
     const penanten = (wallSettings[group.id] ?? {}).penanten ?? [];
+    const penantFaceRows = group.penantFaceRows ?? [];
     if (penanten.length && rwo) {
       const { axisStr, refStr } = makeGroupAxes();
-      for (const pen of penanten) {
+      for (let pi = 0; pi < penanten.length; pi++) {
+        const pen = penanten[pi];
         const pX  = pen.x   ?? 0;
         const pB  = Math.max(1, pen.breedte ?? 400);
         const pD  = Math.max(1, pen.diepte  ?? 150);
@@ -899,6 +906,26 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const proxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'Penant',#${localPl},#${pds},$,.NOTDEFINED.)`);
         E(`IFCSTYLEDITEM(#${solid},(#${getStyle('#6366f1')}),$)`);
         allProxyIds.push(proxy);
+
+        const fRows = penantFaceRows[pi] ?? [];
+        for (const row of fRows) {
+          for (const piece of row.pieces) {
+            const gx = pX + piece.start + piece.length / 2;
+            const [bwx, bwy, bwz] = groupToWorld(gx, pD + brickD / 2, row.y);
+            const bPlacePt = PT(bwx, bwy, bwz);
+            const bPlace3D = E(`IFCAXIS2PLACEMENT3D(#${bPlacePt},${axisStr},${refStr})`);
+            const bLocalPl = E(`IFCLOCALPLACEMENT(#${stPl},#${bPlace3D})`);
+            const bProfAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
+            const bProf    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${bProfAx},${r(piece.length)},${r(brickD)})`);
+            const bSolid   = E(`IFCEXTRUDEDAREASOLID(#${bProf},#${sAx0},#${extDir},${r(material.steenH)})`);
+            const bShRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${bSolid}))`);
+            const bPds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${bShRep}))`);
+            const bName    = `${group.name ?? 'Groep'} - Penant Strip`.replace(/'/g, "\\'");
+            const bProxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${bName}',$,'Steenstrip',#${bLocalPl},#${bPds},$,.NOTDEFINED.)`);
+            E(`IFCSTYLEDITEM(#${bSolid},(#${getStyle(brickColor)}),$)`);
+            allProxyIds.push(bProxy);
+          }
+        }
       }
     }
   }

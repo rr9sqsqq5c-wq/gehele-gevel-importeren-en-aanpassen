@@ -1331,6 +1331,20 @@ export default function App() {
         }
       }
 
+      if (s.maxHoogte != null && s.maxHoogte > 0) {
+        lattenData = lattenData.map((lat) => {
+          if (lat.y >= s.maxHoogte) return null;
+          if (lat.y + lat.height > s.maxHoogte) return { ...lat, height: s.maxHoogte - lat.y };
+          return lat;
+        }).filter(Boolean);
+      }
+
+      const penantFaceRows = (s.penanten ?? []).map((p) => {
+        const pB = Math.max(1, p.breedte ?? 400);
+        const pH = Math.max(1, p.hoogte ?? 2000);
+        return buildCenteredFacePattern(pB, pH, mat, s.verband ?? DEFAULT_VERBAND);
+      });
+
       return {
         id: group.id,
         name: s.name,
@@ -1354,6 +1368,8 @@ export default function App() {
         groupMinH,
         refWallOrigin,
         layerVisibility: vis,
+        maxHoogte: s.maxHoogte ?? null,
+        penantFaceRows,
       };
     });
     const settingsMap = Object.fromEntries(groups.map((g) => [g.id, getSettings(g.id)]));
