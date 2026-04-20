@@ -723,6 +723,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     const brickD = settings.brickDepth ?? 20;
     const material = settings.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
     const panelDikte = settings.panelen?.dikte ?? 8;
+    const latDikte = group.latDikte ?? 28;
     const vis = group.layerVisibility ?? {};
     const rwo = group.refWallOrigin;
     const groupMinX = group.groupMinX ?? 0;
@@ -775,7 +776,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
 
         for (const row of rows) {
           for (const piece of row.pieces) {
-            const [wx, wy, wz] = toWorld(piece.start + piece.length / 2, brickD / 2, row.y);
+            const [wx, wy, wz] = toWorld(piece.start + piece.length / 2, latDikte + panelDikte + brickD / 2, row.y);
             const placePt = PT(wx, wy, wz);
             const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
             const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
@@ -798,7 +799,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
       const { axisStr, refStr } = makeGroupAxes();
       for (const panel of group.panels) {
         const cx = panel.x + panel.width / 2;
-        const depth = brickD + panelDikte / 2;
+        const depth = latDikte + panelDikte / 2;
         const [wx, wy, wz] = groupToWorld(cx, depth, panel.y);
         const placePt = PT(wx, wy, wz);
         const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
@@ -816,12 +817,11 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     }
 
     if (vis.latten !== false && (group.lattenData ?? []).length) {
-      const latDikte = group.latDikte ?? 28;
       const { axisStr, refStr } = makeGroupAxes();
       for (const lat of group.lattenData) {
         const cx = lat.x + lat.width / 2;
         const cy = lat.y;
-        const depth = brickD + panelDikte + latDikte / 2;
+        const depth = latDikte / 2;
         const [wx, wy, wz] = groupToWorld(cx, depth, cy);
         const placePt = PT(wx, wy, wz);
         const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);

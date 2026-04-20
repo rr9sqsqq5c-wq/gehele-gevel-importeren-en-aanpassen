@@ -1334,7 +1334,17 @@ export default function App() {
       return {
         id: group.id,
         name: s.name,
-        wallsWithRows: walls.map((wall) => ({ wall, rows: rows[wall.expressID] ?? [] })),
+        wallsWithRows: walls.map((wall) => {
+          const wallHeightOffset = (wall.wallOrigin?.heightStart ?? 0) - groupMinH;
+          let wallRows = rows[wall.expressID] ?? [];
+          if (s.maxHoogte != null && s.maxHoogte > 0) {
+            wallRows = wallRows.filter((row) => wallHeightOffset + row.y < s.maxHoogte);
+          }
+          if (s.minHoogte != null && s.minHoogte > 0) {
+            wallRows = wallRows.filter((row) => wallHeightOffset + row.y + mat.steenH > s.minHoogte);
+          }
+          return { wall, rows: wallRows };
+        }),
         panels,
         lattenData,
         latDikte: latDikteEff ?? (s.latten?.dikte ?? 28),
