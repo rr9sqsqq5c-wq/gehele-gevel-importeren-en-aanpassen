@@ -153,7 +153,7 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, a
     const ld = latDikte;
     const panelT = panelDikte;
     const { outsidePos, outsideDir } = getOutsideFaceInfo(rwo, allWalls);
-    const depthCenter = ld + sh - panelT - ld / 2;
+    const depthCenter = ld + ld / 2;
     return [
       pX + brickDepth + panelT + ld / 2,
       pX + pB - brickDepth - panelT - ld / 2,

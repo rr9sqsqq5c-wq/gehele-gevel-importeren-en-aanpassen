@@ -962,7 +962,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
           }
         }
 
-        const cornerBattenDepthCenter = latDikte + penShift - penPanelT - latDikte / 2;
+        const cornerBattenDepthCenter = latDikte + latDikte / 2;
         for (const [gxCenter, cLabel] of [
           [pX + brickD + penPanelT + latDikte / 2, 'Penant Hoeklatje L'],
           [pX + pB - brickD - penPanelT - latDikte / 2, 'Penant Hoeklatje R'],
