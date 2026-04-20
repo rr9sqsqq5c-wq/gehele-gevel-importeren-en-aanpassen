@@ -59,7 +59,14 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
     const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40);
     const globalPieces = rows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
-    const zones = buildFacadeZones(groupWidth, groupHeight, openingsForZones);
+    const PENANT_INSET = 20;
+    const penantOpenings = (s.penanten ?? []).map((pen, pi) => {
+      const px = (pen.x ?? 0) + PENANT_INSET;
+      const pw = Math.max(1, pen.breedte ?? 400) - 2 * PENANT_INSET;
+      if (pw <= 0) return null;
+      return { id: `pen_${pi}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null };
+    }).filter(Boolean);
+    const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
     for (const zone of zones) {
       const result = panelizeZone(zone, rows, globalPieces, mat.steenH, basePanel);
       if (result.ok) panelList.push(...result.panels);

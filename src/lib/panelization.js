@@ -72,6 +72,7 @@ export function buildFacadeZones(facadeWidth, facadeHeight, openings) {
 
   return zones
     .filter((z) => z.width > 0.001 && z.height > 0.001)
+    .sort((a, b) => a.x - b.x || a.y - b.y)
     .map((z, i) => ({ ...z, id: `Z${i + 1}`, kind: 'zone' }));
 }
 
