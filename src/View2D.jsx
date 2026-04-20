@@ -44,7 +44,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
   const allPanels = useMemo(() => {
     if (!facadeData || !panelen?.enabled) return [];
     const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
-    const basePanel = computeEffectiveBasePanel(panelen, mat.brickWeightM2 ?? 40);
+    const basePanel = computeEffectiveBasePanel(panelen, mat.brickWeightM2 ?? 40, mat);
     const steenH = mat.steenH;
     const globalPieces = rows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));

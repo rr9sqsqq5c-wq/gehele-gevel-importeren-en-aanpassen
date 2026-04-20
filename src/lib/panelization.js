@@ -185,7 +185,7 @@ export function panelizeZone(zone, globalRows, globalPieces, steenH, basePanel) 
     {
       orientation: 'staand',
       xBreaks: chooseBreaks(zone.x, zone.x + zone.width, xCandidates, bpH, targetShort),
-      yBreaks: chooseBreaks(zone.y, zone.y + zone.height, yCandidates, bpW, targetLong),
+      yBreaks: chooseBreaks(zone.y, zone.y + zone.height, yCandidates, bpH, targetShort),
     },
   ];
 
@@ -199,12 +199,17 @@ export function panelizeZone(zone, globalRows, globalPieces, steenH, basePanel) 
     const avgArea = panels.reduce((s, p) => s + p.area, 0) / panels.length;
     const areaScore = Math.abs(avgArea - TARGET_AREA);
     const sawWasteScore = panels.reduce((s, p) => {
-      const cols = Math.max(1, Math.floor(bpW / p.width));
-      const rows = Math.max(1, Math.floor(bpH / p.height));
-      const usedFraction = (cols * p.width * rows * p.height) / (bpW * bpH);
+      const fitsW = p.width <= bpW && p.height <= bpH;
+      const fitsH = p.width <= bpH && p.height <= bpW;
+      if (!fitsW && !fitsH) return s + 1;
+      const plateW = fitsW ? bpW : bpH;
+      const plateH = fitsW ? bpH : bpW;
+      const cols = Math.max(1, Math.floor(plateW / p.width));
+      const rows = Math.max(1, Math.floor(plateH / p.height));
+      const usedFraction = (cols * p.width * rows * p.height) / (plateW * plateH);
       return s + (1 - usedFraction);
     }, 0) / panels.length;
-    const score = panels.length * 1_000_000 + areaScore / 1000 + sawWasteScore * 10_000 + uniqueCount * 100;
+    const score = panels.length * 100_000 + areaScore / 1000 + sawWasteScore * 50_000 + uniqueCount * 1_000;
     if (!best || score < best.score) best = { ...variant, panels, score };
   }
 
