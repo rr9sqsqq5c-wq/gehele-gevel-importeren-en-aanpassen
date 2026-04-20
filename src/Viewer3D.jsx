@@ -229,16 +229,19 @@ function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls }) {
     if (!groupPattern) return [];
     const { batches: batchData, groupMinX, groupMinH, refWallOrigin } = groupPattern;
     if (!refWallOrigin || !batchData?.length) return [];
-    const steenH = material?.steenH ?? 50;
+    const defaultSteenH = material?.steenH ?? 50;
     const depth = brickD ?? 20;
-    return batchData.map((batch) => ({
-      color: batch.color,
-      bricks: batch.rows.flatMap((row) =>
-        row.pieces.map((piece) =>
-          getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, upAxis, allWalls)
-        )
-      ),
-    })).filter((b) => b.bricks.length > 0);
+    return batchData.map((batch) => {
+      const steenH = batch.brickH ?? defaultSteenH;
+      return {
+        color: batch.color,
+        bricks: batch.rows.flatMap((row) =>
+          row.pieces.map((piece) =>
+            getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, upAxis, allWalls)
+          )
+        ),
+      };
+    }).filter((b) => b.bricks.length > 0);
   }, [groupPattern, material, brickD, upAxis, allWalls]);
 
   useEffect(() => {

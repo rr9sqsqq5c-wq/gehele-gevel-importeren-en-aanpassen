@@ -1001,7 +1001,8 @@ export default function App() {
         const zX2 = zi === numZ - 1 ? zX2Raw : zX2Raw + brickD3d;
         if (zX2 <= zX1) continue;
         const zoneMat = zs.material ?? mat;
-        const zoneFull = buildFullGroupFacadePattern(walls, zoneMat, zs.verband ?? (s.verband ?? DEFAULT_VERBAND), zs.maxHoogte ?? s.maxHoogte, s.zetwerk, s.minHoogte);
+        const zoneVerband3d = zs.verband ?? (s.verband ?? DEFAULT_VERBAND);
+        const zoneFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband3d, zs.maxHoogte ?? s.maxHoogte, s.zetwerk, s.minHoogte);
         if (!zoneFull) continue;
         const clipRows = zoneFull.rows.map((row) => ({
           ...row,
@@ -1011,7 +1012,8 @@ export default function App() {
             return [{ ...piece, start: Math.max(ps, zX1), length: Math.min(pe, zX2) - Math.max(ps, zX1) }];
           }).filter((p) => p.length > 1),
         })).filter((row) => row.pieces.length > 0);
-        enabledZones.push({ zX1, zX2, rows: clipRows, color: zs.color ?? s.color ?? '#a64033' });
+        const zoneBrickH3d = zoneVerband3d === 'staand_tegelverband' ? zoneMat.steenL : zoneMat.steenH;
+        enabledZones.push({ zX1, zX2, rows: clipRows, color: zs.color ?? s.color ?? '#a64033', brickH: zoneBrickH3d });
       }
 
       const generalRows = maskedRows.map((row) => ({
@@ -1032,9 +1034,11 @@ export default function App() {
         }).filter((p) => p.length > 1),
       })).filter((row) => row.pieces.length > 0);
 
+      const groupVerband3d = s.verband ?? DEFAULT_VERBAND;
+      const groupBrickH3d = groupVerband3d === 'staand_tegelverband' ? mat.steenL : mat.steenH;
       const batches = [
-        { rows: generalRows, color: s.color ?? '#a64033' },
-        ...enabledZones.map((ez) => ({ rows: ez.rows, color: ez.color })),
+        { rows: generalRows, color: s.color ?? '#a64033', brickH: groupBrickH3d },
+        ...enabledZones.map((ez) => ({ rows: ez.rows, color: ez.color, brickH: ez.brickH })),
       ];
 
       result[group.id] = {
