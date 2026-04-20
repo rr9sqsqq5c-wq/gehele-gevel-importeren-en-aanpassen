@@ -4,6 +4,7 @@ warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
+import { BATTEN_CATALOG } from './lib/battens.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel } from './lib/panelization.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
@@ -583,6 +584,54 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
       })()}
 
       {(() => {
+        const selected = settings.lattenArtikelen ?? [];
+        const toggle2 = (id) => {
+          const next = selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id];
+          onUpdate({ lattenArtikelen: next });
+        };
+        const brandColors = { 'B-s1,d0': '#dc2626', 'D-s2,d0': '#2563eb' };
+        const selectedCount = selected.length;
+        return (
+          <CollapsibleSection
+            title="Latten artikelkeuze"
+            tip={"Selecteer de gewenste latten-artikelen uit de Mulder's Houtimport prijslijst (15-04-2026).\nDe aangevinkte artikelen worden opgeslagen bij de groep en zijn zichtbaar in de uittrekstaat.\n\n· Rood label = Brandklasse B-s1,d0 (hogere bescherming)\n· Blauw label = Brandklasse D-s2,d0"}
+            isOpen={isOpen('lattenArtikelen')}
+            onToggle={() => toggle('lattenArtikelen')}
+            badge={selectedCount ? `${selectedCount} gekozen` : null}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {BATTEN_CATALOG.map((art) => {
+                const checked = selected.includes(art.id);
+                const bColor = brandColors[art.brandklasse] ?? '#64748b';
+                return (
+                  <label key={art.id} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 10,
+                    cursor: 'pointer', color: checked ? '#0f172a' : '#475569',
+                    background: checked ? '#f0fdf4' : 'transparent',
+                    border: `1px solid ${checked ? '#86efac' : '#e2e8f0'}`,
+                    borderRadius: 4, padding: '4px 6px',
+                  }}>
+                    <input type="checkbox" checked={checked} onChange={() => toggle2(art.id)}
+                      style={{ marginTop: 1, flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 10.5, color: '#1e293b', lineHeight: 1.3 }}>{art.naam}</div>
+                      <div style={{ color: '#64748b', fontSize: 9.5, marginTop: 1 }}>{art.afmetingen}</div>
+                      <div style={{ color: '#64748b', fontSize: 9, marginTop: 1 }}>{art.behandeling}</div>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+                        <span style={{ background: bColor, color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600 }}>{art.brandklasse}</span>
+                        <span style={{ color: '#94a3b8', fontSize: 9 }}>{art.toepassing}</span>
+                        <span style={{ marginLeft: 'auto', color: '#0f172a', fontWeight: 600, fontSize: 9.5 }}>€ {art.prijsM1.toFixed(3)}/m¹</span>
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </CollapsibleSection>
+        );
+      })()}
+
+      {(() => {
         const vis = settings.layerVisibility ?? {};
         const updVis = (patch) => onUpdate({ layerVisibility: { ...(settings.layerVisibility ?? {}), ...patch } });
         return (
@@ -1016,7 +1065,7 @@ export default function App() {
     const srcSettings = getSettings(sourceGroupId);
     const linkedIds = groups.filter((g) => groupLinks[g.id] === linkId && g.id !== sourceGroupId).map((g) => g.id);
     for (const id of linkedIds) {
-      updateSettings(id, { name: srcSettings.name, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth, maxHoogte: srcSettings.maxHoogte, penanten: srcSettings.penanten ? [...srcSettings.penanten] : [], zetwerk: srcSettings.zetwerk ? { ...srcSettings.zetwerk } : undefined, panelen: srcSettings.panelen ? { ...srcSettings.panelen } : undefined, latten: srcSettings.latten ? { ...srcSettings.latten } : undefined });
+      updateSettings(id, { name: srcSettings.name, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth, maxHoogte: srcSettings.maxHoogte, penanten: srcSettings.penanten ? [...srcSettings.penanten] : [], zetwerk: srcSettings.zetwerk ? { ...srcSettings.zetwerk } : undefined, panelen: srcSettings.panelen ? { ...srcSettings.panelen } : undefined, latten: srcSettings.latten ? { ...srcSettings.latten } : undefined, lattenArtikelen: srcSettings.lattenArtikelen ? [...srcSettings.lattenArtikelen] : [] });
     }
   }
 

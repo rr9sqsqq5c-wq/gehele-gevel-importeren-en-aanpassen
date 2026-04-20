@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel } from './lib/panelization.js';
 import { openingXRangesAtY } from './lib/geometry.js';
+import { BATTEN_CATALOG } from './lib/battens.js';
 
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 
@@ -169,6 +170,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
     stripCount, stripAreaMM2,
     panelGroups,
     lattenSummary,
+    lattenArtikelen: s.lattenArtikelen ?? [],
     zetWerkAreaMM2,
     mat,
     openingsCount: groupOpenings.length,
@@ -458,6 +460,26 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
                       <TD right>st</TD>
                     </tr>
                   ))}
+                </>}
+
+                {to.lattenArtikelen?.length > 0 && <>
+                  <SectionHeader title="Latten artikelkeuze (Mulder's Houtimport)" />
+                  {to.lattenArtikelen.map((artId) => {
+                    const art = BATTEN_CATALOG.find((a) => a.id === artId);
+                    if (!art) return null;
+                    const bColor = art.brandklasse === 'B-s1,d0' ? '#dc2626' : '#2563eb';
+                    return (
+                      <tr key={artId}>
+                        <TD>
+                          <span style={{ fontWeight: 600 }}>{art.naam}</span>
+                          <span style={{ color: '#64748b', fontSize: 10, marginLeft: 6 }}>{art.afmetingen}</span>
+                          <span style={{ background: bColor, color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600, marginLeft: 6 }}>{art.brandklasse}</span>
+                        </TD>
+                        <TD right mono>€ {art.prijsM1.toFixed(3)}</TD>
+                        <TD right>per m¹</TD>
+                      </tr>
+                    );
+                  })}
                 </>}
               </tbody>
             </table>
