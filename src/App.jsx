@@ -735,52 +735,45 @@ export default function App() {
     for (const group of groups) {
       const s = getSettings(group.id);
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
-      const gAdj = adjacencies.filter((a) => group.wallIds.includes(a.wallIdA) && group.wallIds.includes(a.wallIdB));
-      const rows = buildGroupPattern(walls, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND, 'named');
-      if (s.maxHoogte !== null && s.maxHoogte > 0) {
-        const groupMinH = Math.min(...walls.map((w) => w.wallOrigin?.heightStart ?? 0));
-        for (const wall of walls) {
-          const wid = wall.expressID;
-          if (!rows[wid]) continue;
-          const wallOffset = (wall.wallOrigin?.heightStart ?? 0) - groupMinH;
-          const localCutoff = s.maxHoogte - wallOffset;
-          rows[wid] = rows[wid].filter((r) => r.y < localCutoff);
-        }
-      }
+      const withOrigin = walls.filter((w) => w.wallOrigin);
+      if (!withOrigin.length) continue;
+      const facadeData = buildFullGroupFacadePattern(walls, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte);
+      if (!facadeData) continue;
+      let { rows } = facadeData;
       if (s.penanten?.length) {
         const steenL = (s.material ?? DEFAULT_MATERIAL).steenL ?? 210;
-        for (const wall of walls) {
-          const wid = wall.expressID;
-          if (!rows[wid]) continue;
-          const wallLeft = wall.wallOrigin?.lengthStart ?? 0;
-          const wallRight = wallLeft + wall.length;
-          for (const p of s.penanten) {
-            const pX = p.x ?? 0;
-            const pEnd = pX + Math.max(1, p.breedte ?? 400);
-            if (pEnd <= wallLeft || pX >= wallRight) continue;
-            const maskStart = Math.max(0, pX - wallLeft);
-            const maskEnd = Math.min(wall.length, pEnd - wallLeft);
-            const innerMaskStart = maskStart + steenL;
-            const innerMaskEnd = maskEnd - steenL;
-            if (innerMaskStart >= innerMaskEnd) continue;
-            rows[wid] = rows[wid].map((row) => ({
-              ...row,
-              pieces: row.pieces.flatMap((piece) => {
-                const ps = piece.start, pe = piece.start + piece.length;
-                if (pe <= innerMaskStart || ps >= innerMaskEnd) return [piece];
+        rows = rows.map((row) => ({
+          ...row,
+          pieces: row.pieces.flatMap((piece) => {
+            let ps = [piece];
+            for (const p of s.penanten) {
+              const pX = (p.x ?? 0) - facadeData.groupMinX;
+              const pEnd = pX + Math.max(1, p.breedte ?? 400);
+              const innerMaskStart = pX + steenL;
+              const innerMaskEnd = pEnd - steenL;
+              if (innerMaskStart >= innerMaskEnd) continue;
+              ps = ps.flatMap((q) => {
+                const qs = q.start, qe = q.start + q.length;
+                if (qe <= innerMaskStart || qs >= innerMaskEnd) return [q];
                 const out = [];
-                if (ps < innerMaskStart) out.push({ ...piece, length: innerMaskStart - ps });
-                if (pe > innerMaskEnd) out.push({ ...piece, start: innerMaskEnd, length: pe - innerMaskEnd });
+                if (qs < innerMaskStart) out.push({ ...q, length: innerMaskStart - qs });
+                if (qe > innerMaskEnd) out.push({ ...q, start: innerMaskEnd, length: qe - innerMaskEnd });
                 return out;
-              }),
-            }));
-          }
-        }
+              });
+            }
+            return ps;
+          }),
+        }));
       }
-      Object.assign(result, rows);
+      result[group.id] = {
+        rows,
+        groupMinX: facadeData.groupMinX,
+        groupMinH: facadeData.groupMinH,
+        refWallOrigin: withOrigin[0].wallOrigin,
+      };
     }
     return result;
-  }, [groups, getSettings, wallMap, adjacencies, showPattern]);
+  }, [groups, getSettings, wallMap, showPattern]);
 
   async function startScan(file, handle) {
     setLoadStatus('scanning');
@@ -1685,7 +1678,7 @@ export default function App() {
                 selectedWallIds={selectedWallIds}
                 groups={groups}
                 groupSettings={getSettings}
-                wallPatterns={allPatterns}
+                groupPatterns={allPatterns}
                 onSelectWall={toggleSelect}
                 onSelectMultiple={(ids) => setSelectedWallIds((prev) => {
                   const next = new Set(prev);

@@ -150,7 +150,51 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, a
   );
 }
 
-function WallMesh({ wall, isSelected, isHovered, groupColor, pattern, material, brickD, onSelect, onHover, upAxis }) {
+function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY, steenH, brickD, upAxis, allWalls) {
+  const { outsidePos, outsideDir } = getOutsideFaceInfo(rwo, allWalls);
+  const ifc = { x: 0, y: 0, z: 0 };
+  ifc[rwo.lengthAxis]    = groupMinX + pieceStart + pieceLen / 2;
+  ifc[rwo.heightAxis]    = groupMinH + rowY + steenH / 2;
+  ifc[rwo.thicknessAxis] = outsidePos + outsideDir * brickD / 2;
+  const dims = { x: 0.01, y: 0.01, z: 0.01 };
+  dims[rwo.lengthAxis]    = pieceLen;
+  dims[rwo.heightAxis]    = steenH;
+  dims[rwo.thicknessAxis] = brickD;
+  return {
+    pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
+    size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+  };
+}
+
+function GroupBricks3D({ groupPattern, color, material, brickD, upAxis, allWalls }) {
+  const bricks = useMemo(() => {
+    if (!groupPattern || !color) return [];
+    const { rows, groupMinX, groupMinH, refWallOrigin } = groupPattern;
+    if (!refWallOrigin || !rows?.length) return [];
+    const steenH = material?.steenH ?? 50;
+    const depth = brickD ?? 20;
+    const out = [];
+    for (const row of rows) {
+      for (const piece of row.pieces) {
+        out.push(getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, upAxis, allWalls));
+      }
+    }
+    return out;
+  }, [groupPattern, color, material, brickD, upAxis, allWalls]);
+  if (!bricks.length) return null;
+  return (
+    <group>
+      {bricks.map((b, i) => (
+        <mesh key={i} position={b.pos}>
+          <boxGeometry args={b.size.map((v) => Math.max(v - 0.001, 0.001))} />
+          <meshStandardMaterial color={color} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function WallMesh({ wall, isSelected, isHovered, groupColor, onSelect, onHover, upAxis }) {
   const box = useMemo(() => getWallBox(wall, upAxis), [wall, upAxis]);
   if (!box) return null;
 
@@ -166,19 +210,6 @@ function WallMesh({ wall, isSelected, isHovered, groupColor, pattern, material, 
     : isHovered ? 0.75
     : groupColor ? 0.55
     : 0.7;
-
-  const bricks = useMemo(() => {
-    if (!pattern || !groupColor) return [];
-    const steenH = material?.steenH ?? 50;
-    const depth = brickD ?? 20;
-    const out = [];
-    for (const row of pattern) {
-      for (const piece of row.pieces) {
-        out.push(getBrickPos(wall, piece.start, piece.length, row.y, steenH, depth, upAxis));
-      }
-    }
-    return out;
-  }, [pattern, groupColor, material, brickD, wall, upAxis]);
 
   return (
     <group>
@@ -220,13 +251,6 @@ function WallMesh({ wall, isSelected, isHovered, groupColor, pattern, material, 
           </div>
         </Html>
       )}
-
-      {bricks.map((b, i) => (
-        <mesh key={i} position={b.pos}>
-          <boxGeometry args={b.size.map((v) => Math.max(v - 0.001, 0.001))} />
-          <meshStandardMaterial color={groupColor} />
-        </mesh>
-      ))}
     </group>
   );
 }
@@ -423,7 +447,7 @@ const COMPASS = [
   { key: 'Top',  label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
 ];
 
-export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPatterns, onSelectWall, onSelectMultiple }) {
+export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple }) {
   const [hoveredWallId, setHoveredWallId] = useState(null);
   const [preset, setPreset] = useState(null);
   const [boxSelectMode, setBoxSelectMode] = useState(false);
@@ -574,7 +598,6 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
         {walls.map((wall) => {
           const group = wallGroupMap[wall.expressID];
           const settings = group ? groupSettings(group.id) : null;
-          const pattern = wallPatterns?.[wall.expressID];
           return (
             <WallMesh
               key={wall.expressID}
@@ -582,12 +605,26 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
               isSelected={selectedWallIds.has(wall.expressID)}
               isHovered={hoveredWallId === wall.expressID}
               groupColor={settings?.color ?? null}
-              pattern={pattern}
-              material={settings?.material}
-              brickD={settings?.brickDepth ?? 20}
               onSelect={boxSelectMode ? null : onSelectWall}
               onHover={setHoveredWallId}
               upAxis={upAxis}
+            />
+          );
+        })}
+
+        {groups.map((group) => {
+          const settings = groupSettings(group.id);
+          const gp = groupPatterns?.[group.id];
+          if (!gp) return null;
+          return (
+            <GroupBricks3D
+              key={`bricks-${group.id}`}
+              groupPattern={gp}
+              color={settings?.color ?? null}
+              material={settings?.material}
+              brickD={settings?.brickDepth ?? 20}
+              upAxis={upAxis}
+              allWalls={walls}
             />
           );
         })}
