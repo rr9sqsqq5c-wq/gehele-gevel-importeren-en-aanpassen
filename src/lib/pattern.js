@@ -134,7 +134,31 @@ function clipPieceToWall(piece, wallStart, wallEnd, openings, rowY, steenH) {
   return [{ ...piece, start: round2(clipStart), length: round2(clipEnd - clipStart) }];
 }
 
-export function buildGroupPattern(walls, adjacencies, material, verband) {
+function clipPiecesAgainstOpenings(pieces, openings, rowY, steenH) {
+  if (!openings.length) return pieces;
+  let result = pieces;
+  for (const op of openings) {
+    const ox = op.x ?? 0;
+    const oy = op.y ?? 0;
+    const ow = op.breedte ?? op.width ?? 0;
+    const oh = op.hoogte ?? op.height ?? 0;
+    if (rowY + steenH <= oy + 1 || rowY >= oy + oh - 1) continue;
+    const opStart = ox;
+    const opEnd = ox + ow;
+    result = result.flatMap((piece) => {
+      const ps = piece.start;
+      const pe = piece.start + piece.length;
+      if (pe <= opStart + 0.001 || ps >= opEnd - 0.001) return [piece];
+      const out = [];
+      if (ps < opStart - 0.001) out.push({ ...piece, length: round2(opStart - ps) });
+      if (pe > opEnd + 0.001) out.push({ ...piece, start: round2(opEnd), length: round2(pe - opEnd) });
+      return out;
+    });
+  }
+  return result.filter((p) => p.length > 0.001);
+}
+
+export function buildGroupPattern(walls, adjacencies, material, verband, withOpenings = false) {
   const { steenH, lint } = material;
   const lagenmaat = getLagenmaat(material, verband);
   const rowH = verband === 'staand_tegelverband' ? material.steenL : steenH;
@@ -156,6 +180,8 @@ export function buildGroupPattern(walls, adjacencies, material, verband) {
     const verticalOffset = Math.floor(((wall.wallOrigin?.heightStart ?? 0) - groupMinH) / lagenmaat);
     const rows = [];
 
+    const wallOpenings = withOpenings ? (wall.openings ?? []) : [];
+
     for (let r = 0; r < wallLagen; r++) {
       const rowY = round2(r * lagenmaat);
       const bondRow = r + verticalOffset;
@@ -169,7 +195,8 @@ export function buildGroupPattern(walls, adjacencies, material, verband) {
         }
       }
 
-      if (clipped.length) rows.push({ y: rowY, pieces: clipped });
+      const finalPieces = withOpenings ? clipPiecesAgainstOpenings(clipped, wallOpenings, rowY, rowH) : clipped;
+      if (finalPieces.length) rows.push({ y: rowY, pieces: finalPieces });
     }
 
     result[wall.expressID] = rows;
