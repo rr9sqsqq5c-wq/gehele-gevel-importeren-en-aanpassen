@@ -246,11 +246,19 @@ function OpeningMesh({ wall, opening, upAxis }) {
 
   const polyPts = opening.polyPts ?? null;
 
-  const lineObj = useMemo(() => {
-    const color = opening.type === 'raam' ? '#93c5fd' : '#fde68a';
-    const mat = new THREE.LineBasicMaterial({ color, depthTest: false });
+  const meshObj = useMemo(() => {
+    const isRaam = opening.type === 'raam';
+    const color = isRaam ? '#93c5fd' : '#fde68a';
+    const lineMat = new THREE.LineBasicMaterial({ color, depthTest: false });
+    const fillMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.18, depthTest: false, side: THREE.DoubleSide });
 
-    const makePoly = (tVal, pts2d) => {
+    const rectPts = [
+      { l: ox, h: oy }, { l: ox + ow, h: oy },
+      { l: ox + ow, h: oy + oh }, { l: ox, h: oy + oh },
+    ];
+    const pts2d = (polyPts && polyPts.length >= 3) ? polyPts : rectPts;
+
+    const makePolyLine = (tVal) => {
       const pts = [...pts2d, pts2d[0]].map(({ l, h }) => {
         const ifc = { x: 0, y: 0, z: 0 };
         ifc[wo.lengthAxis]    = wo.lengthStart + l;
@@ -259,22 +267,34 @@ function OpeningMesh({ wall, opening, upAxis }) {
         const [tx, ty, tz] = ifcToThree(ifc.x, ifc.y, ifc.z, upAxis);
         return new THREE.Vector3(tx, ty, tz);
       });
-      return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+      return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat);
     };
 
-    const rectPts = [
-      { l: ox, h: oy }, { l: ox + ow, h: oy },
-      { l: ox + ow, h: oy + oh }, { l: ox, h: oy + oh },
-    ];
-    const pts2d = (polyPts && polyPts.length >= 3) ? polyPts : rectPts;
+    const makePolyFill = (tVal) => {
+      const shape = new THREE.Shape(pts2d.map(({ l, h }) => new THREE.Vector2(l, h)));
+      const geo = new THREE.ShapeGeometry(shape);
+      const posArr = geo.attributes.position.array;
+      for (let i = 0; i < posArr.length; i += 3) {
+        const ifc = { x: 0, y: 0, z: 0 };
+        ifc[wo.lengthAxis]    = wo.lengthStart + posArr[i];
+        ifc[wo.heightAxis]    = wo.heightStart + posArr[i + 1];
+        ifc[wo.thicknessAxis] = tVal;
+        const [tx, ty, tz] = ifcToThree(ifc.x, ifc.y, ifc.z, upAxis);
+        posArr[i] = tx; posArr[i + 1] = ty; posArr[i + 2] = tz;
+      }
+      geo.attributes.position.needsUpdate = true;
+      geo.computeBoundingSphere();
+      return new THREE.Mesh(geo, fillMat);
+    };
 
     const group = new THREE.Group();
-    group.add(makePoly(frontFace, pts2d));
-    group.add(makePoly(backFace, pts2d));
+    group.add(makePolyLine(frontFace));
+    group.add(makePolyLine(backFace));
+    group.add(makePolyFill(frontFace + 1));
     return group;
   }, [wo, ox, oy, ow, oh, frontFace, backFace, upAxis, opening.type, polyPts]);
 
-  return <primitive object={lineObj} />;
+  return <primitive object={meshObj} />;
 }
 
 function SceneLights() {
