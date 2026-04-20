@@ -539,8 +539,13 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
       {(() => {
         const lat = settings.latten ?? {};
         const upd = (patch) => onUpdate({ latten: { ...(settings.latten ?? {}), ...patch } });
+        const selectedArtikelId = (settings.lattenArtikelen ?? [])[0] ?? null;
+        const selectedArtikel = selectedArtikelId ? BATTEN_CATALOG.find((a) => a.id === selectedArtikelId) : null;
+        const breedte = selectedArtikel ? selectedArtikel.breedteMM : (lat.breedte ?? 50);
+        const dikte = selectedArtikel ? selectedArtikel.dikteMM : (lat.dikte ?? 28);
+        const brandColors = { 'B-s1,d0': '#dc2626', 'D-s2,d0': '#2563eb' };
         return (
-          <CollapsibleSection title="Achterconstructie hout" tip={"Houten latten als dragerstructuur achter de basisplaat.\nHorizontale latten: maximaal interval in hoogte, altijd boven en onder ramen/deuren.\nVerticale latten: op paneelgrenzen (links, midden, rechts).\n\n· Breedte = breedte van de lat (zichtbaar in gevelaanzicht)\n· Dikte = diepte van de lat (loodrecht op gevel)\n· Max interval = max. hartafstand tussen horizontale latten"} isOpen={isOpen('latten')} onToggle={() => toggle('latten')} badge={lat.enabled ? 'Aan' : 'Uit'}>
+          <CollapsibleSection title="Achterconstructie hout" tip={"Houten latten als dragerstructuur achter de basisplaat.\nHorizontale latten: maximaal interval in hoogte, altijd boven en onder ramen/deuren.\nVerticale latten: op paneelgrenzen (links, midden, rechts).\n\nWanneer een artikel is geselecteerd in 'Latten artikelkeuze' worden breedte en dikte automatisch overgenomen.\n\n· Breedte = breedte van de lat (zichtbaar in gevelaanzicht)\n· Dikte = diepte van de lat (loodrecht op gevel)\n· Max interval = max. hartafstand tussen horizontale latten"} isOpen={isOpen('latten')} onToggle={() => toggle('latten')} badge={lat.enabled ? 'Aan' : 'Uit'}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
               <input type="checkbox" id="lat-enable" checked={lat.enabled ?? false}
                 onChange={(e) => upd({ enabled: e.target.checked })} />
@@ -558,25 +563,44 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                     </label>
                   ))}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-                  <Field label="Breedte mm" tip="Breedte van de houten lat (mm). Dit is de zichtbare maat in het gevelaanzicht.">
-                    <input type="number" min={10} step={5} value={lat.breedte ?? 50}
-                      onChange={(e) => upd({ breedte: Number(e.target.value) })}
-                      style={{ ...inp, width: '100%' }} />
-                  </Field>
-                  <Field label="Dikte mm" tip="Dikte van de houten lat loodrecht op de gevel (mm).">
-                    <input type="number" min={5} step={5} value={lat.dikte ?? 28}
-                      onChange={(e) => upd({ dikte: Number(e.target.value) })}
-                      style={{ ...inp, width: '100%' }} />
-                  </Field>
-                  {(lat.richting ?? 'horizontaal') === 'horizontaal' && (
+
+                {selectedArtikel ? (
+                  <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 5, padding: '6px 8px', marginBottom: 4 }}>
+                    <div style={{ fontSize: 9.5, color: '#64748b', marginBottom: 3 }}>Afmetingen uit geselecteerd artikel:</div>
+                    <div style={{ fontWeight: 700, fontSize: 10.5, color: '#1e293b' }}>{selectedArtikel.naam}</div>
+                    <div style={{ fontSize: 9.5, color: '#475569', marginTop: 1 }}>{selectedArtikel.afmetingen}</div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ background: brandColors[selectedArtikel.brandklasse] ?? '#64748b', color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600 }}>{selectedArtikel.brandklasse}</span>
+                      <span style={{ fontSize: 10, color: '#334155' }}>Breedte <strong>{breedte} mm</strong></span>
+                      <span style={{ fontSize: 10, color: '#334155' }}>Dikte <strong>{dikte} mm</strong></span>
+                      <span style={{ fontSize: 9.5, color: '#0f172a', fontWeight: 600, marginLeft: 'auto' }}>€ {selectedArtikel.prijsM1.toFixed(3)}/m¹</span>
+                    </div>
+                    <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 3 }}>Selecteer een ander artikel in 'Latten artikelkeuze' om te wijzigen.</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                    <Field label="Breedte mm" tip="Breedte van de houten lat (mm). Dit is de zichtbare maat in het gevelaanzicht.">
+                      <input type="number" min={10} step={5} value={lat.breedte ?? 50}
+                        onChange={(e) => upd({ breedte: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                    <Field label="Dikte mm" tip="Dikte van de houten lat loodrecht op de gevel (mm).">
+                      <input type="number" min={5} step={5} value={lat.dikte ?? 28}
+                        onChange={(e) => upd({ dikte: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                  </div>
+                )}
+
+                {(lat.richting ?? 'horizontaal') === 'horizontaal' && (
+                  <div style={{ marginTop: 3 }}>
                     <Field label="Max interval mm" tip="Maximale hartafstand tussen horizontale latten (mm). Standaard 400 mm.">
                       <input type="number" min={50} step={50} value={lat.maxInterval ?? 400}
                         onChange={(e) => upd({ maxInterval: Number(e.target.value) })}
                         style={{ ...inp, width: '100%' }} />
                     </Field>
-                  )}
-                </div>
+                  </div>
+                )}
               </>
             )}
           </CollapsibleSection>
@@ -1188,8 +1212,12 @@ export default function App() {
           }
         }
 
+        const _artId = (s.lattenArtikelen ?? [])[0] ?? null;
+        const _art = _artId ? BATTEN_CATALOG.find((a) => a.id === _artId) : null;
+        const latDikteEff = _art ? _art.dikteMM : (s.latten?.dikte ?? 28);
+
         if (s.latten?.enabled && vis.latten !== false) {
-          const latBreedte = Math.max(5, s.latten.breedte ?? 50);
+          const latBreedte = Math.max(5, _art ? _art.breedteMM : (s.latten.breedte ?? 50));
           const maxInterval = Math.max(50, s.latten.maxInterval ?? 400);
           const richting = s.latten.richting ?? 'horizontaal';
 
@@ -1238,7 +1266,7 @@ export default function App() {
         wallsWithRows: walls.map((wall) => ({ wall, rows: rows[wall.expressID] ?? [] })),
         panels,
         lattenData,
-        latDikte: s.latten?.dikte ?? 28,
+        latDikte: latDikteEff ?? (s.latten?.dikte ?? 28),
         zetwerk: s.zetwerk,
         facadeData,
         groupMinX,
