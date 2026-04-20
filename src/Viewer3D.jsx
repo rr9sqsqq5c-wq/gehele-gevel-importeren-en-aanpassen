@@ -222,10 +222,12 @@ function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY,
 }
 
 function InstancedBrickBatch({ bricks, color }) {
-  const meshRef = useRef();
-  const dummy = useMemo(() => new THREE.Object3D(), []);
-  useEffect(() => {
-    if (!meshRef.current || !bricks.length) return;
+  const mesh = useMemo(() => {
+    if (!bricks.length) return null;
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const mat = new THREE.MeshStandardMaterial({ color });
+    const im = new THREE.InstancedMesh(geo, mat, bricks.length);
+    const dummy = new THREE.Object3D();
     bricks.forEach((b, i) => {
       dummy.position.set(b.pos[0], b.pos[1], b.pos[2]);
       dummy.scale.set(
@@ -234,17 +236,21 @@ function InstancedBrickBatch({ bricks, color }) {
         Math.max(b.size[2] - 0.001, 0.001)
       );
       dummy.updateMatrix();
-      meshRef.current.setMatrixAt(i, dummy.matrix);
+      im.setMatrixAt(i, dummy.matrix);
     });
-    meshRef.current.instanceMatrix.needsUpdate = true;
-  }, [bricks, dummy]);
-  if (!bricks.length) return null;
-  return (
-    <instancedMesh ref={meshRef} args={[null, null, bricks.length]}>
-      <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial color={color} />
-    </instancedMesh>
-  );
+    im.instanceMatrix.needsUpdate = true;
+    return im;
+  }, [bricks, color]);
+  useEffect(() => {
+    return () => {
+      if (mesh) {
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+      }
+    };
+  }, [mesh]);
+  if (!mesh) return null;
+  return <primitive object={mesh} />;
 }
 
 function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls }) {
