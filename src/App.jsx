@@ -1430,6 +1430,59 @@ export default function App() {
         return { frontRows, leftRows, rightRows, sideDepth, pD };
       });
 
+      const stripBatches = (() => {
+        if (!facadeData) return null;
+        const { rows: baseRows, groupWidth: gW } = facadeData;
+        const zoneSettingsArr = s.zoneSettings ?? [];
+        const sortedPens = [...(s.penanten ?? [])].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+        const numZ = sortedPens.length + 1;
+        const enabledZones = [];
+        for (let zi = 0; zi < numZ; zi++) {
+          const zs = zoneSettingsArr[zi];
+          if (!zs?.enabled) continue;
+          const zX1 = zi === 0 ? 0 : (sortedPens[zi - 1].x ?? 0) + Math.max(1, sortedPens[zi - 1].breedte ?? 400);
+          const zX2 = zi === numZ - 1 ? gW : (sortedPens[zi].x ?? 0);
+          if (zX2 <= zX1) continue;
+          const zoneMat = zs.material ?? mat;
+          const zoneVerband = zs.verband ?? (s.verband ?? DEFAULT_VERBAND);
+          const zoneMaxH = zs.maxHoogte ?? (s.maxHoogte ?? null);
+          const zFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxH, s.zetwerk, s.minHoogte);
+          if (!zFull) continue;
+          const clipRows = zFull.rows.map((row) => ({
+            ...row,
+            pieces: row.pieces.flatMap((piece) => {
+              const ps = piece.start, pe = piece.start + piece.length;
+              if (pe <= zX1 || ps >= zX2) return [];
+              const cs = Math.max(ps, zX1), ce = Math.min(pe, zX2);
+              return [{ ...piece, start: cs, length: ce - cs }];
+            }).filter((p) => p.length > 1),
+          })).filter((row) => row.pieces.length > 0);
+          enabledZones.push({ zX1, zX2, rows: clipRows, material: zoneMat, color: zs.color ?? s.color });
+        }
+        if (!enabledZones.length) return null;
+        const generalRows = baseRows.map((row) => ({
+          ...row,
+          pieces: row.pieces.flatMap((piece) => {
+            let ps = [piece];
+            for (const ez of enabledZones) {
+              ps = ps.flatMap((q) => {
+                const qs = q.start, qe = q.start + q.length;
+                if (qe <= ez.zX1 || qs >= ez.zX2) return [q];
+                const out = [];
+                if (qs < ez.zX1) out.push({ ...q, length: ez.zX1 - qs });
+                if (qe > ez.zX2) out.push({ ...q, start: ez.zX2, length: qe - ez.zX2 });
+                return out;
+              });
+            }
+            return ps;
+          }).filter((p) => p.length > 1),
+        })).filter((row) => row.pieces.length > 0);
+        return [
+          { rows: generalRows, material: mat, color: s.color ?? '#a64033' },
+          ...enabledZones,
+        ];
+      })();
+
       return {
         id: group.id,
         name: s.name,
@@ -1449,6 +1502,7 @@ export default function App() {
         latDikte: latDikteEff ?? (s.latten?.dikte ?? 28),
         zetwerk: s.zetwerk,
         facadeData,
+        stripBatches,
         groupMinX,
         groupMinH,
         refWallOrigin,
