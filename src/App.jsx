@@ -851,6 +851,7 @@ export default function App() {
   const [gridLines, setGridLines] = useState([]);
   const [showGridLines, setShowGridLines] = useState(true);
   const [showCenterLines, setShowCenterLines] = useState(false);
+  const [showRulesModal, setShowRulesModal] = useState(false);
   const { get: getSettings, update: updateSettings, initColor, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
@@ -1839,6 +1840,11 @@ export default function App() {
               </button>
             </Tooltip>
           )}
+          <Tooltip text="Bekijk de logica-regels per onderdeel (strippen, latten, panelen, penanten, zones)">
+            <button onClick={() => setShowRulesModal(true)} style={{ background: '#475569', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
+              ? Regels
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -2147,6 +2153,110 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {showRulesModal && (
+        <div onClick={() => setShowRulesModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 8, width: '100%', maxWidth: 820, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', fontFamily: 'system-ui, sans-serif' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: '#1e293b', borderRadius: '8px 8px 0 0' }}>
+              <span style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 15 }}>📋 Logica-regels per onderdeel</span>
+              <button onClick={() => setShowRulesModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ padding: '0 20px 20px', overflowY: 'auto', maxHeight: 'calc(100vh - 160px)' }}>
+              {[
+                {
+                  title: '🧱 Steenstrippen — Vlakke Gevel', color: '#a64033', rows: [
+                    ['Sparing (polygon/bbox)', 'Strips worden exact geclipped door de opening — geen strips in ramen/deuren'],
+                    ['Penant zij-strip', 'Strips lopen door tot pX + brickDepth achter de buitenrand van de zij-strip → inkijk-preventie'],
+                    ['Penant binnenruimte', 'Strips volledig verwijderd tussen pX + brickD en pX + breedte − brickD'],
+                    ['Max hoogte', 'Geen strips boven de ingestelde max hoogte'],
+                    ['Min hoogte', 'Geen strips onder de ingestelde min hoogte'],
+                    ['Zones', 'Per zone eigen kleur / verband / materiaal — begrensd door penant-posities'],
+                  ]
+                },
+                {
+                  title: '🧱 Steenstrippen — Penant Voorzijde', color: '#7c3aed', rows: [
+                    ['Breedte', 'Penant-breedte − 2 × brickDepth (zij-strips gaan eraf)'],
+                    ['Hoogte', 'Begrensd door max hoogte van de groep'],
+                    ['Verband', 'Gecentreerd / symmetrisch t.o.v. het penant'],
+                    ['Kleur', 'Zelfde als het paneelkleur van de vlakke gevel'],
+                  ]
+                },
+                {
+                  title: '🧱 Steenstrippen — Penant Zijkanten', color: '#0369a1', rows: [
+                    ['Diepte', 'Penant-diepte − 6mm (6mm voeg aan voorzijde)'],
+                    ['Clip aan einde', 'Laatste max(stootvoeg, paneel-dikte) mm wordt verwijderd voor hoek/paneel aansluiting'],
+                    ['Kleur', 'Zelfde als de vlakke gevel strips'],
+                    ['Positie', 'Rechter zijkant is gespiegeld t.o.v. links'],
+                  ]
+                },
+                {
+                  title: '🪵 Horizontale Latten', color: '#92400e', rows: [
+                    ['Breedte', 'Lopen over de volledige groepsbreedte (hoek tot hoek)'],
+                    ['Max interval', 'Maximale tussenafstand 400mm (configureerbaar via artikel)'],
+                    ['Sparingen', 'Worden geclipped bij ramen/deuren — niet doorlopen door opening'],
+                    ['Penant', '⚠ Worden NIET geclipped bij penant — lopen er doorheen. Reden: verticale latten worden hierop gemonteerd'],
+                    ['Max hoogte', 'Geen latten boven max hoogte'],
+                  ]
+                },
+                {
+                  title: '🪵 Verticale Latten', color: '#78350f', rows: [
+                    ['Positie diepte', 'Staan op de buitenkant (voorzijde) van de horizontale latten'],
+                    ['Penant', 'Worden NIET geplaatst in de zone pX → pX + breedte van een penant'],
+                    ['Sparingen', 'Geen verticale latten in sparingen'],
+                    ['Max hoogte', 'Geen verticale latten boven max hoogte'],
+                  ]
+                },
+                {
+                  title: '🟦 Panelen', color: '#1d4ed8', rows: [
+                    ['Sparingen', 'Worden geclipped door polygon of bounding box van opening'],
+                    ['Penant', 'Volledig uitgesloten van de zone pX → pX + breedte'],
+                    ['Boven penant', 'Van penant-hoogte tot max hoogte ook geen panelen/strips in penant-breedte'],
+                    ['Max hoogte', 'Panelen worden geclipped tot max hoogte'],
+                    ['Gewicht', 'Paneel wordt kleiner als het ingestelde max gewicht (kg) wordt overschreden'],
+                  ]
+                },
+                {
+                  title: '📐 Penant — Geometrie', color: '#065f46', rows: [
+                    ['Voeg voor', '6mm voeg tussen voorzijde penant en vlakke gevel'],
+                    ['Gap zij', '10mm ruimte tussen vlakke gevel structuur en zij-paneel/latten van penant'],
+                    ['X-positie', 'Ondersteunt rekenkundige expressies, bijv. 3500 − 200'],
+                    ['Hoogte', 'Automatisch begrensd door max hoogte van de groep'],
+                    ['Strips vlakke gevel', 'Eindigen op pX + brickD (achter buitenrand zij-strip = inkijk-preventie)'],
+                    ['Horizontale latten', 'Lopen door het penant heen (niet geclipped)'],
+                    ['Verticale latten', 'Worden NIET geplaatst in de penant-zone'],
+                  ]
+                },
+                {
+                  title: '🗂 Zones', color: '#4338ca', rows: [
+                    ['Numering', 'Zone 1 = linkerhoek → penant 1. Zone 2 = na penant 1 → penant 2. etc.'],
+                    ['Aantal', 'Altijd = aantal penanten + 1'],
+                    ['Grenzen', 'Zone-grenzen worden altijd bepaald door penant-posities — overlappen nooit'],
+                    ['Per zone', 'Eigen kleur, verband, materiaal en max hoogte mogelijk'],
+                    ['Kopiëren', 'Zone-instellingen kopieerbaar naar andere zones binnen dezelfde groep'],
+                  ]
+                },
+              ].map(({ title, color, rows }) => (
+                <div key={title} style={{ marginTop: 18 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color, borderBottom: `2px solid ${color}`, paddingBottom: 4, marginBottom: 8 }}>{title}</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <tbody>
+                      {rows.map(([rule, desc]) => (
+                        <tr key={rule} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '5px 8px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap', width: '35%', verticalAlign: 'top' }}>{rule}</td>
+                          <td style={{ padding: '5px 8px', color: '#475569', verticalAlign: 'top' }}>{desc}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+              <div style={{ marginTop: 20, padding: '12px 14px', background: '#fef3c7', borderRadius: 6, fontSize: 11, color: '#92400e', borderLeft: '4px solid #f59e0b' }}>
+                <strong>Prioriteitsvolgorde bij conflicten:</strong> Max hoogte → Penant-zone → Sparing → Inkijk-preventie (brickDepth overlap)
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
