@@ -962,12 +962,15 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
           }
         }
 
-        const cornerBattenDepthCenter = latDikte + penShift - penPanelT - latDikte / 2;
-        for (const [gxCenter, cLabel] of [
-          [pX + brickD + penPanelT + latDikte / 2, 'Penant Hoeklatje L'],
-          [pX + pB - brickD - penPanelT - latDikte / 2, 'Penant Hoeklatje R'],
+        const cornerBattenDepthBack  = latDikte + latDikte / 2;
+        const cornerBattenDepthFront = latDikte + penShift - penPanelT - latDikte / 2;
+        for (const [gxCenter, depthCenter, cLabel] of [
+          [pX + brickD + penPanelT + latDikte / 2,       cornerBattenDepthBack,  'Penant Hoeklatje L-back'],
+          [pX + pB - brickD - penPanelT - latDikte / 2,  cornerBattenDepthBack,  'Penant Hoeklatje R-back'],
+          [pX + brickD + penPanelT + latDikte / 2,       cornerBattenDepthFront, 'Penant Hoeklatje L-front'],
+          [pX + pB - brickD - penPanelT - latDikte / 2,  cornerBattenDepthFront, 'Penant Hoeklatje R-front'],
         ]) {
-          const [cbwx, cbwy, cbwz] = groupToWorld(gxCenter, cornerBattenDepthCenter, 0);
+          const [cbwx, cbwy, cbwz] = groupToWorld(gxCenter, depthCenter, 0);
           const cbPt   = PT(cbwx, cbwy, cbwz);
           const cbPl3D = E(`IFCAXIS2PLACEMENT3D(#${cbPt},${axisStr},${refStr})`);
           const cbLPl  = E(`IFCLOCALPLACEMENT(#${stPl},#${cbPl3D})`);
