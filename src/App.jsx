@@ -14,8 +14,16 @@ import { Uittrekstaat } from './Uittrekstaat.jsx';
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 const DEFAULT_VERBAND = 'halfsteens';
 
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.4';
 const CHANGELOG = [
+  {
+    version: '1.4',
+    date: '2026-04-20',
+    changes: [
+      'Zone-grenzen uitgebreid met brickDepth de penant in (inkijk-preventie zone kleur/patroon correct)',
+      'Strips in vlakke gevel achter de penant (pX → pX+brickD) krijgen nu correct de kleur/patroon van de aangrenzende zone i.p.v. de algemene groepkleur',
+    ],
+  },
   {
     version: '1.3',
     date: '2026-04-20',
@@ -1492,11 +1500,14 @@ export default function App() {
         const sortedPens = [...(s.penanten ?? [])].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
         const numZ = sortedPens.length + 1;
         const enabledZones = [];
+        const zoneBrickD = s.brickDepth ?? 20;
         for (let zi = 0; zi < numZ; zi++) {
           const zs = zoneSettingsArr[zi];
           if (!zs?.enabled) continue;
-          const zX1 = zi === 0 ? 0 : (sortedPens[zi - 1].x ?? 0) + Math.max(1, sortedPens[zi - 1].breedte ?? 400);
-          const zX2 = zi === numZ - 1 ? gW : (sortedPens[zi].x ?? 0);
+          const zX1Raw = zi === 0 ? 0 : (sortedPens[zi - 1].x ?? 0) + Math.max(1, sortedPens[zi - 1].breedte ?? 400);
+          const zX2Raw = zi === numZ - 1 ? gW : (sortedPens[zi].x ?? 0);
+          const zX1 = zi === 0 ? zX1Raw : zX1Raw - zoneBrickD;
+          const zX2 = zi === numZ - 1 ? zX2Raw : zX2Raw + zoneBrickD;
           if (zX2 <= zX1) continue;
           const zoneMat = zs.material ?? mat;
           const zoneVerband = zs.verband ?? (s.verband ?? DEFAULT_VERBAND);
