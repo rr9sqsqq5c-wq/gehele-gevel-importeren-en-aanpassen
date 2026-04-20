@@ -878,7 +878,6 @@ export default function App() {
       if (!facadeData) continue;
       let { rows } = facadeData;
       if (s.penanten?.length) {
-        const steenL = (s.material ?? DEFAULT_MATERIAL).steenL ?? 210;
         rows = rows.map((row) => ({
           ...row,
           pieces: row.pieces.flatMap((piece) => {
@@ -886,15 +885,12 @@ export default function App() {
             for (const p of s.penanten) {
               const pX = (p.x ?? 0) - facadeData.groupMinX;
               const pEnd = pX + Math.max(1, p.breedte ?? 400);
-              const innerMaskStart = pX + steenL;
-              const innerMaskEnd = pEnd - steenL;
-              if (innerMaskStart >= innerMaskEnd) continue;
               ps = ps.flatMap((q) => {
                 const qs = q.start, qe = q.start + q.length;
-                if (qe <= innerMaskStart || qs >= innerMaskEnd) return [q];
+                if (qe <= pX || qs >= pEnd) return [q];
                 const out = [];
-                if (qs < innerMaskStart) out.push({ ...q, length: innerMaskStart - qs });
-                if (qe > innerMaskEnd) out.push({ ...q, start: innerMaskEnd, length: qe - innerMaskEnd });
+                if (qs < pX) out.push({ ...q, length: pX - qs });
+                if (qe > pEnd) out.push({ ...q, start: pEnd, length: qe - pEnd });
                 return out;
               });
             }
@@ -1257,7 +1253,30 @@ export default function App() {
       const groupMinH = withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart)) : 0;
       const refWallOrigin = withOrigin[0]?.wallOrigin ?? null;
 
-      const facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte);
+      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte);
+      let facadeData = facadeDataRaw;
+      if (facadeDataRaw && s.penanten?.length) {
+        const maskedRows = facadeDataRaw.rows.map((row) => ({
+          ...row,
+          pieces: row.pieces.flatMap((piece) => {
+            let ps = [piece];
+            for (const p of s.penanten) {
+              const pX = (p.x ?? 0) - facadeDataRaw.groupMinX;
+              const pEnd = pX + Math.max(1, p.breedte ?? 400);
+              ps = ps.flatMap((q) => {
+                const qs = q.start, qe = q.start + q.length;
+                if (qe <= pX || qs >= pEnd) return [q];
+                const out = [];
+                if (qs < pX) out.push({ ...q, length: pX - qs });
+                if (qe > pEnd) out.push({ ...q, start: pEnd, length: qe - pEnd });
+                return out;
+              });
+            }
+            return ps;
+          }),
+        }));
+        facadeData = { ...facadeDataRaw, rows: maskedRows };
+      }
 
       let panels = [];
       let lattenData = [];
@@ -1273,13 +1292,11 @@ export default function App() {
           const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40);
           const globalPieces = facRows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
           const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
-          const PENANT_INSET = 20;
           const penantOpenings = (s.penanten ?? []).map((pen, pi) => {
-            const px = (pen.x ?? 0) + PENANT_INSET;
-            const pw = Math.max(1, pen.breedte ?? 400) - 2 * PENANT_INSET;
-            if (pw <= 0) return null;
+            const px = pen.x ?? 0;
+            const pw = Math.max(1, pen.breedte ?? 400);
             return { id: `pen_${pi}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null };
-          }).filter(Boolean);
+          });
           const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
           for (const zone of zones) {
             const res = panelizeZone(zone, facRows, globalPieces, mat.steenH, basePanel);
