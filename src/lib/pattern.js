@@ -166,7 +166,7 @@ export function buildGroupPattern(walls, adjacencies, material, verband) {
       const clipped = [];
 
       for (const piece of fullPieces) {
-        const localPieces = clipPieceToWall(piece, wallStart, wallEnd, (wall.openings ?? []).filter((o) => o.type === 'raam' || o.type === 'deur'), rowY, rowH);
+        const localPieces = clipPieceToWall(piece, wallStart, wallEnd, [], rowY, rowH);
         for (const lp of localPieces) {
           clipped.push({ ...lp, start: round2(lp.start - wallStart) });
         }
