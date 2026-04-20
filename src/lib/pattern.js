@@ -20,15 +20,11 @@ function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX)
 
   if (verband === 'staand_tegelverband') {
     const stepW = steenH + stoot;
-    const halfStep = stepW / 2;
-    const offset = (rowIndex % 2 === 1) ? halfStep : 0;
     const pieces = [];
-    let x = -offset;
+    let x = 0;
     while (x + 0.001 < totalWidth) {
-      const ps = round2(Math.max(0, x));
-      const pe = round2(Math.min(x + steenH, totalWidth));
-      const len = round2(pe - ps);
-      if (len > 0.001) pieces.push({ start: round2(ps + startX), length: len, label: len < steenH - 0.001 ? 'Rest' : 'Tegel' });
+      const len = round2(Math.min(steenH, totalWidth - x));
+      if (len > 0.001) pieces.push({ start: round2(x + startX), length: len, label: len < steenH - 0.001 ? 'Rest' : 'Tegel' });
       x = round2(x + stepW);
     }
     return pieces;
