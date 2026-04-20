@@ -736,7 +736,7 @@ export default function App() {
       const s = getSettings(group.id);
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const gAdj = adjacencies.filter((a) => group.wallIds.includes(a.wallIdA) && group.wallIds.includes(a.wallIdB));
-      const rows = buildGroupPattern(walls, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND);
+      const rows = buildGroupPattern(walls, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND, 'named');
       if (s.maxHoogte !== null && s.maxHoogte > 0) {
         const groupMinH = Math.min(...walls.map((w) => w.wallOrigin?.heightStart ?? 0));
         for (const wall of walls) {
@@ -1118,7 +1118,7 @@ export default function App() {
       const s = getSettings(group.id);
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const gAdj = adjacencies.filter((a) => group.wallIds.includes(a.wallIdA) && group.wallIds.includes(a.wallIdB));
-      const rows = buildGroupPattern(walls, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND, true);
+      const rows = buildGroupPattern(walls, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND, 'all');
 
       const mat = s.material ?? DEFAULT_MATERIAL;
       const vis = s.layerVisibility ?? {};

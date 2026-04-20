@@ -158,7 +158,7 @@ function clipPiecesAgainstOpenings(pieces, openings, rowY, steenH) {
   return result.filter((p) => p.length > 0.001);
 }
 
-export function buildGroupPattern(walls, adjacencies, material, verband, withOpenings = false) {
+export function buildGroupPattern(walls, adjacencies, material, verband, openingMode = null) {
   const { steenH, lint } = material;
   const lagenmaat = getLagenmaat(material, verband);
   const rowH = verband === 'staand_tegelverband' ? material.steenL : steenH;
@@ -180,7 +180,11 @@ export function buildGroupPattern(walls, adjacencies, material, verband, withOpe
     const verticalOffset = Math.floor(((wall.wallOrigin?.heightStart ?? 0) - groupMinH) / lagenmaat);
     const rows = [];
 
-    const wallOpenings = withOpenings ? (wall.openings ?? []) : [];
+    const wallOpenings = openingMode
+      ? (wall.openings ?? []).filter((op) =>
+          openingMode === 'all' || op.type === 'raam' || op.type === 'deur'
+        )
+      : [];
 
     for (let r = 0; r < wallLagen; r++) {
       const rowY = round2(r * lagenmaat);
@@ -195,7 +199,7 @@ export function buildGroupPattern(walls, adjacencies, material, verband, withOpe
         }
       }
 
-      const finalPieces = withOpenings ? clipPiecesAgainstOpenings(clipped, wallOpenings, rowY, rowH) : clipped;
+      const finalPieces = openingMode ? clipPiecesAgainstOpenings(clipped, wallOpenings, rowY, rowH) : clipped;
       if (finalPieces.length) rows.push({ y: rowY, pieces: finalPieces });
     }
 
