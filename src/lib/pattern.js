@@ -143,17 +143,32 @@ function clipPiecesAgainstOpenings(pieces, openings, rowY, steenH) {
     const ow = op.breedte ?? op.width ?? 0;
     const oh = op.hoogte ?? op.height ?? 0;
     if (rowY + steenH <= oy + 1 || rowY >= oy + oh - 1) continue;
-    const opStart = ox;
-    const opEnd = ox + ow;
-    result = result.flatMap((piece) => {
-      const ps = piece.start;
-      const pe = piece.start + piece.length;
-      if (pe <= opStart + 0.001 || ps >= opEnd - 0.001) return [piece];
-      const out = [];
-      if (ps < opStart - 0.001) out.push({ ...piece, length: round2(opStart - ps) });
-      if (pe > opEnd + 0.001) out.push({ ...piece, start: round2(opEnd), length: round2(pe - opEnd) });
-      return out;
-    });
+
+    let xRanges;
+    if (op.polyPts && op.polyPts.length >= 3) {
+      const midY = rowY + steenH * 0.5;
+      xRanges = polyXRangesAtY(op.polyPts, midY);
+      if (!xRanges.length) {
+        const r2 = polyXRangesAtY(op.polyPts, rowY + steenH * 0.25);
+        const r3 = polyXRangesAtY(op.polyPts, rowY + steenH * 0.75);
+        xRanges = [...r2, ...r3];
+      }
+      if (!xRanges.length) continue;
+    } else {
+      xRanges = [[ox, ox + ow]];
+    }
+
+    for (const [opStart, opEnd] of xRanges) {
+      result = result.flatMap((piece) => {
+        const ps = piece.start;
+        const pe = piece.start + piece.length;
+        if (pe <= opStart + 0.001 || ps >= opEnd - 0.001) return [piece];
+        const out = [];
+        if (ps < opStart - 0.001) out.push({ ...piece, length: round2(opStart - ps) });
+        if (pe > opEnd + 0.001) out.push({ ...piece, start: round2(opEnd), length: round2(pe - opEnd) });
+        return out;
+      });
+    }
   }
   return result.filter((p) => p.length > 0.001);
 }
