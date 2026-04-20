@@ -1397,7 +1397,7 @@ export default function App() {
         const brickDepth = s.brickDepth ?? 20;
         const panelDikteP = s.panelen?.dikte ?? 8;
         const stoot = mat.stoot ?? 10;
-        const sideDepth = Math.max(1, pD - brickDepth - stoot);
+        const sideDepth = Math.max(1, pD - 6);
         const clipOff = Math.max(stoot, panelDikteP);
         const frontRows = buildCenteredFacePattern(pB, pH, mat, s.verband ?? DEFAULT_VERBAND);
         const rawLeft = buildFacePattern(sideDepth, pH, mat, s.verband ?? DEFAULT_VERBAND);

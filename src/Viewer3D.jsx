@@ -766,7 +766,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           const penStoot = settings?.material?.stoot ?? 10;
           return penanten.map((penant) => {
             const pD = Math.max(1, penant.diepte ?? 150);
-            const penantShift = penLatDikte + penPanelDikte + penBrickD + penStoot + pD;
+            const penantShift = penPanelDikte + penBrickD + penStoot + pD;
             return (
               <PenantMesh3D
                 key={`penant-${group.id}-${penant.id ?? penant.x}`}
