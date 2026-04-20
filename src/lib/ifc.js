@@ -913,19 +913,30 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const pB  = Math.max(1, pen.breedte ?? 400);
         const pD  = Math.max(1, pen.diepte  ?? 150);
         const pH  = Math.max(1, pen.hoogte  ?? 2000);
-        const [wx, wy, wz] = groupToWorld(pX + pB / 2, latDikte - pD / 2, 0);
-        const placePt = PT(wx, wy, wz);
-        const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
-        const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
-        const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
-        const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(pB)},${r(pD)})`);
-        const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(pH)})`);
-        const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
-        const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
-        const safeName = `${group.name ?? 'Groep'} - Penant`.replace(/'/g, "\\'");
-        const proxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'Penant',#${localPl},#${pds},$,.NOTDEFINED.)`);
-        E(`IFCSTYLEDITEM(#${solid},(#${getStyle('#6366f1')}),$)`);
-        allProxyIds.push(proxy);
+        const penStoot = material.stoot ?? 10;
+        const penFrontW = Math.max(1, pB - 2 * brickD);
+        const penSideD  = Math.max(1, pD - brickD - penStoot);
+        const penPanelT = panelDikte;
+
+        const emitPenantBox = (gxCenter, depthCenter, boxW, boxThick, label) => {
+          const [bwx, bwy, bwz] = groupToWorld(gxCenter, depthCenter, 0);
+          const bPt   = PT(bwx, bwy, bwz);
+          const bPl3D = E(`IFCAXIS2PLACEMENT3D(#${bPt},${axisStr},${refStr})`);
+          const bLPl  = E(`IFCLOCALPLACEMENT(#${stPl},#${bPl3D})`);
+          const bPAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
+          const bProf = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${bPAx},${r(boxW)},${r(boxThick)})`);
+          const bSol  = E(`IFCEXTRUDEDAREASOLID(#${bProf},#${sAx0},#${extDir},${r(pH)})`);
+          const bSRep = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${bSol}))`);
+          const bPds  = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${bSRep}))`);
+          const bName = `${group.name ?? 'Groep'} - ${label}`.replace(/'/g, "\\'");
+          const bPrx  = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${bName}',$,'Penant',#${bLPl},#${bPds},$,.NOTDEFINED.)`);
+          E(`IFCSTYLEDITEM(#${bSol},(#${getStyle('#6366f1')}),$)`);
+          allProxyIds.push(bPrx);
+        };
+
+        emitPenantBox(pX + pB / 2, latDikte - penPanelT / 2, penFrontW, penPanelT, 'Penant voorzijde');
+        emitPenantBox(pX + brickD + penPanelT / 2, latDikte - penPanelT - penSideD / 2, penPanelT, penSideD, 'Penant linkerbeen');
+        emitPenantBox(pX + pB - brickD - penPanelT / 2, latDikte - penPanelT - penSideD / 2, penPanelT, penSideD, 'Penant rechterbeen');
 
         const penFaceData = penantFaceRows[pi] ?? {};
         const fRows = penFaceData.frontRows ?? penFaceData ?? [];

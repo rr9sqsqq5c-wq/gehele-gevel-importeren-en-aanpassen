@@ -101,7 +101,7 @@ function getOutsideFaceInfo(rwo, allWalls) {
   return { outsidePos: tEnd, outsideDir: +1 };
 }
 
-function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte) {
+function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth = 20, panelDikte = 8) {
   if (!rwo) return [];
   const pX = penant.x ?? 0;
   const pB = Math.max(1, penant.breedte ?? 400);
@@ -111,26 +111,37 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, lat
 
   const { outsidePos, outsideDir } = getOutsideFaceInfo(rwo, allWalls);
 
-  const ifc = { x: 0, y: 0, z: 0 };
-  ifc[rwo.lengthAxis]    = groupMinX + pX + pB / 2;
-  ifc[rwo.heightAxis]    = groupMinH + pH / 2;
-  ifc[rwo.thicknessAxis] = outsidePos + outsideDir * (ld - pD / 2);
+  const stoot = 10;
+  const panelT = panelDikte;
+  const frontW  = Math.max(1, pB - 2 * brickDepth);
+  const sideD   = Math.max(1, pD - brickDepth - stoot);
 
-  const dims = { x: 10, y: 10, z: 10 };
-  dims[rwo.lengthAxis]    = pB;
-  dims[rwo.heightAxis]    = pH;
-  dims[rwo.thicknessAxis] = pD;
+  const makeBox = (gxOff, depthCenter, boxW, boxThick) => {
+    const ifc = { x: 0, y: 0, z: 0 };
+    ifc[rwo.lengthAxis]    = groupMinX + gxOff;
+    ifc[rwo.heightAxis]    = groupMinH + pH / 2;
+    ifc[rwo.thicknessAxis] = outsidePos + outsideDir * depthCenter;
+    const dims = { x: 1, y: 1, z: 1 };
+    dims[rwo.lengthAxis]    = boxW;
+    dims[rwo.heightAxis]    = pH;
+    dims[rwo.thicknessAxis] = boxThick;
+    return {
+      pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
+      size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+    };
+  };
 
-  return [{
-    pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
-    size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
-  }];
+  return [
+    makeBox(pX + pB / 2,                              ld - panelT / 2,         frontW, panelT),
+    makeBox(pX + brickDepth + panelT / 2,             ld - panelT - sideD / 2, panelT, sideD),
+    makeBox(pX + pB - brickDepth - panelT / 2,        ld - panelT - sideD / 2, panelT, sideD),
+  ];
 }
 
-function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, allWalls, latDikte }) {
+function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, allWalls, latDikte, brickDepth, panelDikte }) {
   const boxes = useMemo(
-    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte),
-    [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte]
+    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte),
+    [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte]
   );
   if (!boxes.length) return null;
   return (
@@ -718,6 +729,8 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
               upAxis={upAxis}
               allWalls={walls}
               latDikte={penLatDikte}
+              brickDepth={settings?.brickDepth ?? 20}
+              panelDikte={settings?.panelen?.dikte ?? 8}
             />
           ));
         })}
