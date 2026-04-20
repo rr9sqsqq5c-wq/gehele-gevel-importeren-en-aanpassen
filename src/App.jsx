@@ -1457,7 +1457,7 @@ export default function App() {
               return [{ ...piece, start: cs, length: ce - cs }];
             }).filter((p) => p.length > 1),
           })).filter((row) => row.pieces.length > 0);
-          enabledZones.push({ zX1, zX2, rows: clipRows, material: zoneMat, color: zs.color ?? s.color });
+          enabledZones.push({ zX1, zX2, rows: clipRows, material: zoneMat, color: zs.color ?? s.color, verband: zoneVerband });
         }
         if (!enabledZones.length) return null;
         const generalRows = baseRows.map((row) => ({
@@ -1478,7 +1478,7 @@ export default function App() {
           }).filter((p) => p.length > 1),
         })).filter((row) => row.pieces.length > 0);
         return [
-          { rows: generalRows, material: mat, color: s.color ?? '#a64033' },
+          { rows: generalRows, material: mat, color: s.color ?? '#a64033', verband: s.verband ?? DEFAULT_VERBAND },
           ...enabledZones,
         ];
       })();

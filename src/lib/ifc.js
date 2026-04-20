@@ -722,6 +722,8 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     const brickColor = settings.color ?? '#a64033';
     const brickD = settings.brickDepth ?? 20;
     const material = settings.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
+    const groupVerband = settings.verband ?? 'halfsteens';
+    const groupBrickExtH = groupVerband === 'staand_tegelverband' ? material.steenL : material.steenH;
     const panelDikte = settings.panelen?.dikte ?? 8;
     const latDikte = group.latDikte ?? 28;
     const hasVertLat = (group.lattenData ?? []).some((l) => l.richting === 'verticaal');
@@ -761,6 +763,8 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
           const batchColor = batch.color ?? brickColor;
           const batchMat = batch.material ?? material;
           const batchBrickD = brickD;
+          const batchVerband = batch.verband ?? 'halfsteens';
+          const brickExtH = batchVerband === 'staand_tegelverband' ? batchMat.steenL : batchMat.steenH;
           for (const row of batch.rows) {
             for (const piece of row.pieces) {
               const [wx, wy, wz] = groupToWorld(piece.start + piece.length / 2, effectiveLatDepth + panelDikte + batchBrickD / 2, row.y);
@@ -769,7 +773,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
               const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
               const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
               const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(piece.length)},${r(batchBrickD)})`);
-              const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(batchMat.steenH)})`);
+              const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(brickExtH)})`);
               const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
               const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
               const safeName = `${group.name ?? 'Groep'} - Strip`.replace(/'/g, "\\'");
@@ -807,7 +811,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
               const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
               const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
               const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(piece.length)},${r(brickD)})`);
-              const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(material.steenH)})`);
+              const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(groupBrickExtH)})`);
               const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
               const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
               const safeName = `${group.name ?? 'Groep'} - ${wall.name} - ${piece.label}`.replace(/'/g, "\\'");
