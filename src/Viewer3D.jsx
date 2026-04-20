@@ -386,6 +386,66 @@ function CameraPresetController({ preset, center, span, onDone }) {
   return null;
 }
 
+function FocusGroupCamera({ activeGroupId, groups, walls, upAxis }) {
+  const { camera, controls } = useThree();
+  const targetRef = useRef(null);
+
+  useEffect(() => {
+    if (!activeGroupId) return;
+    const group = groups.find((g) => g.id === activeGroupId);
+    if (!group) return;
+    const groupWalls = walls.filter((w) => group.wallIds.includes(w.expressID) && w.wallOrigin);
+    if (!groupWalls.length) return;
+
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    for (const wall of groupWalls) {
+      const box = getWallBox(wall, upAxis);
+      if (!box) continue;
+      const [px, py, pz] = box.pos;
+      const [sx, sy, sz] = box.size;
+      minX = Math.min(minX, px - sx / 2); maxX = Math.max(maxX, px + sx / 2);
+      minY = Math.min(minY, py - sy / 2); maxY = Math.max(maxY, py + sy / 2);
+      minZ = Math.min(minZ, pz - sz / 2); maxZ = Math.max(maxZ, pz + sz / 2);
+    }
+    if (!isFinite(minX)) return;
+
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const cz = (minZ + maxZ) / 2;
+    const span = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1);
+
+    const rwo = groupWalls[0].wallOrigin;
+    const { outsideDir } = getOutsideFaceInfo(rwo, walls);
+    const ifcDirVec = { x: 0, y: 0, z: 0 };
+    ifcDirVec[rwo.thicknessAxis] = outsideDir * 1000;
+    const [dx, dy, dz] = ifcToThree(ifcDirVec.x, ifcDirVec.y, ifcDirVec.z, upAxis);
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+    const d = span * 1.6;
+    targetRef.current = {
+      pos: new THREE.Vector3(cx + (dx / len) * d, cy + (dy / len) * d, cz + (dz / len) * d),
+      lookAt: new THREE.Vector3(cx, cy, cz),
+    };
+  }, [activeGroupId, groups, walls, upAxis]);
+
+  useFrame(() => {
+    if (!targetRef.current || !controls) return;
+    const { pos, lookAt } = targetRef.current;
+    camera.position.lerp(pos, 0.1);
+    controls.target.lerp(lookAt, 0.1);
+    controls.update();
+    if (camera.position.distanceTo(pos) < 0.01) {
+      camera.position.copy(pos);
+      controls.target.copy(lookAt);
+      controls.update();
+      targetRef.current = null;
+    }
+  });
+
+  return null;
+}
+
 function CameraInit({ walls, upAxis }) {
   const { camera } = useThree();
   const done = useRef(false);
@@ -447,7 +507,7 @@ const COMPASS = [
   { key: 'Top',  label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
 ];
 
-export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple }) {
+export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId }) {
   const [hoveredWallId, setHoveredWallId] = useState(null);
   const [preset, setPreset] = useState(null);
   const [boxSelectMode, setBoxSelectMode] = useState(false);
@@ -591,6 +651,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
         <CameraAccessor cameraRef={cameraRef} />
         <CameraInit walls={walls} upAxis={upAxis} />
         <CameraPresetController preset={preset} center={center} span={span} onDone={() => setPreset(null)} />
+        <FocusGroupCamera activeGroupId={activeGroupId} groups={groups} walls={walls} upAxis={upAxis} />
         <SceneLights />
         <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault enabled={!boxSelectMode} />
         <gridHelper args={[500, 100, '#1e3a5f', '#1e293b']} position={[center[0], center[1] - span * 0.5, center[2]]} />

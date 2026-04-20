@@ -1800,6 +1800,7 @@ export default function App() {
                   for (const id of ids) next.add(id);
                   return next;
                 })}
+                activeGroupId={activeGroup?.id ?? null}
               />
 
               {allWalls.length === 0 && (
