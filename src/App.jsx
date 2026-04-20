@@ -14,6 +14,62 @@ import { Uittrekstaat } from './Uittrekstaat.jsx';
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 const DEFAULT_VERBAND = 'halfsteens';
 
+const APP_VERSION = '1.3';
+const CHANGELOG = [
+  {
+    version: '1.3',
+    date: '2026-04-20',
+    changes: [
+      'Logica-regels modal toegevoegd (knop "? Regels" in toolbar)',
+      'Versienummer en wijzigingenlog toegevoegd aan de app',
+      'Strip-masking inkijk-preventie: strips lopen tot pX + brickDepth achter de penant zij-strip (hersteld in 3D viewer én IFC export)',
+    ],
+  },
+  {
+    version: '1.2',
+    date: '2026-04-19',
+    changes: [
+      'Zone-specifieke strip export (stripBatches) compleet in ifc.js',
+      'Staand tegelverband: correcte extrusiehoogte (steenL) en stapelverband (geen offset)',
+      'Penant zij-strips hersteld als vlakke gevel strips in IFC export',
+      'Flat facade masking aangepast naar [pX, pX+pB] (volledige penant-breedte)',
+      'Paneel kleur penant gelijkgesteld aan paneel kleur vlakke gevel',
+      'Penant hoogte begrensd tot max hoogte',
+    ],
+  },
+  {
+    version: '1.1',
+    date: '2026-04-18',
+    changes: [
+      'Horizontale latten niet geclipped bij penant (verticale latten worden erop gemonteerd)',
+      'penShift formule gecorrigeerd: 10mm gap achter, 6mm voeg voor',
+      'penSideD correct: diepte zij-arm penant',
+      'Panelen boven penant geclipped (penant-breedte × max hoogte)',
+      'Verticale latten voor horizontale latten geplaatst (effectiveLatDepth)',
+      'Zone-instellingen per zone kopieerbaar naar andere zones',
+    ],
+  },
+  {
+    version: '1.0',
+    date: '2026-04-15',
+    changes: [
+      'IFC import en parsing van wandelementen',
+      '3D viewer (react-three-fiber) en 2D gevelaanzicht',
+      'Groepen aanmaken en bewerken per gevel',
+      'Metselverbanden: halfsteens, halfsteens kop, staand tegelverband',
+      'Zetwerk, panelen, latten (horizontaal/verticaal)',
+      'Penant configuratie met zij-strips en voorzijde-strips',
+      'Zone-indeling per penant (links→rechts numering)',
+      'IFC export met gevelbekleding',
+      'Project opslaan/laden (JSON)',
+      'Lattenartikelencatalogus met radio-selectie per groep',
+      'HiDPI 2D canvas, camera auto-navigatie naar gevel, penant X-expressie',
+      'Polygon-gebaseerde openings-detectie (geen strips/latten in sparingen)',
+      'Snelkoppeling start-app.bat',
+    ],
+  },
+];
+
 const DIM_TOL = 50;
 const OP_TOL = 50;
 const POS_TOL = 150;
@@ -852,6 +908,7 @@ export default function App() {
   const [showGridLines, setShowGridLines] = useState(true);
   const [showCenterLines, setShowCenterLines] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
+  const [rulesTab, setRulesTab] = useState('regels');
   const { get: getSettings, update: updateSettings, initColor, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
@@ -1840,11 +1897,12 @@ export default function App() {
               </button>
             </Tooltip>
           )}
-          <Tooltip text="Bekijk de logica-regels per onderdeel (strippen, latten, panelen, penanten, zones)">
+          <Tooltip text="Bekijk de logica-regels per onderdeel (strippen, latten, panelen, penanten, zones) en de wijzigingshistorie">
             <button onClick={() => setShowRulesModal(true)} style={{ background: '#475569', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
               ? Regels
             </button>
           </Tooltip>
+          <span style={{ fontSize: 10, color: '#64748b', userSelect: 'none' }}>v{APP_VERSION}</span>
         </div>
       </div>
 
@@ -2158,10 +2216,33 @@ export default function App() {
         <div onClick={() => setShowRulesModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 8, width: '100%', maxWidth: 820, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', fontFamily: 'system-ui, sans-serif' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: '#1e293b', borderRadius: '8px 8px 0 0' }}>
-              <span style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 15 }}>📋 Logica-regels per onderdeel</span>
+              <span style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 15 }}>📋 Logica-regels &amp; Wijzigingen — <span style={{ color: '#94a3b8', fontWeight: 400 }}>v{APP_VERSION}</span></span>
               <button onClick={() => setShowRulesModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
-            <div style={{ padding: '0 20px 20px', overflowY: 'auto', maxHeight: 'calc(100vh - 160px)' }}>
+            <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+              {[['regels', '📋 Logica-regels'], ['changelog', '🕒 Wijzigingen']].map(([id, label]) => (
+                <button key={id} onClick={() => setRulesTab(id)} style={{ padding: '8px 18px', fontSize: 12, fontWeight: rulesTab === id ? 700 : 400, color: rulesTab === id ? '#1e293b' : '#64748b', background: rulesTab === id ? '#fff' : 'transparent', border: 'none', borderBottom: rulesTab === id ? '2px solid #3b82f6' : '2px solid transparent', cursor: 'pointer' }}>{label}</button>
+              ))}
+            </div>
+            <div style={{ padding: '0 20px 20px', overflowY: 'auto', maxHeight: 'calc(100vh - 200px)' }}>
+            {rulesTab === 'changelog' && (
+              <div>
+                {CHANGELOG.map((entry) => (
+                  <div key={entry.version} style={{ marginTop: 18 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, borderBottom: '2px solid #3b82f6', paddingBottom: 4, marginBottom: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: '#1e40af' }}>v{entry.version}</span>
+                      <span style={{ fontSize: 11, color: '#94a3b8' }}>{entry.date}</span>
+                    </div>
+                    <ul style={{ margin: '4px 0 0 0', padding: '0 0 0 18px' }}>
+                      {entry.changes.map((c, i) => (
+                        <li key={i} style={{ fontSize: 12, color: '#334155', padding: '3px 0', lineHeight: 1.5 }}>{c}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+            {rulesTab === 'regels' && <div>
               {[
                 {
                   title: '🧱 Steenstrippen — Vlakke Gevel', color: '#a64033', rows: [
@@ -2253,6 +2334,7 @@ export default function App() {
               <div style={{ marginTop: 20, padding: '12px 14px', background: '#fef3c7', borderRadius: 6, fontSize: 11, color: '#92400e', borderLeft: '4px solid #f59e0b' }}>
                 <strong>Prioriteitsvolgorde bij conflicten:</strong> Max hoogte → Penant-zone → Sparing → Inkijk-preventie (brickDepth overlap)
               </div>
+            </div>}
             </div>
           </div>
         </div>
