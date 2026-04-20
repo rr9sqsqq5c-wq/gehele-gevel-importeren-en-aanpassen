@@ -221,39 +221,10 @@ function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY,
   };
 }
 
-function InstancedBrickBatch({ bricks, color }) {
-  const mesh = useMemo(() => {
-    if (!bricks.length) return null;
-    const geo = new THREE.BoxGeometry(1, 1, 1);
-    const mat = new THREE.MeshStandardMaterial({ color });
-    const im = new THREE.InstancedMesh(geo, mat, bricks.length);
-    const dummy = new THREE.Object3D();
-    bricks.forEach((b, i) => {
-      dummy.position.set(b.pos[0], b.pos[1], b.pos[2]);
-      dummy.scale.set(
-        Math.max(b.size[0] - 0.001, 0.001),
-        Math.max(b.size[1] - 0.001, 0.001),
-        Math.max(b.size[2] - 0.001, 0.001)
-      );
-      dummy.updateMatrix();
-      im.setMatrixAt(i, dummy.matrix);
-    });
-    im.instanceMatrix.needsUpdate = true;
-    return im;
-  }, [bricks, color]);
-  useEffect(() => {
-    return () => {
-      if (mesh) {
-        mesh.geometry.dispose();
-        mesh.material.dispose();
-      }
-    };
-  }, [mesh]);
-  if (!mesh) return null;
-  return <primitive object={mesh} />;
-}
-
 function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls }) {
+  const groupRef = useRef();
+  const { invalidate } = useThree();
+
   const batches = useMemo(() => {
     if (!groupPattern) return [];
     const { batches: batchData, groupMinX, groupMinH, refWallOrigin } = groupPattern;
@@ -269,14 +240,42 @@ function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls }) {
       ),
     })).filter((b) => b.bricks.length > 0);
   }, [groupPattern, material, brickD, upAxis, allWalls]);
-  if (!batches.length) return null;
-  return (
-    <group>
-      {batches.map((batch, bi) => (
-        <InstancedBrickBatch key={bi} bricks={batch.bricks} color={batch.color} />
-      ))}
-    </group>
-  );
+
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    const dummy = new THREE.Object3D();
+    const added = [];
+    for (const batch of batches) {
+      if (!batch.bricks.length) continue;
+      const geo = new THREE.BoxGeometry(1, 1, 1);
+      const mat = new THREE.MeshStandardMaterial({ color: batch.color });
+      const im = new THREE.InstancedMesh(geo, mat, batch.bricks.length);
+      batch.bricks.forEach((b, i) => {
+        dummy.position.set(b.pos[0], b.pos[1], b.pos[2]);
+        dummy.scale.set(
+          Math.max(b.size[0] - 0.001, 0.001),
+          Math.max(b.size[1] - 0.001, 0.001),
+          Math.max(b.size[2] - 0.001, 0.001)
+        );
+        dummy.updateMatrix();
+        im.setMatrixAt(i, dummy.matrix);
+      });
+      im.instanceMatrix.needsUpdate = true;
+      group.add(im);
+      added.push(im);
+    }
+    invalidate();
+    return () => {
+      for (const im of added) {
+        group.remove(im);
+        im.geometry.dispose();
+        im.material.dispose();
+      }
+    };
+  }, [batches, invalidate]);
+
+  return <group ref={groupRef} />;
 }
 
 function WallMesh({ wall, isSelected, isHovered, groupColor, onSelect, onHover, upAxis }) {
