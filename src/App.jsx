@@ -192,6 +192,30 @@ function findSimilarGroups(referenceWalls, allWalls, existingGroups, adjacencies
 
   return results.map((ids) => sortWallsInComponent(ids, allWalls, adjacencies));
 }
+function findDuplicateGroupClusters(groups, allWalls) {
+  if (groups.length < 2) return [];
+  const sigged = groups.map((g) => {
+    const walls = g.wallIds.map((id) => allWalls.find((w) => w.expressID === id)).filter(Boolean);
+    if (!walls.length) return null;
+    const sig = buildGroupSignature(walls);
+    const key = sig.map((s) => [
+      Math.round(s.dx / DIM_TOL),
+      Math.round(s.dy / DIM_TOL),
+      Math.round(s.dz / DIM_TOL),
+      Math.round(s.length / DIM_TOL),
+      Math.round(s.height / DIM_TOL),
+      s.openings.length,
+    ].join(',') + (s.openings.length ? '|' + s.openings.map((op) => [Math.round(op.x / OP_TOL), Math.round(op.y / OP_TOL), Math.round(op.breedte / OP_TOL), Math.round(op.hoogte / OP_TOL)].join(',')).join(';') : '')).join('/');
+    return { g, key };
+  }).filter(Boolean);
+  const buckets = new Map();
+  for (const { g, key } of sigged) {
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(g);
+  }
+  return [...buckets.values()].filter((c) => c.length > 1);
+}
+
 const GROUP_COLORS = [
   '#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#e67e22',
   '#16a085', '#d35400', '#2471a3', '#1e8449', '#6c3483',
@@ -927,6 +951,7 @@ export default function App() {
   const [wallTypes, setWallTypes] = useState([]);
   const [selectedTypes, setSelectedTypes] = useState(new Set());
   const [similarSuggestions, setSimilarSuggestions] = useState(null);
+  const [duplicateGroupsModal, setDuplicateGroupsModal] = useState(null);
   const [groupLinks, setGroupLinks] = useState({});
   const [gridLines, setGridLines] = useState([]);
   const [showGridLines, setShowGridLines] = useState(true);
@@ -1855,6 +1880,77 @@ export default function App() {
         </div>
       )}
 
+      {duplicateGroupsModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 8, padding: 24, width: 560, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Gelijke groepen zoeken</div>
+            {duplicateGroupsModal.empty ? (
+              <div style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>Geen gelijke groepen gevonden. Alle groepen hebben een unieke samenstelling.</div>
+            ) : (
+              <>
+                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 16 }}>
+                  Er zijn <strong>{duplicateGroupsModal.clusters.length}</strong> set{duplicateGroupsModal.clusters.length !== 1 ? 's' : ''} van gelijke groepen gevonden.
+                  Groepen in dezelfde set kunnen worden gekoppeld zodat instellingen gesynchroniseerd worden.
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+                  {duplicateGroupsModal.clusters.map((cluster, ci) => {
+                    const firstWalls = cluster[0].wallIds.map((id) => allWalls.find((w) => w.expressID === id)).filter(Boolean);
+                    const dims = firstWalls.map((w) => `${w.length}×${w.height}`).join(' + ');
+                    const totalOps = firstWalls.reduce((s, w) => s + (w.openings?.filter((o) => o.type === 'raam' || o.type === 'deur').length ?? 0), 0);
+                    return (
+                      <div key={ci} style={{ border: '1px solid #e2e8f0', borderRadius: 6, overflow: 'hidden' }}>
+                        <div style={{ padding: '8px 12px', background: '#f1f5f9', fontWeight: 600, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ color: '#6366f1' }}>Set {ci + 1}</span>
+                          <span style={{ color: '#64748b', fontWeight: 400 }}>— {cluster[0].wallIds.length} element{cluster[0].wallIds.length !== 1 ? 'en' : ''}, {dims} mm{totalOps > 0 ? `, ${totalOps} opening${totalOps !== 1 ? 'en' : ''}` : ''}</span>
+                          <span style={{ marginLeft: 'auto', fontSize: 11, background: '#dbeafe', color: '#1d4ed8', padding: '1px 7px', borderRadius: 10 }}>{cluster.length} groepen</span>
+                        </div>
+                        <div style={{ padding: '8px 12px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {cluster.map((g) => {
+                            const s = getSettings(g.id);
+                            return (
+                              <span key={g.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4, padding: '2px 8px', fontSize: 11 }}>
+                                <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, display: 'inline-block', flexShrink: 0 }} />
+                                {s.name}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setDuplicateGroupsModal(null)}
+                style={{ fontSize: 12, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: '6px 14px', cursor: 'pointer' }}>
+                Sluiten
+              </button>
+              {!duplicateGroupsModal.empty && (
+                <button
+                  onClick={() => {
+                    pushHistory(groups);
+                    setGroupLinks((prev) => {
+                      const next = { ...prev };
+                      for (const cluster of duplicateGroupsModal.clusters) {
+                        const existingLinks = cluster.map((g) => next[g.id]).filter(Boolean);
+                        const linkId = existingLinks[0] ?? `L${cluster[0].id}`;
+                        for (const g of cluster) next[g.id] = linkId;
+                      }
+                      return next;
+                    });
+                    setDuplicateGroupsModal(null);
+                  }}
+                  style={{ fontSize: 12, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 16px', cursor: 'pointer', fontWeight: 600 }}>
+                  Alle sets koppelen
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ background: '#1e293b', color: '#f8fafc', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <span style={{ fontWeight: 700, fontSize: 15 }}>IFC Brickslip Planner</span>
 
@@ -2038,8 +2134,20 @@ export default function App() {
 
               {groups.length > 0 && (
                 <div style={{ flexShrink: 0 }}>
-                  <div style={{ padding: '5px 10px', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
-                    Groepen ({groups.length})
+                  <div style={{ padding: '5px 10px', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Groepen ({groups.length})</span>
+                    {groups.length > 1 && (
+                      <button
+                        onClick={() => {
+                          const clusters = findDuplicateGroupClusters(groups, allWalls);
+                          setDuplicateGroupsModal(clusters.length > 0 ? { clusters } : { clusters: [], empty: true });
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', fontSize: 10, padding: 0 }}
+                        title="Zoek groepen met dezelfde samenstelling en sparingen"
+                      >
+                        Zoek gelijke groepen
+                      </button>
+                    )}
                   </div>
                   {groups.map((g) => {
                     const s = getSettings(g.id);
