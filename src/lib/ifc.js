@@ -646,8 +646,8 @@ function r(v) {
   return s.includes('.') ? s : s + '.';
 }
 
-function getExteriorDepth(rwo, pD, allWallOrigins) {
-  if (!rwo) return (Math.abs((rwo?.thicknessEnd ?? 200) - (rwo?.thicknessStart ?? 0))) + pD / 2;
+function calcOutsideFace(rwo, allWallOrigins) {
+  if (!rwo) return { outsidePos: 0, outsideDir: 1 };
   const axis = rwo.thicknessAxis;
   const tStart = rwo.thicknessStart;
   const tEnd = rwo.thicknessEnd ?? rwo.thicknessStart + 200;
@@ -660,10 +660,9 @@ function getExteriorDepth(rwo, pD, allWallOrigins) {
     : tEnd;
   const distToMin = tStart - buildingMin;
   const distToMax = buildingMax - tEnd;
-  if (distToMin <= distToMax) {
-    return -pD / 2;
-  }
-  return Math.abs(tEnd - tStart) + pD / 2;
+  return distToMin <= distToMax
+    ? { outsidePos: tStart, outsideDir: -1 }
+    : { outsidePos: tEnd, outsideDir: 1 };
 }
 
 export function exportGroupsToIfc(groups, wallSettings, fileName) {
@@ -740,11 +739,13 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
       return { axisStr: '$', refStr: rId ? `#${rId}` : '$' };
     };
 
-    const groupToWorld = (gx, depth, gz) => {
-      if (!rwo) return [gx, depth, gz];
+    const { outsidePos: grpOutPos, outsideDir: grpOutDir } = calcOutsideFace(rwo, allWallOrigins);
+
+    const groupToWorld = (gx, outDepth, gz) => {
+      if (!rwo) return [gx, outDepth, gz];
       const p = { x: 0, y: 0, z: 0 };
       p[rwo.lengthAxis]    = groupMinX + gx;
-      p[rwo.thicknessAxis] = rwo.thicknessStart + depth;
+      p[rwo.thicknessAxis] = grpOutPos + grpOutDir * outDepth;
       p[rwo.heightAxis]    = groupMinH + gz;
       return normalizeZUp(p.x, p.y, p.z, rwo.heightAxis);
     };
@@ -754,12 +755,13 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const { wall, rows } = wallData;
         const wo = wall.wallOrigin;
 
-        const toWorld = (localX, localDepth, localZ) => {
-          if (!wo) return [localX, localDepth, localZ];
+        const { outsidePos: wallOutPos, outsideDir: wallOutDir } = calcOutsideFace(wo, allWallOrigins);
+        const toWorld = (localX, outDepth, localZ) => {
+          if (!wo) return [localX, outDepth, localZ];
           const p = { x: 0, y: 0, z: 0 };
-          p[wo.lengthAxis]    = wo.lengthStart    + localX;
-          p[wo.thicknessAxis] = wo.thicknessStart + localDepth;
-          p[wo.heightAxis]    = wo.heightStart    + localZ;
+          p[wo.lengthAxis]    = wo.lengthStart + localX;
+          p[wo.thicknessAxis] = wallOutPos + wallOutDir * outDepth;
+          p[wo.heightAxis]    = wo.heightStart + localZ;
           return normalizeZUp(p.x, p.y, p.z, wo.heightAxis);
         };
 
@@ -879,14 +881,12 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     const penanten = (wallSettings[group.id] ?? {}).penanten ?? [];
     if (penanten.length && rwo) {
       const { axisStr, refStr } = makeGroupAxes();
-      const wallThickness = Math.max(50, Math.abs((rwo.thicknessEnd ?? rwo.thicknessStart + 200) - rwo.thicknessStart));
       for (const pen of penanten) {
         const pX  = pen.x   ?? 0;
         const pB  = Math.max(1, pen.breedte ?? 400);
         const pD  = Math.max(1, pen.diepte  ?? 150);
         const pH  = Math.max(1, pen.hoogte  ?? 2000);
-        const depthCenter = getExteriorDepth(rwo, pD, allWallOrigins);
-        const [wx, wy, wz] = groupToWorld(pX + pB / 2, depthCenter, 0);
+        const [wx, wy, wz] = groupToWorld(pX + pB / 2, pD / 2, 0);
         const placePt = PT(wx, wy, wz);
         const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
         const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
