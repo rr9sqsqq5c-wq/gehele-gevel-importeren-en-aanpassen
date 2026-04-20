@@ -437,7 +437,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               const hpD_cs = (p.hoekprofiel?.enabled !== false) ? (p.hoekprofiel?.dikte ?? 2) : 0;
               const panelDikte_cs = groupSettings?.panelen?.dikte ?? 8;
               const sideClipOffset = Math.max(stoot, panelDikte_cs);
-              const panelDepth_cs = Math.max(1, pD - brickDepth - stoot);
+              const panelDepth_cs = Math.max(1, pD + brickDepth);
               const zijPaneel = panelDepth_cs + stoot;
               const frontPanelW_cs = Math.max(0, pB - 2 * brickDepth);
               const innerClearW_cs = Math.max(0, frontPanelW_cs - 2 * panelDikte_cs);
@@ -448,7 +448,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               const drawH = CSH - pad.t - pad.b;
 
               const totalCSW = pB;
-              const totalCSH = pD + 14;
+              const totalCSH = pD + brickDepth + stoot + panelDikte_cs + 14;
               const scH = drawH / totalCSH;
               const scW = drawW / totalCSW;
               const sc2 = Math.min(scH, scW);
@@ -493,7 +493,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     {`Penant ${idx + 1} — dwarsdoorsnede U-vorm (bovenaanzicht)`}
                   </text>
                   <text x={cx} y={27} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
-                    {`Voorzijde strips = ${mm(pB)} mm  ·  Voorzijde paneel = ${mm(frontPanelW_cs)} mm  ·  Zijpaneel diepte = ${mm(panelDepth_cs)} mm (${mm(pD)} − strip ${mm(brickDepth)} − sv ${mm(stoot)})  ·  Strip diepte = ${mm(brickDepth)} mm`}
+                    {`Voorzijde strips = ${mm(pB)} mm  ·  Voorzijde paneel = ${mm(frontPanelW_cs)} mm  ·  Zijpaneel diepte = ${mm(panelDepth_cs)} mm (${mm(pD)} + strip ${mm(brickDepth)})  ·  Strip diepte = ${mm(brickDepth)} mm`}
                   </text>
                   <text x={cx} y={37} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
                     {`Paneeldikte = ${mm(panelDikte_cs)} mm  ·  Clip offset = max(sv, pD) = max(${mm(stoot)}, ${mm(panelDikte_cs)}) = ${mm(sideClipOffset)} mm`}

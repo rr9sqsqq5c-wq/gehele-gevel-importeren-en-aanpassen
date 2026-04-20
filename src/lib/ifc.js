@@ -915,7 +915,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const pH  = Math.max(1, pen.hoogte  ?? 2000);
         const penStoot = material.stoot ?? 10;
         const penFrontW = Math.max(1, pB - 2 * brickD);
-        const penSideD  = Math.max(1, pD - brickD - penStoot);
+        const penSideD  = Math.max(1, pD + brickD);
         const penPanelT = panelDikte;
         const penShift = panelDikte + brickD + penStoot + pD;
 

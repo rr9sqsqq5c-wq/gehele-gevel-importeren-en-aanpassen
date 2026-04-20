@@ -114,7 +114,7 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, lat
   const stoot = 10;
   const panelT = panelDikte;
   const frontW  = Math.max(1, pB - 2 * brickDepth);
-  const sideD   = Math.max(1, pD - brickDepth - stoot);
+  const sideD   = Math.max(1, pD + brickDepth);
 
   const makeBox = (gxOff, depthCenter, boxW, boxThick) => {
     const ifc = { x: 0, y: 0, z: 0 };
