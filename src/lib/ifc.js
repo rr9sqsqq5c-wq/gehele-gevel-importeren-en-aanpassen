@@ -917,6 +917,8 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const penFrontW = Math.max(1, pB - 2 * brickD);
         const penSideD  = Math.max(1, pD - brickD - penStoot);
         const penPanelT = panelDikte;
+        const PENANT_GAP = 6;
+        const penShift = effectiveLatDepth + panelDikte + PENANT_GAP - latDikte;
 
         const emitPenantBox = (gxCenter, depthCenter, boxW, boxThick, label) => {
           const [bwx, bwy, bwz] = groupToWorld(gxCenter, depthCenter, 0);
@@ -934,9 +936,9 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
           allProxyIds.push(bPrx);
         };
 
-        emitPenantBox(pX + pB / 2, latDikte - penPanelT / 2, penFrontW, penPanelT, 'Penant voorzijde');
-        emitPenantBox(pX + brickD + penPanelT / 2, latDikte - penPanelT - penSideD / 2, penPanelT, penSideD, 'Penant linkerbeen');
-        emitPenantBox(pX + pB - brickD - penPanelT / 2, latDikte - penPanelT - penSideD / 2, penPanelT, penSideD, 'Penant rechterbeen');
+        emitPenantBox(pX + pB / 2, latDikte + penShift - penPanelT / 2, penFrontW, penPanelT, 'Penant voorzijde');
+        emitPenantBox(pX + brickD + penPanelT / 2, latDikte + penShift - penPanelT - penSideD / 2, penPanelT, penSideD, 'Penant linkerbeen');
+        emitPenantBox(pX + pB - brickD - penPanelT / 2, latDikte + penShift - penPanelT - penSideD / 2, penPanelT, penSideD, 'Penant rechterbeen');
 
         const penFaceData = penantFaceRows[pi] ?? {};
         const fRows = penFaceData.frontRows ?? penFaceData ?? [];
@@ -944,7 +946,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         for (const row of (Array.isArray(fRows) ? fRows : [])) {
           for (const piece of row.pieces) {
             const gx = pX + piece.start + piece.length / 2;
-            const [bwx, bwy, bwz] = groupToWorld(gx, latDikte + brickD / 2, row.y);
+            const [bwx, bwy, bwz] = groupToWorld(gx, latDikte + penShift + brickD / 2, row.y);
             const bPlacePt = PT(bwx, bwy, bwz);
             const bPlace3D = E(`IFCAXIS2PLACEMENT3D(#${bPlacePt},${axisStr},${refStr})`);
             const bLocalPl = E(`IFCLOCALPLACEMENT(#${stPl},#${bPlace3D})`);
@@ -968,7 +970,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const rightRefId = E(`IFCDIRECTION((${r(-tdx)},${r(-tdy)},${r(-tdz)}))`);
         const sideAxisId = E(`IFCDIRECTION((0.,0.,1.))`);
 
-        const sideDepthOffset = latDikte - pD;
+        const sideDepthOffset = latDikte + penShift - pD;
         for (const row of (penFaceData.leftRows ?? [])) {
           for (const piece of row.pieces) {
             const lp = { x: 0, y: 0, z: 0 };
