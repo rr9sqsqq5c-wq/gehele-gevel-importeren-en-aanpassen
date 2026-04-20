@@ -878,19 +878,23 @@ export default function App() {
       if (!facadeData) continue;
       let { rows } = facadeData;
       if (s.penanten?.length) {
+        const brickD = s.brickDepth ?? 20;
         rows = rows.map((row) => ({
           ...row,
           pieces: row.pieces.flatMap((piece) => {
             let ps = [piece];
             for (const p of s.penanten) {
               const pX = p.x ?? 0;
-              const pEnd = pX + Math.max(1, p.breedte ?? 400);
+              const pB = Math.max(1, p.breedte ?? 400);
+              const maskStart = pX + brickD;
+              const maskEnd = pX + pB - brickD;
+              if (maskEnd <= maskStart) continue;
               ps = ps.flatMap((q) => {
                 const qs = q.start, qe = q.start + q.length;
-                if (qe <= pX || qs >= pEnd) return [q];
+                if (qe <= maskStart || qs >= maskEnd) return [q];
                 const out = [];
-                if (qs < pX) out.push({ ...q, length: pX - qs });
-                if (qe > pEnd) out.push({ ...q, start: pEnd, length: qe - pEnd });
+                if (qs < maskStart) out.push({ ...q, length: maskStart - qs });
+                if (qe > maskEnd) out.push({ ...q, start: maskEnd, length: qe - maskEnd });
                 return out;
               });
             }
@@ -1256,19 +1260,23 @@ export default function App() {
       const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte);
       let facadeData = facadeDataRaw;
       if (facadeDataRaw && s.penanten?.length) {
+        const brickD = s.brickDepth ?? 20;
         const maskedRows = facadeDataRaw.rows.map((row) => ({
           ...row,
           pieces: row.pieces.flatMap((piece) => {
             let ps = [piece];
             for (const p of s.penanten) {
               const pX = p.x ?? 0;
-              const pEnd = pX + Math.max(1, p.breedte ?? 400);
+              const pB = Math.max(1, p.breedte ?? 400);
+              const maskStart = pX + brickD;
+              const maskEnd = pX + pB - brickD;
+              if (maskEnd <= maskStart) continue;
               ps = ps.flatMap((q) => {
                 const qs = q.start, qe = q.start + q.length;
-                if (qe <= pX || qs >= pEnd) return [q];
+                if (qe <= maskStart || qs >= maskEnd) return [q];
                 const out = [];
-                if (qs < pX) out.push({ ...q, length: pX - qs });
-                if (qe > pEnd) out.push({ ...q, start: pEnd, length: qe - pEnd });
+                if (qs < maskStart) out.push({ ...q, length: maskStart - qs });
+                if (qe > maskEnd) out.push({ ...q, start: maskEnd, length: qe - maskEnd });
                 return out;
               });
             }
@@ -1292,11 +1300,15 @@ export default function App() {
           const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40);
           const globalPieces = facRows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
           const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
+          const penBrickD = s.brickDepth ?? 20;
           const penantOpenings = (s.penanten ?? []).map((pen, pi) => {
             const px = pen.x ?? 0;
             const pw = Math.max(1, pen.breedte ?? 400);
-            return { id: `pen_${pi}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null };
-          });
+            const innerX = px + penBrickD;
+            const innerW = Math.max(0, pw - 2 * penBrickD);
+            if (innerW <= 0) return null;
+            return { id: `pen_${pi}`, x: innerX, y: 0, width: innerW, height: groupHeight, polyPts: null };
+          }).filter(Boolean);
           const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
           for (const zone of zones) {
             const res = panelizeZone(zone, facRows, globalPieces, mat.steenH, basePanel);
@@ -1341,18 +1353,6 @@ export default function App() {
                   const parts = [];
                   if (ox1 > sx1 + 5) parts.push({ x: sx1, width: ox1 - sx1 });
                   if (ox2 < sx2 - 5) parts.push({ x: ox2, width: sx2 - ox2 });
-                  return parts;
-                });
-              }
-              for (const pen of (s.penanten ?? [])) {
-                const px1 = pen.x ?? 0;
-                const px2 = px1 + Math.max(1, pen.breedte ?? 400);
-                segs = segs.flatMap((seg) => {
-                  const sx1 = seg.x, sx2 = seg.x + seg.width;
-                  if (px2 <= sx1 || px1 >= sx2) return [seg];
-                  const parts = [];
-                  if (px1 > sx1 + 5) parts.push({ x: sx1, width: px1 - sx1 });
-                  if (px2 < sx2 - 5) parts.push({ x: px2, width: sx2 - px2 });
                   return parts;
                 });
               }
