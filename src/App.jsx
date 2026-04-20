@@ -14,8 +14,26 @@ import { Uittrekstaat } from './Uittrekstaat.jsx';
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 const DEFAULT_VERBAND = 'halfsteens';
 
-const APP_VERSION = '1.6';
+const APP_VERSION = '1.8';
 const CHANGELOG = [
+  {
+    version: '1.8',
+    date: '2026-04-20',
+    changes: [
+      'Paneeloptimalisatie: nieuw scoringsmodel — prioriteit: min. panelen → ~1m² per paneel → min. zaagverlies basisplaat → min. unieke maten',
+      'Doelmaat paneel op basis van baksteen-grid: 5 strekken + 4 stootvoegen breed, 14 lagen + 13 lintvoegen hoog (per groep materiaal)',
+      'Paneellogica vastgelegd onder "Logica-regels" modal (nieuw tabblad Panelen — Optimalisatielogica)',
+      'Gelijke groepen zoeken: knop in groepenpaneel — vindt clusters van identieke groepen op basis van afmetingen en sparingen, optie om te koppelen',
+    ],
+  },
+  {
+    version: '1.7',
+    date: '2026-04-20',
+    changes: [
+      '3D viewer gemigreerd naar THREE.InstancedMesh (imperatief via useEffect) — elimineert React reconciliation problemen, vermindert draw calls',
+      'Zone brickH bug opgelost: zones met staand_tegelverband gebruiken nu steenL als rijhoogte in 3D viewer',
+    ],
+  },
   {
     version: '1.6',
     date: '2026-04-20',
@@ -2473,12 +2491,28 @@ export default function App() {
                   ]
                 },
                 {
-                  title: '🟦 Panelen', color: '#1d4ed8', rows: [
+                  title: '🟦 Panelen — Plaatsingsregels', color: '#1d4ed8', rows: [
                     ['Sparingen', 'Worden geclipped door polygon of bounding box van opening'],
                     ['Penant', 'Volledig uitgesloten van de zone pX → pX + breedte'],
                     ['Boven penant', 'Van penant-hoogte tot max hoogte ook geen panelen/strips in penant-breedte'],
                     ['Max hoogte', 'Panelen worden geclipped tot max hoogte'],
                     ['Gewicht', 'Paneel wordt kleiner als het ingestelde max gewicht (kg) wordt overschreden'],
+                  ]
+                },
+                {
+                  title: '🟦 Panelen — Optimalisatielogica', color: '#1e40af', rows: [
+                    ['Doel', 'Optimale paneelindeling per zone op basis van productie-efficiëntie, gewicht en zaagverlies'],
+                    ['Harde grens breedte', 'Paneel ≤ ingestelde max breedte basisplaat (bijv. 3005mm)'],
+                    ['Harde grens hoogte', 'Paneel ≤ ingestelde max hoogte basisplaat (bijv. 1200mm)'],
+                    ['Harde grens gewicht', 'Effectieve hoogte = min(maxH, maxKg / (paneel kg/m² + steen kg/m²) × 1m / breedte) — Arbo: max tilgewicht 2 personen'],
+                    ['Prioriteit 1 — min. panelen', 'Zo min mogelijk panelen per zone (score × 1.000.000) — minste montagetijd'],
+                    ['Prioriteit 2 — ~1 m² per paneel', 'Gemiddelde paneeloppervlakte zo dicht mogelijk bij 1.000.000 mm² (score / 1000) — optimale fabricagecapaciteit'],
+                    ['Prioriteit 3 — min. zaagverlies', 'Per paneel: bereken hoeveel stuks uit 1 basisplaat passen → restmateriaal / stuks = zaagverlies per paneel (score × 10.000)'],
+                    ['Prioriteit 4 — min. unieke maten', 'Zo weinig mogelijk verschillende maten (score × 100) — minder instellingen per zaagsnede'],
+                    ['Doelmaat breedte', '5 strekken + 4 stootvoegen = 5×steenL + 4×stoot (bijv. 5×210 + 4×10 = 1090mm)'],
+                    ['Doelmaat hoogte', '14 lagen + 13 lintvoegen = 14×steenH + 13×lint (bijv. 14×50 + 13×12 = 856mm)'],
+                    ['Oriëntatie', 'Beide orientaties (liggend / staand) worden berekend — laagste score wint'],
+                    ['Voeglijnen', 'Breekpunten liggen altijd op steen- of voeggrens — nooit dwars door een strip'],
                   ]
                 },
                 {

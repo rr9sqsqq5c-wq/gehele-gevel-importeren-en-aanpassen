@@ -189,13 +189,22 @@ export function panelizeZone(zone, globalRows, globalPieces, steenH, basePanel) 
     },
   ];
 
+  const TARGET_AREA = 1_000_000;
+
   let best = null;
   for (const variant of variants) {
     const panels = buildPanelsFromBreaks(zone, variant.xBreaks, variant.yBreaks, variant.orientation);
     if (!panels.length) continue;
     const uniqueCount = new Set(panels.map((p) => `${p.width}x${p.height}`)).size;
     const avgArea = panels.reduce((s, p) => s + p.area, 0) / panels.length;
-    const score = panels.length * 100000 + uniqueCount * 10000 + Math.abs(avgArea - bpW * bpH);
+    const areaScore = Math.abs(avgArea - TARGET_AREA);
+    const sawWasteScore = panels.reduce((s, p) => {
+      const cols = Math.max(1, Math.floor(bpW / p.width));
+      const rows = Math.max(1, Math.floor(bpH / p.height));
+      const usedFraction = (cols * p.width * rows * p.height) / (bpW * bpH);
+      return s + (1 - usedFraction);
+    }, 0) / panels.length;
+    const score = panels.length * 1_000_000 + areaScore / 1000 + sawWasteScore * 10_000 + uniqueCount * 100;
     if (!best || score < best.score) best = { ...variant, panels, score };
   }
 
