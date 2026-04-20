@@ -161,8 +161,8 @@ function buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation) {
 export function panelizeZone(zone, globalRows, globalPieces, steenH, basePanel) {
   const bpW = basePanel.width;
   const bpH = basePanel.height;
-  const targetLong = bpW;
-  const targetShort = bpH;
+  const targetLong = basePanel.targetWidth ?? bpW;
+  const targetShort = basePanel.targetHeight ?? bpH;
 
   const xCandidates = collectVerticalCandidates(zone, globalPieces);
   const yCandidates = collectHorizontalCandidates(zone, globalRows, steenH);
@@ -225,7 +225,7 @@ export function computeWasteStats(allPanels, basePanel) {
   return { totalPanels: allPanels.length, fullPanels, uniqueSizes, totalUsedArea: Math.round(totalUsedArea), wastePct };
 }
 
-export function computeEffectiveBasePanel(panelen, brickWeightM2) {
+export function computeEffectiveBasePanel(panelen, brickWeightM2, material) {
   const w = Math.max(100, panelen?.breedte ?? 3005);
   const h = Math.max(100, panelen?.hoogte ?? 1200);
   const maxKg = panelen?.maxKg ?? 50;
@@ -234,5 +234,18 @@ export function computeEffectiveBasePanel(panelen, brickWeightM2) {
   const totalW = Math.max(0.001, panelW + brickW);
   const maxAreaMM2 = (maxKg / totalW) * 1e6;
   const effectiveH = Math.min(h, Math.max(100, Math.floor(maxAreaMM2 / w)));
-  return { width: w, height: effectiveH };
+
+  const steenL = material?.steenL ?? 210;
+  const steenH = material?.steenH ?? 50;
+  const lint  = material?.lint  ?? 12;
+  const stoot = material?.stoot ?? 10;
+  const brickTargetW = 5 * steenL + 4 * stoot;
+  const brickTargetH = 14 * steenH + 13 * lint;
+
+  return {
+    width: w,
+    height: effectiveH,
+    targetWidth:  Math.min(w, brickTargetW),
+    targetHeight: Math.min(effectiveH, brickTargetH),
+  };
 }

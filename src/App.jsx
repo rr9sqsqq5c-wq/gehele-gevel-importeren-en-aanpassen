@@ -664,7 +664,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               const maxKg = pan.maxKg ?? 50;
               const totalW = Math.max(0.001, brickW + panW);
               const maxM2 = Math.round(maxKg / totalW * 100) / 100;
-              const effPanel = computeEffectiveBasePanel(pan, brickW);
+              const effPanel = computeEffectiveBasePanel(pan, brickW, settings.material ?? DEFAULT_MATERIAL);
               const effectiveH = effPanel.height;
               const inputH = Math.max(100, pan.hoogte ?? 1200);
               const hLimited = effectiveH < inputH;
@@ -1461,7 +1461,7 @@ export default function App() {
         const { rows: facRows, groupWidth, groupHeight, groupOpenings } = facadeData;
 
         if (s.panelen?.enabled && vis.panelen !== false) {
-          const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40);
+          const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, s.material ?? mat);
           const globalPieces = facRows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
           const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
           const penBrickD = s.brickDepth ?? 20;
