@@ -163,7 +163,7 @@ export function buildGroupPattern(walls, adjacencies, material, verband) {
       const clipped = [];
 
       for (const piece of fullPieces) {
-        const localPieces = clipPieceToWall(piece, wallStart, wallEnd, wall.openings, rowY, rowH);
+        const localPieces = clipPieceToWall(piece, wallStart, wallEnd, (wall.openings ?? []).filter((o) => o.type === 'raam' || o.type === 'deur'), rowY, rowH);
         for (const lp of localPieces) {
           clipped.push({ ...lp, start: round2(lp.start - wallStart) });
         }
@@ -217,8 +217,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       const oh = op.hoogte ?? op.height ?? 0;
       if (ow < 50 || oh < 50) continue;
       const isNamedOpening = op.type === 'raam' || op.type === 'deur';
-      const isLarge = ow >= 400 && oh >= 400;
-      if (!isNamedOpening && !isLarge) continue;
+      if (!isNamedOpening) continue;
       const groupPolyPts = op.polyPts
         ? op.polyPts.map((p) => ({ l: round2(p.l + wallOffsetX), h: round2(p.h + wallOffsetH) }))
         : null;
@@ -438,7 +437,7 @@ export function buildSingleWallPattern(wall, material, verband) {
     const rowY = round2(r * lagenmaat);
     const pieces = buildRowPiecesForWidth(wall.length, material, verband, r, 0);
     const filtered = pieces.filter((p) => {
-      return !isInOpening(p.start, rowY, wall.openings, steenH);
+      return !isInOpening(p.start, rowY, (wall.openings ?? []).filter((o) => o.type === 'raam' || o.type === 'deur'), steenH);
     });
     if (filtered.length) rows.push({ y: rowY, pieces: filtered });
   }

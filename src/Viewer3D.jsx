@@ -573,9 +573,11 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, wallPa
         })}
 
         {walls.flatMap((wall) =>
-          (wall.openings ?? []).map((op) => (
-            <OpeningMesh key={`${wall.expressID}-${op.id}`} wall={wall} opening={op} upAxis={upAxis} />
-          ))
+          (wall.openings ?? [])
+            .filter((op) => op.type === 'raam' || op.type === 'deur')
+            .map((op) => (
+              <OpeningMesh key={`${wall.expressID}-${op.id}`} wall={wall} opening={op} upAxis={upAxis} />
+            ))
         )}
 
         {groups.flatMap((group) => {
