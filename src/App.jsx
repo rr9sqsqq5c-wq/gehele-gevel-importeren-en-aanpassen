@@ -421,9 +421,16 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         const numZones = sortedPenants.length - 1;
         const zoneSettings = settings.zoneSettings ?? [];
         const DEFAULT_ZONE_MAT = { ...DEFAULT_MATERIAL };
+        const resolveZone = (zi) => ({ enabled: false, color: settings.color, verband: settings.verband, material: { ...DEFAULT_ZONE_MAT }, maxHoogte: null, ...(zoneSettings[zi] ?? {}) });
         const updZone = (zi, patch) => {
           const cur = [...zoneSettings];
-          cur[zi] = { enabled: false, color: settings.color, verband: settings.verband, material: { ...DEFAULT_ZONE_MAT }, maxHoogte: null, ...cur[zi], ...patch };
+          cur[zi] = { ...resolveZone(zi), ...patch };
+          onUpdate({ zoneSettings: cur });
+        };
+        const copyZoneTo = (srcZi, targets) => {
+          const src = resolveZone(srcZi);
+          const cur = Array.from({ length: numZones }, (_, i) => resolveZone(i));
+          for (const ti of targets) cur[ti] = { ...src };
           onUpdate({ zoneSettings: cur });
         };
         return (
@@ -432,8 +439,9 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               const p1 = sortedPenants[zi], p2 = sortedPenants[zi + 1];
               const zoneX1 = (p1.x ?? 0) + Math.max(1, p1.breedte ?? 400);
               const zoneX2 = p2.x ?? 0;
-              const zs = { enabled: false, color: settings.color, verband: settings.verband, material: { ...DEFAULT_ZONE_MAT }, maxHoogte: null, ...(zoneSettings[zi] ?? {}) };
+              const zs = resolveZone(zi);
               const zm = zs.material ?? DEFAULT_ZONE_MAT;
+              const otherZones = Array.from({ length: numZones }, (_, i) => i).filter((i) => i !== zi);
               return (
                 <div key={zi} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4, padding: 6, marginBottom: 4 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: zs.enabled ? 6 : 0 }}>
@@ -447,6 +455,24 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                     {zs.enabled && (
                       <input type="color" value={zs.color} onChange={(e) => updZone(zi, { color: e.target.value })}
                         style={{ width: 28, height: 22, border: '1px solid #cbd5e1', borderRadius: 3, padding: 1, cursor: 'pointer' }} />
+                    )}
+                    {numZones > 1 && (
+                      <select
+                        value=""
+                        title="Kopieer instellingen van deze zone naar een andere zone"
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === 'all') copyZoneTo(zi, otherZones);
+                          else if (val !== '') copyZoneTo(zi, [Number(val)]);
+                        }}
+                        style={{ ...inp, fontSize: 10, paddingRight: 4, color: '#475569', maxWidth: 72 }}
+                      >
+                        <option value="" disabled>→ kopieer</option>
+                        {otherZones.map((ti) => (
+                          <option key={ti} value={ti}>→ Zone {ti + 1}</option>
+                        ))}
+                        <option value="all">→ Alle zones</option>
+                      </select>
                     )}
                   </div>
                   {zs.enabled && (
