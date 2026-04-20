@@ -962,6 +962,26 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
           }
         }
 
+        const cornerBattenDepthCenter = latDikte + penShift - penPanelT - latDikte / 2;
+        for (const [gxCenter, cLabel] of [
+          [pX + brickD + penPanelT + latDikte / 2, 'Penant Hoeklatje L'],
+          [pX + pB - brickD - penPanelT - latDikte / 2, 'Penant Hoeklatje R'],
+        ]) {
+          const [cbwx, cbwy, cbwz] = groupToWorld(gxCenter, cornerBattenDepthCenter, 0);
+          const cbPt   = PT(cbwx, cbwy, cbwz);
+          const cbPl3D = E(`IFCAXIS2PLACEMENT3D(#${cbPt},${axisStr},${refStr})`);
+          const cbLPl  = E(`IFCLOCALPLACEMENT(#${stPl},#${cbPl3D})`);
+          const cbPAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
+          const cbProf = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${cbPAx},${r(latDikte)},${r(latDikte)})`);
+          const cbSol  = E(`IFCEXTRUDEDAREASOLID(#${cbProf},#${sAx0},#${extDir},${r(pH)})`);
+          const cbSRep = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${cbSol}))`);
+          const cbPds  = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${cbSRep}))`);
+          const cbName = `${group.name ?? 'Groep'} - ${cLabel}`.replace(/'/g, "\\'");
+          const cbPrx  = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${cbName}',$,'AchterconstructieLat',#${cbLPl},#${cbPds},$,.NOTDEFINED.)`);
+          E(`IFCSTYLEDITEM(#${cbSol},(#${getStyle('#b45309')}),$)`);
+          allProxyIds.push(cbPrx);
+        }
+
         const sideDepth = penFaceData.sideDepth ?? Math.max(1, pD - brickD - (material.stoot ?? 10));
         const thickDir = { x: 0, y: 0, z: 0 };
         thickDir[rwo.thicknessAxis] = grpOutDir;

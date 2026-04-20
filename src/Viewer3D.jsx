@@ -144,6 +144,35 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, a
     () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift),
     [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift]
   );
+  const cornerBattens = useMemo(() => {
+    if (!rwo) return [];
+    const pX = penant.x ?? 0;
+    const pB = Math.max(1, penant.breedte ?? 400);
+    const pH = Math.max(1, penant.hoogte ?? 2000);
+    const sh = penantShift;
+    const ld = latDikte;
+    const panelT = panelDikte;
+    const { outsidePos, outsideDir } = getOutsideFaceInfo(rwo, allWalls);
+    const depthCenter = ld + sh - panelT - ld / 2;
+    return [
+      pX + brickDepth + panelT + ld / 2,
+      pX + pB - brickDepth - panelT - ld / 2,
+    ].map((gxCenter) => {
+      const ifc = { x: 0, y: 0, z: 0 };
+      ifc[rwo.lengthAxis]    = groupMinX + gxCenter;
+      ifc[rwo.heightAxis]    = groupMinH + pH / 2;
+      ifc[rwo.thicknessAxis] = outsidePos + outsideDir * depthCenter;
+      const dims = { x: 1, y: 1, z: 1 };
+      dims[rwo.lengthAxis]    = ld;
+      dims[rwo.heightAxis]    = pH;
+      dims[rwo.thicknessAxis] = ld;
+      return {
+        pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
+        size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+      };
+    });
+  }, [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift]);
+
   if (!boxes.length) return null;
   return (
     <group>
@@ -156,6 +185,14 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, a
           <mesh>
             <boxGeometry args={box.size} />
             <meshBasicMaterial color="#312e81" wireframe />
+          </mesh>
+        </group>
+      ))}
+      {cornerBattens.map((box, i) => (
+        <group key={`cb-${i}`} position={box.pos}>
+          <mesh>
+            <boxGeometry args={box.size} />
+            <meshStandardMaterial color="#b45309" transparent opacity={0.9} />
           </mesh>
         </group>
       ))}
