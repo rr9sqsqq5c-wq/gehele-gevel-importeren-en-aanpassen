@@ -1262,6 +1262,10 @@ export default function App() {
       let panels = [];
       let lattenData = [];
 
+      const _artId = (s.lattenArtikelen ?? [])[0] ?? null;
+      const _art = _artId ? BATTEN_CATALOG.find((a) => a.id === _artId) : null;
+      const latDikteEff = _art ? _art.dikteMM : (s.latten?.dikte ?? 28);
+
       if (facadeData) {
         const { rows: facRows, groupWidth, groupHeight, groupOpenings } = facadeData;
 
@@ -1282,10 +1286,6 @@ export default function App() {
             if (res.ok) panels.push(...res.panels);
           }
         }
-
-        const _artId = (s.lattenArtikelen ?? [])[0] ?? null;
-        const _art = _artId ? BATTEN_CATALOG.find((a) => a.id === _artId) : null;
-        const latDikteEff = _art ? _art.dikteMM : (s.latten?.dikte ?? 28);
 
         if (s.latten?.enabled && vis.latten !== false) {
           const latBreedte = Math.max(5, _art ? _art.breedteMM : (s.latten.breedte ?? 50));
