@@ -912,7 +912,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const pX  = pen.x   ?? 0;
         const pB  = Math.max(1, pen.breedte ?? 400);
         const pD  = Math.max(1, pen.diepte  ?? 150);
-        const pH  = Math.max(1, pen.hoogte  ?? 2000);
+        const pH  = Math.max(1, (maxHoogte != null && maxHoogte > 0) ? Math.min(pen.hoogte ?? 2000, maxHoogte) : (pen.hoogte ?? 2000));
         const penStoot = material.stoot ?? 10;
         const penFrontW = Math.max(1, pB - 2 * brickD);
         const penSideD  = Math.max(1, pD + brickD);
@@ -931,7 +931,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
           const bPds  = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${bSRep}))`);
           const bName = `${group.name ?? 'Groep'} - ${label}`.replace(/'/g, "\\'");
           const bPrx  = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${bName}',$,'Penant',#${bLPl},#${bPds},$,.NOTDEFINED.)`);
-          E(`IFCSTYLEDITEM(#${bSol},(#${getStyle('#6366f1')}),$)`);
+          E(`IFCSTYLEDITEM(#${bSol},(#${getStyle('#94a3b8')}),$)`);
           allProxyIds.push(bPrx);
         };
 

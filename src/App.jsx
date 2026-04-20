@@ -1314,6 +1314,13 @@ export default function App() {
             const res = panelizeZone(zone, facRows, globalPieces, mat.steenH, basePanel);
             if (res.ok) panels.push(...res.panels);
           }
+          if (s.maxHoogte != null && s.maxHoogte > 0) {
+            panels = panels.map((panel) => {
+              if (panel.y >= s.maxHoogte) return null;
+              if (panel.y + panel.height > s.maxHoogte) return { ...panel, height: s.maxHoogte - panel.y };
+              return panel;
+            }).filter(Boolean);
+          }
         }
 
         if (s.latten?.enabled && vis.latten !== false) {

@@ -185,11 +185,11 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, a
         <group key={i} position={box.pos}>
           <mesh>
             <boxGeometry args={box.size} />
-            <meshStandardMaterial color="#6366f1" transparent opacity={0.75} />
+            <meshStandardMaterial color="#94a3b8" transparent opacity={0.75} />
           </mesh>
           <mesh>
             <boxGeometry args={box.size} />
-            <meshBasicMaterial color="#312e81" wireframe />
+            <meshBasicMaterial color="#475569" wireframe />
           </mesh>
         </group>
       ))}
