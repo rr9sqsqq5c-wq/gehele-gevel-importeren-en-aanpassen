@@ -878,7 +878,6 @@ export default function App() {
       if (!facadeData) continue;
       let { rows } = facadeData;
       if (s.penanten?.length) {
-        const brickD = s.brickDepth ?? 20;
         rows = rows.map((row) => ({
           ...row,
           pieces: row.pieces.flatMap((piece) => {
@@ -886,9 +885,8 @@ export default function App() {
             for (const p of s.penanten) {
               const pX = p.x ?? 0;
               const pB = Math.max(1, p.breedte ?? 400);
-              const maskStart = pX + brickD;
-              const maskEnd = pX + pB - brickD;
-              if (maskEnd <= maskStart) continue;
+              const maskStart = pX;
+              const maskEnd = pX + pB;
               ps = ps.flatMap((q) => {
                 const qs = q.start, qe = q.start + q.length;
                 if (qe <= maskStart || qs >= maskEnd) return [q];
@@ -1268,9 +1266,8 @@ export default function App() {
             for (const p of s.penanten) {
               const pX = p.x ?? 0;
               const pB = Math.max(1, p.breedte ?? 400);
-              const maskStart = pX + brickD;
-              const maskEnd = pX + pB - brickD;
-              if (maskEnd <= maskStart) continue;
+              const maskStart = pX;
+              const maskEnd = pX + pB;
               ps = ps.flatMap((q) => {
                 const qs = q.start, qe = q.start + q.length;
                 if (qe <= maskStart || qs >= maskEnd) return [q];
@@ -1304,11 +1301,8 @@ export default function App() {
           const penantOpenings = (s.penanten ?? []).map((pen, pi) => {
             const px = pen.x ?? 0;
             const pw = Math.max(1, pen.breedte ?? 400);
-            const innerX = px + penBrickD;
-            const innerW = Math.max(0, pw - 2 * penBrickD);
-            if (innerW <= 0) return null;
-            return { id: `pen_${pi}`, x: innerX, y: 0, width: innerW, height: groupHeight, polyPts: null };
-          }).filter(Boolean);
+            return { id: `pen_${pi}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null };
+          });
           const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
           for (const zone of zones) {
             const res = panelizeZone(zone, facRows, globalPieces, mat.steenH, basePanel);

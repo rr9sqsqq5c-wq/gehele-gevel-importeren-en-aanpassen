@@ -993,6 +993,57 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
           allProxyIds.push(cbPrx);
         }
 
+        const thickDir = { x: 0, y: 0, z: 0 };
+        thickDir[rwo.thicknessAxis] = grpOutDir;
+        const [tdx, tdy, tdz] = normalizeZUp(thickDir.x, thickDir.y, thickDir.z, rwo.heightAxis);
+        const leftRefId  = E(`IFCDIRECTION((${r(tdx)},${r(tdy)},${r(tdz)}))`);
+        const rightRefId = E(`IFCDIRECTION((${r(-tdx)},${r(-tdy)},${r(-tdz)}))`);
+        const sideAxisId = E(`IFCDIRECTION((0.,0.,1.))`);
+        const sideDepthOffset = latDikte + penShift - pD;
+
+        for (const row of (penFaceData.leftRows ?? [])) {
+          for (const piece of row.pieces) {
+            const lp = { x: 0, y: 0, z: 0 };
+            lp[rwo.lengthAxis]    = groupMinX + pX + brickD / 2;
+            lp[rwo.thicknessAxis] = grpOutPos + grpOutDir * (sideDepthOffset + piece.start + piece.length / 2);
+            lp[rwo.heightAxis]    = groupMinH + row.y;
+            const [lpx, lpy, lpz] = normalizeZUp(lp.x, lp.y, lp.z, rwo.heightAxis);
+            const lPlacePt = PT(lpx, lpy, lpz);
+            const lPlace3D = E(`IFCAXIS2PLACEMENT3D(#${lPlacePt},#${sideAxisId},#${leftRefId})`);
+            const lLocalPl = E(`IFCLOCALPLACEMENT(#${stPl},#${lPlace3D})`);
+            const lProfAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
+            const lProf    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${lProfAx},${r(piece.length)},${r(brickD)})`);
+            const lSolid   = E(`IFCEXTRUDEDAREASOLID(#${lProf},#${sAx0},#${extDir},${r(material.steenH)})`);
+            const lShRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${lSolid}))`);
+            const lPds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${lShRep}))`);
+            const lName    = `${group.name ?? 'Groep'} - Strip`.replace(/'/g, "\\'");
+            const lProxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${lName}',$,'Steenstrip',#${lLocalPl},#${lPds},$,.NOTDEFINED.)`);
+            E(`IFCSTYLEDITEM(#${lSolid},(#${getStyle(brickColor)}),$)`);
+            allProxyIds.push(lProxy);
+          }
+        }
+
+        for (const row of (penFaceData.rightRows ?? [])) {
+          for (const piece of row.pieces) {
+            const rp = { x: 0, y: 0, z: 0 };
+            rp[rwo.lengthAxis]    = groupMinX + pX + pB - brickD / 2;
+            rp[rwo.thicknessAxis] = grpOutPos + grpOutDir * (sideDepthOffset + piece.start + piece.length / 2);
+            rp[rwo.heightAxis]    = groupMinH + row.y;
+            const [rpx, rpy, rpz] = normalizeZUp(rp.x, rp.y, rp.z, rwo.heightAxis);
+            const rPlacePt = PT(rpx, rpy, rpz);
+            const rPlace3D = E(`IFCAXIS2PLACEMENT3D(#${rPlacePt},#${sideAxisId},#${rightRefId})`);
+            const rLocalPl = E(`IFCLOCALPLACEMENT(#${stPl},#${rPlace3D})`);
+            const rProfAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
+            const rProf    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${rProfAx},${r(piece.length)},${r(brickD)})`);
+            const rSolid   = E(`IFCEXTRUDEDAREASOLID(#${rProf},#${sAx0},#${extDir},${r(material.steenH)})`);
+            const rShRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${rSolid}))`);
+            const rPds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${rShRep}))`);
+            const rName    = `${group.name ?? 'Groep'} - Strip`.replace(/'/g, "\\'");
+            const rProxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${rName}',$,'Steenstrip',#${rLocalPl},#${rPds},$,.NOTDEFINED.)`);
+            E(`IFCSTYLEDITEM(#${rSolid},(#${getStyle(brickColor)}),$)`);
+            allProxyIds.push(rProxy);
+          }
+        }
 
       }
     }
