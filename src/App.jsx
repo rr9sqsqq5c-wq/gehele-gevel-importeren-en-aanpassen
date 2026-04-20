@@ -142,7 +142,23 @@ function CollapsibleSection({ title, tip, children, isOpen, onToggle, badge, ext
   );
 }
 
-function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked }) {
+function evalPenantX(expr, gapCenters) {
+  if (expr === undefined || expr === null || String(expr).trim() === '') return 0;
+  let s = String(expr).trim();
+  (gapCenters ?? []).forEach((val, idx) => {
+    s = s.replace(new RegExp(`\\bhl${idx + 1}\\b`, 'g'), String(Math.round(val)));
+  });
+  try {
+    if (!/^[\d\s+\-*/.()]+$/.test(s)) return NaN;
+    // eslint-disable-next-line no-new-func
+    const result = new Function(`return (${s})`)();
+    return typeof result === 'number' && isFinite(result) ? Math.round(result) : NaN;
+  } catch {
+    return NaN;
+  }
+}
+
+function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked, gapCenters }) {
   const mat = settings.material ?? { ...DEFAULT_MATERIAL };
   const [openSections, setOpenSections] = useState({});
   const toggle = (k) => setOpenSections((p) => ({ ...p, [k]: !(p[k] ?? false) }));
@@ -269,7 +285,32 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-              {[['X positie', 'x'], ['Breedte', 'breedte'], ['Diepte', 'diepte'], ['Hoogte', 'hoogte']].map(([lbl, key]) => (
+              <Field label="X positie mm" tip={gapCenters?.length ? `Vul een getal in of een uitdrukking.\nBeschikbare variabelen: ${gapCenters.map((v, i) => `hl${i + 1}=${Math.round(v)}`).join(', ')}.\nVoorbeelden: hl1 - 50   of   3390 + 100` : 'X-positie van het penant vanaf de linkerkant van de groep (mm).'}>
+                {(() => {
+                  const xExpr = p.xExpr ?? String(p.x ?? 0);
+                  const evaluated = evalPenantX(xExpr, gapCenters);
+                  const isInvalid = isNaN(evaluated);
+                  return (
+                    <div>
+                      <input
+                        type="text"
+                        value={xExpr}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const num = evalPenantX(raw, gapCenters);
+                          onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, xExpr: raw, x: isNaN(num) ? (q.x ?? 0) : num } : q) });
+                        }}
+                        style={{ ...inp, width: '100%', borderColor: isInvalid ? '#ef4444' : undefined, background: isInvalid ? '#fef2f2' : undefined }}
+                      />
+                      {(gapCenters?.length > 0 || p.xExpr) && !isInvalid && p.xExpr && p.xExpr !== String(p.x ?? 0) && (
+                        <div style={{ fontSize: 9, color: '#16a34a', marginTop: 1 }}>= {evaluated} mm</div>
+                      )}
+                      {isInvalid && <div style={{ fontSize: 9, color: '#ef4444', marginTop: 1 }}>Ongeldige uitdrukking</div>}
+                    </div>
+                  );
+                })()}
+              </Field>
+              {[['Breedte', 'breedte'], ['Diepte', 'diepte'], ['Hoogte', 'hoogte']].map(([lbl, key]) => (
                 <Field key={key} label={`${lbl} mm`}>
                   <input type="number" min={0} step={10} value={p[key] ?? 0}
                     onChange={(e) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, [key]: Number(e.target.value) } : q) })}
@@ -1866,6 +1907,20 @@ export default function App() {
                   return groups.filter((g) => groupLinks[g.id] === linkId && g.id !== activeGroup.id).length;
                 })()}
                 onSyncToLinked={() => syncToLinked(activeGroup.id)}
+                gapCenters={(() => {
+                  const walls = activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean);
+                  const withOrigin = walls.filter((w) => w.wallOrigin);
+                  if (!withOrigin.length) return [];
+                  const groupMinX = Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart));
+                  const sorted = [...withOrigin].sort((a, b) => a.wallOrigin.lengthStart - b.wallOrigin.lengthStart);
+                  const centers = [];
+                  for (let i = 0; i < sorted.length - 1; i++) {
+                    const rightEdge = (sorted[i].wallOrigin.lengthStart - groupMinX) + sorted[i].length;
+                    const leftEdge  = sorted[i + 1].wallOrigin.lengthStart - groupMinX;
+                    if (leftEdge > rightEdge + 1) centers.push((rightEdge + leftEdge) / 2);
+                  }
+                  return centers;
+                })()}
               />
             </div>
             {viewMode === '2d' && (() => {
