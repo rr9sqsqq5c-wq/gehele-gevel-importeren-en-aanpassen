@@ -135,6 +135,24 @@ function chooseBreaks(start, end, candidates, maxSpan, targetSpan) {
   return [...new Set(breaks)].sort((a, b) => a - b);
 }
 
+export function generateBattenPositions(groupHeight, mat, maxInterval) {
+  const steenH = mat.steenH ?? 50;
+  const lint   = mat.lint   ?? 12;
+  const lagenmaat = steenH + lint;
+  if (lagenmaat <= 0) return [];
+  const N = Math.max(1, Math.floor(maxInterval / lagenmaat));
+  const lintHalf = lint / 2;
+  const positions = [];
+  let k = 0;
+  while (true) {
+    const jc = round2(k * N * lagenmaat + steenH + lintHalf);
+    if (jc >= groupHeight) break;
+    positions.push(jc);
+    k++;
+  }
+  return positions;
+}
+
 function buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation) {
   const panels = [];
   let id = 1;
@@ -158,70 +176,45 @@ function buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation) {
   return panels;
 }
 
-export function panelizeZone(zone, globalRows, globalPieces, steenH, basePanel) {
+export function panelizeZone(zone, battenYs, basePanel) {
   const bpW = basePanel.width;
   const bpH = basePanel.height;
-  const targetLong = basePanel.targetWidth ?? bpW;
-  const targetShort = basePanel.targetHeight ?? bpH;
+  const targetW = basePanel.targetWidth ?? bpW;
 
-  const xCandidates = collectVerticalCandidates(zone, globalPieces);
-  const yCandidates = collectHorizontalCandidates(zone, globalRows, steenH);
+  const zoneX1 = round2(zone.x);
+  const zoneX2 = round2(zone.x + zone.width);
+  const zoneY1 = round2(zone.y);
+  const zoneY2 = round2(zone.y + zone.height);
+
+  const ySet = new Set([zoneY1, zoneY2]);
+  for (const by of battenYs) {
+    const byr = round2(by);
+    if (byr > zoneY1 + 0.001 && byr < zoneY2 - 0.001) ySet.add(byr);
+  }
+  const yBreaks = [...ySet].sort((a, b) => a - b);
+
+  const xSet = new Set([zoneX1, zoneX2]);
+  if (zone.width > targetW + 1) {
+    let xCur = round2(zoneX1 + targetW);
+    while (xCur < zoneX2 - 10) {
+      xSet.add(xCur);
+      xCur = round2(xCur + targetW);
+    }
+  }
+  const xBreaks = [...xSet].sort((a, b) => a - b);
 
   const fitsLandscape = zone.width <= bpW && zone.height <= bpH;
-  const fitsPortrait = zone.width <= bpH && zone.height <= bpW;
-
-  if (fitsLandscape || fitsPortrait) {
-    const orientation = fitsLandscape ? 'liggend' : 'staand';
-    const single = { id: `${zone.id}-P1`, zoneId: zone.id, row: 1, col: 1, x: zone.x, y: zone.y, width: zone.width, height: zone.height, area: round2(zone.width * zone.height), orientation };
-    return { ok: true, orientation, panelCount: 1, panels: [single] };
-  }
-
-  const variants = [
-    {
-      orientation: 'liggend',
-      xBreaks: chooseBreaks(zone.x, zone.x + zone.width, xCandidates, bpW, targetLong),
-      yBreaks: chooseBreaks(zone.y, zone.y + zone.height, yCandidates, bpH, targetShort),
-    },
-    {
-      orientation: 'staand',
-      xBreaks: chooseBreaks(zone.x, zone.x + zone.width, xCandidates, bpH, targetShort),
-      yBreaks: chooseBreaks(zone.y, zone.y + zone.height, yCandidates, bpH, targetShort),
-    },
-  ];
-
-  const TARGET_AREA = 1_000_000;
-
-  let best = null;
-  for (const variant of variants) {
-    const panels = buildPanelsFromBreaks(zone, variant.xBreaks, variant.yBreaks, variant.orientation);
-    if (!panels.length) continue;
-    const uniqueCount = new Set(panels.map((p) => `${p.width}x${p.height}`)).size;
-    const avgArea = panels.reduce((s, p) => s + p.area, 0) / panels.length;
-    const areaScore = Math.abs(avgArea - TARGET_AREA);
-    const sawWasteScore = panels.reduce((s, p) => {
-      const fitsW = p.width <= bpW && p.height <= bpH;
-      const fitsH = p.width <= bpH && p.height <= bpW;
-      if (!fitsW && !fitsH) return s + 1;
-      const plateW = fitsW ? bpW : bpH;
-      const plateH = fitsW ? bpH : bpW;
-      const cols = Math.max(1, Math.floor(plateW / p.width));
-      const rows = Math.max(1, Math.floor(plateH / p.height));
-      const usedFraction = (cols * p.width * rows * p.height) / (plateW * plateH);
-      return s + (1 - usedFraction);
-    }, 0) / panels.length;
-    const score = panels.length * 100_000 + areaScore / 1000 + sawWasteScore * 50_000 + uniqueCount * 1_000;
-    if (!best || score < best.score) best = { ...variant, panels, score };
-  }
-
-  if (!best) return { ok: false, panels: [] };
-  return { ok: true, orientation: best.orientation, panelCount: best.panels.length, panels: best.panels };
+  const orientation = fitsLandscape ? 'liggend' : 'staand';
+  const panels = buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation);
+  if (!panels.length) return { ok: false, panels: [] };
+  return { ok: true, orientation, panelCount: panels.length, panels };
 }
 
-export function panelizeFacade(facadeWidth, facadeHeight, openings, globalRows, globalPieces, steenH, basePanel) {
+export function panelizeFacade(facadeWidth, facadeHeight, openings, battenYs, basePanel) {
   const zones = buildFacadeZones(facadeWidth, facadeHeight, openings);
   const result = [];
   for (const zone of zones) {
-    const panelization = panelizeZone(zone, globalRows, globalPieces, steenH, basePanel);
+    const panelization = panelizeZone(zone, battenYs, basePanel);
     result.push({ zone, panelization });
   }
   return result;

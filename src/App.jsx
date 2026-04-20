@@ -5,7 +5,7 @@ import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loa
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG } from './lib/battens.js';
-import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel } from './lib/panelization.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
 import { Werktekening } from './Werktekening.jsx';
@@ -1478,11 +1478,14 @@ export default function App() {
       if (facadeData) {
         const { rows: facRows, groupWidth, groupHeight, groupOpenings } = facadeData;
 
+        const battenMaxInterval = Math.max(50, s.latten?.maxInterval ?? 400);
+        const battenYs = (s.latten?.enabled || s.panelen?.enabled)
+          ? generateBattenPositions(groupHeight, mat, battenMaxInterval)
+          : [];
+
         if (s.panelen?.enabled && vis.panelen !== false) {
           const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, s.material ?? mat);
-          const globalPieces = facRows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
           const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
-          const penBrickD = s.brickDepth ?? 20;
           const penantOpenings = (s.penanten ?? []).map((pen, pi) => {
             const px = pen.x ?? 0;
             const pw = Math.max(1, pen.breedte ?? 400);
@@ -1490,7 +1493,7 @@ export default function App() {
           });
           const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
           for (const zone of zones) {
-            const res = panelizeZone(zone, facRows, globalPieces, mat.steenH, basePanel);
+            const res = panelizeZone(zone, battenYs, basePanel);
             if (res.ok) panels.push(...res.panels);
           }
           if (s.maxHoogte != null && s.maxHoogte > 0) {
@@ -1504,56 +1507,22 @@ export default function App() {
 
         if (s.latten?.enabled && vis.latten !== false) {
           const latBreedte = Math.max(5, _art ? _art.breedteMM : (s.latten.breedte ?? 50));
-          const maxInterval = Math.max(50, s.latten.maxInterval ?? 400);
           const richting = s.latten.richting ?? 'horizontaal';
 
           if (richting === 'horizontaal') {
-            const rowTops = new Set([0, Math.round(groupHeight)]);
-            const brickTopsSet = new Set();
-            const brickBottomsSet = new Set();
-            for (const row of facRows) {
-              rowTops.add(Math.round(row.y));
-              rowTops.add(Math.round(row.y + mat.steenH));
-              brickBottomsSet.add(Math.round(row.y));
-              brickTopsSet.add(Math.round(row.y + mat.steenH));
-            }
-            const forced = new Set([0, Math.round(groupHeight)]);
-            for (const op of groupOpenings) { forced.add(Math.round(op.y)); forced.add(Math.round(op.y + op.height)); }
-            const snapToRow = (y) => [...rowTops].sort((a, b) => Math.abs(a - y) - Math.abs(b - y))[0] ?? y;
-            const positions = new Set([...forced]);
-            const sortedF = [...positions].sort((a, b) => a - b);
-            for (let i = 0; i < sortedF.length - 1; i++) {
-              let cur = sortedF[i];
-              const next = sortedF[i + 1];
-              while (next - cur > maxInterval + 1) {
-                const mid = cur + maxInterval;
-                const snapped = snapToRow(mid);
-                positions.add(snapped);
-                cur = snapped > cur ? snapped : mid;
-              }
-            }
-            const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
-            const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
             const gH = Math.round(groupHeight);
             const lintHalf = Math.round((mat.lint ?? 12) / 2);
-            const clipLatSegs = (latY, latH) => {
-              let segs = [{ x: 0, width: groupWidth }];
-              for (const op of groupOpenings) {
-                if (op.y + op.height <= latY || op.y >= latY + latH) continue;
-                segs = segs.flatMap((seg) => {
-                  const sx1 = seg.x, sx2 = seg.x + seg.width;
-                  const ox1 = op.x, ox2 = op.x + op.width;
-                  if (ox2 <= sx1 || ox1 >= sx2) return [seg];
-                  const parts = [];
-                  if (ox1 > sx1 + 5) parts.push({ x: sx1, width: ox1 - sx1 });
-                  if (ox2 < sx2 - 5) parts.push({ x: ox2, width: sx2 - ox2 });
-                  return parts;
-                });
-              }
-              return segs.filter((s) => s.width > 10);
-            };
-            lattenData = [...positions].sort((a, b) => a - b).flatMap((y) => {
-              const yr = Math.round(y);
+            const brickTopsSet = new Set();
+            for (const row of facRows) brickTopsSet.add(Math.round(row.y + mat.steenH));
+
+            const edgeYs = [0, gH];
+            for (const op of groupOpenings) { edgeYs.push(Math.round(op.y)); edgeYs.push(Math.round(op.y + op.height)); }
+            const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
+            const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
+
+            const allYs = new Set([...edgeYs, ...battenYs.map(Math.round)]);
+
+            lattenData = [...allYs].sort((a, b) => a - b).map((yr) => {
               let latY;
               if (yr === 0) latY = 0;
               else if (yr === gH) latY = yr - latBreedte;
@@ -1561,7 +1530,7 @@ export default function App() {
               else if (openingTopYs.has(yr)) latY = yr;
               else if (brickTopsSet.has(yr)) latY = Math.round(yr + lintHalf - latBreedte / 2);
               else latY = Math.round(yr - lintHalf - latBreedte / 2);
-              return clipLatSegs(latY, latBreedte).map((seg) => ({ richting: 'horizontaal', x: seg.x, y: latY, width: seg.width, height: latBreedte }));
+              return { richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte };
             });
           } else {
             const xPositions = new Set([0, groupWidth]);
