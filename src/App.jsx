@@ -608,24 +608,20 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
       })()}
 
       {(() => {
-        const selected = settings.lattenArtikelen ?? [];
-        const toggle2 = (id) => {
-          const next = selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id];
-          onUpdate({ lattenArtikelen: next });
-        };
+        const selectedId = (settings.lattenArtikelen ?? [])[0] ?? null;
+        const select = (id) => onUpdate({ lattenArtikelen: id === selectedId ? [] : [id] });
         const brandColors = { 'B-s1,d0': '#dc2626', 'D-s2,d0': '#2563eb' };
-        const selectedCount = selected.length;
         return (
           <CollapsibleSection
             title="Latten artikelkeuze"
-            tip={"Selecteer de gewenste latten-artikelen uit de Mulder's Houtimport prijslijst (15-04-2026).\nDe aangevinkte artikelen worden opgeslagen bij de groep en zijn zichtbaar in de uittrekstaat.\n\n· Rood label = Brandklasse B-s1,d0 (hogere bescherming)\n· Blauw label = Brandklasse D-s2,d0"}
+            tip={"Selecteer één artikel uit de Mulder's Houtimport prijslijst (15-04-2026).\nHet gekozen artikel bepaalt automatisch de breedte en dikte in 'Achterconstructie hout'.\nKlik nogmaals om de selectie op te heffen.\n\n· Rood label = Brandklasse B-s1,d0 (hogere bescherming)\n· Blauw label = Brandklasse D-s2,d0"}
             isOpen={isOpen('lattenArtikelen')}
             onToggle={() => toggle('lattenArtikelen')}
-            badge={selectedCount ? `${selectedCount} gekozen` : null}
+            badge={selectedId ? '1 gekozen' : null}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {BATTEN_CATALOG.map((art) => {
-                const checked = selected.includes(art.id);
+                const checked = art.id === selectedId;
                 const bColor = brandColors[art.brandklasse] ?? '#64748b';
                 return (
                   <label key={art.id} style={{
@@ -635,8 +631,9 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                     border: `1px solid ${checked ? '#86efac' : '#e2e8f0'}`,
                     borderRadius: 4, padding: '4px 6px',
                   }}>
-                    <input type="checkbox" checked={checked} onChange={() => toggle2(art.id)}
-                      style={{ marginTop: 1, flexShrink: 0 }} />
+                    <input type="radio" name={`lat-artikel-${groupId}`} checked={checked}
+                      onChange={() => select(art.id)}
+                      style={{ marginTop: 2, flexShrink: 0, accentColor: '#16a34a' }} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 10.5, color: '#1e293b', lineHeight: 1.3 }}>{art.naam}</div>
                       <div style={{ color: '#64748b', fontSize: 9.5, marginTop: 1 }}>{art.afmetingen}</div>
