@@ -161,7 +161,7 @@ function buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation) {
 export function panelizeZone(zone, globalRows, globalPieces, steenH, basePanel) {
   const bpW = basePanel.width;
   const bpH = basePanel.height;
-  const targetLong = Math.round(bpW / 3);
+  const targetLong = bpW;
   const targetShort = bpH;
 
   const xCandidates = collectVerticalCandidates(zone, globalPieces);
