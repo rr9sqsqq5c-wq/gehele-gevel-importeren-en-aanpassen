@@ -878,6 +878,7 @@ export default function App() {
       if (!facadeData) continue;
       let { rows } = facadeData;
       if (s.penanten?.length) {
+        const brickD3d = s.brickDepth ?? 20;
         rows = rows.map((row) => ({
           ...row,
           pieces: row.pieces.flatMap((piece) => {
@@ -885,8 +886,9 @@ export default function App() {
             for (const p of s.penanten) {
               const pX = p.x ?? 0;
               const pB = Math.max(1, p.breedte ?? 400);
-              const maskStart = pX;
-              const maskEnd = pX + pB;
+              const maskStart = pX + brickD3d;
+              const maskEnd = pX + pB - brickD3d;
+              if (maskEnd <= maskStart) continue;
               ps = ps.flatMap((q) => {
                 const qs = q.start, qe = q.start + q.length;
                 if (qe <= maskStart || qs >= maskEnd) return [q];
@@ -1266,8 +1268,9 @@ export default function App() {
             for (const p of s.penanten) {
               const pX = p.x ?? 0;
               const pB = Math.max(1, p.breedte ?? 400);
-              const maskStart = pX;
-              const maskEnd = pX + pB;
+              const maskStart = pX + brickD;
+              const maskEnd = pX + pB - brickD;
+              if (maskEnd <= maskStart) continue;
               ps = ps.flatMap((q) => {
                 const qs = q.start, qe = q.start + q.length;
                 if (qe <= maskStart || qs >= maskEnd) return [q];
