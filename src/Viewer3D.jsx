@@ -221,6 +221,32 @@ function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY,
   };
 }
 
+function InstancedBrickBatch({ bricks, color }) {
+  const meshRef = useRef();
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+  useEffect(() => {
+    if (!meshRef.current || !bricks.length) return;
+    bricks.forEach((b, i) => {
+      dummy.position.set(b.pos[0], b.pos[1], b.pos[2]);
+      dummy.scale.set(
+        Math.max(b.size[0] - 0.001, 0.001),
+        Math.max(b.size[1] - 0.001, 0.001),
+        Math.max(b.size[2] - 0.001, 0.001)
+      );
+      dummy.updateMatrix();
+      meshRef.current.setMatrixAt(i, dummy.matrix);
+    });
+    meshRef.current.instanceMatrix.needsUpdate = true;
+  }, [bricks, dummy]);
+  if (!bricks.length) return null;
+  return (
+    <instancedMesh ref={meshRef} args={[null, null, bricks.length]}>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshStandardMaterial color={color} />
+    </instancedMesh>
+  );
+}
+
 function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls }) {
   const batches = useMemo(() => {
     if (!groupPattern) return [];
@@ -240,14 +266,9 @@ function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls }) {
   if (!batches.length) return null;
   return (
     <group>
-      {batches.map((batch, bi) =>
-        batch.bricks.map((b, i) => (
-          <mesh key={`${bi}-${i}`} position={b.pos}>
-            <boxGeometry args={b.size.map((v) => Math.max(v - 0.001, 0.001))} />
-            <meshStandardMaterial color={batch.color} />
-          </mesh>
-        ))
-      )}
+      {batches.map((batch, bi) => (
+        <InstancedBrickBatch key={bi} bricks={batch.bricks} color={batch.color} />
+      ))}
     </group>
   );
 }
