@@ -763,9 +763,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           const penLatDikte = settings?.latten?.dikte ?? 28;
           const penBrickD   = settings?.brickDepth ?? 20;
           const penPanelDikte = settings?.panelen?.dikte ?? 8;
-          const penHasVert  = settings?.latten?.richting === 'verticaal';
-          const penEffLatD  = penHasVert ? 2 * penLatDikte : penLatDikte;
-          const penantShift = penEffLatD + penPanelDikte + 6 - penLatDikte;
+          const penantShift = penLatDikte + penPanelDikte + 6;
           return penanten.map((penant) => (
             <PenantMesh3D
               key={`penant-${group.id}-${penant.id ?? penant.x}`}
