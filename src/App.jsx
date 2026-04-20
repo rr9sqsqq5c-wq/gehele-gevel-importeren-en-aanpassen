@@ -1509,7 +1509,14 @@ export default function App() {
 
           if (richting === 'horizontaal') {
             const rowTops = new Set([0, Math.round(groupHeight)]);
-            for (const row of facRows) { rowTops.add(Math.round(row.y)); rowTops.add(Math.round(row.y + mat.steenH)); }
+            const brickTopsSet = new Set();
+            const brickBottomsSet = new Set();
+            for (const row of facRows) {
+              rowTops.add(Math.round(row.y));
+              rowTops.add(Math.round(row.y + mat.steenH));
+              brickBottomsSet.add(Math.round(row.y));
+              brickTopsSet.add(Math.round(row.y + mat.steenH));
+            }
             const forced = new Set([0, Math.round(groupHeight)]);
             for (const op of groupOpenings) { forced.add(Math.round(op.y)); forced.add(Math.round(op.y + op.height)); }
             const snapToRow = (y) => [...rowTops].sort((a, b) => Math.abs(a - y) - Math.abs(b - y))[0] ?? y;
@@ -1528,6 +1535,7 @@ export default function App() {
             const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
             const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
             const gH = Math.round(groupHeight);
+            const lintHalf = Math.round((mat.lint ?? 12) / 2);
             const clipLatSegs = (latY, latH) => {
               let segs = [{ x: 0, width: groupWidth }];
               for (const op of groupOpenings) {
@@ -1551,7 +1559,8 @@ export default function App() {
               else if (yr === gH) latY = yr - latBreedte;
               else if (openingBottomYs.has(yr)) latY = yr - latBreedte;
               else if (openingTopYs.has(yr)) latY = yr;
-              else latY = yr - latBreedte / 2;
+              else if (brickTopsSet.has(yr)) latY = Math.round(yr + lintHalf - latBreedte / 2);
+              else latY = Math.round(yr - lintHalf - latBreedte / 2);
               return clipLatSegs(latY, latBreedte).map((seg) => ({ richting: 'horizontaal', x: seg.x, y: latY, width: seg.width, height: latBreedte }));
             });
           } else {

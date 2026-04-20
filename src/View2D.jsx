@@ -80,6 +80,16 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
       const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
       const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
       const gH = Math.round(groupHeight);
+      const lintHalf = Math.round((mat.lint ?? 12) / 2);
+
+      const brickTopsSet2d = new Set();
+      const brickBottomsSet2d = new Set();
+      if (facadeData?.rows) {
+        for (const row of facadeData.rows) {
+          brickTopsSet2d.add(Math.round(row.y + mat.steenH));
+          brickBottomsSet2d.add(Math.round(row.y));
+        }
+      }
 
       const boundaryYs = new Set([0, gH]);
       for (const panel of allPanels) {
@@ -120,8 +130,10 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
           latY = yr - latBreedte;
         } else if (openingTopYs.has(yr)) {
           latY = yr;
+        } else if (brickTopsSet2d.has(yr)) {
+          latY = Math.round(yr + lintHalf - latBreedte / 2);
         } else {
-          latY = yr - latBreedte / 2;
+          latY = Math.round(yr - lintHalf - latBreedte / 2);
         }
 
         const isForced = openingBottomYs.has(yr) || openingTopYs.has(yr) || yr === 0 || yr === gH;
