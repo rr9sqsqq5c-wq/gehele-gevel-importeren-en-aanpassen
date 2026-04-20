@@ -883,7 +883,7 @@ export default function App() {
           pieces: row.pieces.flatMap((piece) => {
             let ps = [piece];
             for (const p of s.penanten) {
-              const pX = (p.x ?? 0) - facadeData.groupMinX;
+              const pX = p.x ?? 0;
               const pEnd = pX + Math.max(1, p.breedte ?? 400);
               ps = ps.flatMap((q) => {
                 const qs = q.start, qe = q.start + q.length;
@@ -1261,7 +1261,7 @@ export default function App() {
           pieces: row.pieces.flatMap((piece) => {
             let ps = [piece];
             for (const p of s.penanten) {
-              const pX = (p.x ?? 0) - facadeDataRaw.groupMinX;
+              const pX = p.x ?? 0;
               const pEnd = pX + Math.max(1, p.breedte ?? 400);
               ps = ps.flatMap((q) => {
                 const qs = q.start, qe = q.start + q.length;
@@ -1344,6 +1344,18 @@ export default function App() {
                   return parts;
                 });
               }
+              for (const pen of (s.penanten ?? [])) {
+                const px1 = pen.x ?? 0;
+                const px2 = px1 + Math.max(1, pen.breedte ?? 400);
+                segs = segs.flatMap((seg) => {
+                  const sx1 = seg.x, sx2 = seg.x + seg.width;
+                  if (px2 <= sx1 || px1 >= sx2) return [seg];
+                  const parts = [];
+                  if (px1 > sx1 + 5) parts.push({ x: sx1, width: px1 - sx1 });
+                  if (px2 < sx2 - 5) parts.push({ x: px2, width: sx2 - px2 });
+                  return parts;
+                });
+              }
               return segs.filter((s) => s.width > 10);
             };
             lattenData = [...positions].sort((a, b) => a - b).flatMap((y) => {
@@ -1359,7 +1371,13 @@ export default function App() {
           } else {
             const xPositions = new Set([0, groupWidth]);
             for (const panel of panels) { xPositions.add(Math.round(panel.x)); xPositions.add(Math.round(panel.x + panel.width / 2)); xPositions.add(Math.round(panel.x + panel.width)); }
-            lattenData = [...xPositions].sort((a, b) => a - b).map((x) => ({ richting: 'verticaal', x: Math.round(x) - latBreedte / 2, y: 0, width: latBreedte, height: groupHeight }));
+            const penantRanges = (s.penanten ?? []).map((pen) => ({ x1: pen.x ?? 0, x2: (pen.x ?? 0) + Math.max(1, pen.breedte ?? 400) }));
+            lattenData = [...xPositions].sort((a, b) => a - b).flatMap((x) => {
+              const lx1 = Math.round(x) - latBreedte / 2;
+              const lx2 = lx1 + latBreedte;
+              if (penantRanges.some((r) => lx2 > r.x1 + 5 && lx1 < r.x2 - 5)) return [];
+              return [{ richting: 'verticaal', x: lx1, y: 0, width: latBreedte, height: groupHeight }];
+            });
           }
         }
       }
