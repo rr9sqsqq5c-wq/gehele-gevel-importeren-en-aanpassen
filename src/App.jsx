@@ -14,8 +14,15 @@ import { Uittrekstaat } from './Uittrekstaat.jsx';
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 const DEFAULT_VERBAND = 'halfsteens';
 
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.6';
 const CHANGELOG = [
+  {
+    version: '1.6',
+    date: '2026-04-20',
+    changes: [
+      'Penant zij-strip clipping gecorrigeerd: linker- en rechterzijde gebruiken nu dezelfde logica (beide 10mm clip aan de achterkant/binnenkant, naturlijke voeg aan de voorzijde)',
+    ],
+  },
   {
     version: '1.5',
     date: '2026-04-20',
@@ -1534,16 +1541,7 @@ export default function App() {
         const frontRows = buildCenteredFacePattern(pB, pH, mat, s.verband ?? DEFAULT_VERBAND);
         const rawLeft = buildFacePattern(sideDepth, pH, mat, s.verband ?? DEFAULT_VERBAND);
         const rawRight = buildMirroredFacePattern(sideDepth, pH, mat, s.verband ?? DEFAULT_VERBAND);
-        const clipEnd = sideDepth - clipOff;
-        const leftRows = rawLeft.map((row) => ({
-          ...row,
-          pieces: row.pieces.flatMap((pc) => {
-            if (pc.start >= clipEnd) return [];
-            if (pc.start + pc.length <= clipEnd) return [pc];
-            return [{ ...pc, length: Math.round((clipEnd - pc.start) * 100) / 100 }];
-          }),
-        })).filter((row) => row.pieces.length > 0);
-        const rightRows = rawRight.map((row) => ({
+        const clipSide = (rawRows) => rawRows.map((row) => ({
           ...row,
           pieces: row.pieces.flatMap((pc) => {
             if (pc.start + pc.length <= clipOff) return [];
@@ -1552,6 +1550,8 @@ export default function App() {
             return [{ ...pc, start: ns, length: Math.round((pc.start + pc.length - ns) * 100) / 100 }];
           }),
         })).filter((row) => row.pieces.length > 0);
+        const leftRows = clipSide(rawLeft);
+        const rightRows = clipSide(rawRight);
         return { frontRows, leftRows, rightRows, sideDepth, pD };
       });
 
