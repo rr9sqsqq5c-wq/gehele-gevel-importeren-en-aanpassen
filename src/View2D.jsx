@@ -224,13 +224,15 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
   const zonePatterns = useMemo(() => {
     if (!walls?.length || !facadeData) return [];
     const sortedPenants = [...(groupSettings?.penanten ?? [])].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
-    if (sortedPenants.length < 2) return [];
+    if (sortedPenants.length < 1) return [];
+    const numZones = sortedPenants.length + 1;
+    const facadeWidth = facadeData.groupWidth ?? 0;
     const result = [];
-    for (let zi = 0; zi < sortedPenants.length - 1; zi++) {
+    for (let zi = 0; zi < numZones; zi++) {
       const zs = zoneSettings[zi];
       if (!zs?.enabled) { result.push(null); continue; }
-      const zoneX1 = (sortedPenants[zi].x ?? 0) + Math.max(1, sortedPenants[zi].breedte ?? 400);
-      const zoneX2 = sortedPenants[zi + 1].x ?? 0;
+      const zoneX1 = zi === 0 ? 0 : (sortedPenants[zi - 1].x ?? 0) + Math.max(1, sortedPenants[zi - 1].breedte ?? 400);
+      const zoneX2 = zi === numZones - 1 ? facadeWidth : (sortedPenants[zi].x ?? 0);
       if (zoneX2 <= zoneX1) { result.push(null); continue; }
       const zoneMat = zs.material ?? mat;
       const zoneVerband = zs.verband ?? verband;

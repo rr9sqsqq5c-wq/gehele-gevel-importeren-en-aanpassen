@@ -158,7 +158,7 @@ function evalPenantX(expr, gapCenters) {
   }
 }
 
-function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked, gapCenters }) {
+function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked, gapCenters, groupWidth }) {
   const mat = settings.material ?? { ...DEFAULT_MATERIAL };
   const [openSections, setOpenSections] = useState({});
   const toggle = (k) => setOpenSections((p) => ({ ...p, [k]: !(p[k] ?? false) }));
@@ -416,9 +416,10 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         </div>
       </CollapsibleSection>
 
-      {(settings.penanten ?? []).length >= 2 && (() => {
+      {(settings.penanten ?? []).length >= 1 && (() => {
         const sortedPenants = [...(settings.penanten ?? [])].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
-        const numZones = sortedPenants.length - 1;
+        const numZones = sortedPenants.length + 1;
+        const facadeWidth = groupWidth ?? 0;
         const zoneSettings = settings.zoneSettings ?? [];
         const DEFAULT_ZONE_MAT = { ...DEFAULT_MATERIAL };
         const resolveZone = (zi) => ({ enabled: false, color: settings.color, verband: settings.verband, material: { ...DEFAULT_ZONE_MAT }, maxHoogte: null, ...(zoneSettings[zi] ?? {}) });
@@ -434,11 +435,10 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
           onUpdate({ zoneSettings: cur });
         };
         return (
-          <CollapsibleSection title={`Zones (${numZones})`} tip={"Zones zijn de gebieden tussen twee penanten.\nPer zone kun je een eigen kleur, verband en steenstrip-afmetingen instellen.\nDe rest van de gevel (buiten de zones) gebruikt de groepsinstellingen.\n\nAantal zones = aantal penanten − 1"} isOpen={isOpen('zones')} onToggle={() => toggle('zones')}>
+          <CollapsibleSection title={`Zones (${numZones})`} tip={"Zones zijn de vakken links en rechts van elk penant, plus de randzone aan elke zijde van de gevel.\nPer zone kun je een eigen kleur, verband en steenstrip-afmetingen instellen.\n\nAantal zones = aantal penanten + 1"} isOpen={isOpen('zones')} onToggle={() => toggle('zones')}>
             {Array.from({ length: numZones }, (_, zi) => {
-              const p1 = sortedPenants[zi], p2 = sortedPenants[zi + 1];
-              const zoneX1 = (p1.x ?? 0) + Math.max(1, p1.breedte ?? 400);
-              const zoneX2 = p2.x ?? 0;
+              const zoneX1 = zi === 0 ? 0 : (sortedPenants[zi - 1].x ?? 0) + Math.max(1, sortedPenants[zi - 1].breedte ?? 400);
+              const zoneX2 = zi === numZones - 1 ? facadeWidth : (sortedPenants[zi].x ?? 0);
               const zs = resolveZone(zi);
               const zm = zs.material ?? DEFAULT_ZONE_MAT;
               const otherZones = Array.from({ length: numZones }, (_, i) => i).filter((i) => i !== zi);
@@ -1954,6 +1954,13 @@ export default function App() {
                     if (leftEdge > rightEdge + 1) centers.push((rightEdge + leftEdge) / 2);
                   }
                   return centers;
+                })()}
+                groupWidth={(() => {
+                  const walls = activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean);
+                  const withOrigin = walls.filter((w) => w.wallOrigin);
+                  if (!withOrigin.length) return 0;
+                  const groupMinX = Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart));
+                  return Math.max(...withOrigin.map((w) => (w.wallOrigin.lengthStart - groupMinX) + w.length));
                 })()}
               />
             </div>
