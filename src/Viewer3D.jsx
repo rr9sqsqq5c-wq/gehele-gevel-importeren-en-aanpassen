@@ -221,30 +221,33 @@ function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY,
   };
 }
 
-function GroupBricks3D({ groupPattern, color, material, brickD, upAxis, allWalls }) {
-  const bricks = useMemo(() => {
-    if (!groupPattern || !color) return [];
-    const { rows, groupMinX, groupMinH, refWallOrigin } = groupPattern;
-    if (!refWallOrigin || !rows?.length) return [];
+function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls }) {
+  const batches = useMemo(() => {
+    if (!groupPattern) return [];
+    const { batches: batchData, groupMinX, groupMinH, refWallOrigin } = groupPattern;
+    if (!refWallOrigin || !batchData?.length) return [];
     const steenH = material?.steenH ?? 50;
     const depth = brickD ?? 20;
-    const out = [];
-    for (const row of rows) {
-      for (const piece of row.pieces) {
-        out.push(getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, upAxis, allWalls));
-      }
-    }
-    return out;
-  }, [groupPattern, color, material, brickD, upAxis, allWalls]);
-  if (!bricks.length) return null;
+    return batchData.map((batch) => ({
+      color: batch.color,
+      bricks: batch.rows.flatMap((row) =>
+        row.pieces.map((piece) =>
+          getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, upAxis, allWalls)
+        )
+      ),
+    })).filter((b) => b.bricks.length > 0);
+  }, [groupPattern, material, brickD, upAxis, allWalls]);
+  if (!batches.length) return null;
   return (
     <group>
-      {bricks.map((b, i) => (
-        <mesh key={i} position={b.pos}>
-          <boxGeometry args={b.size.map((v) => Math.max(v - 0.001, 0.001))} />
-          <meshStandardMaterial color={color} />
-        </mesh>
-      ))}
+      {batches.map((batch, bi) =>
+        batch.bricks.map((b, i) => (
+          <mesh key={`${bi}-${i}`} position={b.pos}>
+            <boxGeometry args={b.size.map((v) => Math.max(v - 0.001, 0.001))} />
+            <meshStandardMaterial color={batch.color} />
+          </mesh>
+        ))
+      )}
     </group>
   );
 }
@@ -736,7 +739,6 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
             <GroupBricks3D
               key={`bricks-${group.id}`}
               groupPattern={gp}
-              color={settings?.color ?? null}
               material={settings?.material}
               brickD={settings?.brickDepth ?? 20}
               upAxis={upAxis}

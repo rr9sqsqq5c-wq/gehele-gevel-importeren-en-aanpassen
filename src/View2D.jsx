@@ -231,8 +231,11 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
     for (let zi = 0; zi < numZones; zi++) {
       const zs = zoneSettings[zi];
       if (!zs?.enabled) { result.push(null); continue; }
-      const zoneX1 = zi === 0 ? 0 : (sortedPenants[zi - 1].x ?? 0) + Math.max(1, sortedPenants[zi - 1].breedte ?? 400);
-      const zoneX2 = zi === numZones - 1 ? facadeWidth : (sortedPenants[zi].x ?? 0);
+      const brickD2d = groupSettings?.brickDepth ?? 20;
+      const zX1Raw = zi === 0 ? 0 : (sortedPenants[zi - 1].x ?? 0) + Math.max(1, sortedPenants[zi - 1].breedte ?? 400);
+      const zX2Raw = zi === numZones - 1 ? facadeWidth : (sortedPenants[zi].x ?? 0);
+      const zoneX1 = zi === 0 ? zX1Raw : zX1Raw - brickD2d;
+      const zoneX2 = zi === numZones - 1 ? zX2Raw : zX2Raw + brickD2d;
       if (zoneX2 <= zoneX1) { result.push(null); continue; }
       const zoneMat = zs.material ?? mat;
       const zoneVerband = zs.verband ?? verband;

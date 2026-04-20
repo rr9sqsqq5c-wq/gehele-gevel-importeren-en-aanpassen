@@ -14,8 +14,17 @@ import { Uittrekstaat } from './Uittrekstaat.jsx';
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 const DEFAULT_VERBAND = 'halfsteens';
 
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.5';
 const CHANGELOG = [
+  {
+    version: '1.5',
+    date: '2026-04-20',
+    changes: [
+      '3D viewer toont nu zone-kleuren per zone (i.p.v. 1 kleur per groep)',
+      '2D viewer zone-grenzen uitgebreid met brickDepth voor correcte inkijk-preventie kleur',
+      'IFC export, 2D viewer en 3D viewer tonen nu dezelfde zone-indeling (consistent)',
+    ],
+  },
   {
     version: '1.4',
     date: '2026-04-20',
@@ -940,12 +949,15 @@ export default function App() {
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const withOrigin = walls.filter((w) => w.wallOrigin);
       if (!withOrigin.length) continue;
-      const facadeData = buildFullGroupFacadePattern(walls, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte);
+      const mat = s.material ?? DEFAULT_MATERIAL;
+      const facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte);
       if (!facadeData) continue;
-      let { rows } = facadeData;
+      const brickD3d = s.brickDepth ?? 20;
+      const gW = facadeData.groupWidth;
+
+      let maskedRows = facadeData.rows;
       if (s.penanten?.length) {
-        const brickD3d = s.brickDepth ?? 20;
-        rows = rows.map((row) => ({
+        maskedRows = maskedRows.map((row) => ({
           ...row,
           pieces: row.pieces.flatMap((piece) => {
             let ps = [piece];
@@ -968,8 +980,58 @@ export default function App() {
           }),
         }));
       }
+
+      const sortedPens = [...(s.penanten ?? [])].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+      const numZ = sortedPens.length + 1;
+      const zoneSettingsArr = s.zoneSettings ?? [];
+      const enabledZones = [];
+      for (let zi = 0; zi < numZ; zi++) {
+        const zs = zoneSettingsArr[zi];
+        if (!zs?.enabled) continue;
+        const zX1Raw = zi === 0 ? 0 : (sortedPens[zi - 1].x ?? 0) + Math.max(1, sortedPens[zi - 1].breedte ?? 400);
+        const zX2Raw = zi === numZ - 1 ? gW : (sortedPens[zi].x ?? 0);
+        const zX1 = zi === 0 ? zX1Raw : zX1Raw - brickD3d;
+        const zX2 = zi === numZ - 1 ? zX2Raw : zX2Raw + brickD3d;
+        if (zX2 <= zX1) continue;
+        const zoneMat = zs.material ?? mat;
+        const zoneFull = buildFullGroupFacadePattern(walls, zoneMat, zs.verband ?? (s.verband ?? DEFAULT_VERBAND), zs.maxHoogte ?? s.maxHoogte, s.zetwerk, s.minHoogte);
+        if (!zoneFull) continue;
+        const clipRows = zoneFull.rows.map((row) => ({
+          ...row,
+          pieces: row.pieces.flatMap((piece) => {
+            const ps = piece.start, pe = piece.start + piece.length;
+            if (pe <= zX1 || ps >= zX2) return [];
+            return [{ ...piece, start: Math.max(ps, zX1), length: Math.min(pe, zX2) - Math.max(ps, zX1) }];
+          }).filter((p) => p.length > 1),
+        })).filter((row) => row.pieces.length > 0);
+        enabledZones.push({ zX1, zX2, rows: clipRows, color: zs.color ?? s.color ?? '#a64033' });
+      }
+
+      const generalRows = maskedRows.map((row) => ({
+        ...row,
+        pieces: row.pieces.flatMap((piece) => {
+          let ps = [piece];
+          for (const ez of enabledZones) {
+            ps = ps.flatMap((q) => {
+              const qs = q.start, qe = q.start + q.length;
+              if (qe <= ez.zX1 || qs >= ez.zX2) return [q];
+              const out = [];
+              if (qs < ez.zX1) out.push({ ...q, length: ez.zX1 - qs });
+              if (qe > ez.zX2) out.push({ ...q, start: ez.zX2, length: qe - ez.zX2 });
+              return out;
+            });
+          }
+          return ps;
+        }).filter((p) => p.length > 1),
+      })).filter((row) => row.pieces.length > 0);
+
+      const batches = [
+        { rows: generalRows, color: s.color ?? '#a64033' },
+        ...enabledZones.map((ez) => ({ rows: ez.rows, color: ez.color })),
+      ];
+
       result[group.id] = {
-        rows,
+        batches,
         groupMinX: facadeData.groupMinX,
         groupMinH: facadeData.groupMinH,
         refWallOrigin: withOrigin[0].wallOrigin,
