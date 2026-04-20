@@ -1313,7 +1313,23 @@ export default function App() {
             const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
             const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
             const gH = Math.round(groupHeight);
-            lattenData = [...positions].sort((a, b) => a - b).map((y) => {
+            const clipLatSegs = (latY, latH) => {
+              let segs = [{ x: 0, width: groupWidth }];
+              for (const op of groupOpenings) {
+                if (op.y + op.height <= latY || op.y >= latY + latH) continue;
+                segs = segs.flatMap((seg) => {
+                  const sx1 = seg.x, sx2 = seg.x + seg.width;
+                  const ox1 = op.x, ox2 = op.x + op.width;
+                  if (ox2 <= sx1 || ox1 >= sx2) return [seg];
+                  const parts = [];
+                  if (ox1 > sx1 + 5) parts.push({ x: sx1, width: ox1 - sx1 });
+                  if (ox2 < sx2 - 5) parts.push({ x: ox2, width: sx2 - ox2 });
+                  return parts;
+                });
+              }
+              return segs.filter((s) => s.width > 10);
+            };
+            lattenData = [...positions].sort((a, b) => a - b).flatMap((y) => {
               const yr = Math.round(y);
               let latY;
               if (yr === 0) latY = 0;
@@ -1321,7 +1337,7 @@ export default function App() {
               else if (openingBottomYs.has(yr)) latY = yr - latBreedte;
               else if (openingTopYs.has(yr)) latY = yr;
               else latY = yr - latBreedte / 2;
-              return { richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte };
+              return clipLatSegs(latY, latBreedte).map((seg) => ({ richting: 'horizontaal', x: seg.x, y: latY, width: seg.width, height: latBreedte }));
             });
           } else {
             const xPositions = new Set([0, groupWidth]);
@@ -1341,8 +1357,35 @@ export default function App() {
 
       const penantFaceRows = (s.penanten ?? []).map((p) => {
         const pB = Math.max(1, p.breedte ?? 400);
+        const pD = Math.max(1, p.diepte ?? 150);
         const pH = Math.max(1, p.hoogte ?? 2000);
-        return buildCenteredFacePattern(pB, pH, mat, s.verband ?? DEFAULT_VERBAND);
+        const brickDepth = s.brickDepth ?? 20;
+        const panelDikteP = s.panelen?.dikte ?? 8;
+        const stoot = mat.stoot ?? 10;
+        const sideDepth = Math.max(1, pD - brickDepth - stoot);
+        const clipOff = Math.max(stoot, panelDikteP);
+        const frontRows = buildCenteredFacePattern(pB, pH, mat, s.verband ?? DEFAULT_VERBAND);
+        const rawLeft = buildFacePattern(sideDepth, pH, mat, s.verband ?? DEFAULT_VERBAND);
+        const rawRight = buildMirroredFacePattern(sideDepth, pH, mat, s.verband ?? DEFAULT_VERBAND);
+        const clipEnd = sideDepth - clipOff;
+        const leftRows = rawLeft.map((row) => ({
+          ...row,
+          pieces: row.pieces.flatMap((pc) => {
+            if (pc.start >= clipEnd) return [];
+            if (pc.start + pc.length <= clipEnd) return [pc];
+            return [{ ...pc, length: Math.round((clipEnd - pc.start) * 100) / 100 }];
+          }),
+        })).filter((row) => row.pieces.length > 0);
+        const rightRows = rawRight.map((row) => ({
+          ...row,
+          pieces: row.pieces.flatMap((pc) => {
+            if (pc.start + pc.length <= clipOff) return [];
+            if (pc.start >= clipOff) return [pc];
+            const ns = Math.round(clipOff * 100) / 100;
+            return [{ ...pc, start: ns, length: Math.round((pc.start + pc.length - ns) * 100) / 100 }];
+          }),
+        })).filter((row) => row.pieces.length > 0);
+        return { frontRows, leftRows, rightRows, sideDepth, pD };
       });
 
       return {
