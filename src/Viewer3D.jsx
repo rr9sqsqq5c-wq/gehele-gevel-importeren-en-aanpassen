@@ -101,19 +101,20 @@ function getOutsideFaceInfo(rwo, allWalls) {
   return { outsidePos: tEnd, outsideDir: +1 };
 }
 
-function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls) {
+function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte) {
   if (!rwo) return [];
   const pX = penant.x ?? 0;
   const pB = Math.max(1, penant.breedte ?? 400);
   const pD = Math.max(1, penant.diepte ?? 150);
   const pH = Math.max(1, penant.hoogte ?? 2000);
+  const ld = latDikte ?? 28;
 
   const { outsidePos, outsideDir } = getOutsideFaceInfo(rwo, allWalls);
 
   const ifc = { x: 0, y: 0, z: 0 };
   ifc[rwo.lengthAxis]    = groupMinX + pX + pB / 2;
   ifc[rwo.heightAxis]    = groupMinH + pH / 2;
-  ifc[rwo.thicknessAxis] = outsidePos + outsideDir * pD / 2;
+  ifc[rwo.thicknessAxis] = outsidePos + outsideDir * (ld - pD / 2);
 
   const dims = { x: 10, y: 10, z: 10 };
   dims[rwo.lengthAxis]    = pB;
@@ -126,10 +127,10 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls) {
   }];
 }
 
-function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, allWalls }) {
+function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, allWalls, latDikte }) {
   const boxes = useMemo(
-    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls),
-    [penant, rwo, groupMinX, groupMinH, upAxis, allWalls]
+    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte),
+    [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte]
   );
   if (!boxes.length) return null;
   return (
@@ -705,6 +706,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           const groupMinX = Math.min(...groupWalls.map((w) => w.wallOrigin.lengthStart));
           const groupMinH = Math.min(...groupWalls.map((w) => w.wallOrigin.heightStart));
           const rwo = groupWalls[0].wallOrigin;
+          const penLatDikte = settings?.latten?.dikte ?? 28;
           return penanten.map((penant) => (
             <PenantMesh3D
               key={`penant-${group.id}-${penant.id ?? penant.x}`}
@@ -715,6 +717,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
               groupColor={settings?.color ?? '#6366f1'}
               upAxis={upAxis}
               allWalls={walls}
+              latDikte={penLatDikte}
             />
           ));
         })}

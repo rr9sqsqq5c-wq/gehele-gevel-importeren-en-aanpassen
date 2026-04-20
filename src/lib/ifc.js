@@ -724,6 +724,8 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     const material = settings.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
     const panelDikte = settings.panelen?.dikte ?? 8;
     const latDikte = group.latDikte ?? 28;
+    const hasVertLat = (group.lattenData ?? []).some((l) => l.richting === 'verticaal');
+    const effectiveLatDepth = hasVertLat ? 2 * latDikte : latDikte;
     const vis = group.layerVisibility ?? {};
     const rwo = group.refWallOrigin;
     const groupMinX = group.groupMinX ?? 0;
@@ -757,7 +759,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const { axisStr, refStr } = makeGroupAxes();
         for (const row of groupRows) {
           for (const piece of row.pieces) {
-            const [wx, wy, wz] = groupToWorld(piece.start + piece.length / 2, latDikte + panelDikte + brickD / 2, row.y);
+            const [wx, wy, wz] = groupToWorld(piece.start + piece.length / 2, effectiveLatDepth + panelDikte + brickD / 2, row.y);
             const placePt = PT(wx, wy, wz);
             const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
             const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
@@ -794,7 +796,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
           const refStr  = stripRefId ? `#${stripRefId}` : '$';
           for (const row of rows) {
             for (const piece of row.pieces) {
-              const [wx, wy, wz] = toWorld(piece.start + piece.length / 2, latDikte + panelDikte + brickD / 2, row.y);
+              const [wx, wy, wz] = toWorld(piece.start + piece.length / 2, effectiveLatDepth + panelDikte + brickD / 2, row.y);
               const placePt = PT(wx, wy, wz);
               const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
               const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
@@ -817,7 +819,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
       const { axisStr, refStr } = makeGroupAxes();
       for (const panel of group.panels) {
         const cx = panel.x + panel.width / 2;
-        const depth = latDikte + panelDikte / 2;
+        const depth = effectiveLatDepth + panelDikte / 2;
         const [wx, wy, wz] = groupToWorld(cx, depth, panel.y);
         const placePt = PT(wx, wy, wz);
         const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
@@ -839,7 +841,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
       for (const lat of group.lattenData) {
         const cx = lat.x + lat.width / 2;
         const cy = lat.y;
-        const depth = latDikte / 2;
+        const depth = lat.richting === 'verticaal' ? latDikte + latDikte / 2 : latDikte / 2;
         const [wx, wy, wz] = groupToWorld(cx, depth, cy);
         const placePt = PT(wx, wy, wz);
         const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
@@ -911,7 +913,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const pB  = Math.max(1, pen.breedte ?? 400);
         const pD  = Math.max(1, pen.diepte  ?? 150);
         const pH  = Math.max(1, pen.hoogte  ?? 2000);
-        const [wx, wy, wz] = groupToWorld(pX + pB / 2, pD / 2, 0);
+        const [wx, wy, wz] = groupToWorld(pX + pB / 2, latDikte - pD / 2, 0);
         const placePt = PT(wx, wy, wz);
         const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
         const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
@@ -931,7 +933,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         for (const row of (Array.isArray(fRows) ? fRows : [])) {
           for (const piece of row.pieces) {
             const gx = pX + piece.start + piece.length / 2;
-            const [bwx, bwy, bwz] = groupToWorld(gx, pD + brickD / 2, row.y);
+            const [bwx, bwy, bwz] = groupToWorld(gx, latDikte + brickD / 2, row.y);
             const bPlacePt = PT(bwx, bwy, bwz);
             const bPlace3D = E(`IFCAXIS2PLACEMENT3D(#${bPlacePt},${axisStr},${refStr})`);
             const bLocalPl = E(`IFCLOCALPLACEMENT(#${stPl},#${bPlace3D})`);
