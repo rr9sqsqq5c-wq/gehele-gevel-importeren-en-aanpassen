@@ -717,22 +717,48 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               <label htmlFor="pan-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>Inschakelen</label>
             </div>
             {pan.enabled && (() => {
-              const brickW = (settings.material ?? DEFAULT_MATERIAL).brickWeightM2 ?? 40;
+              const mat = settings.material ?? DEFAULT_MATERIAL;
+              const brickW = (mat).brickWeightM2 ?? 40;
               const panW = pan.gewichtM2 ?? 9.4;
               const maxKg = pan.maxKg ?? 50;
               const totalW = Math.max(0.001, brickW + panW);
               const maxM2 = Math.round(maxKg / totalW * 100) / 100;
-              const effPanel = computeEffectiveBasePanel(pan, brickW, settings.material ?? DEFAULT_MATERIAL);
+              const effPanel = computeEffectiveBasePanel(pan, brickW, mat);
               const effectiveH = effPanel.height;
               const inputH = Math.max(100, pan.hoogte ?? 1200);
               const hLimited = effectiveH < inputH;
+
+              const verband = settings.verband ?? DEFAULT_VERBAND;
+              const steenH = mat.steenH ?? 50;
+              const steenL = mat.steenL ?? 210;
+              const lint = mat.lint ?? 12;
+              const lagenmaat = verband === 'staand_tegelverband' ? steenL + lint : steenH + lint;
+              const malLengte = pan.malLengte ?? 3400;
+              const malBreedte = pan.malBreedte ?? 270;
+              const FRAME = 15;
+              const malInnerW = malLengte - 2 * FRAME;
+              const malInnerH = malBreedte - 2 * FRAME;
+              const rowsPerMold = Math.max(1, Math.floor(malInnerH / lagenmaat));
+              const panelBreedte = pan.breedte ?? 3005;
+              const widthFits = panelBreedte <= malInnerW;
+              const rowsInEffH = Math.floor(effectiveH / lagenmaat);
+              const maxRowsPerPanel = Math.floor(effectiveH / lagenmaat);
+              const moldsPerPanel = maxRowsPerPanel > 0 ? Math.ceil(maxRowsPerPanel / rowsPerMold) : 1;
+
+              const VERBANDLABELS = {
+                halfsteens: 'Halfsteens',
+                tegelverband: 'Tegelverband',
+                staand_tegelverband: 'Staand tegelverband',
+                wildverband: 'Wildverband',
+              };
+
               return (
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
                     <Field label="Breedte mm" tip="Maximale breedte van het basispaneel (mm). Standaard 3005 mm.">
                       <input type="number" min={100} step={50} value={pan.breedte ?? 3005}
                         onChange={(e) => upd({ breedte: Number(e.target.value) })}
-                        style={{ ...inp, width: '100%' }} />
+                        style={{ ...inp, width: '100%', borderColor: widthFits ? '' : '#dc2626' }} />
                     </Field>
                     <Field label="Hoogte mm" tip="Maximale hoogte van het basispaneel (mm). Standaard 1200 mm.">
                       <input type="number" min={100} step={50} value={pan.hoogte ?? 1200}
@@ -767,6 +793,35 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                   </div>
                   <div style={{ fontSize: 11, color: hLimited ? '#dc2626' : '#64748b', marginTop: 4 }}>
                     → max {maxM2} m²/paneel · eff. hoogte {effectiveH} mm{hLimited ? ' (gewicht begrensd)' : ''}
+                  </div>
+                  <div style={{ marginTop: 6, padding: '6px 8px', background: widthFits ? '#f0fdf4' : '#fef2f2', border: `1px solid ${widthFits ? '#86efac' : '#fca5a5'}`, borderRadius: 4, fontSize: 10 }}>
+                    <div style={{ fontWeight: 700, color: '#1e3a5f', marginBottom: 3 }}>Mal geschiktheid — {VERBANDLABELS[verband] ?? verband}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 8px', color: '#475569' }}>
+                      <span>Lagenmaat:</span><span style={{ fontWeight: 600 }}>{lagenmaat} mm</span>
+                      <span>Mal binnenwerk:</span><span style={{ fontWeight: 600 }}>{malInnerW} × {malInnerH} mm</span>
+                      <span>Rijen per mal:</span><span style={{ fontWeight: 600 }}>{rowsPerMold}</span>
+                      <span>Max rijen/paneel:</span><span style={{ fontWeight: 600 }}>{maxRowsPerPanel} rijen = {maxRowsPerPanel * lagenmaat} mm</span>
+                      <span>Maldoorgangen/paneel:</span><span style={{ fontWeight: 600 }}>{moldsPerPanel}×</span>
+                      <span>Paneelbreedte past:</span>
+                      <span style={{ fontWeight: 700, color: widthFits ? '#16a34a' : '#dc2626' }}>
+                        {widthFits ? `✓ ${panelBreedte} ≤ ${malInnerW} mm` : `✗ ${panelBreedte} > ${malInnerW} mm!`}
+                      </span>
+                    </div>
+                    {!widthFits && (
+                      <div style={{ marginTop: 4, color: '#dc2626', fontWeight: 600 }}>
+                        ⚠ Verklein paneelbreedte naar max {malInnerW} mm
+                      </div>
+                    )}
+                    {verband === 'staand_tegelverband' && rowsPerMold === 1 && (
+                      <div style={{ marginTop: 4, color: '#92400e', background: '#fef3c7', padding: '3px 6px', borderRadius: 3 }}>
+                        ℹ Staand tegelverband: slechts 1 rij per maldoorgang ({lagenmaat} mm hoog)
+                      </div>
+                    )}
+                    {verband === 'wildverband' && rowsPerMold !== 3 && (
+                      <div style={{ marginTop: 4, color: '#92400e', background: '#fef3c7', padding: '3px 6px', borderRadius: 3 }}>
+                        ℹ Wildverband vereist 3 rijen per mal (nu {rowsPerMold}). Pas mal hoogte aan naar ≥ {Math.ceil(3 * lagenmaat) + 2 * FRAME} mm.
+                      </div>
+                    )}
                   </div>
                 </>
               );

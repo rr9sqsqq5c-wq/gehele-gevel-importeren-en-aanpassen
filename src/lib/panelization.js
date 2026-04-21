@@ -191,7 +191,22 @@ export function panelizeZone(zone, battenYs, basePanel) {
     const byr = round2(by);
     if (byr > zoneY1 + 0.001 && byr < zoneY2 - 0.001) ySet.add(byr);
   }
-  const yBreaks = [...ySet].sort((a, b) => a - b);
+  let yBreaks = [...ySet].sort((a, b) => a - b);
+
+  if (bpH > 0) {
+    const extraY = [];
+    for (let i = 0; i < yBreaks.length - 1; i++) {
+      const span = yBreaks[i + 1] - yBreaks[i];
+      if (span > bpH + 0.001) {
+        const nSteps = Math.ceil(span / bpH);
+        for (let s = 1; s < nSteps; s++) extraY.push(round2(yBreaks[i] + s * (span / nSteps)));
+      }
+    }
+    if (extraY.length) {
+      const newSet = new Set([...yBreaks.map(round2), ...extraY.map(round2)]);
+      yBreaks = [...newSet].sort((a, b) => a - b);
+    }
+  }
 
   const xSet = new Set([zoneX1, zoneX2]);
   if (zone.width > targetW + 1) {
