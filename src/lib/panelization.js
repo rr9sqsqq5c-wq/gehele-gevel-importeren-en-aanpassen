@@ -295,3 +295,164 @@ export function computeEffectiveBasePanel(panelen, brickWeightM2, material) {
     targetHeight: Math.min(effectiveH, brickTargetH),
   };
 }
+
+export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
+  const steenH = mat?.steenH ?? 50;
+  const lint   = mat?.lint   ?? 12;
+  const steenL = mat?.steenL ?? 210;
+  const stoot  = mat?.stoot  ?? 10;
+
+  const isStaand = verband === 'staand_tegelverband';
+  const lagenmaat = isStaand ? steenL + lint : steenH + lint;
+  const brickW = isStaand ? steenH : steenL;
+  const brickH = isStaand ? steenL : steenH;
+  const colStep = brickW + stoot;
+
+  const moldW = moldDims?.lengte ?? 3400;
+  const moldH = moldDims?.hoogte ?? 270;
+  const frame = 15;
+  const innerW = moldW - 2 * frame;
+  const innerH = moldH - 2 * frame;
+  const rowsPerMold = Math.max(1, Math.floor(innerH / lagenmaat));
+
+  const WILD_12 = [[0, 6, 3], [9, 2, 8]];
+  const moldIdx = moldId === 'B' ? 1 : 0;
+  const globalRowBase = moldIdx * rowsPerMold;
+
+  function rowOffset(localRow) {
+    const globalRow = globalRowBase + localRow;
+    if (verband === 'wildverband') {
+      const t = WILD_12[moldIdx][localRow % 3];
+      return Math.round((t / 12) * colStep * 10) / 10;
+    }
+    if (verband === 'halfsteens' || verband === 'tegelverband' || isStaand) {
+      return globalRow % 2 === 0 ? 0 : Math.round(colStep / 2);
+    }
+    return 0;
+  }
+
+  function halfsteensHasKop(globalRow) {
+    return verband === 'halfsteens' && globalRow % 2 === 0;
+  }
+
+  const kopW = isStaand ? 0 : Math.round((steenL - stoot) / 2);
+
+  function bricksInRow(localRow) {
+    const globalRow = globalRowBase + localRow;
+    const off = rowOffset(localRow);
+    const bricks = [];
+    const hasKop = halfsteensHasKop(globalRow);
+
+    let x = -off;
+    if (hasKop) {
+      const kx = x;
+      if (kx + kopW > 0 && kx < innerW) {
+        bricks.push({ x: kx, w: kopW, label: 'Kop' });
+      }
+      x += kopW + stoot;
+    }
+
+    while (x < innerW + 0.001) {
+      const bx = x;
+      const bw = brickW;
+      if (bx + bw > 0 && bx < innerW) {
+        const clippedX = Math.max(0, bx);
+        const clippedW = Math.min(bx + bw, innerW) - clippedX;
+        if (clippedW > 0.5) {
+          bricks.push({ x: clippedX, w: clippedW, label: Math.abs(clippedW - brickW) < 0.5 ? 'Vol' : 'Rest' });
+        }
+      }
+      x += colStep;
+    }
+    return bricks;
+  }
+
+  const totalRowH = (rowsPerMold - 1) * lagenmaat + brickH;
+  const yStartInner = Math.round(((innerH - totalRowH) / 2) * 10) / 10;
+
+  const r2 = (v) => Math.round(v * 100) / 100;
+
+  const lines = [];
+
+  function addPolyRect(x1, y1, w, h, layer, color) {
+    const x2 = x1 + w, y2 = y1 + h;
+    lines.push('0', 'LWPOLYLINE', '8', layer, '62', String(color), '70', '1', '90', '4');
+    for (const [px, py] of [[x1, y1], [x2, y1], [x2, y2], [x1, y2]]) {
+      lines.push('10', String(r2(px)), '20', String(r2(py)));
+    }
+  }
+
+  function addCircle(cx, cy, radius, layer, color) {
+    lines.push('0', 'CIRCLE', '8', layer, '62', String(color),
+      '10', String(r2(cx)), '20', String(r2(cy)), '40', String(r2(radius)));
+  }
+
+  function addText(x, y, h, text, layer) {
+    lines.push('0', 'TEXT', '8', layer, '62', '7',
+      '10', String(r2(x)), '20', String(r2(y)), '30', '0.0',
+      '40', String(r2(h)), '1', text);
+  }
+
+  addPolyRect(0, 0, moldW, moldH, 'FRAME', 7);
+  addPolyRect(frame, frame, innerW, innerH, 'GUIDE', 8);
+
+  for (let r = 0; r < rowsPerMold; r++) {
+    const yRow = frame + yStartInner + r * lagenmaat;
+    const bricks = bricksInRow(r);
+    for (const b of bricks) {
+      const slotX = frame + b.x - 1.5;
+      const slotW = b.w + 3;
+      const slotY = yRow - 1.5;
+      const slotH = brickH + 3;
+      addPolyRect(slotX, slotY, slotW, slotH, 'SLOTS', 2);
+    }
+    addText(frame, frame + yStartInner + r * lagenmaat - 10, 6,
+      `Rij ${globalRowBase + r + 1}  off=${rowOffset(r)}mm`, 'LABELS');
+  }
+
+  const pinStepX = Math.round(innerW / Math.round(innerW / 350));
+  const pinYs = [frame / 2];
+  for (let r = 0; r < rowsPerMold - 1; r++) {
+    const y1 = frame + yStartInner + r * lagenmaat + brickH + 1.5;
+    const y2 = frame + yStartInner + (r + 1) * lagenmaat - 1.5;
+    pinYs.push((y1 + y2) / 2);
+  }
+  pinYs.push(moldH - frame / 2);
+
+  for (const py of pinYs) {
+    for (let x = frame; x <= moldW - frame + 0.1; x += pinStepX) {
+      addCircle(r2(x), r2(py), 3, 'HOLES', 1);
+    }
+  }
+
+  addText(frame, -18, 8,
+    `MAL-${moldId} | ${verband} | ${moldW}x${moldH}mm | ${rowsPerMold} rijen/doorgang | Staal 2mm`, 'TITLE');
+
+  const header = [
+    '0', 'SECTION', '2', 'HEADER',
+    '9', '$ACADVER', '1', 'AC1009',
+    '9', '$EXTMIN', '10', '0.0', '20', String(-30), '30', '0.0',
+    '9', '$EXTMAX', '10', String(moldW), '20', String(moldH + 30), '30', '0.0',
+    '9', '$LUNITS', '70', '4',
+    '0', 'ENDSEC',
+    '0', 'SECTION', '2', 'TABLES',
+    '0', 'TABLE', '2', 'LAYER', '70', '6',
+    '0', 'LAYER', '2', 'FRAME',   '70', '0', '62', '7', '6', 'CONTINUOUS',
+    '0', 'LAYER', '2', 'GUIDE',   '70', '0', '62', '8', '6', 'CONTINUOUS',
+    '0', 'LAYER', '2', 'SLOTS',   '70', '0', '62', '2', '6', 'CONTINUOUS',
+    '0', 'LAYER', '2', 'HOLES',   '70', '0', '62', '1', '6', 'CONTINUOUS',
+    '0', 'LAYER', '2', 'LABELS',  '70', '0', '62', '3', '6', 'CONTINUOUS',
+    '0', 'LAYER', '2', 'TITLE',   '70', '0', '62', '7', '6', 'CONTINUOUS',
+    '0', 'ENDTAB',
+    '0', 'ENDSEC',
+  ].join('\n');
+
+  const body = [
+    '0', 'SECTION', '2', 'ENTITIES',
+    lines.join('\n'),
+    '0', 'ENDSEC',
+    '0', 'EOF',
+  ].join('\n');
+
+  return header + '\n' + body;
+}

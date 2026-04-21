@@ -5,7 +5,7 @@ import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loa
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG } from './lib/battens.js';
-import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF } from './lib/panelization.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
 import { Werktekening } from './Werktekening.jsx';
@@ -14,8 +14,19 @@ import { Uittrekstaat } from './Uittrekstaat.jsx';
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 const DEFAULT_VERBAND = 'halfsteens';
 
-const APP_VERSION = '1.10';
+const APP_VERSION = '1.11';
 const CHANGELOG = [
+  {
+    version: '1.11',
+    date: '2026-04-21',
+    changes: [
+      'MAL-A en MAL-B DXF export toegevoegd: fabricage-tekening voor metaalzetterij (staalplaat 2mm)',
+      'DXF bevat: buitencontour (FRAME), steensleuven (SLOTS, +1.5mm speling rondom), bevestigingsgaten (HOLES, r=3mm), rijlabels en titelbalk',
+      'Sleuvenposities gebaseerd op metselverband: halfsteens-kop, vol en reststrippen correct gepositioneerd',
+      'MAL-A = rijen 1-3 (globalRowBase 0), MAL-B = rijen 4-6 (globalRowBase 3); wildverband offsets per mal afzonderlijk',
+      'DXF-lagen: FRAME (wit), GUIDE (grijs), SLOTS (geel), HOLES (rood), LABELS (groen), TITLE (wit)',
+    ],
+  },
   {
     version: '1.10',
     date: '2026-04-21',
@@ -1543,6 +1554,23 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
+  function handleExportMalDXF(moldId) {
+    const firstGroup = groups.find((g) => getSettings(g.id).panelen?.enabled);
+    if (!firstGroup) { alert('Schakel panelen in voor ten minste één groep.'); return; }
+    const s = getSettings(firstGroup.id);
+    const mat = s.material ?? DEFAULT_MATERIAL;
+    const verband = s.verband ?? DEFAULT_VERBAND;
+    const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400 };
+    const dxf = generateMoldDXF(mat, verband, moldDims, moldId);
+    const blob = new Blob([dxf], { type: 'application/dxf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `MAL-${moldId}-${verband}.dxf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function handleExport() {
     const exportGroups = groups.map((group) => {
       const s = getSettings(group.id);
@@ -2190,6 +2218,20 @@ export default function App() {
                 ⬇ Mal recept CSV
               </button>
             </Tooltip>
+          )}
+          {groups.some((g) => getSettings(g.id).panelen?.enabled) && (
+            <>
+              <Tooltip text={"Exporteert een DXF-maltekening voor MAL-A (rijen 1-3) voor de metaalzetterij.\nBevat: buitencontour staalplaat, sleuven per steen, bevestigingsgaten.\nMal-afmetingen instelbaar onder 'Panelen (basisplaat)' per groep."}>
+                <button onClick={() => handleExportMalDXF('A')} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
+                  ⬇ MAL-A DXF
+                </button>
+              </Tooltip>
+              <Tooltip text={"Exporteert een DXF-maltekening voor MAL-B (rijen 4-6) voor de metaalzetterij.\nBevat: buitencontour staalplaat, sleuven per steen, bevestigingsgaten.\nMal-afmetingen instelbaar onder 'Panelen (basisplaat)' per groep."}>
+                <button onClick={() => handleExportMalDXF('B')} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
+                  ⬇ MAL-B DXF
+                </button>
+              </Tooltip>
+            </>
           )}
           <Tooltip text="Bekijk de logica-regels per onderdeel (strippen, latten, panelen, penanten, zones) en de wijzigingshistorie">
             <button onClick={() => setShowRulesModal(true)} style={{ background: '#475569', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
