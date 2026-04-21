@@ -5,7 +5,7 @@ import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loa
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG } from './lib/battens.js';
-import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateMoldPrintHTML } from './lib/panelization.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
 import { Werktekening } from './Werktekening.jsx';
@@ -14,8 +14,17 @@ import { Uittrekstaat } from './Uittrekstaat.jsx';
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 const DEFAULT_VERBAND = 'halfsteens';
 
-const APP_VERSION = '1.11';
+const APP_VERSION = '1.12';
 const CHANGELOG = [
+  {
+    version: '1.12',
+    date: '2026-04-21',
+    changes: [
+      'MAL-A en MAL-B PDF export toegevoegd: opent printbaar SVG-venster (A0 liggend), automatisch printdialoog',
+      'SVG-maltekening bevat: kleurgecodeerde sleuven (geel=vol, oranje=kop, rood=rest), Ø6mm gaten, maatvoering, legenda en titelblok',
+      'Code gerefactored: gedeelde _moldGeometry() helper voor DXF en SVG/PDF generatoren',
+    ],
+  },
   {
     version: '1.11',
     date: '2026-04-21',
@@ -1571,6 +1580,19 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
+  function handleExportMalPDF(moldId) {
+    const firstGroup = groups.find((g) => getSettings(g.id).panelen?.enabled);
+    if (!firstGroup) { alert('Schakel panelen in voor ten minste één groep.'); return; }
+    const s = getSettings(firstGroup.id);
+    const mat = s.material ?? DEFAULT_MATERIAL;
+    const verband = s.verband ?? DEFAULT_VERBAND;
+    const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400 };
+    const html = generateMoldPrintHTML(mat, verband, moldDims, moldId);
+    const win = window.open('', `MAL-${moldId}`);
+    if (win) { win.document.write(html); win.document.close(); }
+    else alert('Pop-up geblokkeerd. Sta pop-ups toe voor deze pagina.');
+  }
+
   function handleExport() {
     const exportGroups = groups.map((group) => {
       const s = getSettings(group.id);
@@ -2226,9 +2248,19 @@ export default function App() {
                   ⬇ MAL-A DXF
                 </button>
               </Tooltip>
+              <Tooltip text={"Opent een printbare maltekening voor MAL-A (rijen 1-3) in een nieuw venster.\nBevat: kleurgecodeerde steensleuven, bevestigingsgaten, maatvoering en legenda.\nSla op als PDF via Ctrl+P → 'Opslaan als PDF'."}>
+                <button onClick={() => handleExportMalPDF('A')} style={{ background: '#0e7490', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
+                  🖨 MAL-A PDF
+                </button>
+              </Tooltip>
               <Tooltip text={"Exporteert een DXF-maltekening voor MAL-B (rijen 4-6) voor de metaalzetterij.\nBevat: buitencontour staalplaat, sleuven per steen, bevestigingsgaten.\nMal-afmetingen instelbaar onder 'Panelen (basisplaat)' per groep."}>
                 <button onClick={() => handleExportMalDXF('B')} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
                   ⬇ MAL-B DXF
+                </button>
+              </Tooltip>
+              <Tooltip text={"Opent een printbare maltekening voor MAL-B (rijen 4-6) in een nieuw venster.\nBevat: kleurgecodeerde steensleuven, bevestigingsgaten, maatvoering en legenda.\nSla op als PDF via Ctrl+P → 'Opslaan als PDF'."}>
+                <button onClick={() => handleExportMalPDF('B')} style={{ background: '#0e7490', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
+                  🖨 MAL-B PDF
                 </button>
               </Tooltip>
             </>
