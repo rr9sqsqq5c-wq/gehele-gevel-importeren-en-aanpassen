@@ -3,12 +3,20 @@ import { buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel } from './lib/panelization.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 
-function generatePaneelId(groupName, zoneLabel, seqNr) {
-  const year = new Date().getFullYear().toString().slice(-2);
-  const proj = (groupName ?? 'GRP').replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 6).padEnd(6, '0');
-  const zone = (zoneLabel ?? 'Z1').replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 2).padStart(2, '0');
-  const seq  = String(seqNr).padStart(4, '0');
-  return `${year}-${proj}-${zone}-${seq}`;
+function generatePaneelId(entity, projectNr, level, stramienStart, stramienEnd, seqNr, panelType) {
+  const e  = ((entity ?? 'P') + '').slice(0, 1).toUpperCase();
+  const p  = ((projectNr ?? '00000') + '').replace(/[^0-9A-Z]/gi, '').toUpperCase().slice(0, 5).padStart(5, '0');
+  const l  = String(Math.max(0, Math.floor(Number(level ?? 0)))).padStart(2, '0').slice(0, 2);
+  const ss = ((stramienStart ?? '--') + '').toUpperCase().slice(0, 2).padStart(2, '-');
+  const se = ((stramienEnd   ?? '--') + '').toUpperCase().slice(0, 2).padStart(2, '-');
+  const n  = String(Math.max(1, Number(seqNr ?? 1))).padStart(3, '0').slice(0, 3);
+  const t  = ((panelType ?? 'V') + '').slice(0, 1).toUpperCase();
+  return `${e}${p}${l}${ss}${se}${n}${t}`;
+}
+
+function formatEpcDisplay(epcCode) {
+  if (!epcCode || epcCode.length !== 16) return epcCode;
+  return `${epcCode[0]}-${epcCode.slice(1,6)}-${epcCode.slice(6,8)}-${epcCode.slice(8,10)}-${epcCode.slice(10,12)}-${epcCode.slice(12,15)}-${epcCode[15]}`;
 }
 
 function computeZoneBounds(penanten, groupWidth) {
@@ -249,7 +257,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten) {
   }
 }
 
-export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen, latten, groupMinH, penantFaceData, zoneSettings }) {
+export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen, latten, groupMinH, penantFaceData, zoneSettings, epcSettings }) {
   const svgRef = useRef(null);
   const productiePrintRef = useRef(null);
   const [drawingType, setDrawingType] = useState('achterconstructie');
@@ -260,6 +268,16 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const verband = groupSettings?.verband ?? 'halfsteens';
   const maxH    = groupSettings?.maxHoogte ?? null;
   const minH    = groupSettings?.minHoogte ?? null;
+
+  const epcProjectNr = epcSettings?.projectNummer ?? groupSettings?.epcProjectNummer ?? '00000';
+  const epcLevel     = epcSettings?.level ?? groupSettings?.epcLevel ?? 0;
+
+  function makeEpcId(zone, seqNr, panelType) {
+    const zoneStr = (zone.label ?? 'Z1').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    const ss = zoneStr.slice(0, 2).padStart(2, '-');
+    const se = zoneStr.slice(2, 4).padStart(2, '-');
+    return generatePaneelId('P', epcProjectNr, epcLevel, ss, se, seqNr, panelType ?? 'V');
+  }
 
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
@@ -417,7 +435,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
     for (const zone of zonesForExport) {
       const panelsInZone = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1);
       for (const panel of panelsInZone) {
-        const paneelId = generatePaneelId(groupName, zone.label, globalSeq++);
+        const paneelId = makeEpcId(zone, globalSeq++);
         const { counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat);
         const areaM2 = (panel.width * panel.height) / 1e6;
         const gewichtKg = Math.round(areaM2 * brickW2 * 10) / 10;
@@ -430,7 +448,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
         const restCount     = counts.filter(c => c.label === 'Rest').reduce((s, c) => s + c.n, 0);
         const totalStrips   = counts.reduce((s, c) => s + c.n, 0);
         rows.push({
-          PaneelID: paneelId,
+          PaneelID_EPC: paneelId,
+          PaneelID_Leesbaar: formatEpcDisplay(paneelId),
+          Projectnummer: epcProjectNr,
+          Level: String(epcLevel).padStart(2, '0'),
           Zone: zone.label,
           X_mm: Math.round(panel.x),
           Y_mm: Math.round(panel.y),
@@ -996,7 +1017,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           for (const zone of facadeZones) {
             const panelsInZone = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1);
             for (const panel of panelsInZone) {
-              const paneelId = generatePaneelId(groupName, zone.label, globalSeq++);
+              const paneelId = makeEpcId(zone, globalSeq++);
               const { counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat);
               const areaM2 = (panel.width * panel.height) / 1e6;
               const gewichtKg = Math.round(areaM2 * brickW2 * 10) / 10;
@@ -1006,7 +1027,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               const hvCount   = counts.filter(c => c.label === 'Halve').reduce((s, c) => s + c.n, 0);
               const restCount = counts.filter(c => c.label === 'Rest').reduce((s, c) => s + c.n, 0);
               const total     = counts.reduce((s, c) => s + c.n, 0);
-              tableRows.push({ paneelId, zone: zone.label, breedte: Math.round(panel.width), hoogte: Math.round(panel.height), opp: areaM2.toFixed(3), gewicht: gewichtKg, vol: volCount, kop: kopCount, dk: dkCount, hv: hvCount, rest: restCount, total });
+              tableRows.push({ paneelId, paneelIdDisplay: formatEpcDisplay(paneelId), zone: zone.label, breedte: Math.round(panel.width), hoogte: Math.round(panel.height), opp: areaM2.toFixed(3), gewicht: gewichtKg, vol: volCount, kop: kopCount, dk: dkCount, hv: hvCount, rest: restCount, total });
             }
           }
           const thStyle = { padding: '5px 8px', borderBottom: '2px solid #1e3a5f', fontSize: 10, fontWeight: 700, color: '#1e3a5f', whiteSpace: 'nowrap', textAlign: 'left', background: '#f0f4f8' };
@@ -1015,7 +1036,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           return (
             <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.10)', overflow: 'auto', maxHeight: '100%' }}>
               <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 700, fontSize: 13, color: '#1e3a5f' }}>Zaaglijst — {groupName ?? 'Groep'} ({tableRows.length} panelen)</span>
+                <span style={{ fontWeight: 700, fontSize: 13, color: '#1e3a5f' }}>
+                Zaaglijst — {groupName ?? 'Groep'} ({tableRows.length} panelen)
+                {epcProjectNr !== '00000' && <span style={{ fontSize: 10, fontWeight: 400, color: '#64748b', marginLeft: 8 }}>Project {epcProjectNr} · Level {String(epcLevel).padStart(2,'0')}</span>}
+              </span>
                 <button onClick={exportZaaglijst} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, padding: '5px 14px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>⬇ Export CSV</button>
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -1029,7 +1053,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 <tbody>
                   {tableRows.map((r, i) => (
                     <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
-                      <td style={{ ...tdStyle, fontFamily: 'monospace', letterSpacing: '0.03em', fontWeight: 600, color: '#1e40af' }}>{r.paneelId}</td>
+                      <td style={{ ...tdStyle, fontFamily: 'monospace', letterSpacing: '0.03em', fontWeight: 600, color: '#1e40af' }} title={r.paneelId}>{r.paneelIdDisplay}</td>
                       <td style={tdStyle}>{r.zone}</td>
                       <td style={tdRight}>{r.breedte}</td>
                       <td style={tdRight}>{r.hoogte}</td>
@@ -1058,7 +1082,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 </tfoot>
               </table>
               <div style={{ padding: '8px 14px', fontSize: 9, color: '#94a3b8', borderTop: '1px solid #e2e8f0' }}>
-                PaneelID formaat: YY-PPPPPP-ZZ-NNNN · YY=jaar · PPPPPP=project · ZZ=zone · NNNN=volgnummer · EPC-compatibel
+                EPC-16 formaat: E-PPPPP-LL-SS-EE-NNN-T · E=entiteit(P) · PPPPP=projectnummer · LL=level · SS=stramien start · EE=stramien eind · NNN=volgnummer · T=type(V) · Hover over ID voor raw EPC code
               </div>
             </div>
           );

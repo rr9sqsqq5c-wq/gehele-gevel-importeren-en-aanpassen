@@ -915,6 +915,30 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
           </CollapsibleSection>
         );
       })()}
+      <CollapsibleSection title="EPC / Zaaglijst" tip={"Instellingen voor de paneel-identificatie (EPC-16 code).\n\n· Projectnummer = 5-cijferig projectnummer (bijv. 22023)\n· Level = verdiepingsnummer (0 = begane grond)\n\nDe EPC code volgt het formaat:\nP-PPPPP-LL-SS-EE-NNN-T\n(Entiteit - Project - Level - Stramien start - Stramien eind - Volgnummer - Type)"} isOpen={isOpen('epc')} onToggle={() => toggle('epc')}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontSize: 11, color: '#475569' }}>
+            Projectnummer (max 5 tekens)
+            <input type="text" maxLength={5}
+              value={settings.epcProjectNummer ?? ''}
+              onChange={(e) => onUpdate({ epcProjectNummer: e.target.value.replace(/[^0-9A-Z]/gi, '').toUpperCase().slice(0,5) })}
+              placeholder="22023"
+              style={{ display: 'block', width: '100%', marginTop: 3, padding: '3px 6px', fontSize: 11, border: '1px solid #cbd5e1', borderRadius: 4, fontFamily: 'monospace', letterSpacing: '0.05em' }} />
+          </label>
+          <label style={{ fontSize: 11, color: '#475569' }}>
+            Level (verdiepingsnummer)
+            <input type="number" min={0} max={99}
+              value={settings.epcLevel ?? 0}
+              onChange={(e) => onUpdate({ epcLevel: Math.max(0, Math.min(99, parseInt(e.target.value) || 0)) })}
+              style={{ display: 'block', width: '100%', marginTop: 3, padding: '3px 6px', fontSize: 11, border: '1px solid #cbd5e1', borderRadius: 4 }} />
+          </label>
+          {(settings.epcProjectNummer) && (
+            <div style={{ fontSize: 9, color: '#94a3b8', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 3, padding: '4px 6px', fontFamily: 'monospace' }}>
+              Voorbeeld: P-{(settings.epcProjectNummer ?? '00000').padStart(5,'0')}-{String(settings.epcLevel ?? 0).padStart(2,'0')}-Z1-Z1-001-V
+            </div>
+          )}
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }
@@ -2498,6 +2522,7 @@ export default function App() {
                     groupMinH={gMinH}
                     penantFaceData={penantFaceData}
                     zoneSettings={s.zoneSettings ?? []}
+                    epcSettings={{ projectNummer: s.epcProjectNummer ?? '00000', level: s.epcLevel ?? 0 }}
                   />
                 );
               })() : (
