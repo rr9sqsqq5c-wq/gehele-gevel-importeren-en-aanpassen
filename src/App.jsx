@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines } from './lib/ifc.js';
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess } from './lib/storage.js';
@@ -6,10 +6,10 @@ import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } fro
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG } from './lib/battens.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateMoldPrintHTML } from './lib/panelization.js';
-import { Viewer3D } from './Viewer3D.jsx';
-import { View2D } from './View2D.jsx';
-import { Werktekening } from './Werktekening.jsx';
-import { Uittrekstaat } from './Uittrekstaat.jsx';
+const Viewer3D = lazy(() => import('./Viewer3D.jsx').then((m) => ({ default: m.Viewer3D })));
+const View2D = lazy(() => import('./View2D.jsx').then((m) => ({ default: m.View2D })));
+const Werktekening = lazy(() => import('./Werktekening.jsx').then((m) => ({ default: m.Werktekening })));
+const Uittrekstaat = lazy(() => import('./Uittrekstaat.jsx').then((m) => ({ default: m.Uittrekstaat })));
 
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 const DEFAULT_VERBAND = 'halfsteens';
@@ -2490,6 +2490,7 @@ export default function App() {
         <div style={{ flex: 1, position: 'relative', overflow: viewMode === 'uittrekstaat' ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
           {viewMode === '3d' ? (
             <>
+              <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13 }}>Laden…</div>}>
               <Viewer3D
                 walls={allWalls}
                 selectedWallIds={selectedWallIds}
@@ -2527,11 +2528,13 @@ export default function App() {
                   {ungroupedSelCount > 0 && ` · ${ungroupedSelCount} zonder groep`}
                 </div>
               )}
+              </Suspense>
             </>
           ) : viewMode === '2d' ? (
             <>
               {activeGroup ? (
                 <>
+                  <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13 }}>Laden…</div>}>
                   <View2D
                     walls={activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean)}
                     groupSettings={getSettings(activeGroup.id)}
@@ -2550,6 +2553,7 @@ export default function App() {
                   <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15,23,42,0.85)', color: '#94a3b8', fontSize: 11, padding: '4px 14px', borderRadius: 20, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                     {getSettings(activeGroup.id).name} · {activeGroup.wallIds.length} wand{activeGroup.wallIds.length !== 1 ? 'en' : ''} · 2D gevelaanzicht
                   </div>
+                  </Suspense>
                 </>
               ) : (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#1e293b', color: '#64748b', gap: 12 }}>
@@ -2567,6 +2571,7 @@ export default function App() {
                 const withOrigin = groupWalls.filter((w) => w.wallOrigin);
                 const gMinH = withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart ?? 0)) : 0;
                 return (
+                  <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13 }}>Laden…</div>}>
                   <Werktekening
                     walls={groupWalls}
                     groupSettings={s}
@@ -2579,6 +2584,7 @@ export default function App() {
                     zoneSettings={s.zoneSettings ?? []}
                     epcSettings={{ projectNummer: s.epcProjectNummer ?? '00000', level: s.epcLevel ?? 0 }}
                   />
+                  </Suspense>
                 );
               })() : (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', gap: 12 }}>
@@ -2589,12 +2595,14 @@ export default function App() {
               )}
             </>
           ) : viewMode === 'uittrekstaat' ? (
+            <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13 }}>Laden…</div>}>
             <Uittrekstaat
               groups={groups}
               walls={allWalls}
               getSettings={getSettings}
               adjacencies={adjacencies}
             />
+            </Suspense>
           ) : null}
         </div>
 
