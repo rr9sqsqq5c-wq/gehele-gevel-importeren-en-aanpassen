@@ -1026,6 +1026,8 @@ export default function App() {
   const [showCenterLines, setShowCenterLines] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [rulesTab, setRulesTab] = useState('regels');
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
   const { get: getSettings, update: updateSettings, initColor, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
@@ -2115,176 +2117,158 @@ export default function App() {
         </div>
       )}
 
-      <div style={{ background: '#1e293b', color: '#f8fafc', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-        <span style={{ fontWeight: 700, fontSize: 15 }}>IFC Brickslip Planner</span>
+      <div style={{ background: '#1e293b', color: '#f8fafc', flexShrink: 0 }}>
+        <div style={{ padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #334155', flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 700, fontSize: 14, color: '#f1f5f9', whiteSpace: 'nowrap' }}>IFC Brickslip Planner</span>
+          <div style={{ width: 1, height: 20, background: '#334155', flexShrink: 0 }} />
 
-        <Tooltip text={"Kies een IFC-bestand. De browser onthoudt de locatie zodat je het volgende keer direct kunt laden.\nAlleen Basic Wall elementen worden weergegeven."}>
-          <button
-            onClick={handlePickFile}
-            disabled={loadStatus === 'loading' || loadStatus === 'scanning'}
-            style={{ background: (loadStatus === 'loading' || loadStatus === 'scanning') ? '#475569' : '#3b82f6', color: '#fff', padding: '4px 12px', borderRadius: 4, fontSize: 12, border: 'none', cursor: 'pointer' }}
-          >
-            {loadStatus === 'scanning' ? '🔍 Scannen…' : loadStatus === 'loading' ? '⏳ Laden…' : '📂 IFC kiezen'}
-          </button>
-        </Tooltip>
-        <input id="ifc-file-input" type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} />
-
-        {ifcFileName && <span style={{ fontSize: 11, color: '#94a3b8' }}>{ifcFileName}.ifc · {allWalls.length} wanden</span>}
-        {loadError && <span style={{ fontSize: 11, color: '#f87171' }}>⚠ {loadError}</span>}
-
-        {(savedHandle || savedFileInfo) && !allWalls.length && loadStatus === 'idle' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e3a5f', border: '1px solid #2563eb', borderRadius: 5, padding: '3px 8px' }}>
-            <span style={{ fontSize: 11, color: '#93c5fd' }}>
-              {savedHandle ? '📁' : '💾'} {savedHandle?.name ?? savedFileInfo?.name}
-              {savedFileInfo && ` (${(savedFileInfo.size / 1024 / 1024).toFixed(1)} MB)`}
-              {' — '}{new Date((savedHandle?.savedAt ?? savedFileInfo?.savedAt)).toLocaleDateString('nl-NL')}
-            </span>
-            <button onClick={loadFromStorage} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 3, padding: '2px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
-              Laden
-            </button>
-            <button onClick={forgetSavedFile} style={{ background: 'none', color: '#64748b', border: 'none', fontSize: 13, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }} title="Vergeet opgeslagen bestand">
-              ×
-            </button>
-          </div>
-        )}
-
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Tooltip text={"Maakt de laatste groepering-actie ongedaan.\nSneltoets: Ctrl+Z"}>
-            <button onClick={undo} disabled={groupsHistory.length === 0} style={{ background: '#334155', color: groupsHistory.length === 0 ? '#64748b' : '#f1f5f9', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: groupsHistory.length === 0 ? 'default' : 'pointer', opacity: groupsHistory.length === 0 ? 0.5 : 1 }}>
-              ↩ Undo
+          <Tooltip text={"Kies een IFC-bestand. De browser onthoudt de locatie zodat je het volgende keer direct kunt laden.\nAlleen Basic Wall elementen worden weergegeven."}>
+            <button
+              onClick={handlePickFile}
+              disabled={loadStatus === 'loading' || loadStatus === 'scanning'}
+              style={{ background: (loadStatus === 'loading' || loadStatus === 'scanning') ? '#475569' : '#3b82f6', color: '#fff', padding: '4px 10px', borderRadius: 4, fontSize: 11, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              {loadStatus === 'scanning' ? '🔍 Scannen…' : loadStatus === 'loading' ? '⏳ Laden…' : '📂 IFC kiezen'}
             </button>
           </Tooltip>
-          <Tooltip text={"Sla het huidige project op als een JSON-bestand.\nHierin worden alle groepen, instellingen en koppelingen bewaard.\nLaad het later opnieuw om verder te werken — het IFC-bestand moet wel opnieuw worden geladen."}>
-            <button onClick={handleSaveProject} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
-              💾 Project opslaan
-            </button>
-          </Tooltip>
-          <Tooltip text={"Laad een eerder opgeslagen projectbestand (.json).\nZorg dat het bijbehorende IFC-bestand al is geladen voordat je het project laadt."}>
-            <label style={{ background: '#1e40af', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
-              📂 Project laden
-              <input type="file" accept=".json" style={{ display: 'none' }} onChange={handleLoadProject} />
-            </label>
-          </Tooltip>
-          {viewMode === '3d' && (
-            <Tooltip text={"Toont het berekende steenstrippatroon als gekleurde vlakken op de wanden in de 3D-viewer.\nUitzetten kan handig zijn voor een beter overzicht van de geometrie."}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer' }}>
-                <input type="checkbox" checked={showPattern} onChange={(e) => setShowPattern(e.target.checked)} />
-                Patroon in 3D
-              </label>
-            </Tooltip>
-          )}
-          {viewMode === '2d' && gridLines.length > 0 && (
-            <Tooltip text={"Toont de IFC-stramienlijnen als verticale stippellijnen in het 2D gevelaanzicht.\nElke stramienlijn is voorzien van het bijbehorende label (bijv. A, B, 1, 2)."}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer' }}>
-                <input type="checkbox" checked={showGridLines} onChange={(e) => setShowGridLines(e.target.checked)} />
-                Stramienlijnen
-              </label>
-            </Tooltip>
-          )}
-          {viewMode === '2d' && (
-            <Tooltip text={"Toont het midden van de tussenruimte tussen wandelementen als verticale stippellijn met X-coördinaat in mm.\nAlleen zichtbaar als er een werkelijke ruimte (gap) tussen elementen bestaat.\nHandig voor het controleren van de onderlinge posities van elementen."}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer' }}>
-                <input type="checkbox" checked={showCenterLines} onChange={(e) => setShowCenterLines(e.target.checked)} />
-                Hartlijnen
-              </label>
-            </Tooltip>
-          )}
+          <input id="ifc-file-input" type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} />
+          {ifcFileName && <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{ifcFileName}.ifc · {allWalls.length} wanden</span>}
+          {loadError && <span style={{ fontSize: 11, color: '#f87171' }}>⚠ {loadError}</span>}
 
-          {allWalls.length > 0 && (
-            <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', border: '1px solid #334155' }}>
-              <Tooltip text={"Toont alle wanden in een interactieve 3D-viewer.\nKlik op een element om het te selecteren. Slepen = rondkijken."}>
-                <button
-                  onClick={() => setViewMode('3d')}
-                  style={{ background: viewMode === '3d' ? '#3b82f6' : '#1e293b', color: '#fff', border: 'none', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
-                >
-                  3D
-                </button>
-              </Tooltip>
-              <Tooltip text={"Toont het 2D gevelaanzicht van de actieve groep.\nHet steenstrippatroon, zetwerk, panelen en latten worden hier getekend.\nSelecteer eerst een groep links in de lijst."}>
-                <button
-                  onClick={() => setViewMode('2d')}
-                  style={{ background: viewMode === '2d' ? '#3b82f6' : '#1e293b', color: viewMode === '2d' ? '#fff' : '#94a3b8', border: 'none', borderLeft: '1px solid #334155', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
-                >
-                  2D Gevel
-                </button>
-              </Tooltip>
-              <Tooltip text={"Technische werktekening met maatvoering voor montage van latten en panelen.\nToont peilmaten (absolute hoogte t.o.v. IFC-nulpunt), dimensies per paneel en latpositie.\nExporteerbaar als SVG of afdrukbaar."}>
-                <button
-                  onClick={() => setViewMode('tekening')}
-                  style={{ background: viewMode === 'tekening' ? '#3b82f6' : '#1e293b', color: viewMode === 'tekening' ? '#fff' : '#94a3b8', border: 'none', borderLeft: '1px solid #334155', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
-                >
-                  📐 Werktekening
-                </button>
-              </Tooltip>
-              <Tooltip text={"Uittrekstaat met totaaloverzicht van alle materialen:\noppervlakten, steenstrips, panelen, latten en zetwerk per groep en totaal.\nAfdrukbaar als overzicht voor inkoop en montage."}>
-                <button
-                  onClick={() => setViewMode('uittrekstaat')}
-                  style={{ background: viewMode === 'uittrekstaat' ? '#3b82f6' : '#1e293b', color: viewMode === 'uittrekstaat' ? '#fff' : '#94a3b8', border: 'none', borderLeft: '1px solid #334155', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
-                >
-                  📋 Uittrekstaat
-                </button>
-              </Tooltip>
+          {(savedHandle || savedFileInfo) && !allWalls.length && loadStatus === 'idle' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e3a5f', border: '1px solid #2563eb', borderRadius: 5, padding: '2px 8px' }}>
+              <span style={{ fontSize: 11, color: '#93c5fd' }}>
+                {savedHandle ? '📁' : '💾'} {savedHandle?.name ?? savedFileInfo?.name}
+                {' — '}{new Date((savedHandle?.savedAt ?? savedFileInfo?.savedAt)).toLocaleDateString('nl-NL')}
+              </span>
+              <button onClick={loadFromStorage} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 3, padding: '2px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>Laden</button>
+              <button onClick={forgetSavedFile} style={{ background: 'none', color: '#64748b', border: 'none', fontSize: 13, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}>×</button>
             </div>
           )}
 
-          {groups.length > 0 && (
-            <Tooltip text={"Exporteert alle aangevinkte lagen als een nieuw IFC-bestand.\nDit bestand bevat ALLEEN de gevelbekleding (strips, zetwerk, panelen, latten) — GEEN originele wandelementen.\nImporteer dit bestand naast het originele IFC in je BIM-software om de gevelbekleding toe te voegen.\nWelke lagen worden geëxporteerd is per groep te regelen via 'Laagzichtbaarheid 2D'."}>
-              <button onClick={handleExport} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
-                ⬇ Exporteer gevelbekleding IFC
-              </button>
-            </Tooltip>
-          )}
-          {groups.some((g) => getSettings(g.id).panelen?.enabled) && (
-            <Tooltip text={"Exporteert een productie-recept CSV per paneel.\nBevat: paneel-afmetingen, rijen totaal, rijen per maldoorgang, slede-posities.\nMal-afmetingen instelbaar onder 'Panelen (basisplaat)' per groep.\nOpenenen in Excel met puntkomma als scheidingsteken."}>
-              <button onClick={handleExportMalRecept} style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
-                ⬇ Mal recept CSV
-              </button>
-            </Tooltip>
-          )}
-          {groups.some((g) => getSettings(g.id).panelen?.enabled) && (
-            <>
-              <Tooltip text={"Exporteert een DXF-maltekening voor MAL-A (rijen 1-3) voor de metaalzetterij.\nBevat: buitencontour staalplaat, sleuven per steen, bevestigingsgaten.\nMal-afmetingen instelbaar onder 'Panelen (basisplaat)' per groep."}>
-                <button onClick={() => handleExportMalDXF('A')} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
-                  ⬇ MAL-A DXF
-                </button>
-              </Tooltip>
-              <Tooltip text={"Opent een printbare maltekening voor MAL-A (rijen 1-3) in een nieuw venster.\nBevat: kleurgecodeerde steensleuven, bevestigingsgaten, maatvoering en legenda.\nSla op als PDF via Ctrl+P → 'Opslaan als PDF'."}>
-                <button onClick={() => handleExportMalPDF('A')} style={{ background: '#0e7490', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
-                  🖨 MAL-A PDF
-                </button>
-              </Tooltip>
-              <Tooltip text={"Exporteert een DXF-maltekening voor MAL-B (rijen 4-6) voor de metaalzetterij.\nBevat: buitencontour staalplaat, sleuven per steen, bevestigingsgaten.\nMal-afmetingen instelbaar onder 'Panelen (basisplaat)' per groep."}>
-                <button onClick={() => handleExportMalDXF('B')} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
-                  ⬇ MAL-B DXF
-                </button>
-              </Tooltip>
-              <Tooltip text={"Opent een printbare maltekening voor MAL-B (rijen 4-6) in een nieuw venster.\nBevat: kleurgecodeerde steensleuven, bevestigingsgaten, maatvoering en legenda.\nSla op als PDF via Ctrl+P → 'Opslaan als PDF'."}>
-                <button onClick={() => handleExportMalPDF('B')} style={{ background: '#0e7490', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
-                  🖨 MAL-B PDF
-                </button>
-              </Tooltip>
-            </>
-          )}
-          <Tooltip text="Bekijk de logica-regels per onderdeel (strippen, latten, panelen, penanten, zones) en de wijzigingshistorie">
-            <button onClick={() => setShowRulesModal(true)} style={{ background: '#475569', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
-              ? Regels
+          <div style={{ width: 1, height: 20, background: '#334155', flexShrink: 0 }} />
+          <Tooltip text={"Maakt de laatste groepering-actie ongedaan.\nSneltoets: Ctrl+Z"}>
+            <button onClick={undo} disabled={groupsHistory.length === 0} style={{ background: '#334155', color: groupsHistory.length === 0 ? '#64748b' : '#f1f5f9', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: groupsHistory.length === 0 ? 'default' : 'pointer', opacity: groupsHistory.length === 0 ? 0.5 : 1 }}>
+              ↩ Undo
             </button>
           </Tooltip>
-          <span style={{ fontSize: 10, color: '#64748b', userSelect: 'none' }}>v{APP_VERSION}</span>
+          <Tooltip text={"Sla het huidige project op als een JSON-bestand."}>
+            <button onClick={handleSaveProject} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              💾 Opslaan
+            </button>
+          </Tooltip>
+          <Tooltip text={"Laad een eerder opgeslagen projectbestand (.json)."}>
+            <label style={{ background: '#1e40af', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              📂 Laden
+              <input type="file" accept=".json" style={{ display: 'none' }} onChange={handleLoadProject} />
+            </label>
+          </Tooltip>
+
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {viewMode === '3d' && (
+              <Tooltip text={"Toont het berekende steenstrippatroon als gekleurde vlakken op de wanden in de 3D-viewer."}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  <input type="checkbox" checked={showPattern} onChange={(e) => setShowPattern(e.target.checked)} />
+                  Patroon 3D
+                </label>
+              </Tooltip>
+            )}
+            {viewMode === '2d' && gridLines.length > 0 && (
+              <Tooltip text={"Toont de IFC-stramienlijnen als verticale stippellijnen in het 2D gevelaanzicht."}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  <input type="checkbox" checked={showGridLines} onChange={(e) => setShowGridLines(e.target.checked)} />
+                  Stramienlijnen
+                </label>
+              </Tooltip>
+            )}
+            {viewMode === '2d' && (
+              <Tooltip text={"Toont hartlijnen van tussenruimten in het 2D gevelaanzicht."}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  <input type="checkbox" checked={showCenterLines} onChange={(e) => setShowCenterLines(e.target.checked)} />
+                  Hartlijnen
+                </label>
+              </Tooltip>
+            )}
+            {allWalls.length > 0 && (
+              <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', border: '1px solid #334155' }}>
+                <Tooltip text={"Toont alle wanden in een interactieve 3D-viewer."}>
+                  <button onClick={() => setViewMode('3d')} style={{ background: viewMode === '3d' ? '#3b82f6' : '#1e293b', color: '#fff', border: 'none', padding: '4px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>3D</button>
+                </Tooltip>
+                <Tooltip text={"Toont het 2D gevelaanzicht van de actieve groep."}>
+                  <button onClick={() => setViewMode('2d')} style={{ background: viewMode === '2d' ? '#3b82f6' : '#1e293b', color: viewMode === '2d' ? '#fff' : '#94a3b8', border: 'none', borderLeft: '1px solid #334155', padding: '4px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>2D Gevel</button>
+                </Tooltip>
+                <Tooltip text={"Technische werktekening met maatvoering voor montage."}>
+                  <button onClick={() => setViewMode('tekening')} style={{ background: viewMode === 'tekening' ? '#3b82f6' : '#1e293b', color: viewMode === 'tekening' ? '#fff' : '#94a3b8', border: 'none', borderLeft: '1px solid #334155', padding: '4px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>📐 Tekening</button>
+                </Tooltip>
+                <Tooltip text={"Uittrekstaat met totaaloverzicht van alle materialen."}>
+                  <button onClick={() => setViewMode('uittrekstaat')} style={{ background: viewMode === 'uittrekstaat' ? '#3b82f6' : '#1e293b', color: viewMode === 'uittrekstaat' ? '#fff' : '#94a3b8', border: 'none', borderLeft: '1px solid #334155', padding: '4px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>📋 Staat</button>
+                </Tooltip>
+              </div>
+            )}
+            <Tooltip text="Bekijk de logica-regels per onderdeel en de wijzigingshistorie">
+              <button onClick={() => setShowRulesModal(true)} style={{ background: '#475569', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>? Regels</button>
+            </Tooltip>
+            <span style={{ fontSize: 10, color: '#475569', userSelect: 'none' }}>v{APP_VERSION}</span>
+          </div>
         </div>
+
+        {(groups.length > 0 || groups.some((g) => getSettings(g.id).panelen?.enabled)) && (
+          <div style={{ padding: '4px 14px', display: 'flex', alignItems: 'center', gap: 6, background: '#172033', borderBottom: '1px solid #263148', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10, color: '#475569', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 4 }}>Export</span>
+            {groups.length > 0 && (
+              <Tooltip text={"Exporteert alle aangevinkte lagen als een nieuw IFC-bestand.\nDit bestand bevat ALLEEN de gevelbekleding — GEEN originele wandelementen.\nImporteer dit bestand naast het originele IFC in je BIM-software.\nWelke lagen worden geëxporteerd is per groep te regelen via 'Laagzichtbaarheid 2D'."}>
+                <button onClick={handleExport} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  ⬇ Gevelbekleding IFC
+                </button>
+              </Tooltip>
+            )}
+            {groups.some((g) => getSettings(g.id).panelen?.enabled) && (
+              <>
+                <div style={{ width: 1, height: 16, background: '#334155' }} />
+                <Tooltip text={"Exporteert een productie-recept CSV per paneel.\nBevat: paneel-afmetingen, rijen per maldoorgang, slede-posities.\nOpenen in Excel met puntkomma als scheidingsteken."}>
+                  <button onClick={handleExportMalRecept} style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    ⬇ Mal recept CSV
+                  </button>
+                </Tooltip>
+                <div style={{ width: 1, height: 16, background: '#334155' }} />
+                <span style={{ fontSize: 10, color: '#475569' }}>MAL-A:</span>
+                <Tooltip text={"DXF fabricage-tekening MAL-A (rijen 1–3) voor metaalzetterij.\nBevat buitencontour staalplaat, sleuven en bevestigingsgaten."}>
+                  <button onClick={() => handleExportMalDXF('A')} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>⬇ DXF</button>
+                </Tooltip>
+                <Tooltip text={"Printbare maltekening MAL-A in nieuw venster (A0 liggend).\nSla op als PDF via Ctrl+P → 'Opslaan als PDF'."}>
+                  <button onClick={() => handleExportMalPDF('A')} style={{ background: '#0e7490', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>🖨 PDF</button>
+                </Tooltip>
+                <span style={{ fontSize: 10, color: '#475569' }}>MAL-B:</span>
+                <Tooltip text={"DXF fabricage-tekening MAL-B (rijen 4–6) voor metaalzetterij."}>
+                  <button onClick={() => handleExportMalDXF('B')} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>⬇ DXF</button>
+                </Tooltip>
+                <Tooltip text={"Printbare maltekening MAL-B in nieuw venster (A0 liggend)."}>
+                  <button onClick={() => handleExportMalPDF('B')} style={{ background: '#0e7490', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>🖨 PDF</button>
+                </Tooltip>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div style={{ width: 260, background: '#f8fafc', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
-          {allWalls.length === 0 ? (
+        <div style={{ width: leftCollapsed ? 28 : 280, background: '#f8fafc', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0, transition: 'width 0.18s ease', position: 'relative' }}>
+          <button
+            onClick={() => setLeftCollapsed((v) => !v)}
+            title={leftCollapsed ? 'Zijpaneel uitklappen' : 'Zijpaneel inklappen'}
+            style={{ position: 'absolute', top: 6, right: leftCollapsed ? 4 : 6, zIndex: 10, background: '#e2e8f0', border: 'none', borderRadius: 3, width: 18, height: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#475569', padding: 0, flexShrink: 0 }}
+          >
+            {leftCollapsed ? '›' : '‹'}
+          </button>
+          {!leftCollapsed && allWalls.length === 0 ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 12, padding: 16, textAlign: 'center' }}>
               <div>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
                 <div>Importeer een IFC-bestand om te beginnen</div>
               </div>
             </div>
-          ) : (
-            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          ) : !leftCollapsed ? (
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', paddingTop: 26 }}>
               {adjacencies.length > 0 && (
                 <Tooltip block text={"Aangrenzende elementen delen een gemeenschappelijke rand.\nDit betekent dat het brickslip-patroon doorlopend kan worden over meerdere wanden.\nGebruik 'Auto-groeperen' om ze automatisch in groepen te verdelen."}>
                   <div style={{ padding: '5px 10px', background: '#ede9fe', borderBottom: '1px solid #c4b5fd', fontSize: 11, color: '#6d28d9', flexShrink: 0, cursor: 'default' }}>
@@ -2421,7 +2405,7 @@ export default function App() {
                 </div>
               )}
             </div>
-          )}
+          ) : null}
         </div>
 
         <div style={{ flex: 1, position: 'relative', overflow: viewMode === 'uittrekstaat' ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -2534,8 +2518,16 @@ export default function App() {
         </div>
 
         {activeGroup && (
-          <div style={{ width: 230, background: '#fff', borderLeft: '1px solid #e2e8f0', overflowY: 'auto', flexShrink: 0 }}>
-            <div style={{ padding: 12 }}>
+          <div style={{ width: rightCollapsed ? 28 : 280, background: '#fff', borderLeft: '1px solid #e2e8f0', overflowY: rightCollapsed ? 'hidden' : 'auto', flexShrink: 0, transition: 'width 0.18s ease', position: 'relative' }}>
+            <button
+              onClick={() => setRightCollapsed((v) => !v)}
+              title={rightCollapsed ? 'Instellingen uitklappen' : 'Instellingen inklappen'}
+              style={{ position: 'absolute', top: 6, left: rightCollapsed ? 4 : 6, zIndex: 10, background: '#e2e8f0', border: 'none', borderRadius: 3, width: 18, height: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#475569', padding: 0, flexShrink: 0 }}
+            >
+              {rightCollapsed ? '‹' : '›'}
+            </button>
+            {!rightCollapsed && <>
+            <div style={{ padding: 12, paddingTop: 30 }}>
               <GroupConfigPanel
                 groupId={activeGroup.id}
                 settings={getSettings(activeGroup.id)}
@@ -2588,6 +2580,7 @@ export default function App() {
                 </div>
               );
             })()}
+            </>}
           </div>
         )}
       </div>
