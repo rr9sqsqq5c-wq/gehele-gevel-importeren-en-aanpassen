@@ -2497,6 +2497,7 @@ export default function App() {
                     latten={s.latten}
                     groupMinH={gMinH}
                     penantFaceData={penantFaceData}
+                    zoneSettings={s.zoneSettings ?? []}
                   />
                 );
               })() : (

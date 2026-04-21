@@ -3,6 +3,48 @@ import { buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel } from './lib/panelization.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 
+function computeZoneBounds(penanten, groupWidth) {
+  const sorted = [...(penanten ?? [])].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+  if (!sorted.length) return [{ idx: 0, label: 'Zone 1', xStart: 0, xEnd: groupWidth }];
+  const xBounds = [0];
+  for (const p of sorted) {
+    xBounds.push(p.x ?? 0);
+    xBounds.push((p.x ?? 0) + (p.breedte ?? 400));
+  }
+  xBounds.push(groupWidth);
+  const zones = [];
+  for (let i = 0; i < xBounds.length - 1; i += 2) {
+    const xS = xBounds[i], xE = xBounds[i + 1];
+    if (xE - xS > 1) zones.push({ idx: zones.length, label: `Zone ${zones.length + 1}`, xStart: xS, xEnd: xE });
+  }
+  return zones;
+}
+
+function getPanelStripsAnnotated(panel, facadeRows, verband, mat) {
+  const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+  const strips = [];
+  const counts = {};
+  for (const row of facadeRows) {
+    if (row.y + stripH <= panel.y + 0.5 || row.y >= panel.y + panel.height - 0.5) continue;
+    for (const piece of row.pieces) {
+      if (piece.start + piece.length <= panel.x + 0.5 || piece.start >= panel.x + panel.width - 0.5) continue;
+      const clipX  = Math.max(piece.start, panel.x) - panel.x;
+      const clipX2 = Math.min(piece.start + piece.length, panel.x + panel.width) - panel.x;
+      const clipY  = Math.max(row.y, panel.y) - panel.y;
+      const clipY2 = Math.min(row.y + stripH, panel.y + panel.height) - panel.y;
+      if (clipX2 - clipX > 0.5 && clipY2 - clipY > 0.5) {
+        const len = Math.round(clipX2 - clipX);
+        const label = piece.label;
+        strips.push({ x: clipX, y: clipY, width: clipX2 - clipX, height: clipY2 - clipY, label });
+        const key = `${label}:${len}`;
+        counts[key] = (counts[key] ?? { label, len, n: 0 });
+        counts[key].n++;
+      }
+    }
+  }
+  return { strips, counts: Object.values(counts).sort((a, b) => b.n - a.n || a.len - b.len) };
+}
+
 const PAD_LEFT   = 145;
 const PAD_RIGHT  = 60;
 const PAD_TOP    = 60;
@@ -199,11 +241,12 @@ function computeLatten(facadeData, panelen, latten, mat, penanten) {
   }
 }
 
-export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen, latten, groupMinH, penantFaceData }) {
+export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen, latten, groupMinH, penantFaceData, zoneSettings }) {
   const svgRef = useRef(null);
   const productiePrintRef = useRef(null);
   const [drawingType, setDrawingType] = useState('achterconstructie');
   const [productieGenerated, setProductieGenerated] = useState(false);
+  const [selectedZoneIdx, setSelectedZoneIdx] = useState(-1);
 
   const mat     = groupSettings?.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
   const verband = groupSettings?.verband ?? 'halfsteens';
@@ -250,20 +293,37 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
   const { groupWidth, groupHeight, groupOpenings } = facadeData;
 
+  const facadeZones = computeZoneBounds(penanten, groupWidth);
+  const selectedZone = selectedZoneIdx >= 0 && selectedZoneIdx < facadeZones.length ? facadeZones[selectedZoneIdx] : null;
+
+  const zonePanels = selectedZone
+    ? allPanels.filter((p) => p.x + p.width > selectedZone.xStart + 1 && p.x < selectedZone.xEnd - 1)
+    : allPanels;
+  const zoneLatten = selectedZone
+    ? allLatten.filter((l) => l.x + l.width > selectedZone.xStart + 1 && l.x < selectedZone.xEnd - 1)
+    : allLatten;
+  const zoneOpenings = selectedZone
+    ? groupOpenings.filter((op) => op.x + op.width > selectedZone.xStart + 1 && op.x < selectedZone.xEnd - 1)
+    : groupOpenings;
+
+  const viewXStart = selectedZone ? selectedZone.xStart : 0;
+  const viewXEnd   = selectedZone ? selectedZone.xEnd   : groupWidth;
+  const viewW_mm   = viewXEnd - viewXStart;
+
   const VIEW_W = 960;
   const VIEW_H = 700;
   const drawW = VIEW_W - PAD_LEFT - PAD_RIGHT;
   const drawH = VIEW_H - PAD_TOP - PAD_BOTTOM;
-  const scaleX = drawW / groupWidth;
+  const scaleX = drawW / viewW_mm;
   const scaleY = drawH / groupHeight;
   const scale  = Math.min(scaleX, scaleY);
 
-  const W = groupWidth * scale;
+  const W = viewW_mm * scale;
   const H = groupHeight * scale;
   const OX = PAD_LEFT + (drawW - W) / 2;
   const OY = PAD_TOP;
 
-  const sx = (x) => OX + x * scale;
+  const sx = (x) => OX + (x - viewXStart) * scale;
   const sy = (y) => OY + H - y * scale;
 
   const dimColor    = '#1e3a5f';
@@ -273,9 +333,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
   const peilmatenBase = groupMinH ?? 0;
 
-  const xBreaks = [...new Set([0, groupWidth, ...allPanels.map((p) => p.x), ...allPanels.map((p) => p.x + p.width)])].sort((a, b) => a - b);
-  const yBreaks = [...new Set([0, groupHeight, ...allPanels.map((p) => p.y), ...allPanels.map((p) => p.y + p.height)])].sort((a, b) => a - b);
-  const latYs   = [...new Set(allLatten.filter((l) => l.richting === 'horizontaal').map((l) => Math.round(l.y + l.height)))].sort((a, b) => a - b);
+  const xBreaks = [...new Set([viewXStart, viewXEnd, ...zonePanels.map((p) => p.x), ...zonePanels.map((p) => p.x + p.width)])].filter((x) => x >= viewXStart - 1 && x <= viewXEnd + 1).sort((a, b) => a - b);
+  const yBreaks = [...new Set([0, groupHeight, ...zonePanels.map((p) => p.y), ...zonePanels.map((p) => p.y + p.height)])].sort((a, b) => a - b);
+  const latYs   = [...new Set(zoneLatten.filter((l) => l.richting === 'horizontaal').map((l) => Math.round(l.y + l.height)))].sort((a, b) => a - b);
 
   const dimRowY   = OY + H + 28;
   const dimRow2Y  = dimRowY + DIM_GAP;
@@ -283,10 +343,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const dimVSpanX  = OX - 65;
   const dimVTotalX = OX - 32;
 
-  const lattenRichting = allLatten.length ? (allLatten[0].richting ?? 'horizontaal') : 'horizontaal';
+  const lattenRichting = zoneLatten.length ? (zoneLatten[0].richting ?? 'horizontaal') : 'horizontaal';
   const lattenSummary = (() => {
     const groups = {};
-    for (const l of allLatten) {
+    for (const l of zoneLatten) {
       const len = Math.round(lattenRichting === 'horizontaal' ? l.width : l.height);
       groups[len] = (groups[len] ?? 0) + 1;
     }
@@ -294,7 +354,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
       .sort((a, b) => b[1] - a[1])
       .map(([len, cnt]) => ({ len: Number(len), cnt }));
   })();
-  const summaryLines = allLatten.length ? lattenSummary.length + 2 : 0;
+  const summaryLines = zoneLatten.length ? lattenSummary.length + 2 : 0;
   const SUMMARY_LINE_H = 13;
   const SUMMARY_PAD = 8;
   const summaryBoxH = summaryLines > 0 ? summaryLines * SUMMARY_LINE_H + SUMMARY_PAD * 2 : 0;
@@ -382,6 +442,21 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           }}>{label}</button>
         ))}
       </div>
+
+      {facadeZones.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', flexShrink: 0, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 4 }}>Zone:</span>
+          <button
+            onClick={() => setSelectedZoneIdx(-1)}
+            style={{ padding: '2px 10px', fontSize: 10, fontWeight: selectedZoneIdx === -1 ? 700 : 400, background: selectedZoneIdx === -1 ? '#2563eb' : '#e2e8f0', color: selectedZoneIdx === -1 ? '#fff' : '#475569', border: 'none', borderRadius: 3, cursor: 'pointer' }}
+          >Alle zones</button>
+          {facadeZones.map((z) => (
+            <button key={z.idx} onClick={() => setSelectedZoneIdx(z.idx)}
+              style={{ padding: '2px 10px', fontSize: 10, fontWeight: selectedZoneIdx === z.idx ? 700 : 400, background: selectedZoneIdx === z.idx ? '#2563eb' : '#e2e8f0', color: selectedZoneIdx === z.idx ? '#fff' : '#475569', border: 'none', borderRadius: 3, cursor: 'pointer' }}
+            >{z.label} ({mm(z.xEnd - z.xStart)} mm)</button>
+          ))}
+        </div>
+      )}
 
       <div style={{ flex: 1, overflow: 'auto', padding: drawingType === 'productie' ? 8 : 16 }}>
 
@@ -766,7 +841,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           <div>
             {!productieGenerated ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 300, gap: 12 }}>
-                <div style={{ fontSize: 13, color: '#64748b' }}>Genereer individuele paneel-productiematen</div>
+                <div style={{ fontSize: 13, color: '#64748b' }}>
+                  Genereer productiematen{selectedZone ? ` voor ${selectedZone.label}` : ' voor alle zones'} ({zonePanels.length} panelen)
+                </div>
                 <button
                   onClick={() => setProductieGenerated(true)}
                   style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 5, padding: '8px 20px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
@@ -777,39 +854,70 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             ) : (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '0 4px' }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a5f' }}>{allPanels.length} panelen — {groupName ?? 'Groep'}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a5f' }}>
+                    {zonePanels.length} panelen — {groupName ?? 'Groep'}{selectedZone ? ` · ${selectedZone.label}` : ''}
+                  </span>
                   <button onClick={() => setProductieGenerated(false)} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '3px 8px', cursor: 'pointer' }}>Verberg</button>
                 </div>
-                <div ref={productiePrintRef} style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                  {allPanels.map((panel, idx) => {
+                <div ref={productiePrintRef} style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+                  {zonePanels.map((panel, idx) => {
+                    const { strips, counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat);
+                    const color = groupSettings?.color ?? '#a64033';
                     const PAD = 40;
-                    const CARD_W = 300;
-                    const CARD_H = Math.round(CARD_W * panel.height / panel.width) + PAD * 2;
-                    const sc = (CARD_W - PAD * 2) / panel.width;
-                    const ox = PAD, oy = PAD;
+                    const MAX_DRAW_W = 340;
+                    const MAX_DRAW_H = 420;
+                    const aspect = panel.height / panel.width;
+                    let drawPW = Math.min(MAX_DRAW_W, panel.width * 0.4);
+                    let drawPH = drawPW * aspect;
+                    if (drawPH > MAX_DRAW_H) { drawPH = MAX_DRAW_H; drawPW = drawPH / aspect; }
+                    const sc = drawPW / panel.width;
+                    const TABLE_H = Math.min(counts.length * 12 + 28, 120);
+                    const CARD_W = drawPW + PAD * 2;
+                    const CARD_H = drawPH + PAD * 2 + TABLE_H + 20;
+                    const ox = PAD, oy = 32;
                     const px = (x) => ox + x * sc;
                     const py = (y) => oy + (panel.height - y) * sc;
-                    const strips = getStripsForPanel(panel, facadeData.rows, verband, mat);
-                    const color = groupSettings?.color ?? '#a64033';
                     return (
-                      <svg key={panel.id ?? idx} width={CARD_W} height={CARD_H + 30}
-                        viewBox={`0 0 ${CARD_W} ${CARD_H + 30}`}
-                        style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
+                      <svg key={panel.id ?? idx} width={CARD_W} height={CARD_H}
+                        viewBox={`0 0 ${CARD_W} ${CARD_H}`}
+                        style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', flexShrink: 0 }}
                         xmlns="http://www.w3.org/2000/svg">
-                        <rect x={ox} y={oy} width={panel.width * sc} height={panel.height * sc} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1} />
-                        {strips.map((s, si) => (
-                          <rect key={si}
-                            x={px(s.x)} y={py(s.y + s.height)}
-                            width={s.width * sc} height={s.height * sc}
-                            fill={brickColor(s.label, color)} stroke="rgba(0,0,0,0.15)" strokeWidth={0.3}
-                          />
-                        ))}
-                        <text x={CARD_W / 2} y={CARD_H + 20} textAnchor="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">
-                          P{idx + 1} · {mm(panel.width)} × {mm(panel.height)} mm
+                        <text x={CARD_W / 2} y={14} textAnchor="middle" fontSize={9} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">
+                          P{idx + 1}{selectedZone ? ` · ${selectedZone.label}` : ''} — {mm(panel.width)} × {mm(panel.height)} mm
                         </text>
-                        <text x={ox} y={oy - 4} fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">{mm(panel.width)} mm</text>
-                        <text x={ox - 4} y={oy + panel.height * sc / 2} fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif"
-                          transform={`rotate(-90,${ox - 4},${oy + panel.height * sc / 2})`}>{mm(panel.height)} mm</text>
+                        <text x={CARD_W / 2} y={25} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
+                          {verband} · {strips.length} strips
+                        </text>
+                        <rect x={ox} y={oy} width={drawPW} height={drawPH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1} />
+                        {strips.map((s, si) => {
+                          const rw = s.width * sc;
+                          const rh = s.height * sc;
+                          const rx = px(s.x);
+                          const ry = py(s.y + s.height);
+                          return (
+                            <g key={si}>
+                              <rect x={rx} y={ry} width={rw} height={rh}
+                                fill={brickColor(s.label, color)} stroke="rgba(0,0,0,0.2)" strokeWidth={0.3} />
+                              {rw > 18 && rh > 7 && (
+                                <text x={rx + rw / 2} y={ry + rh / 2} textAnchor="middle" dominantBaseline="middle"
+                                  fontSize={Math.min(7, rh * 0.55)} fill="#000" fontFamily="Arial, sans-serif">{mm(s.width)}</text>
+                              )}
+                            </g>
+                          );
+                        })}
+                        <text x={ox + drawPW / 2} y={oy - 4} textAnchor="middle" fontSize={7} fill="#334155" fontFamily="Arial, sans-serif">{mm(panel.width)} mm</text>
+                        <text x={ox - 5} y={oy + drawPH / 2} textAnchor="middle" fontSize={7} fill="#334155" fontFamily="Arial, sans-serif"
+                          transform={`rotate(-90,${ox - 5},${oy + drawPH / 2})`}>{mm(panel.height)} mm</text>
+                        <line x1={ox} y1={oy + drawPH + 6} x2={ox + drawPW} y2={oy + drawPH + 6} stroke="#e2e8f0" strokeWidth={0.8} />
+                        <text x={ox} y={oy + drawPH + 18} fontSize={7.5} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">Strippentelling:</text>
+                        {counts.slice(0, 8).map(({ label, len, n }, ci) => (
+                          <text key={ci} x={ox} y={oy + drawPH + 28 + ci * 11} fontSize={7} fill="#334155" fontFamily="Arial, sans-serif">
+                            {n}× {label} {len} mm
+                          </text>
+                        ))}
+                        {counts.length > 8 && (
+                          <text x={ox} y={oy + drawPH + 28 + 8 * 11} fontSize={6.5} fill="#94a3b8" fontFamily="Arial, sans-serif">… nog {counts.length - 8} types</text>
+                        )}
                       </svg>
                     );
                   })}
@@ -839,15 +947,15 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           </defs>
 
           <text x={OX} y={20} fontSize={13} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">
-            {groupName ?? 'Groep'} — {drawingType === 'achterconstructie' ? 'Achterconstructie (houten latten)' : 'Panelen plaatsing op gevel'}
+            {groupName ?? 'Groep'}{selectedZone ? ` — ${selectedZone.label}` : ''} — {drawingType === 'achterconstructie' ? 'Achterconstructie (houten latten)' : 'Panelen plaatsing op gevel'}
           </text>
           <text x={OX} y={33} fontSize={8} fill="#64748b" fontFamily="Arial, sans-serif">
-            Schaal 1:{Math.round(1 / scale * 1000)} · Afmetingen in mm · Peilmaten in m t.o.v. IFC-nulpunt
+            Schaal 1:{Math.round(1 / scale * 1000)} · Afmetingen in mm · Peilmaten in m t.o.v. IFC-nulpunt{selectedZone ? ` · Zone breedte: ${mm(viewW_mm)} mm (X ${mm(viewXStart)}–${mm(viewXEnd)})` : ` · Totale breedte: ${mm(groupWidth)} mm`}
           </text>
 
           <rect x={OX} y={OY} width={W} height={H} fill="#f8fafc" stroke={dimColor} strokeWidth={1} />
 
-          {drawingType === 'plaatsing' && allPanels.map((p, i) => (
+          {drawingType === 'plaatsing' && zonePanels.map((p, i) => (
             <g key={p.id ?? i}>
               <rect
                 x={sx(p.x)} y={sy(p.y + p.height)}
@@ -867,7 +975,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           ))}
 
           <g clipPath="url(#wt-openings-clip)">
-            {drawingType === 'achterconstructie' && allLatten.map((l) => (
+            {drawingType === 'achterconstructie' && zoneLatten.map((l) => (
               <rect
                 key={l.id}
                 x={sx(l.x)} y={sy(l.y + l.height)}
@@ -877,7 +985,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             ))}
           </g>
 
-          {groupOpenings.map((op, i) => {
+          {zoneOpenings.map((op, i) => {
             const poly = op.polyPts;
             if (poly && poly.length >= 3) {
               const pts = poly.map((p) => `${sx(p.l)},${sy(p.h)}`).join(' ');
@@ -912,16 +1020,16 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           })}
 
           {xBreaks.length >= 2 && (
-            <DimH x1={sx(0)} x2={sx(groupWidth)} y={dimRow2Y} label={`TOTAAL ${mm(groupWidth)}`} color="#dc2626" />
+            <DimH x1={sx(viewXStart)} x2={sx(viewXEnd)} y={dimRow2Y} label={selectedZone ? `${selectedZone.label}: ${mm(viewW_mm)} mm` : `TOTAAL ${mm(groupWidth)} mm`} color="#dc2626" />
           )}
 
-          {drawingType !== 'achterconstructie' && groupOpenings.map((op, i) => (
+          {drawingType !== 'achterconstructie' && zoneOpenings.map((op, i) => (
             op.width > 1 && (
               <DimH key={`op-h-${i}`} x1={sx(op.x)} x2={sx(op.x + op.width)} y={OY + H + 48} label={`raam ${mm(op.width)}`} color="#dc2626" />
             )
           ))}
 
-          {drawingType === 'achterconstructie' && allLatten.map((l) => {
+          {drawingType === 'achterconstructie' && zoneLatten.map((l) => {
             const len = Math.round(lattenRichting === 'horizontaal' ? l.width : l.height);
             const cx = sx(l.x + l.width / 2);
             const ty = sy(l.y + l.height) - 3;
@@ -1015,21 +1123,21 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             );
           })()}
 
-          {drawingType === 'plaatsing' && allPanels.length > 0 && (() => {
+          {drawingType === 'plaatsing' && zonePanels.length > 0 && (() => {
             const sizeGroups = {};
-            for (const p of allPanels) {
+            for (const p of zonePanels) {
               const key = `${mm(p.width)}×${mm(p.height)}`;
               sizeGroups[key] = (sizeGroups[key] ?? 0) + 1;
             }
             const lines = Object.entries(sizeGroups).sort((a, b) => b[1] - a[1]);
             const bh = (lines.length + 2) * SUMMARY_LINE_H + SUMMARY_PAD * 2;
-            const bx = OX, by = VIEW_H + 16, bw = 280;
+            const bx = OX, by = VIEW_H + 16, bw = 320;
             return (
               <g>
                 <rect x={bx} y={by} width={bw} height={bh} fill="#fff" stroke="#000" strokeWidth={1} />
                 <text x={bx + SUMMARY_PAD} y={by + SUMMARY_PAD + SUMMARY_LINE_H - 2}
                   fontSize={9} fontWeight="bold" fill="#000" fontFamily="Arial, sans-serif">
-                  Panelen samenvatting — totaal {allPanels.length} st.
+                  Panelen{selectedZone ? ` ${selectedZone.label}` : ''} — totaal {zonePanels.length} st.
                 </text>
                 <line x1={bx} y1={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} x2={bx + bw} y2={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} stroke="#000" strokeWidth={0.5} />
                 {lines.map(([key, cnt], i) => (
