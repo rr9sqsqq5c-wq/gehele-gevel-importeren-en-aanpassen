@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions } from './lib/panelization.js';
 import { openingXRangesAtY } from './lib/geometry.js';
 import { BATTEN_CATALOG } from './lib/battens.js';
 
@@ -56,8 +56,9 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
 
   let panelList = [];
   if (s.panelen?.enabled) {
-    const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40);
-    const globalPieces = rows.flatMap((row) => row.pieces.map((p) => ({ x: p.start, width: p.length })));
+    const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, mat);
+    const maxInterval = s.latten?.maxInterval ?? 400;
+    const battenYs = generateBattenPositions(groupHeight, mat, maxInterval);
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
     const PENANT_INSET = 20;
     const penantOpenings = (s.penanten ?? []).map((pen, pi) => {
@@ -68,7 +69,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
     }).filter(Boolean);
     const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
     for (const zone of zones) {
-      const result = panelizeZone(zone, rows, globalPieces, mat.steenH, basePanel);
+      const result = panelizeZone(zone, battenYs, basePanel);
       if (result.ok) panelList.push(...result.panels);
     }
   }
