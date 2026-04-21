@@ -18,6 +18,32 @@ export function getOpeningPoly(op) {
 function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX) {
   const { steenL, steenH, lint, stoot } = material;
 
+  if (verband === 'wildverband') {
+    const module = steenL + stoot;
+    // 6-row repeating cycle (2 mallen × 3 rijen per mal)
+    // Offsets in twaalfden van de module — verspreid zodat géén voeg uitlijnt met aangrenzende rijen
+    // Rij 0 (mal 1, rij 1): 0      →  0 mm
+    // Rij 1 (mal 1, rij 2): 6/12   → ½ module
+    // Rij 2 (mal 1, rij 3): 3/12   → ¼ module
+    // Rij 3 (mal 2, rij 1): 9/12   → ¾ module
+    // Rij 4 (mal 2, rij 2): 2/12   → ⅙ module
+    // Rij 5 (mal 2, rij 3): 8/12   → ⅔ module
+    const TWAALFDEN = [0, 6, 3, 9, 2, 8];
+    const shift = round2((TWAALFDEN[((rowIndex % 6) + 6) % 6] * module) / 12);
+    const pieces = [];
+    let brickStart = round2(-shift);
+    while (brickStart < totalWidth - 0.001) {
+      const clipStart = Math.max(brickStart, 0);
+      const clipEnd = Math.min(round2(brickStart + steenL), totalWidth);
+      if (clipEnd > clipStart + 0.001) {
+        const len = round2(clipEnd - clipStart);
+        pieces.push({ start: round2(clipStart + startX), length: len, label: Math.abs(len - steenL) < 0.5 ? 'Vol' : 'Rest' });
+      }
+      brickStart = round2(brickStart + module);
+    }
+    return pieces;
+  }
+
   if (verband === 'staand_tegelverband') {
     const stepW = steenH + stoot;
     const pieces = [];
@@ -87,7 +113,7 @@ function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX)
 
 function getLagenmaat(material, verband) {
   if (verband === 'staand_tegelverband') return material.steenL + material.lint;
-  return material.steenH + material.lint;
+  return material.steenH + material.lint; // halfsteens, tegelverband, wildverband all use steenH rows
 }
 
 function recomputeStarts(pieces, stoot) {
@@ -400,7 +426,7 @@ export function getGroupPatternLogic(walls, material, verband) {
   const totallagen = Math.floor((groupHeight + lint) / lagenmaat);
 
   const lines = [];
-  const verbandLabel = verband === 'halfsteens' ? 'Halfsteens' : verband === 'staand_tegelverband' ? 'Staand tegelverband' : 'Tegelverband';
+  const verbandLabel = verband === 'halfsteens' ? 'Halfsteens' : verband === 'staand_tegelverband' ? 'Staand tegelverband' : verband === 'wildverband' ? 'Wildverband (6-rij herhaling)' : 'Tegelverband';
   lines.push({ label: 'Verband', value: verbandLabel });
   lines.push({ label: 'Gevelbreedte', value: `${groupWidth} mm  (${wallsWithOrigin.length} wand${wallsWithOrigin.length !== 1 ? 'en' : ''})` });
   lines.push({ label: 'Gevelhoogte', value: `${groupHeight} mm` });

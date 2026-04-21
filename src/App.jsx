@@ -14,8 +14,17 @@ import { Uittrekstaat } from './Uittrekstaat.jsx';
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 const DEFAULT_VERBAND = 'halfsteens';
 
-const APP_VERSION = '1.8';
+const APP_VERSION = '1.9';
 const CHANGELOG = [
+  {
+    version: '1.9',
+    date: '2026-04-20',
+    changes: [
+      'Wildverband toegevoegd als metselverband: 6-rij herhalend patroon (2 mallen × 3 rijen)',
+      'Latten en panelen: nieuwe module-gebaseerde logica — latten exact in lintvoegmidden, lopen over volledige gevelbreedte (niet geclipped door sparingen)',
+      'Panelen: X-grenzen = constructieve grenzen (sparingen, penanten) + targetbreedte raster — niet meer alle stootvoegen',
+    ],
+  },
   {
     version: '1.8',
     date: '2026-04-20',
@@ -322,6 +331,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
           <option value="halfsteens">Halfsteens</option>
           <option value="tegelverband">Tegelverband</option>
           <option value="staand_tegelverband">Staand tegelverband</option>
+          <option value="wildverband">Wildverband (6-rij herhaling)</option>
         </select>
       </Field>
 
@@ -604,6 +614,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                           <option value="halfsteens">Halfsteens</option>
                           <option value="tegelverband">Tegelverband</option>
                           <option value="staand_tegelverband">Staand tegelverband</option>
+                          <option value="wildverband">Wildverband (6-rij)</option>
                         </select>
                       </Field>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
