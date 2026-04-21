@@ -517,14 +517,25 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
       ctx.restore();
     }
 
-    if (penantFaceData?.length >= 2) {
+    if (penantFaceData?.length >= 1) {
       const sorted = [...penantFaceData].sort((a, b) => (a.penant.x ?? 0) - (b.penant.x ?? 0));
+      const flatZones = [];
+      const p0 = sorted[0].penant;
+      const leftEnd = p0.x ?? 0;
+      if (leftEnd > 1) flatZones.push({ x1: 0, x2: leftEnd });
       for (let i = 0; i < sorted.length - 1; i++) {
         const p1 = sorted[i].penant;
         const p2 = sorted[i + 1].penant;
-        const zoneX1 = (p1.x ?? 0) + Math.max(1, p1.breedte ?? 400);
-        const zoneX2 = p2.x ?? 0;
-        if (zoneX2 <= zoneX1) continue;
+        const x1 = (p1.x ?? 0) + Math.max(1, p1.breedte ?? 400);
+        const x2 = p2.x ?? 0;
+        if (x2 > x1 + 1) flatZones.push({ x1, x2 });
+      }
+      const pLast = sorted[sorted.length - 1].penant;
+      const rightStart = (pLast.x ?? 0) + Math.max(1, pLast.breedte ?? 400);
+      if (groupWidth - rightStart > 1) flatZones.push({ x1: rightStart, x2: groupWidth });
+
+      for (let i = 0; i < flatZones.length; i++) {
+        const { x1: zoneX1, x2: zoneX2 } = flatZones[i];
         const [sx1z] = toScreen(zoneX1, 0);
         const [sx2z] = toScreen(zoneX2, 0);
         const zW = sx2z - sx1z;
