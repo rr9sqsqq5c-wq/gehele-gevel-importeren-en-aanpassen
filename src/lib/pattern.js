@@ -21,15 +21,14 @@ function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX)
   if (verband === 'wildverband') {
     const module = steenL + stoot;
     // 6-row repeating cycle (2 mallen × 3 rijen per mal)
-    // Offsets in twaalfden van de module — verspreid zodat géén voeg uitlijnt met aangrenzende rijen
-    // Rij 0 (mal 1, rij 1): 0      →  0 mm
-    // Rij 1 (mal 1, rij 2): 6/12   → ½ module
-    // Rij 2 (mal 1, rij 3): 3/12   → ¼ module
-    // Rij 3 (mal 2, rij 1): 9/12   → ¾ module
-    // Rij 4 (mal 2, rij 2): 2/12   → ⅙ module
-    // Rij 5 (mal 2, rij 3): 8/12   → ⅔ module
-    const TWAALFDEN = [0, 6, 3, 9, 2, 8];
-    const shift = round2((TWAALFDEN[((rowIndex % 6) + 6) % 6] * module) / 12);
+    // Offsets in mm zodat alle opeenvolgende rijen ≥ 1/3 module verspringen
+    // en rij 7 exact gelijk is aan rij 1 (naadloos repeterend):
+    // [0, 73, 146, 36, 183, 110] → stappen: 73, 73, 110, 73, 73, 110 (allen ≥ 73mm)
+    // Som van stappen = 2×220 = 660 → rij 6 sluit naadloos aan op rij 0
+    const WILD_OFFSETS_MM = [0, 73, 146, 36, 183, 110];
+    const kop = round2((steenL - stoot) / 2);         // ~100 mm
+    const driekwart = round2((steenL + stoot) * 0.75 - stoot); // ~157 mm
+    const shift = round2(WILD_OFFSETS_MM[((rowIndex % 6) + 6) % 6]);
     const pieces = [];
     let brickStart = round2(-shift);
     while (brickStart < totalWidth - 0.001) {
@@ -37,7 +36,12 @@ function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX)
       const clipEnd = Math.min(round2(brickStart + steenL), totalWidth);
       if (clipEnd > clipStart + 0.001) {
         const len = round2(clipEnd - clipStart);
-        pieces.push({ start: round2(clipStart + startX), length: len, label: Math.abs(len - steenL) < 0.5 ? 'Vol' : 'Rest' });
+        let label;
+        if (Math.abs(len - steenL) < 0.5) label = 'Vol';
+        else if (Math.abs(len - kop) < 0.5) label = 'Kop';
+        else if (Math.abs(len - driekwart) < 0.5) label = 'Driekwart';
+        else label = 'Rest';
+        pieces.push({ start: round2(clipStart + startX), length: len, label });
       }
       brickStart = round2(brickStart + module);
     }
