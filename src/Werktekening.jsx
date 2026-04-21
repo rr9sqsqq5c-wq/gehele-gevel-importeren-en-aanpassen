@@ -3,6 +3,14 @@ import { buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel } from './lib/panelization.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 
+function generatePaneelId(groupName, zoneLabel, seqNr) {
+  const year = new Date().getFullYear().toString().slice(-2);
+  const proj = (groupName ?? 'GRP').replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 6).padEnd(6, '0');
+  const zone = (zoneLabel ?? 'Z1').replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 2).padStart(2, '0');
+  const seq  = String(seqNr).padStart(4, '0');
+  return `${year}-${proj}-${zone}-${seq}`;
+}
+
 function computeZoneBounds(penanten, groupWidth) {
   const sorted = [...(penanten ?? [])].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
   if (!sorted.length) return [{ idx: 0, label: 'Zone 1', xStart: 0, xEnd: groupWidth }];
@@ -401,13 +409,66 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
     w.document.close();
   }
 
+  function exportZaaglijst() {
+    const brickW2 = mat?.brickWeightM2 ?? 40;
+    const rows = [];
+    let globalSeq = 1;
+    const zonesForExport = facadeZones;
+    for (const zone of zonesForExport) {
+      const panelsInZone = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1);
+      for (const panel of panelsInZone) {
+        const paneelId = generatePaneelId(groupName, zone.label, globalSeq++);
+        const { counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat);
+        const areaM2 = (panel.width * panel.height) / 1e6;
+        const gewichtKg = Math.round(areaM2 * brickW2 * 10) / 10;
+        const countMap = {};
+        for (const c of counts) countMap[c.label + '_' + c.len] = c.n;
+        const volCount      = counts.filter(c => c.label === 'Vol').reduce((s, c) => s + c.n, 0);
+        const kopCount      = counts.filter(c => c.label === 'Kop').reduce((s, c) => s + c.n, 0);
+        const drieKwartCount = counts.filter(c => c.label === 'Driekwart').reduce((s, c) => s + c.n, 0);
+        const halveCount    = counts.filter(c => c.label === 'Halve').reduce((s, c) => s + c.n, 0);
+        const restCount     = counts.filter(c => c.label === 'Rest').reduce((s, c) => s + c.n, 0);
+        const totalStrips   = counts.reduce((s, c) => s + c.n, 0);
+        rows.push({
+          PaneelID: paneelId,
+          Zone: zone.label,
+          X_mm: Math.round(panel.x),
+          Y_mm: Math.round(panel.y),
+          Breedte_mm: Math.round(panel.width),
+          Hoogte_mm: Math.round(panel.height),
+          Oppervlak_m2: areaM2.toFixed(3),
+          Gewicht_kg: gewichtKg,
+          Verband: verband,
+          Strips_Totaal: totalStrips,
+          Strips_Vol: volCount,
+          Strips_Kop: kopCount,
+          Strips_Driekwart: drieKwartCount,
+          Strips_Halve: halveCount,
+          Strips_Rest: restCount,
+        });
+      }
+    }
+    if (!rows.length) { alert('Geen panelen beschikbaar voor export.'); return; }
+    const headers = Object.keys(rows[0]);
+    const csvLines = [headers.join(';'), ...rows.map(r => headers.map(h => String(r[h] ?? '')).join(';'))];
+    const blob = new Blob([csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `zaaglijst_${(groupName ?? 'groep').replace(/\s/g, '_')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#f1f5f9' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a5f', flex: 1 }}>
           Werktekening — {groupName ?? 'Groep'}
         </span>
-        {drawingType === 'productie' ? (productieGenerated && (
+        {drawingType === 'zaaglijst' ? (
+          <button onClick={exportZaaglijst} style={{ fontSize: 11, background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>⬇ Export CSV</button>
+        ) : drawingType === 'productie' ? (productieGenerated && (
           <button onClick={exportPrintProductie} style={{ fontSize: 11, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>🖨 Afdrukken panelen</button>
         )) : drawingType === 'penanten' ? (
           <button onClick={() => {
@@ -433,6 +494,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           { key: 'plaatsing',         label: '2. Panelen plaatsing' },
           { key: 'productie',         label: '3. Paneel productie' },
           ...((groupSettings?.penanten ?? []).length > 0 ? [{ key: 'penanten', label: '4. Penanten' }] : []),
+          { key: 'zaaglijst',         label: '5. Zaaglijst' },
         ].map(({ key, label }) => (
           <button key={key} onClick={() => setDrawingType(key)} style={{
             padding: '6px 14px', fontSize: 11, fontWeight: drawingType === key ? 700 : 400,
@@ -927,7 +989,82 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           </div>
         )}
 
-        {drawingType !== 'productie' && <svg ref={svgRef} width={VIEW_W} height={svgTotal} viewBox={`0 0 ${VIEW_W} ${svgTotal}`} style={{ background: '#fff', display: 'block', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }} xmlns="http://www.w3.org/2000/svg">
+        {drawingType === 'zaaglijst' && (() => {
+          const brickW2 = mat?.brickWeightM2 ?? 40;
+          let globalSeq = 1;
+          const tableRows = [];
+          for (const zone of facadeZones) {
+            const panelsInZone = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1);
+            for (const panel of panelsInZone) {
+              const paneelId = generatePaneelId(groupName, zone.label, globalSeq++);
+              const { counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat);
+              const areaM2 = (panel.width * panel.height) / 1e6;
+              const gewichtKg = Math.round(areaM2 * brickW2 * 10) / 10;
+              const volCount  = counts.filter(c => c.label === 'Vol').reduce((s, c) => s + c.n, 0);
+              const kopCount  = counts.filter(c => c.label === 'Kop').reduce((s, c) => s + c.n, 0);
+              const dkCount   = counts.filter(c => c.label === 'Driekwart').reduce((s, c) => s + c.n, 0);
+              const hvCount   = counts.filter(c => c.label === 'Halve').reduce((s, c) => s + c.n, 0);
+              const restCount = counts.filter(c => c.label === 'Rest').reduce((s, c) => s + c.n, 0);
+              const total     = counts.reduce((s, c) => s + c.n, 0);
+              tableRows.push({ paneelId, zone: zone.label, breedte: Math.round(panel.width), hoogte: Math.round(panel.height), opp: areaM2.toFixed(3), gewicht: gewichtKg, vol: volCount, kop: kopCount, dk: dkCount, hv: hvCount, rest: restCount, total });
+            }
+          }
+          const thStyle = { padding: '5px 8px', borderBottom: '2px solid #1e3a5f', fontSize: 10, fontWeight: 700, color: '#1e3a5f', whiteSpace: 'nowrap', textAlign: 'left', background: '#f0f4f8' };
+          const tdStyle = { padding: '4px 8px', borderBottom: '1px solid #e2e8f0', fontSize: 10, color: '#334155', whiteSpace: 'nowrap' };
+          const tdRight = { ...tdStyle, textAlign: 'right' };
+          return (
+            <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.10)', overflow: 'auto', maxHeight: '100%' }}>
+              <div style={{ padding: '10px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontWeight: 700, fontSize: 13, color: '#1e3a5f' }}>Zaaglijst — {groupName ?? 'Groep'} ({tableRows.length} panelen)</span>
+                <button onClick={exportZaaglijst} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, padding: '5px 14px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>⬇ Export CSV</button>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    {['PaneelID', 'Zone', 'B (mm)', 'H (mm)', 'Opp. (m²)', 'Gew. (kg)', 'Vol', 'Kop', '¾', '½', 'Rest', 'Totaal'].map(h => (
+                      <th key={h} style={thStyle}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableRows.map((r, i) => (
+                    <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                      <td style={{ ...tdStyle, fontFamily: 'monospace', letterSpacing: '0.03em', fontWeight: 600, color: '#1e40af' }}>{r.paneelId}</td>
+                      <td style={tdStyle}>{r.zone}</td>
+                      <td style={tdRight}>{r.breedte}</td>
+                      <td style={tdRight}>{r.hoogte}</td>
+                      <td style={tdRight}>{r.opp}</td>
+                      <td style={tdRight}>{r.gewicht}</td>
+                      <td style={tdRight}>{r.vol || ''}</td>
+                      <td style={tdRight}>{r.kop || ''}</td>
+                      <td style={tdRight}>{r.dk || ''}</td>
+                      <td style={tdRight}>{r.hv || ''}</td>
+                      <td style={tdRight}>{r.rest || ''}</td>
+                      <td style={{ ...tdRight, fontWeight: 700 }}>{r.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: '#f0f4f8' }}>
+                    <td colSpan={5} style={{ ...tdStyle, fontWeight: 700 }}>Totaal {tableRows.length} panelen</td>
+                    <td style={{ ...tdRight, fontWeight: 700 }}>{tableRows.reduce((s, r) => s + r.gewicht, 0).toFixed(1)}</td>
+                    <td style={{ ...tdRight, fontWeight: 700 }}>{tableRows.reduce((s, r) => s + r.vol, 0)}</td>
+                    <td style={{ ...tdRight, fontWeight: 700 }}>{tableRows.reduce((s, r) => s + r.kop, 0)}</td>
+                    <td style={{ ...tdRight, fontWeight: 700 }}>{tableRows.reduce((s, r) => s + r.dk, 0)}</td>
+                    <td style={{ ...tdRight, fontWeight: 700 }}>{tableRows.reduce((s, r) => s + r.hv, 0)}</td>
+                    <td style={{ ...tdRight, fontWeight: 700 }}>{tableRows.reduce((s, r) => s + r.rest, 0)}</td>
+                    <td style={{ ...tdRight, fontWeight: 700 }}>{tableRows.reduce((s, r) => s + r.total, 0)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+              <div style={{ padding: '8px 14px', fontSize: 9, color: '#94a3b8', borderTop: '1px solid #e2e8f0' }}>
+                PaneelID formaat: YY-PPPPPP-ZZ-NNNN · YY=jaar · PPPPPP=project · ZZ=zone · NNNN=volgnummer · EPC-compatibel
+              </div>
+            </div>
+          );
+        })()}
+
+        {drawingType !== 'productie' && drawingType !== 'zaaglijst' && <svg ref={svgRef} width={VIEW_W} height={svgTotal} viewBox={`0 0 ${VIEW_W} ${svgTotal}`} style={{ background: '#fff', display: 'block', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }} xmlns="http://www.w3.org/2000/svg">
 
           <rect x={0} y={0} width={VIEW_W} height={svgTotal} fill="#fff" />
 
