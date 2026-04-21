@@ -220,6 +220,45 @@ export function panelizeFacade(facadeWidth, facadeHeight, openings, battenYs, ba
   return result;
 }
 
+export function generateMoldRecipe(panels, mat, verband, panelDikte, moldDims, groupLabel) {
+  const steenH = mat.steenH ?? 50;
+  const lint   = mat.lint   ?? 12;
+  const steenL = mat.steenL ?? 210;
+  const lagenmaat = verband === 'staand_tegelverband' ? steenL + lint : steenH + lint;
+  const moldHoogte = moldDims?.hoogte ?? 270;
+  const moldLengte = moldDims?.lengte ?? 3400;
+  const rowsPerMold = Math.max(1, Math.floor(moldHoogte / lagenmaat));
+
+  const rows = [];
+  for (const panel of panels) {
+    const totalRows = Math.max(1, Math.floor(panel.height / lagenmaat));
+    const passes = Math.ceil(totalRows / rowsPerMold);
+    for (let pass = 0; pass < passes; pass++) {
+      const startRow = pass * rowsPerMold;
+      const rowsInPass = Math.min(rowsPerMold, totalRows - startRow);
+      const sledPositions = [];
+      for (let r = 0; r < rowsInPass; r++) {
+        sledPositions.push(Math.round(r * lagenmaat + Math.round(steenH / 2)));
+      }
+      rows.push([
+        groupLabel ?? '',
+        panel.zoneId ?? '',
+        panel.id ?? '',
+        Math.round(panel.width),
+        Math.round(panel.height),
+        panelDikte ?? 8,
+        totalRows,
+        rowsPerMold,
+        pass + 1,
+        passes,
+        lagenmaat,
+        sledPositions.join(' | '),
+      ]);
+    }
+  }
+  return rows;
+}
+
 export function computeWasteStats(allPanels, basePanel) {
   const bpArea = basePanel.width * basePanel.height;
   const uniqueSizes = [...new Set(allPanels.map((p) => `${p.width}×${p.height}`))];

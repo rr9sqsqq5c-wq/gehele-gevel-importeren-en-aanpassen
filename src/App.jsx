@@ -5,7 +5,7 @@ import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loa
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG } from './lib/battens.js';
-import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe } from './lib/panelization.js';
 import { Viewer3D } from './Viewer3D.jsx';
 import { View2D } from './View2D.jsx';
 import { Werktekening } from './Werktekening.jsx';
@@ -14,8 +14,17 @@ import { Uittrekstaat } from './Uittrekstaat.jsx';
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 const DEFAULT_VERBAND = 'halfsteens';
 
-const APP_VERSION = '1.9';
+const APP_VERSION = '1.10';
 const CHANGELOG = [
+  {
+    version: '1.10',
+    date: '2026-04-21',
+    changes: [
+      'Mal recept CSV export toegevoegd: per paneel rijen totaal, rijen per maldoorgang en slede-posities',
+      'Mal-afmetingen instelbaar per groep (mal lengte en mal hoogte) onder Panelen instellingen',
+      'Mal hoogte default 270mm, mal lengte default 3400mm; rijen per mal = vloer(malHoogte / lagenmaat)',
+    ],
+  },
   {
     version: '1.9',
     date: '2026-04-20',
@@ -723,6 +732,16 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                     <Field label="Max gewicht (kg)" tip="Maximaal gewicht per paneel inclusief brickslips (kg). Bepaalt de maximale paneeloppervlakte en paneel hoogte.">
                       <input type="number" min={1} step={5} value={pan.maxKg ?? 50}
                         onChange={(e) => upd({ maxKg: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                    <Field label="Mal lengte mm" tip="Lengte van de productiemal in mm (horizontale richting = paneelbreedte). Standaard 3400 mm.">
+                      <input type="number" min={100} step={50} value={pan.malLengte ?? 3400}
+                        onChange={(e) => upd({ malLengte: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                    <Field label="Mal hoogte mm" tip="Hoogte van de productiemal in mm (verticale richting = rijen). Bepaalt hoeveel rijen per maldoorgang. Standaard 270 mm.">
+                      <input type="number" min={50} step={10} value={pan.malBreedte ?? 270}
+                        onChange={(e) => upd({ malBreedte: Number(e.target.value) })}
                         style={{ ...inp, width: '100%' }} />
                     </Field>
                   </div>
@@ -1436,6 +1455,94 @@ export default function App() {
     e.target.value = '';
   }
 
+  function handleExportMalRecept() {
+    const CSV_HEADER = ['Groep', 'Zone', 'Paneel', 'Breedte mm', 'Hoogte mm', 'Dikte mm', 'Rijen totaal', 'Rijen per mal', 'Mal-doorgang', 'Doorgangen totaal', 'Lagenmaat mm', 'Slede posities in mal (mm)'];
+    const allRows = [CSV_HEADER];
+
+    for (const group of groups) {
+      const s = getSettings(group.id);
+      if (!s.panelen?.enabled) continue;
+
+      const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
+      const mat = s.material ?? DEFAULT_MATERIAL;
+      const verband = s.verband ?? DEFAULT_VERBAND;
+      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, s.zetwerk, s.minHoogte);
+      if (!facadeDataRaw) continue;
+
+      let facadeData = facadeDataRaw;
+      if (s.penanten?.length) {
+        const brickD = s.brickDepth ?? 20;
+        const maskedRows = facadeDataRaw.rows.map((row) => ({
+          ...row,
+          pieces: row.pieces.flatMap((piece) => {
+            let ps = [piece];
+            for (const p of s.penanten) {
+              const pX = p.x ?? 0;
+              const pB = Math.max(1, p.breedte ?? 400);
+              const maskStart = pX + brickD;
+              const maskEnd = pX + pB - brickD;
+              if (maskEnd <= maskStart) continue;
+              ps = ps.flatMap((q) => {
+                const qs = q.start, qe = q.start + q.length;
+                if (qe <= maskStart || qs >= maskEnd) return [q];
+                const out = [];
+                if (qs < maskStart) out.push({ ...q, length: maskStart - qs });
+                if (qe > maskEnd) out.push({ ...q, start: maskEnd, length: qe - maskEnd });
+                return out;
+              });
+            }
+            return ps;
+          }),
+        }));
+        facadeData = { ...facadeDataRaw, rows: maskedRows };
+      }
+
+      const { groupWidth, groupHeight, groupOpenings } = facadeData;
+      const battenYs = generateBattenPositions(groupHeight, mat, Math.max(50, s.latten?.maxInterval ?? 400));
+      const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, s.material ?? mat);
+
+      const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
+      const penantOpenings = (s.penanten ?? []).map((pen, pi) => {
+        const px = pen.x ?? 0;
+        const pw = Math.max(1, pen.breedte ?? 400);
+        return { id: `pen_${pi}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null };
+      });
+      const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
+
+      let panels = [];
+      for (const zone of zones) {
+        const res = panelizeZone(zone, battenYs, basePanel);
+        if (res.ok) panels.push(...res.panels);
+      }
+      if (s.maxHoogte != null && s.maxHoogte > 0) {
+        panels = panels.map((panel) => {
+          if (panel.y >= s.maxHoogte) return null;
+          if (panel.y + panel.height > s.maxHoogte) return { ...panel, height: s.maxHoogte - panel.y };
+          return panel;
+        }).filter(Boolean);
+      }
+
+      const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400 };
+      const groupLabel = group.name ?? group.id;
+      const recipeRows = generateMoldRecipe(panels, mat, verband, s.panelen.dikte ?? 8, moldDims, groupLabel);
+      allRows.push(...recipeRows);
+    }
+
+    if (allRows.length <= 1) {
+      alert('Geen panelen gevonden. Schakel panelen in voor ten minste één groep.');
+      return;
+    }
+
+    const csv = allRows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mal-recept.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function handleExport() {
     const exportGroups = groups.map((group) => {
       const s = getSettings(group.id);
@@ -2074,6 +2181,13 @@ export default function App() {
             <Tooltip text={"Exporteert alle aangevinkte lagen als een nieuw IFC-bestand.\nDit bestand bevat ALLEEN de gevelbekleding (strips, zetwerk, panelen, latten) — GEEN originele wandelementen.\nImporteer dit bestand naast het originele IFC in je BIM-software om de gevelbekleding toe te voegen.\nWelke lagen worden geëxporteerd is per groep te regelen via 'Laagzichtbaarheid 2D'."}>
               <button onClick={handleExport} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
                 ⬇ Exporteer gevelbekleding IFC
+              </button>
+            </Tooltip>
+          )}
+          {groups.some((g) => getSettings(g.id).panelen?.enabled) && (
+            <Tooltip text={"Exporteert een productie-recept CSV per paneel.\nBevat: paneel-afmetingen, rijen totaal, rijen per maldoorgang, slede-posities.\nMal-afmetingen instelbaar onder 'Panelen (basisplaat)' per groep.\nOpenenen in Excel met puntkomma als scheidingsteken."}>
+              <button onClick={handleExportMalRecept} style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>
+                ⬇ Mal recept CSV
               </button>
             </Tooltip>
           )}
