@@ -1092,7 +1092,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
         {drawingType === 'maltekening' && (() => {
           const verband = groupSettings?.verband ?? 'halfsteens';
-          const moldDims = { hoogte: panelen?.malBreedte ?? 270, lengte: panelen?.malLengte ?? 3400 };
+          const moldDims = { hoogte: panelen?.malBreedte ?? 270, lengte: panelen?.malLengte ?? 3400, tolerantieL: panelen?.tolerantieL ?? 1, tolerantieH: panelen?.tolerantieH ?? 1 };
           const tpl = getMoldTemplates(verband, mat, moldDims);
           const zonesForMal = selectedZone ? [selectedZone] : facadeZones;
 

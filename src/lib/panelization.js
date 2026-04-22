@@ -323,12 +323,16 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   const colStep = brickW + stoot;
   const moldW = moldDims?.lengte ?? 3400;
   const moldH = moldDims?.hoogte ?? 270;
-  const frameH    = 30;  // top + bottom margin from outer edge
+  const tolerantieL = moldDims?.tolerantieL ?? 1;  // mm extra per zijde (horizontaal)
+  const tolerantieH = moldDims?.tolerantieH ?? 1;  // mm extra per zijde (verticaal)
+  const frameH    = 30;  // top + bottom margin from outer edge (min 20mm)
   const frameLeft = 40;  // left start, aligned with first notch
   const frame = frameH;  // alias kept for pin-hole logic
   const innerW = moldW - 2 * frameLeft;
   const innerH = moldH - 2 * frameH;
-  const rowsPerMold = Math.min(3, Math.max(1, Math.floor(innerH / lagenmaat)));
+  const slotH = brickH + 2 * tolerantieH;   // actual slot height including tolerance
+  const minRowGap = 10;                       // minimum gap between row slots (independent of lintvoeg)
+  const rowsPerMold = Math.min(3, Math.max(1, Math.floor((innerH + minRowGap) / (slotH + minRowGap))));
   // Wildverband: same module-fraction offsets as pattern.js [0, 1/3, 2/3, 1/6, 5/6, 1/2]
   const WILD_FRACS = [0, 1/3, 2/3, 1/6, 5/6, 1/2];
   const moldIdx = moldId === 'B' ? 1 : 0;
@@ -404,24 +408,29 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
     return bricks;
   }
 
-  const totalRowH = (rowsPerMold - 1) * lagenmaat + brickH;
-  const yStartInner = Math.round(((innerH - totalRowH) / 2) * 10) / 10;
+  // Row slot layout — independent of lintvoeg; rows spaced with minRowGap between slots
+  const totalSlotH = rowsPerMold * slotH;
+  const gapBetween = rowsPerMold > 1 ? (innerH - totalSlotH) / (rowsPerMold - 1) : 0;
+  const blockH = totalSlotH + Math.max(0, rowsPerMold - 1) * gapBetween;
+  const yBlockStart = Math.round((frameH + (innerH - blockH) / 2) * 10) / 10;
+  const rowPitch = slotH + gapBetween;  // distance from top of one slot to top of next
+
   const pinStepX = Math.round(innerW / Math.round(innerW / 350));
 
   const rows = [];
   for (let r = 0; r < rowsPerMold; r++) {
-    const yRow = frameH + yStartInner + r * lagenmaat;
+    const yRow = Math.round((yBlockStart + r * rowPitch) * 10) / 10;  // top of slot
     const off = rowOffset(r);
     rows.push({ localRow: r, globalRow: globalRowBase + r, yRow, off, bricks: bricksInRow(r) });
   }
 
-  const pinYs = [frameH / 2];
+  const pinYs = [yBlockStart / 2];
   for (let r = 0; r < rowsPerMold - 1; r++) {
-    const y1 = frameH + yStartInner + r * lagenmaat + brickH + 1.5;
-    const y2 = frameH + yStartInner + (r + 1) * lagenmaat - 1.5;
-    pinYs.push((y1 + y2) / 2);
+    const slotBottom = rows[r].yRow + slotH;
+    const nextSlotTop = rows[r + 1].yRow;
+    pinYs.push(Math.round((slotBottom + nextSlotTop) / 2 * 10) / 10);
   }
-  pinYs.push(moldH - frameH / 2);
+  pinYs.push(Math.round(((rows[rowsPerMold - 1].yRow + slotH + moldH) / 2) * 10) / 10);
 
   // Notch X-positions: first notch starts at frameLeft (=40mm), last notch ends at moldW-frameLeft
   function calcNotchXs() {
@@ -437,12 +446,12 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   }
   const { notchXs, notchWs } = calcNotchXs();
 
-  return { moldW, moldH, frame, frameH, frameLeft, innerW, innerH, brickW, brickH, colStep, lagenmaat, rowsPerMold, globalRowBase, rows, pinYs, pinStepX, notchXs, notchWs };
+  return { moldW, moldH, frame, frameH, frameLeft, innerW, innerH, brickW, brickH, colStep, lagenmaat, slotH, tolerantieL, tolerantieH, rowsPerMold, globalRowBase, rows, pinYs, pinStepX, notchXs, notchWs };
 }
 
 export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   const g = _moldGeometry(mat, verband, moldDims, moldId);
-  const { moldW, moldH, frameH, frameLeft, innerW, innerH, brickH, rows, pinYs, pinStepX, notchXs, notchWs } = g;
+  const { moldW, moldH, frameH, frameLeft, innerW, innerH, slotH, tolerantieL, rows, pinYs, pinStepX, notchXs, notchWs } = g;
   const r2 = (v) => Math.round(v * 100) / 100;
   const lines = [];
 
@@ -478,9 +487,9 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
 
   for (const row of rows) {
     for (const b of row.bricks) {
-      addPolyRect(frameLeft + b.x - 1.5, row.yRow - 1.5, b.w + 3, brickH + 3, 'SLOTS', 2);
+      addPolyRect(r2(frameLeft + b.x - tolerantieL), r2(row.yRow), r2(b.w + 2 * tolerantieL), r2(slotH), 'SLOTS', 2);
     }
-    addText(frameLeft, row.yRow - 10, 6, `Rij ${row.globalRow + 1}  off=${row.off}mm`, 'LABELS');
+    addText(frameLeft, row.yRow - 10, 6, `Rij ${row.globalRow + 1}  off=${row.off}mm  tol±${tolerantieL}x${g.tolerantieH}mm`, 'LABELS');
   }
   for (const py of pinYs)
     for (let x = frameLeft; x <= moldW - frameLeft + 0.1; x += pinStepX)
@@ -515,7 +524,7 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
 
 export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const g = _moldGeometry(mat, verband, moldDims, moldId);
-  const { moldW, moldH, frameH, frameLeft, innerW, innerH, brickH, rows, rowsPerMold, globalRowBase, notchXs, notchWs } = g;
+  const { moldW, moldH, frameH, frameLeft, innerW, innerH, brickH, slotH, tolerantieL, tolerantieH, rows, rowsPerMold, globalRowBase, notchXs, notchWs } = g;
   const isStaand = verband === 'staand_tegelverband';
   const displayBrickW = isStaand ? (mat?.steenH ?? 50) : (mat?.steenL ?? 210);
   const displayBrickH = isStaand ? (mat?.steenL ?? 210) : (mat?.steenH ?? 50);
@@ -603,15 +612,14 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
     parts.push(`<line x1="${hcx}" y1="${r2(oy + moldH / 2 - 6)}" x2="${hcx}" y2="${r2(oy + moldH / 2 + 6)}" stroke="#666" stroke-width="0.5"/>`);
   }
 
-  // ── Strip slots (colour-coded by brick type) ──
-  const slotPad = 1.5;
+  // ── Strip slots (colour-coded by brick type, tolerance-based dimensions) ──
   const slotFill = { Vol: '#ffffff', Kop: '#fef3c7', Driekwart: '#dbeafe', Rest: '#fee2e2' };
   for (const row of rows) {
-    const sTop = r2(oy + row.yRow - slotPad);
-    const sH   = r2(brickH + 2 * slotPad);
+    const sTop = r2(oy + row.yRow);          // row.yRow = top of slot
+    const sH   = r2(slotH);                   // = brickH + 2*tolerantieH
     for (const b of row.bricks) {
-      const sLeft = r2(ox + frameLeft + b.x - slotPad);
-      const sW    = r2(b.w + 2 * slotPad);
+      const sLeft = r2(ox + frameLeft + b.x - tolerantieL);
+      const sW    = r2(b.w + 2 * tolerantieL);
       const fill  = slotFill[b.label] ?? '#ffffff';
       parts.push(`<rect x="${sLeft}" y="${sTop}" width="${sW}" height="${sH}" fill="${fill}" stroke="#334155" stroke-width="1" rx="1"/>`);
       if (b.label !== 'Vol' && sW > 12) {
@@ -619,12 +627,12 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
       }
     }
     // Row label inside mold on the left
-    const labelY = r2(oy + row.yRow + brickH / 2 + 3);
+    const labelY = r2(oy + row.yRow + slotH / 2 + 2.5);
     parts.push(`<text x="${r2(ox + frameLeft + 2)}" y="${labelY}" font-size="6" fill="#475569">R${row.globalRow + 1}</text>`);
   }
 
   // Strip size label — top-left inside mold
-  parts.push(`<text x="${r2(ox + frameLeft + 30)}" y="${r2(oy + frameH + 11)}" font-size="8" fill="#1e293b" font-weight="bold">${displayBrickW}×${displayBrickH}mm</text>`);
+  parts.push(`<text x="${r2(ox + frameLeft + 30)}" y="${r2(oy + frameH + 11)}" font-size="8" fill="#1e293b" font-weight="bold">${displayBrickW}×${displayBrickH}mm  tol L±${tolerantieL} H±${tolerantieH}mm</text>`);
 
   // ── Dimension area baseline (just below mold) ──
   const dimBase = oy + moldH + 6;
@@ -784,11 +792,14 @@ export function getMoldTemplates(verband, mat, moldDims) {
   const brickH    = isStaand ? steenL : steenH;
   const colStep   = brickW + stoot;
 
-  const moldW = moldDims?.lengte  ?? 3400;
-  const moldH = moldDims?.hoogte  ?? 270;
-  const frame = 15;
-  const innerH = moldH - 2 * frame;
-  const rowsPerMold = Math.min(3, Math.max(1, Math.floor(innerH / lagenmaat)));
+  const moldW = moldDims?.lengte    ?? 3400;
+  const moldH = moldDims?.hoogte    ?? 270;
+  const tolerantieH = moldDims?.tolerantieH ?? 1;
+  const frameH = 30;
+  const innerH = moldH - 2 * frameH;
+  const slotH_tmpl = brickH + 2 * tolerantieH;
+  const minRowGap = 10;
+  const rowsPerMold = Math.min(3, Math.max(1, Math.floor((innerH + minRowGap) / (slotH_tmpl + minRowGap))));
 
   const WILD_FRACS = [0, 1/3, 2/3, 1/6, 5/6, 1/2];
 
@@ -843,7 +854,6 @@ export function getMoldTemplates(verband, mat, moldDims) {
     rotated: isStaand,
     moldW,
     moldH,
-    frame,
     templates,
   };
 }

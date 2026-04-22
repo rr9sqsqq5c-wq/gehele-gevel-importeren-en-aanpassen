@@ -739,10 +739,16 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               const lagenmaat = verband === 'staand_tegelverband' ? steenL + lint : steenH + lint;
               const malLengte = pan.malLengte ?? 3400;
               const malBreedte = pan.malBreedte ?? 270;
-              const FRAME = 15;
-              const malInnerW = malLengte - 2 * FRAME;
-              const malInnerH = malBreedte - 2 * FRAME;
-              const rowsPerMold = Math.max(1, Math.floor(malInnerH / lagenmaat));
+              const tolL = pan.tolerantieL ?? 1;
+              const tolH = pan.tolerantieH ?? 1;
+              const FRAME_H = 30;
+              const FRAME_LEFT = 40;
+              const malInnerW = malLengte - 2 * FRAME_LEFT;
+              const malInnerH = malBreedte - 2 * FRAME_H;
+              const brickH_local = verband === 'staand_tegelverband' ? steenL : steenH;
+              const slotH_local = brickH_local + 2 * tolH;
+              const minRowGap = 10;
+              const rowsPerMold = Math.min(3, Math.max(1, Math.floor((malInnerH + minRowGap) / (slotH_local + minRowGap))));
               const panelBreedte = pan.breedte ?? 3005;
               const widthFits = panelBreedte <= malInnerW;
               const rowsInEffH = Math.floor(effectiveH / lagenmaat);
@@ -794,6 +800,16 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                         onChange={(e) => upd({ malBreedte: Number(e.target.value) })}
                         style={{ ...inp, width: '100%' }} />
                     </Field>
+                    <Field label="Tolerantie strip lengte mm" tip="Extra ruimte (mm) per zijde in de malopening in de lengterichting. Verkleint de stootvoeg in de mal (min. 2 mm vrij). Standaard 1 mm.">
+                      <input type="number" min={0} max={10} step={0.5} value={pan.tolerantieL ?? 1}
+                        onChange={(e) => upd({ tolerantieL: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                    <Field label="Tolerantie strip hoogte mm" tip="Extra ruimte (mm) per zijde in de malopening in de hoogterichting. Vergroot de slothoogte met 2× tolerantie. Standaard 1 mm.">
+                      <input type="number" min={0} max={10} step={0.5} value={pan.tolerantieH ?? 1}
+                        onChange={(e) => upd({ tolerantieH: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
                   </div>
                   <div style={{ fontSize: 11, color: hLimited ? '#dc2626' : '#64748b', marginTop: 4 }}>
                     → max {maxM2} m²/paneel · eff. hoogte {effectiveH} mm{hLimited ? ' (gewicht begrensd)' : ''}
@@ -830,7 +846,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
 
                   {/* Mold template preview per verband */}
                   {(() => {
-                    const moldDimsLocal = { hoogte: pan.malBreedte ?? 270, lengte: pan.malLengte ?? 3400 };
+                    const moldDimsLocal = { hoogte: pan.malBreedte ?? 270, lengte: pan.malLengte ?? 3400, tolerantieL: pan.tolerantieL ?? 1, tolerantieH: pan.tolerantieH ?? 1 };
                     const tpl = getMoldTemplates(verband, mat, moldDimsLocal);
                     const previewW = 240;
                     const scale = previewW / moldDimsLocal.lengte;
@@ -1683,7 +1699,7 @@ export default function App() {
         }).filter(Boolean);
       }
 
-      const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400 };
+      const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400, tolerantieL: s.panelen.tolerantieL ?? 1, tolerantieH: s.panelen.tolerantieH ?? 1 };
       const groupLabel = group.name ?? group.id;
       const recipeRows = generateMoldRecipe(panels, mat, verband, s.panelen.dikte ?? 8, moldDims, groupLabel);
       allRows.push(...recipeRows);
@@ -1710,7 +1726,7 @@ export default function App() {
     const s = getSettings(firstGroup.id);
     const mat = s.material ?? DEFAULT_MATERIAL;
     const verband = s.verband ?? DEFAULT_VERBAND;
-    const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400 };
+    const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400, tolerantieL: s.panelen.tolerantieL ?? 1, tolerantieH: s.panelen.tolerantieH ?? 1 };
     const dxf = generateMoldDXF(mat, verband, moldDims, moldId);
     const blob = new Blob([dxf], { type: 'application/dxf' });
     const url = URL.createObjectURL(blob);
@@ -1727,7 +1743,7 @@ export default function App() {
     const s = getSettings(firstGroup.id);
     const mat = s.material ?? DEFAULT_MATERIAL;
     const verband = s.verband ?? DEFAULT_VERBAND;
-    const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400 };
+    const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400, tolerantieL: s.panelen.tolerantieL ?? 1, tolerantieH: s.panelen.tolerantieH ?? 1 };
     const html = generateMoldPrintHTML(mat, verband, moldDims, moldId);
     const win = window.open('', `MAL-${moldId}`);
     if (win) { win.document.write(html); win.document.close(); }
@@ -2376,7 +2392,7 @@ export default function App() {
                   const fps = getSettings(firstPanelGroup.id);
                   const fpsMat = fps.material ?? DEFAULT_MATERIAL;
                   const fpsVerband = fps.verband ?? DEFAULT_VERBAND;
-                  const fpsMoldDims = { hoogte: fps.panelen.malBreedte ?? 270, lengte: fps.panelen.malLengte ?? 3400 };
+                  const fpsMoldDims = { hoogte: fps.panelen.malBreedte ?? 270, lengte: fps.panelen.malLengte ?? 3400, tolerantieL: fps.panelen.tolerantieL ?? 1, tolerantieH: fps.panelen.tolerantieH ?? 1 };
                   const fpsTemplates = getMoldTemplates(fpsVerband, fpsMat, fpsMoldDims);
                   return fpsTemplates.templates.map((tmpl) => (
                     <Fragment key={tmpl.id}>
