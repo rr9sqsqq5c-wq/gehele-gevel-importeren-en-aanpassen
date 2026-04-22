@@ -843,9 +843,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             );
 
             if (faceData) {
-              const { front, left, right } = faceData;
-              const stripH_px = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
-
+              const secSvgs = [];
               sectionYs.slice(0, -1).forEach((secBottom, si) => {
                 const secTop = sectionYs[si + 1];
                 const secH = secTop - secBottom;
@@ -854,61 +852,28 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 const sdH = Math.round(secH * secSc);
                 const ssvgW = sdW + PAD_L + PAD_R;
                 const ssvgH = sdH + PAD_T + PAD_B;
-                const sox = PAD_L; const soy = PAD_T;
+                const sox = PAD_L;
                 const sux = (x) => sox + x * secSc;
-                const suy = (y) => soy + sdH - (y - secBottom) * secSc;
+                const suy = (y) => PAD_T + sdH - (y - secBottom) * secSc;
 
-                const renderFaceStrips = (rows, faceOffsetX, faceWidth) =>
-                  rows.flatMap((row, ri) => {
-                    if (row.y + stripH_px <= secBottom - 0.5 || row.y >= secTop + 0.5) return [];
-                    return row.pieces.map((pc, pi) => {
-                      const clipY1 = Math.max(row.y, secBottom);
-                      const clipY2 = Math.min(row.y + stripH_px, secTop);
-                      if (clipY2 - clipY1 < 0.5) return null;
-                      const rx = sux(faceOffsetX + pc.start);
-                      const ry = suy(clipY2);
-                      const rw = pc.length * secSc;
-                      const rh = (clipY2 - clipY1) * secSc;
-                      return (
-                        <g key={`${ri}-${pi}`}>
-                          <rect x={rx} y={ry} width={rw} height={rh} fill={brickColor(pc.label, color)} stroke="rgba(0,0,0,0.2)" strokeWidth={0.3} />
-                          {rw > 14 && rh > 7 && (
-                            <text x={rx + rw / 2} y={ry + rh / 2} textAnchor="middle" dominantBaseline="middle"
-                              fontSize={Math.min(5.5, rh * 0.5)} fill="#000" fontFamily="Arial, sans-serif">{pc.label}</text>
-                          )}
-                        </g>
-                      );
-                    }).filter(Boolean);
-                  });
-
-                svgs.push(
+                secSvgs.push(
                   <svg key={`strip-${p.id ?? idx}-${si}`} width={ssvgW} height={ssvgH} viewBox={`0 0 ${ssvgW} ${ssvgH}`}
-                    style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', display: 'block' }}
+                    style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', flexShrink: 0 }}
                     xmlns="http://www.w3.org/2000/svg">
-
                     <text x={sox} y={18} fontSize={10} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">
-                      Penant {idx + 1} — U{si + 1} steenstrips uitgeslagen · {mm(secH)} mm hoog
+                      Penant {idx + 1} — U{si + 1} · {mm(secH)} mm hoog
                     </text>
                     <text x={sox} y={30} fontSize={7.5} fill="#64748b" fontFamily="Arial, sans-serif">
-                      Hoogte U{si + 1}: {mm(secBottom)}–{mm(secTop)} mm · {mm(totalUnfoldW)} mm breed uitgeslagen · Verband: {verband}
+                      {mm(secBottom)}–{mm(secTop)} mm · {mm(totalUnfoldW)} mm breed · {verband}
                     </text>
-
                     <rect x={sux(leftX)} y={suy(secTop)} width={pD * secSc} height={sdH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.7} fillOpacity={0.3} />
                     <text x={sux(leftX + pD / 2)} y={suy(secTop + secH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={6.5} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${sux(leftX + pD / 2)},${suy(secTop + secH / 2)})`}>LINKS</text>
-
                     <rect x={sux(frontX + brickDepth)} y={suy(secTop)} width={Math.max(0, pB - 2 * brickDepth) * secSc} height={sdH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1} fillOpacity={0.4} />
                     <text x={sux(frontX + pB / 2)} y={suy(secTop) - 6} textAnchor="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">VOORZIJDE</text>
-
                     <rect x={sux(rightX)} y={suy(secTop)} width={pD * secSc} height={sdH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.7} fillOpacity={0.3} />
                     <text x={sux(rightX + pD / 2)} y={suy(secTop + secH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={6.5} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${sux(rightX + pD / 2)},${suy(secTop + secH / 2)})`}>RECHTS</text>
-
                     <line x1={sux(frontX)} y1={suy(secTop)} x2={sux(frontX)} y2={suy(secBottom)} stroke="#475569" strokeWidth={0.7} strokeDasharray="3,2" />
                     <line x1={sux(rightX)} y1={suy(secTop)} x2={sux(rightX)} y2={suy(secBottom)} stroke="#475569" strokeWidth={0.7} strokeDasharray="3,2" />
-
-                    {renderFaceStrips(left ?? [], leftX, pD)}
-                    {renderFaceStrips(front ?? [], frontX, pB)}
-                    {renderFaceStrips(right ?? [], rightX, pD)}
-
                     <DimH x1={sux(leftX)} x2={sux(frontX)} y={suy(secBottom) + 28} label={`${mm(pD)} mm`} />
                     <DimH x1={sux(frontX)} x2={sux(rightX)} y={suy(secBottom) + 28} label={`${mm(pB)} mm`} />
                     <DimH x1={sux(rightX)} x2={sux(rightX + pD)} y={suy(secBottom) + 28} label={`${mm(pD)} mm`} />
@@ -916,6 +881,11 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   </svg>
                 );
               });
+              svgs.push(
+                <div key={`secs-${p.id ?? idx}`} style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
+                  {secSvgs}
+                </div>
+              );
             }
           });
 
@@ -944,58 +914,69 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   </span>
                   <button onClick={() => setProductieGenerated(false)} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '3px 8px', cursor: 'pointer' }}>Verberg</button>
                 </div>
-                {(() => {
-                  const PAD = 40;
-                  const MAX_DRAW_W = 280;
-                  const MAX_DRAW_H = 500;
-                  const maxPW = Math.max(...zonePanels.map((p) => p.width));
-                  const maxPH = Math.max(...zonePanels.map((p) => p.height));
-                  let globalSc = MAX_DRAW_W / maxPW;
-                  if (maxPH * globalSc > MAX_DRAW_H) globalSc = MAX_DRAW_H / maxPH;
-                  return (
-                    <div ref={productiePrintRef} style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
-                      {zonePanels.map((panel, idx) => {
-                        const { counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat);
-                        const drawPW = panel.width  * globalSc;
-                        const drawPH = panel.height * globalSc;
-                        const TABLE_H = Math.min(counts.length * 11 + 28, 110);
-                        const CARD_W = drawPW + PAD * 2;
-                        const CARD_H = drawPH + PAD + 32 + TABLE_H;
-                        const ox = PAD, oy = 32;
-                        return (
-                          <svg key={panel.id ?? idx} width={CARD_W} height={CARD_H}
-                            viewBox={`0 0 ${CARD_W} ${CARD_H}`}
-                            style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', flexShrink: 0 }}
-                            xmlns="http://www.w3.org/2000/svg">
-                            <text x={CARD_W / 2} y={14} textAnchor="middle" fontSize={9} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">
-                              P{idx + 1}{selectedZone ? ` · ${selectedZone.label}` : ''} — {mm(panel.width)} × {mm(panel.height)} mm
-                            </text>
-                            <text x={CARD_W / 2} y={25} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
-                              {verband}
-                            </text>
-                            <rect x={ox} y={oy} width={drawPW} height={drawPH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1} />
-                            <text x={ox + drawPW / 2} y={oy - 4} textAnchor="middle" fontSize={7} fill="#334155" fontFamily="Arial, sans-serif">{mm(panel.width)} mm</text>
-                            <text x={ox - 5} y={oy + drawPH / 2} textAnchor="middle" fontSize={7} fill="#334155" fontFamily="Arial, sans-serif"
-                              transform={`rotate(-90,${ox - 5},${oy + drawPH / 2})`}>{mm(panel.height)} mm</text>
-                            <text x={ox + drawPW / 2} y={oy + drawPH / 2} textAnchor="middle" dominantBaseline="middle" fontSize={8} fill="#94a3b8" fontFamily="Arial, sans-serif">
-                              {mm(panel.width)}×{mm(panel.height)}
-                            </text>
-                            <line x1={ox} y1={oy + drawPH + 6} x2={ox + drawPW} y2={oy + drawPH + 6} stroke="#e2e8f0" strokeWidth={0.8} />
-                            <text x={ox} y={oy + drawPH + 18} fontSize={7.5} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">Strippentelling:</text>
-                            {counts.slice(0, 8).map(({ label, len, n }, ci) => (
-                              <text key={ci} x={ox} y={oy + drawPH + 28 + ci * 11} fontSize={7} fill="#334155" fontFamily="Arial, sans-serif">
-                                {n}× {label} {len} mm
-                              </text>
-                            ))}
-                            {counts.length > 8 && (
-                              <text x={ox} y={oy + drawPH + 28 + 8 * 11} fontSize={6.5} fill="#94a3b8" fontFamily="Arial, sans-serif">… nog {counts.length - 8} types</text>
-                            )}
-                          </svg>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
+                <div ref={productiePrintRef} style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+                  {zonePanels.map((panel, idx) => {
+                    const { strips, counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat);
+                    const color = groupSettings?.color ?? '#a64033';
+                    const PAD = 40;
+                    const MAX_DRAW_W = 340;
+                    const MAX_DRAW_H = 420;
+                    const aspect = panel.height / panel.width;
+                    let drawPW = Math.min(MAX_DRAW_W, panel.width * 0.4);
+                    let drawPH = drawPW * aspect;
+                    if (drawPH > MAX_DRAW_H) { drawPH = MAX_DRAW_H; drawPW = drawPH / aspect; }
+                    const sc = drawPW / panel.width;
+                    const TABLE_H = Math.min(counts.length * 12 + 28, 120);
+                    const CARD_W = drawPW + PAD * 2;
+                    const CARD_H = drawPH + PAD * 2 + TABLE_H + 20;
+                    const ox = PAD, oy = 32;
+                    const px = (x) => ox + x * sc;
+                    const py = (y) => oy + (panel.height - y) * sc;
+                    return (
+                      <svg key={panel.id ?? idx} width={CARD_W} height={CARD_H}
+                        viewBox={`0 0 ${CARD_W} ${CARD_H}`}
+                        style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', flexShrink: 0 }}
+                        xmlns="http://www.w3.org/2000/svg">
+                        <text x={CARD_W / 2} y={14} textAnchor="middle" fontSize={9} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">
+                          P{idx + 1}{selectedZone ? ` · ${selectedZone.label}` : ''} — {mm(panel.width)} × {mm(panel.height)} mm
+                        </text>
+                        <text x={CARD_W / 2} y={25} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
+                          {verband} · {strips.length} strips
+                        </text>
+                        <rect x={ox} y={oy} width={drawPW} height={drawPH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1} />
+                        {strips.map((s, si) => {
+                          const rw = s.width * sc;
+                          const rh = s.height * sc;
+                          const rx = px(s.x);
+                          const ry = py(s.y + s.height);
+                          return (
+                            <g key={si}>
+                              <rect x={rx} y={ry} width={rw} height={rh}
+                                fill={brickColor(s.label, color)} stroke="rgba(0,0,0,0.2)" strokeWidth={0.3} />
+                              {rw > 18 && rh > 7 && (
+                                <text x={rx + rw / 2} y={ry + rh / 2} textAnchor="middle" dominantBaseline="middle"
+                                  fontSize={Math.min(7, rh * 0.55)} fill="#000" fontFamily="Arial, sans-serif">{mm(s.width)}</text>
+                              )}
+                            </g>
+                          );
+                        })}
+                        <text x={ox + drawPW / 2} y={oy - 4} textAnchor="middle" fontSize={7} fill="#334155" fontFamily="Arial, sans-serif">{mm(panel.width)} mm</text>
+                        <text x={ox - 5} y={oy + drawPH / 2} textAnchor="middle" fontSize={7} fill="#334155" fontFamily="Arial, sans-serif"
+                          transform={`rotate(-90,${ox - 5},${oy + drawPH / 2})`}>{mm(panel.height)} mm</text>
+                        <line x1={ox} y1={oy + drawPH + 6} x2={ox + drawPW} y2={oy + drawPH + 6} stroke="#e2e8f0" strokeWidth={0.8} />
+                        <text x={ox} y={oy + drawPH + 18} fontSize={7.5} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">Strippentelling:</text>
+                        {counts.slice(0, 8).map(({ label, len, n }, ci) => (
+                          <text key={ci} x={ox} y={oy + drawPH + 28 + ci * 11} fontSize={7} fill="#334155" fontFamily="Arial, sans-serif">
+                            {n}× {label} {len} mm
+                          </text>
+                        ))}
+                        {counts.length > 8 && (
+                          <text x={ox} y={oy + drawPH + 28 + 8 * 11} fontSize={6.5} fill="#94a3b8" fontFamily="Arial, sans-serif">… nog {counts.length - 8} types</text>
+                        )}
+                      </svg>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
