@@ -1113,8 +1113,26 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', marginBottom: 4 }}>
                   Mallen — {groupSettings?.name ?? 'Groep'} · {tpl.molds} mal{tpl.molds !== 1 ? 'len' : ''} · {tpl.verband}{tpl.rotated ? ' (90° gedraaid in mal)' : ''}
                 </div>
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
                   Lagenmaat: {tpl.lagenmaat} mm · Strip {tpl.brickW}×{tpl.brickH} mm · Stap: {tpl.colStep} mm · Cyclus: {tpl.cycleLength} rijen
+                </div>
+
+                <div style={{ marginBottom: 14, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 5, fontSize: 11 }}>
+                  <div style={{ fontWeight: 700, color: '#166534', marginBottom: 4 }}>Productievolgorde — alternerend</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                    {tpl.templates.map((tmpl, i) => (
+                      <>
+                        <span key={`lbl-${tmpl.id}`} style={{ background: i % 2 === 0 ? '#1e3a5f' : '#0f766e', color: '#fff', borderRadius: 4, padding: '2px 8px', fontWeight: 700, fontSize: 11 }}>
+                          MAL {tmpl.id} · Rijen {tmpl.globalRows.map((r) => r + 1).join('+')}
+                        </span>
+                        <span key={`arr-${tmpl.id}`} style={{ color: '#64748b', fontSize: 13 }}>→</span>
+                      </>
+                    ))}
+                    <span style={{ color: '#64748b', fontSize: 11, fontStyle: 'italic' }}>herhaal…</span>
+                  </div>
+                  <div style={{ marginTop: 6, color: '#166534', fontSize: 10 }}>
+                    Beide mallen hebben <strong>dezelfde outline</strong> (zelfde staalplaat DXF voor lasersnijden). Alleen de sleufposities per doorgang verschillen.
+                  </div>
                 </div>
 
                 {tpl.templates.map((tmpl) => {
@@ -1122,7 +1140,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   return (
                     <div key={tmpl.id} style={{ marginBottom: 20 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                        <span style={{ fontWeight: 700, fontSize: 12, color: '#1e3a5f' }}>MAL-{tmpl.id}</span>
+                        <span style={{ fontWeight: 700, fontSize: 12, color: '#1e3a5f' }}>MAL {tmpl.id}</span>
                         <span style={{ fontSize: 10, color: '#64748b' }}>
                           Rijen {tmpl.globalRows.map((r) => r + 1).join(', ')} · Offsets: {tmpl.rows.map((r) => `R${r.globalRow + 1}=${r.offset}mm`).join(' · ')}
                         </span>

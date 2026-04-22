@@ -2416,11 +2416,11 @@ export default function App() {
                   const fpsTemplates = getMoldTemplates(fpsVerband, fpsMat, fpsMoldDims);
                   return fpsTemplates.templates.map((tmpl) => (
                     <Fragment key={tmpl.id}>
-                      <span style={{ fontSize: 10, color: '#475569' }}>MAL-{tmpl.id}:</span>
-                      <Tooltip text={`DXF fabricage-tekening MAL-${tmpl.id} (rijen ${tmpl.globalRows.map((r) => r+1).join('–')}) voor metaalzetterij.`}>
+                      <span style={{ fontSize: 10, color: '#475569' }}>MAL {tmpl.id}:</span>
+                      <Tooltip text={`DXF fabricage-tekening MAL ${tmpl.id} (rijen ${tmpl.globalRows.map((r) => r+1).join('–')}) voor metaalzetterij.`}>
                         <button onClick={() => handleExportMalDXF(tmpl.id)} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>⬇ DXF</button>
                       </Tooltip>
-                      <Tooltip text={`Printbare maltekening MAL-${tmpl.id} in nieuw venster (A0 liggend).`}>
+                      <Tooltip text={`Printbare maltekening MAL ${tmpl.id} in nieuw venster (A0 liggend).`}>
                         <button onClick={() => handleExportMalPDF(tmpl.id)} style={{ background: '#0e7490', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>🖨 PDF</button>
                       </Tooltip>
                     </Fragment>

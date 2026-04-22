@@ -335,7 +335,8 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   const rowsPerMold = Math.min(3, Math.max(1, Math.floor((innerH + minRowGap) / (slotH + minRowGap))));
   // Wildverband: same module-fraction offsets as pattern.js [0, 1/3, 2/3, 1/6, 5/6, 1/2]
   const WILD_FRACS = [0, 1/3, 2/3, 1/6, 5/6, 1/2];
-  const moldIdx = moldId === 'B' ? 1 : 0;
+  const MOLD_ORDER = ['Links', 'Rechts', 'C', 'D', 'A', 'B'];
+  const moldIdx = MOLD_ORDER.indexOf(moldId) >= 0 ? Math.min(MOLD_ORDER.indexOf(moldId), 3) : 0;
   const globalRowBase = moldIdx * rowsPerMold;
   const kopW  = isStaand ? 0 : Math.round((steenL - stoot) / 2);
   const drieKW = isStaand ? 0 : Math.round((steenL + stoot) * 0.75 - stoot);
@@ -499,7 +500,7 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   addCircle(11, r2(moldH / 2), 4, 'HOLES', 1);
 
   addText(frame, -18, 8,
-    `MAL-${moldId} | ${verband} | ${moldW}x${moldH}mm | ${g.rowsPerMold} rijen/doorgang | Staal 2mm`, 'TITLE');
+    `MAL ${moldId} | ${verband} | ${moldW}x${moldH}mm | ${g.rowsPerMold} rijen/doorgang | Staal 2mm`, 'TITLE');
 
   const header = [
     '0', 'SECTION', '2', 'HEADER',
@@ -733,7 +734,7 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   });
 
   // ── Small title in mold ──
-  parts.push(`<text x="${r2(ox + frameLeft + 2)}" y="${r2(oy + 9)}" font-size="6" fill="#64748b">MAL-${moldId} | ${verband} | ${moldW}×${moldH}mm | ${rowsPerMold} rijen | Staal 2mm</text>`);
+  parts.push(`<text x="${r2(ox + frameLeft + 2)}" y="${r2(oy + 9)}" font-size="6" fill="#64748b">MAL ${moldId} | ${verband} | ${moldW}×${moldH}mm | ${rowsPerMold} rijen | Staal 2mm</text>`);
 
   parts.push('</svg>');
   return parts.join('\n');
@@ -745,7 +746,7 @@ export function generateMoldPrintHTML(mat, verband, moldDims, moldId = 'A') {
 <html lang="nl">
 <head>
 <meta charset="utf-8">
-<title>MAL-${moldId} | ${verband}</title>
+<title>MAL ${moldId} | ${verband}</title>
 <style>
   @page { size: A0 landscape; margin: 10mm; }
   * { box-sizing: border-box; }
@@ -767,7 +768,7 @@ export function generateMoldPrintHTML(mat, verband, moldDims, moldId = 'A') {
  * verband + material + mold dimensions.
  *
  * Each descriptor contains:
- *   id          : 'A' | 'B' | … (label for the physical mold)
+ *   id          : 'Links' | 'Rechts' | … (label for the physical mold)
  *   globalRows  : [0,1,2] | [3,4,5] | … (0-based global row indices)
  *   rowsPerMold : number of brick rows in this mold
  *   lagenmaat   : height of one brick row incl. joint (mm)
@@ -826,7 +827,7 @@ export function getMoldTemplates(verband, mat, moldDims) {
   // Determine number of molds (cycle length / rowsPerMold)
   const cycleLength = verband === 'wildverband' ? 6 : 2;
   const numMolds = Math.ceil(cycleLength / rowsPerMold);
-  const MOLD_IDS = ['A', 'B', 'C', 'D'];
+  const MOLD_IDS = ['Links', 'Rechts', 'C', 'D'];
 
   const templates = [];
   for (let m = 0; m < numMolds; m++) {
