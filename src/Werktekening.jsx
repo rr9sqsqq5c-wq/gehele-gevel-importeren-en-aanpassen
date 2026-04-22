@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG } from './lib/panelization.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 
 function generatePaneelId(entity, projectNr, level, stramienStart, stramienEnd, seqNr, panelType) {
@@ -1096,6 +1096,17 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           const tpl = getMoldTemplates(verband, mat, moldDims);
           const zonesForMal = selectedZone ? [selectedZone] : facadeZones;
 
+          function exportCombinedSVG() {
+            const svgStr = generateCombinedMoldSVG(mat, verband, moldDims);
+            const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `MAL-gecombineerd-${verband}.svg`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+
           function exportMalSVG(moldId) {
             const svgStr = generateMoldSVG(mat, verband, moldDims, moldId);
             const blob = new Blob([svgStr], { type: 'image/svg+xml' });
@@ -1107,62 +1118,38 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             URL.revokeObjectURL(url);
           }
 
+          const combinedSvgHtml = generateCombinedMoldSVG(mat, verband, moldDims);
+
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.10)', padding: 16 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', marginBottom: 4 }}>
-                  Mallen — {groupSettings?.name ?? 'Groep'} · {tpl.molds} mal{tpl.molds !== 1 ? 'len' : ''} · {tpl.verband}{tpl.rotated ? ' (90° gedraaid in mal)' : ''}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1 }}>
+                    Mallen — {groupSettings?.name ?? 'Groep'} · {tpl.molds} mal{tpl.molds !== 1 ? 'len' : ''} · {tpl.verband}{tpl.rotated ? ' (90° gedraaid in mal)' : ''}
+                  </div>
+                  <button onClick={exportCombinedSVG} style={{ fontSize: 10, background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    ⬇ SVG gecombineerd
+                  </button>
                 </div>
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 12 }}>
                   Lagenmaat: {tpl.lagenmaat} mm · Strip {tpl.brickW}×{tpl.brickH} mm · Stap: {tpl.colStep} mm · Cyclus: {tpl.cycleLength} rijen
+                  · <span style={{ color: '#166534', fontWeight: 600 }}>Zelfde outline voor beide mallen</span>
                 </div>
 
-                <div style={{ marginBottom: 14, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 5, fontSize: 11 }}>
-                  <div style={{ fontWeight: 700, color: '#166534', marginBottom: 4 }}>Productievolgorde — alternerend</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-                    {tpl.templates.map((tmpl, i) => (
-                      <>
-                        <span key={`lbl-${tmpl.id}`} style={{ background: i % 2 === 0 ? '#1e3a5f' : '#0f766e', color: '#fff', borderRadius: 4, padding: '2px 8px', fontWeight: 700, fontSize: 11 }}>
-                          MAL {tmpl.id} · Rijen {tmpl.globalRows.map((r) => r + 1).join('+')}
-                        </span>
-                        <span key={`arr-${tmpl.id}`} style={{ color: '#64748b', fontSize: 13 }}>→</span>
-                      </>
-                    ))}
-                    <span style={{ color: '#64748b', fontSize: 11, fontStyle: 'italic' }}>herhaal…</span>
-                  </div>
-                  <div style={{ marginTop: 6, color: '#166534', fontSize: 10 }}>
-                    Beide mallen hebben <strong>dezelfde outline</strong> (zelfde staalplaat DXF voor lasersnijden). Alleen de sleufposities per doorgang verschillen.
-                  </div>
-                </div>
+                <div
+                  dangerouslySetInnerHTML={{ __html: combinedSvgHtml }}
+                  style={{ maxWidth: '100%', overflowX: 'auto', borderRadius: 4, border: '1px solid #e2e8f0' }}
+                />
 
-                {tpl.templates.map((tmpl) => {
-                  const svgHtml = generateMoldSVG(mat, verband, moldDims, tmpl.id);
-                  return (
-                    <div key={tmpl.id} style={{ marginBottom: 20 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                        <span style={{ fontWeight: 700, fontSize: 12, color: '#1e3a5f' }}>MAL {tmpl.id}</span>
-                        <span style={{ fontSize: 10, color: '#64748b' }}>
-                          Rijen {tmpl.globalRows.map((r) => r + 1).join(', ')} · Offsets: {tmpl.rows.map((r) => `R${r.globalRow + 1}=${r.offset}mm`).join(' · ')}
-                        </span>
-                        <button
-                          onClick={() => exportMalSVG(tmpl.id)}
-                          style={{ marginLeft: 'auto', fontSize: 10, background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', cursor: 'pointer' }}
-                        >⬇ SVG</button>
+                <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {tpl.templates.map((tmpl) =>
+                    tmpl.rows.map((row) => (
+                      <div key={`${tmpl.id}-${row.globalRow}`} style={{ fontSize: 10, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 4, padding: '3px 8px', color: '#0c4a6e' }}>
+                        <strong>MAL {tmpl.id} · Rij {row.globalRow + 1}</strong> · offset {row.offset} mm
                       </div>
-                      <div
-                        dangerouslySetInnerHTML={{ __html: svgHtml }}
-                        style={{ maxWidth: '100%', overflowX: 'auto' }}
-                      />
-                      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {tmpl.rows.map((row) => (
-                          <div key={row.globalRow} style={{ fontSize: 10, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 4, padding: '3px 8px', color: '#0c4a6e' }}>
-                            <strong>Rij {row.globalRow + 1}</strong> · offset {row.offset} mm
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
+                    ))
+                  )}
+                </div>
               </div>
 
               {zonesForMal.length > 1 && (
