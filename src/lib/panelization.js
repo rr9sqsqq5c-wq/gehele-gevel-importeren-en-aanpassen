@@ -438,6 +438,9 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
     for (let x = frame; x <= moldW - frame + 0.1; x += pinStepX)
       addCircle(r2(x), r2(py), 3, 'HOLES', 1);
 
+  // Alignment hole — Ø8mm, 11mm from left edge, vertically centred
+  addCircle(11, r2(moldH / 2), 4, 'HOLES', 1);
+
   addText(frame, -18, 8,
     `MAL-${moldId} | ${verband} | ${moldW}x${moldH}mm | ${g.rowsPerMold} rijen/doorgang | Staal 2mm`, 'TITLE');
 
