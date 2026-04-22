@@ -338,7 +338,10 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
     if (verband === 'wildverband') {
       return Math.round(WILD_FRACS[globalRow % 6] * colStep * 10) / 10;
     }
-    if (verband === 'halfsteens' || verband === 'tegelverband' || isStaand) {
+    if (verband === 'halfsteens') {
+      return 0;
+    }
+    if (verband === 'tegelverband' || isStaand) {
       return globalRow % 2 === 0 ? 0 : Math.round(colStep / 2);
     }
     return 0;
@@ -347,7 +350,7 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   function bricksInRow(localRow) {
     const globalRow = globalRowBase + localRow;
     const off = rowOffset(localRow);
-    const hasKop = verband === 'halfsteens' && globalRow % 2 === 0;
+    const hasKop = verband === 'halfsteens' && globalRow % 2 === 1;
     const bricks = [];
     let x = -off;
     if (hasKop) {
@@ -585,7 +588,10 @@ export function getMoldTemplates(verband, mat, moldDims) {
     if (verband === 'wildverband') {
       return Math.round(WILD_FRACS[globalRow % 6] * colStep * 10) / 10;
     }
-    if (verband === 'halfsteens' || verband === 'tegelverband' || isStaand) {
+    if (verband === 'halfsteens') {
+      return 0;
+    }
+    if (verband === 'tegelverband' || isStaand) {
       return globalRow % 2 === 0 ? 0 : Math.round(colStep / 2);
     }
     return 0;
@@ -593,7 +599,7 @@ export function getMoldTemplates(verband, mat, moldDims) {
 
   function rowLabel(globalRow, offset) {
     if (verband === 'halfsteens') {
-      return globalRow % 2 === 0 ? `Rij ${globalRow + 1} — koppenrij (offset 0)` : `Rij ${globalRow + 1} — strekkenrij (offset ${offset} mm)`;
+      return globalRow % 2 === 1 ? `Rij ${globalRow + 1} — koppenrij (offset ${offset} mm)` : `Rij ${globalRow + 1} — strekkenrij (offset 0)`;
     }
     return `Rij ${globalRow + 1} — offset ${offset} mm`;
   }

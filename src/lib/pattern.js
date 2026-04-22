@@ -64,7 +64,7 @@ function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX)
 
   const kop = round2((steenL - stoot) / 2);
   const driekwart = round2((steenL + stoot) * 0.75 - stoot);
-  const useKop = verband === 'halfsteens' && rowIndex % 2 === 0;
+  const useKop = verband === 'halfsteens' && rowIndex % 2 === 1;
 
   let pieces = [];
 
@@ -136,6 +136,52 @@ function getRest(pieces, totalWidth) {
   if (!pieces.length) return round2(totalWidth);
   const last = pieces[pieces.length - 1];
   return round2(totalWidth - (last.start + last.length));
+}
+
+function fixOpeningEdgePieces(pieces, leftEdges, rightEdges, kop, driekwart, stoot) {
+  if (!leftEdges.length && !rightEdges.length) return pieces;
+  let result = [...pieces];
+
+  for (const edgeX of leftEdges) {
+    const idx = result.findIndex((p) => Math.abs(p.start + p.length - edgeX) < 1.5);
+    if (idx < 0) continue;
+    if (result[idx].length >= kop - 0.5) continue;
+
+    let volIdx = -1;
+    for (let i = idx - 1; i >= 0; i--) {
+      if (result[i].label !== 'Vol') continue;
+      let gapFound = false;
+      for (let j = i; j < idx - 1; j++) {
+        if (Math.abs(result[j + 1].start - (result[j].start + result[j].length + stoot)) > 2) { gapFound = true; break; }
+      }
+      if (!gapFound) { volIdx = i; break; }
+    }
+    if (volIdx < 0) continue;
+
+    result[volIdx] = { ...result[volIdx], length: driekwart, label: 'Driekwart' };
+    let x = result[volIdx].start + driekwart + stoot;
+    for (let i = volIdx + 1; i < idx; i++) {
+      result[i] = { ...result[i], start: round2(x) };
+      x += result[i].length + stoot;
+    }
+    const newStart = round2(x);
+    const newLen = round2(edgeX - newStart);
+    if (newLen > 0.5) {
+      const label = Math.abs(newLen - kop) < 1 ? 'Kop' : newLen < kop ? 'Rest' : result[idx].label;
+      result[idx] = { ...result[idx], start: newStart, length: newLen, label };
+    } else {
+      result.splice(idx, 1);
+    }
+  }
+
+  for (const edgeX of rightEdges) {
+    const idx = result.findIndex((p) => Math.abs(p.start - edgeX) < 1.5);
+    if (idx >= 0 && result[idx].length < kop - 0.5) {
+      result[idx] = { ...result[idx], label: 'Rest' };
+    }
+  }
+
+  return result.filter((p) => p.length > 0.5);
 }
 
 function isInOpening(x, y, openings, steenH) {
@@ -257,7 +303,7 @@ export function buildGroupPattern(walls, adjacencies, material, verband, opening
 }
 
 export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk, minHoogte) {
-  const { steenH, lint } = material;
+  const { steenL, steenH, lint, stoot } = material;
   const lagenmaat = getLagenmaat(material, verband);
   const rowH = verband === 'staand_tegelverband' ? material.steenL : steenH;
 
@@ -400,6 +446,9 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       .map((s) => ({ ...piece, start: round2(s.start), length: round2(s.end - s.start) }));
   }
 
+  const kop = round2((steenL - stoot) / 2);
+  const driekwart = round2((steenL + stoot) * 0.75 - stoot);
+
   const rows = [];
   for (let r = startLaag; r < totalLagen; r++) {
     const rowY = round2(r * lagenmaat);
@@ -409,6 +458,31 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       const parts = splitAroundOpenings(piece, rowY);
       for (const p of parts) clipped.push(p);
     }
+
+    if (verband !== 'staand_tegelverband' && maskOpenings.length) {
+      const leftEdges = [];
+      const rightEdges = [];
+      for (const op of maskOpenings) {
+        const opY = op.y ?? 0;
+        const opH = op.height ?? 0;
+        if (rowY + 1 >= opY && rowY < opY + opH - 1) {
+          if (op.polyPts && op.polyPts.length >= 3) {
+            const midY = rowY + rowH * 0.5;
+            const ranges = polyXRangesAtY(op.polyPts, midY);
+            for (const [ox1, ox2] of ranges) { leftEdges.push(ox1); rightEdges.push(ox2); }
+          } else {
+            leftEdges.push(op.x);
+            rightEdges.push(op.x + op.width);
+          }
+        }
+      }
+      if (leftEdges.length) {
+        const fixed = fixOpeningEdgePieces(clipped, leftEdges, rightEdges, kop, driekwart, stoot);
+        clipped.length = 0;
+        for (const p of fixed) clipped.push(p);
+      }
+    }
+
     if (clipped.length) rows.push({ y: rowY, pieces: clipped });
   }
 
