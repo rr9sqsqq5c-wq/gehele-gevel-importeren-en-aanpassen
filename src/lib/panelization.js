@@ -410,7 +410,22 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
       '10', String(r2(x)), '20', String(r2(y)), '30', '0.0', '40', String(r2(h)), '1', text);
   }
 
-  addPolyRect(0, 0, moldW, moldH, 'FRAME', 7);
+  // Mold outline with notches at bottom
+  const refTotalW  = 3395;
+  const refNotchXs = [272, 970, 1670, 2370, 3070];
+  const refNotchWs = [60, 62, 62, 62, 62];
+  const notchDepth = 20;
+  const notchXs = refNotchXs.map(p => Math.round(p * moldW / refTotalW));
+  const notchWs = refNotchWs.map(w => Math.max(16, Math.round(w * moldW / refTotalW)));
+  {
+    const pts = [[0, 0], [moldW, 0], [moldW, moldH]];
+    for (let i = notchXs.length - 1; i >= 0; i--) {
+      pts.push([notchXs[i] + notchWs[i], moldH], [notchXs[i] + notchWs[i], moldH - notchDepth], [notchXs[i], moldH - notchDepth], [notchXs[i], moldH]);
+    }
+    pts.push([0, moldH]);
+    lines.push('0', 'LWPOLYLINE', '8', 'FRAME', '62', '7', '70', '1', '90', String(pts.length));
+    for (const [px, py] of pts) lines.push('10', String(r2(px)), '20', String(r2(py)));
+  }
   addPolyRect(frame, frame, innerW, innerH, 'GUIDE', 8);
 
   for (const row of rows) {
@@ -449,75 +464,195 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
 
 export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const g = _moldGeometry(mat, verband, moldDims, moldId);
-  const { moldW, moldH, frame, innerW, innerH, brickH, rows, pinYs, pinStepX, rowsPerMold, globalRowBase } = g;
+  const { moldW, moldH, frame, innerW, innerH, brickH, rows, rowsPerMold, globalRowBase } = g;
+  const isStaand = verband === 'staand_tegelverband';
+  const displayBrickW = isStaand ? (mat?.steenH ?? 50) : (mat?.steenL ?? 210);
+  const displayBrickH = isStaand ? (mat?.steenL ?? 210) : (mat?.steenH ?? 50);
 
-  const margin = 30;
-  const titleH = 80;
-  const dimH = 30;
-  const vbW = moldW + 2 * margin;
-  const vbH = moldH + 2 * margin + titleH + dimH;
-  const ox = margin;
-  const oy = margin + dimH;
   const r2 = (v) => Math.round(v * 100) / 100;
+  const rn = (v) => Math.round(v);
 
-  function sy(y) { return r2(oy + (moldH - y)); }
-  function sx(x) { return r2(ox + x); }
+  // SVG layout
+  const mLeft  = 70;   // space left of mold (height dim)
+  const mRight  = 40;
+  const mTop    = 30;
+  const dimRowH = 26;  // vertical space per dimension chain row
+  const numDimRows = 4;
+  const refGap  = 50;  // gap between last dim row and reference line
+  const legendW = 210;
+  const legendH = 90;
+  const mBottom = legendH + 30;
 
-  const slotColor = { Vol: '#f59e0b', Kop: '#f97316', Rest: '#fca5a5' };
+  const svgW = mLeft + moldW + mRight;
+  const svgH = mTop + moldH + numDimRows * dimRowH + refGap + mBottom;
 
-  const parts = [];
-  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${r2(vbW)} ${r2(vbH)}" style="background:#f8fafc;font-family:Arial,sans-serif">`);
+  const ox = mLeft;  // mold left in SVG
+  const oy = mTop;   // mold top in SVG
 
-  parts.push(`<defs><pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="#ccc" stroke-width="1"/></pattern></defs>`);
+  // Notch geometry — proportional to 3395mm reference drawing
+  const refTotalW  = 3395;
+  const refNotchXs = [272, 970, 1670, 2370, 3070];
+  const refNotchWs = [60, 62, 62, 62, 62];
+  const notchDepth = 20;
+  const notchXs = refNotchXs.map(p => rn(p * moldW / refTotalW));
+  const notchWs = refNotchWs.map(w => Math.max(16, rn(w * moldW / refTotalW)));
 
-  parts.push(`<rect x="${sx(0)}" y="${sy(moldH)}" width="${moldW}" height="${moldH}" fill="url(#hatch)" stroke="#222" stroke-width="2"/>`);
-  parts.push(`<rect x="${sx(frame)}" y="${sy(moldH - frame)}" width="${innerW}" height="${innerH}" fill="#e2e8f0" stroke="#999" stroke-width="0.8" stroke-dasharray="8,4"/>`);
-
-  for (const row of rows) {
-    for (const b of row.bricks) {
-      const sx1 = sx(frame + b.x - 1.5);
-      const sy1 = sy(row.yRow + brickH + 3 - 1.5);
-      const sw = r2(b.w + 3);
-      const sh = r2(brickH + 3);
-      const fill = slotColor[b.label] ?? '#f59e0b';
-      parts.push(`<rect x="${sx1}" y="${sy1}" width="${sw}" height="${sh}" fill="${fill}" stroke="#b45309" stroke-width="0.6" rx="1"/>`);
-      if (sw > 20) {
-        const tx = r2(Number(sx1) + sw / 2);
-        const ty = r2(Number(sy1) + sh / 2 + 3);
-        const fs = Math.min(8, Math.max(4, sh * 0.3));
-        parts.push(`<text x="${tx}" y="${ty}" text-anchor="middle" font-size="${r2(fs)}" fill="#78350f">${Math.round(b.w)}</text>`);
-      }
+  // Mold outline path with notches cut from bottom edge
+  function moldOutlinePath() {
+    let d = `M ${ox},${oy}`;
+    d += ` L ${ox + moldW},${oy}`;
+    d += ` L ${ox + moldW},${oy + moldH}`;
+    for (let i = notchXs.length - 1; i >= 0; i--) {
+      const nx = notchXs[i], nw = notchWs[i];
+      d += ` L ${ox + nx + nw},${oy + moldH}`;
+      d += ` L ${ox + nx + nw},${oy + moldH - notchDepth}`;
+      d += ` L ${ox + nx},${oy + moldH - notchDepth}`;
+      d += ` L ${ox + nx},${oy + moldH}`;
     }
-    const labelY = r2(sy(row.yRow) - 2);
-    parts.push(`<text x="${sx(0)}" y="${labelY}" font-size="7" fill="#166534" font-weight="bold">R${row.globalRow + 1} +${row.off}mm</text>`);
+    d += ` L ${ox},${oy + moldH} Z`;
+    return d;
   }
 
-  for (const py of pinYs)
-    for (let x = frame; x <= moldW - frame + 0.1; x += pinStepX)
-      parts.push(`<circle cx="${sx(x)}" cy="${sy(py)}" r="3" fill="none" stroke="#dc2626" stroke-width="1"/>`);
+  // Dimension helper: horizontal dim line with end ticks and centred text
+  function dimLine(x1, x2, yCentre, label, color, tickHalf = 5, fSize = 7) {
+    const mx = r2((x1 + x2) / 2);
+    return `<line x1="${r2(x1)}" y1="${r2(yCentre - tickHalf)}" x2="${r2(x1)}" y2="${r2(yCentre + tickHalf)}" stroke="${color}" stroke-width="0.8"/>` +
+           `<line x1="${r2(x2)}" y1="${r2(yCentre - tickHalf)}" x2="${r2(x2)}" y2="${r2(yCentre + tickHalf)}" stroke="${color}" stroke-width="0.8"/>` +
+           `<line x1="${r2(x1)}" y1="${r2(yCentre)}" x2="${r2(x2)}" y2="${r2(yCentre)}" stroke="${color}" stroke-width="0.8"/>` +
+           (Math.abs(x2 - x1) > 14
+             ? `<text x="${mx}" y="${r2(yCentre - tickHalf - 2)}" text-anchor="middle" font-size="${fSize}" fill="${color}">${label}</text>`
+             : '');
+  }
 
-  const dimY = r2(oy - 20);
-  const arrowLen = 8;
-  parts.push(`<line x1="${sx(0)}" y1="${dimY}" x2="${sx(moldW)}" y2="${dimY}" stroke="#334155" stroke-width="1" marker-end="url(#arr)" marker-start="url(#arr)"/>`);
-  parts.push(`<text x="${r2(sx(moldW / 2))}" y="${r2(dimY - 4)}" text-anchor="middle" font-size="10" fill="#334155">${moldW} mm</text>`);
-  const dimX2 = r2(sx(moldW) + 22);
-  parts.push(`<line x1="${dimX2}" y1="${sy(0)}" x2="${dimX2}" y2="${sy(moldH)}" stroke="#334155" stroke-width="1"/>`);
-  parts.push(`<text x="${r2(Number(dimX2) + 4)}" y="${r2((sy(0) + sy(moldH)) / 2 + 4)}" font-size="10" fill="#334155" transform="rotate(90,${r2(Number(dimX2) + 4)},${r2((sy(0) + sy(moldH)) / 2 + 4)})">${moldH} mm</text>`);
+  // Cross tick (+) for centre-to-centre row
+  function plusTick(cx, y, color, sz = 4) {
+    return `<line x1="${r2(cx - sz)}" y1="${r2(y)}" x2="${r2(cx + sz)}" y2="${r2(y)}" stroke="${color}" stroke-width="0.8"/>` +
+           `<line x1="${r2(cx)}" y1="${r2(y - sz)}" x2="${r2(cx)}" y2="${r2(y + sz)}" stroke="${color}" stroke-width="0.8"/>`;
+  }
 
-  const tyBase = r2(oy + moldH + margin + 6);
-  const verbandNames = { halfsteens: 'Halfsteens verband', tegelverband: 'Tegelverband', staand_tegelverband: 'Staand tegelverband', wildverband: 'Wildverband' };
-  parts.push(`<rect x="${sx(0)}" y="${r2(oy + moldH + margin - 4)}" width="${moldW}" height="${r2(titleH)}" fill="#1e293b" rx="4"/>`);
-  parts.push(`<text x="${sx(20)}" y="${r2(Number(tyBase) + 14)}" font-size="20" font-weight="bold" fill="#f1f5f9">MAL-${moldId}</text>`);
-  parts.push(`<text x="${sx(120)}" y="${r2(Number(tyBase) + 14)}" font-size="14" fill="#94a3b8">${verbandNames[verband] ?? verband}</text>`);
-  parts.push(`<text x="${sx(20)}" y="${r2(Number(tyBase) + 34)}" font-size="10" fill="#94a3b8">Afmeting: ${moldW} × ${moldH} mm  |  ${rowsPerMold} rijen/doorgang  |  Rijen ${globalRowBase + 1}–${globalRowBase + rowsPerMold}  |  Staalplaat 2mm</text>`);
-  parts.push(`<text x="${sx(20)}" y="${r2(Number(tyBase) + 50)}" font-size="10" fill="#94a3b8">Sleuven: +1.5mm speling rondom  |  Bevestigingsgaten: Ø6mm  |  Alle maten in mm</text>`);
+  const parts = [];
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${r2(svgW)} ${r2(svgH)}" style="background:#ffffff;font-family:Arial,sans-serif">`);
 
-  const legX = sx(moldW - 400);
-  const legY = r2(Number(tyBase) + 10);
-  parts.push(`<rect x="${r2(Number(legX))}" y="${r2(Number(legY))}" width="12" height="8" fill="#f59e0b" stroke="#b45309" stroke-width="0.5"/><text x="${r2(Number(legX) + 16)}" y="${r2(Number(legY) + 7)}" font-size="9" fill="#e2e8f0">Vol (${mat?.steenL ?? 210}mm)</text>`);
-  parts.push(`<rect x="${r2(Number(legX))}" y="${r2(Number(legY) + 14)}" width="12" height="8" fill="#f97316" stroke="#b45309" stroke-width="0.5"/><text x="${r2(Number(legX) + 16)}" y="${r2(Number(legY) + 21)}" font-size="9" fill="#e2e8f0">Kop (${Math.round((mat?.steenL ?? 210) / 2)}mm)</text>`);
-  parts.push(`<rect x="${r2(Number(legX))}" y="${r2(Number(legY) + 28)}" width="12" height="8" fill="#fca5a5" stroke="#b45309" stroke-width="0.5"/><text x="${r2(Number(legX) + 16)}" y="${r2(Number(legY) + 35)}" font-size="9" fill="#e2e8f0">Rest</text>`);
-  parts.push(`<circle cx="${r2(Number(legX) + 6)}" cy="${r2(Number(legY) + 50)}" r="4" fill="none" stroke="#dc2626" stroke-width="1"/><text x="${r2(Number(legX) + 16)}" y="${r2(Number(legY) + 54)}" font-size="9" fill="#e2e8f0">Bevestigingsgat Ø6mm</text>`);
+  // ── Mold body ──
+  parts.push(`<path d="${moldOutlinePath()}" fill="#dde3ed" stroke="#1e293b" stroke-width="1.5"/>`);
+  // Inner guide dashed rect
+  parts.push(`<rect x="${r2(ox + frame)}" y="${r2(oy + frame)}" width="${r2(innerW)}" height="${r2(innerH)}" fill="none" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="5,3"/>`);
+
+  // ── Strip slots (white rectangles inside mold) ──
+  const slotPad = 1.5;
+  for (const row of rows) {
+    const sTop = r2(oy + moldH - frame - row.yRow - brickH - slotPad);
+    const sH   = r2(brickH + 2 * slotPad);
+    for (const b of row.bricks) {
+      const sLeft = r2(ox + frame + b.x - slotPad);
+      const sW    = r2(b.w + 2 * slotPad);
+      parts.push(`<rect x="${sLeft}" y="${sTop}" width="${sW}" height="${sH}" fill="#ffffff" stroke="#334155" stroke-width="1" rx="1"/>`);
+    }
+    // Row label inside mold on the left
+    const labelY = r2(oy + moldH - frame - row.yRow - brickH / 2 + 3);
+    parts.push(`<text x="${r2(ox + frame + 2)}" y="${labelY}" font-size="6" fill="#475569">R${row.globalRow + 1}</text>`);
+  }
+
+  // Strip size label — top-left inside mold
+  parts.push(`<text x="${r2(ox + frame + 30)}" y="${r2(oy + frame + 11)}" font-size="8" fill="#1e293b" font-weight="bold">${displayBrickW}×${displayBrickH}mm</text>`);
+
+  // ── Dimension area baseline (just below mold) ──
+  const dimBase = oy + moldH + 6;
+
+  // DIM ROW 0 — Notch boundary positions (black)
+  const rowY0 = dimBase + dimRowH * 0.55;
+  {
+    const xs = [ox];
+    for (let i = 0; i < notchXs.length; i++) {
+      xs.push(ox + notchXs[i]);
+      xs.push(ox + notchXs[i] + notchWs[i]);
+    }
+    xs.push(ox + moldW);
+    for (let i = 0; i < xs.length - 1; i++) {
+      parts.push(dimLine(xs[i], xs[i + 1], rowY0, String(rn(xs[i + 1] - xs[i])), '#111111', 5, 6));
+    }
+  }
+
+  // DIM ROW 1 — Individual strip widths + joints (black, smaller)
+  const rowY1 = dimBase + dimRowH * 1.6;
+  const refBricks = rows[0]?.bricks ?? [];
+  if (refBricks.length) {
+    const absX = b => ox + frame + b.x;
+    // left margin
+    parts.push(dimLine(ox, absX(refBricks[0]), rowY1, String(rn(frame + refBricks[0].x)), '#333333', 4, 6));
+    for (let i = 0; i < refBricks.length; i++) {
+      const b = refBricks[i];
+      parts.push(dimLine(absX(b), absX(b) + b.w, rowY1, String(rn(b.w)), '#333333', 4, 6));
+      if (i < refBricks.length - 1) {
+        const gap = refBricks[i + 1].x - (b.x + b.w);
+        if (gap > 0.5) parts.push(dimLine(absX(b) + b.w, absX(refBricks[i + 1]), rowY1, String(rn(gap)), '#333333', 4, 6));
+      }
+    }
+    const lastB = refBricks[refBricks.length - 1];
+    const rightMargin = moldW - frame - lastB.x - lastB.w;
+    parts.push(dimLine(absX(lastB) + lastB.w, ox + moldW, rowY1, String(rn(rightMargin)), '#333333', 4, 6));
+  }
+
+  // DIM ROW 2 — Centre-to-centre modules (orange, with + ticks)
+  const rowY2 = dimBase + dimRowH * 2.7;
+  const COL_ORANGE = '#f59e0b';
+  if (refBricks.length) {
+    const cx = b => ox + frame + b.x + b.w / 2;
+    // left edge to first centre
+    parts.push(dimLine(ox, cx(refBricks[0]), rowY2, String(rn(cx(refBricks[0]) - ox)), COL_ORANGE, 4, 7));
+    parts.push(plusTick(cx(refBricks[0]), rowY2, COL_ORANGE));
+    for (let i = 0; i < refBricks.length - 1; i++) {
+      const c1 = cx(refBricks[i]), c2 = cx(refBricks[i + 1]);
+      parts.push(dimLine(c1, c2, rowY2, String(rn(c2 - c1)), COL_ORANGE, 4, 7));
+      parts.push(plusTick(c2, rowY2, COL_ORANGE));
+    }
+    // last centre to right edge
+    const lastCx = cx(refBricks[refBricks.length - 1]);
+    parts.push(dimLine(lastCx, ox + moldW, rowY2, String(rn(ox + moldW - lastCx)), COL_ORANGE, 4, 7));
+  }
+
+  // DIM ROW 3 — Total width (blue)
+  const rowY3 = dimBase + dimRowH * 3.8;
+  const COL_BLUE = '#2563eb';
+  parts.push(dimLine(ox, ox + moldW, rowY3, String(moldW), COL_BLUE, 7, 9));
+
+  // ── Left-side height dimension (blue) ──
+  {
+    const hx = ox - 16;
+    parts.push(`<line x1="${r2(hx - 4)}" y1="${r2(oy)}" x2="${r2(hx + 4)}" y2="${r2(oy)}" stroke="${COL_BLUE}" stroke-width="0.8"/>`);
+    parts.push(`<line x1="${r2(hx - 4)}" y1="${r2(oy + moldH)}" x2="${r2(hx + 4)}" y2="${r2(oy + moldH)}" stroke="${COL_BLUE}" stroke-width="0.8"/>`);
+    parts.push(`<line x1="${r2(hx)}" y1="${r2(oy)}" x2="${r2(hx)}" y2="${r2(oy + moldH)}" stroke="${COL_BLUE}" stroke-width="0.8"/>`);
+    const midY = r2(oy + moldH / 2);
+    parts.push(`<text x="${r2(hx - 5)}" y="${midY}" text-anchor="middle" dominant-baseline="middle" font-size="8" fill="${COL_BLUE}" transform="rotate(-90,${r2(hx - 5)},${midY})">${moldH}</text>`);
+  }
+
+  // ── Reference line ──
+  const refLineY = dimBase + numDimRows * dimRowH + 10;
+  parts.push(`<line x1="${r2(ox - 10)}" y1="${r2(refLineY)}" x2="${r2(ox + moldW + 10)}" y2="${r2(refLineY)}" stroke="#000000" stroke-width="1.5"/>`);
+  // Reference dim beneath it
+  parts.push(dimLine(ox, ox + moldW, refLineY + 18, String(moldW), COL_BLUE, 5, 8));
+
+  // ── Legend (bottom-right) ──
+  const legX  = r2(ox + moldW - legendW);
+  const legY  = r2(refLineY + 34);
+  const legPad = 8;
+  parts.push(`<rect x="${legX}" y="${legY}" width="${legendW}" height="${legendH}" fill="#ffffff" stroke="#334155" stroke-width="0.8"/>`);
+  parts.push(`<text x="${r2(Number(legX) + legPad)}" y="${r2(Number(legY) + 13)}" font-size="7" fill="#1e293b" font-weight="bold">Legenda: maatvoering</text>`);
+  const legItems = [
+    { color: COL_BLUE,    label: 'Hoofdmaatvoering' },
+    { color: COL_ORANGE,  label: 'Lagenmaat' },
+    { color: '#111111',   label: 'Overige' },
+    { color: '#dc2626',   label: 'Laatste steenstrips' },
+  ];
+  legItems.forEach(({ color, label }, i) => {
+    const lx  = r2(Number(legX) + legPad);
+    const ly  = r2(Number(legY) + 24 + i * 15);
+    parts.push(`<rect x="${lx}" y="${r2(Number(ly) - 7)}" width="16" height="8" fill="${color}"/>`);
+    parts.push(`<text x="${r2(Number(lx) + 20)}" y="${ly}" font-size="7" fill="#1e293b">${label}</text>`);
+  });
+
+  // ── Small title in mold ──
+  parts.push(`<text x="${r2(ox + frame + 2)}" y="${r2(oy + 9)}" font-size="6" fill="#64748b">MAL-${moldId} | ${verband} | ${moldW}×${moldH}mm | ${rowsPerMold} rijen | Staal 2mm</text>`);
 
   parts.push('</svg>');
   return parts.join('\n');
