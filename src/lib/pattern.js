@@ -25,10 +25,12 @@ function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX)
     // en rij 7 exact gelijk is aan rij 1 (naadloos repeterend):
     // [0, 73, 146, 36, 183, 110] → stappen: 73, 73, 110, 73, 73, 110 (allen ≥ 73mm)
     // Som van stappen = 2×220 = 660 → rij 6 sluit naadloos aan op rij 0
-    const WILD_OFFSETS_MM = [0, 73, 146, 36, 183, 110];
+    // Fractions of module: [0, 1/3, 2/3, 1/6, 5/6, 1/2]
+    // All consecutive steps ≥ 1/3 module; sum = 2 modules → row 7 = row 1 (naadloos)
+    const WILD_FRACS = [0, 1/3, 2/3, 1/6, 5/6, 1/2];
     const kop = round2((steenL - stoot) / 2);         // ~100 mm
     const driekwart = round2((steenL + stoot) * 0.75 - stoot); // ~157 mm
-    const shift = round2(WILD_OFFSETS_MM[((rowIndex % 6) + 6) % 6]);
+    const shift = round2(WILD_FRACS[((rowIndex % 6) + 6) % 6] * module);
     const pieces = [];
     let brickStart = round2(-shift);
     while (brickStart < totalWidth - 0.001) {

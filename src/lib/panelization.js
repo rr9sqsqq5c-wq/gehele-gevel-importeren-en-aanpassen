@@ -327,7 +327,8 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   const innerW = moldW - 2 * frame;
   const innerH = moldH - 2 * frame;
   const rowsPerMold = Math.max(1, Math.floor(innerH / lagenmaat));
-  const WILD_12 = [[0, 6, 3], [9, 2, 8]];
+  // Wildverband: same module-fraction offsets as pattern.js [0, 1/3, 2/3, 1/6, 5/6, 1/2]
+  const WILD_FRACS = [0, 1/3, 2/3, 1/6, 5/6, 1/2];
   const moldIdx = moldId === 'B' ? 1 : 0;
   const globalRowBase = moldIdx * rowsPerMold;
   const kopW = isStaand ? 0 : Math.round((steenL - stoot) / 2);
@@ -335,8 +336,7 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   function rowOffset(localRow) {
     const globalRow = globalRowBase + localRow;
     if (verband === 'wildverband') {
-      const t = WILD_12[moldIdx][localRow % 3];
-      return Math.round((t / 12) * colStep * 10) / 10;
+      return Math.round(WILD_FRACS[globalRow % 6] * colStep * 10) / 10;
     }
     if (verband === 'halfsteens' || verband === 'tegelverband' || isStaand) {
       return globalRow % 2 === 0 ? 0 : Math.round(colStep / 2);
@@ -541,4 +541,95 @@ export function generateMoldPrintHTML(mat, verband, moldDims, moldId = 'A') {
 <script>window.onload = () => { setTimeout(() => window.print(), 300); };<\/script>
 </body>
 </html>`;
+}
+
+/**
+ * getMoldTemplates — returns an array of mold-template descriptors for a given
+ * verband + material + mold dimensions.
+ *
+ * Each descriptor contains:
+ *   id          : 'A' | 'B' | … (label for the physical mold)
+ *   globalRows  : [0,1,2] | [3,4,5] | … (0-based global row indices)
+ *   rowsPerMold : number of brick rows in this mold
+ *   lagenmaat   : height of one brick row incl. joint (mm)
+ *   brickW      : visible brick width in mold (mm)   — steenH for staand
+ *   brickH      : visible brick height in mold (mm)  — steenL for staand
+ *   colStep     : brick width + stootvoeg (mm)
+ *   rotated     : true for staand_tegelverband (mold is 90° rotated vs facade)
+ *   rows        : [{ globalRow, offset, label }]
+ *     offset = horizontal shift of the first brick from the mold left edge (mm)
+ *     label  = human-readable row description
+ *   molds       : total number of molds in this cycle
+ */
+export function getMoldTemplates(verband, mat, moldDims) {
+  const steenL = mat?.steenL ?? 210;
+  const steenH = mat?.steenH ?? 50;
+  const lint   = mat?.lint   ?? 12;
+  const stoot  = mat?.stoot  ?? 10;
+  const isStaand = verband === 'staand_tegelverband';
+
+  const lagenmaat = isStaand ? steenL + lint : steenH + lint;
+  const brickW    = isStaand ? steenH : steenL;
+  const brickH    = isStaand ? steenL : steenH;
+  const colStep   = brickW + stoot;
+
+  const moldW = moldDims?.lengte  ?? 3400;
+  const moldH = moldDims?.hoogte  ?? 270;
+  const frame = 15;
+  const innerH = moldH - 2 * frame;
+  const rowsPerMold = Math.max(1, Math.floor(innerH / lagenmaat));
+
+  const WILD_FRACS = [0, 1/3, 2/3, 1/6, 5/6, 1/2];
+
+  function offsetForGlobalRow(globalRow) {
+    if (verband === 'wildverband') {
+      return Math.round(WILD_FRACS[globalRow % 6] * colStep * 10) / 10;
+    }
+    if (verband === 'halfsteens' || verband === 'tegelverband' || isStaand) {
+      return globalRow % 2 === 0 ? 0 : Math.round(colStep / 2);
+    }
+    return 0;
+  }
+
+  function rowLabel(globalRow, offset) {
+    if (verband === 'halfsteens') {
+      return globalRow % 2 === 0 ? `Rij ${globalRow + 1} — koppenrij (offset 0)` : `Rij ${globalRow + 1} — strekkenrij (offset ${offset} mm)`;
+    }
+    return `Rij ${globalRow + 1} — offset ${offset} mm`;
+  }
+
+  // Determine number of molds (cycle length / rowsPerMold)
+  const cycleLength = verband === 'wildverband' ? 6 : 2;
+  const numMolds = Math.ceil(cycleLength / rowsPerMold);
+  const MOLD_IDS = ['A', 'B', 'C', 'D'];
+
+  const templates = [];
+  for (let m = 0; m < numMolds; m++) {
+    const id = MOLD_IDS[m] ?? String(m + 1);
+    const globalRowBase = m * rowsPerMold;
+    const rowsInThisMold = Math.min(rowsPerMold, cycleLength - globalRowBase);
+    const rows = [];
+    for (let r = 0; r < rowsInThisMold; r++) {
+      const globalRow = globalRowBase + r;
+      const offset = offsetForGlobalRow(globalRow);
+      rows.push({ globalRow, localRow: r, offset, label: rowLabel(globalRow, offset) });
+    }
+    templates.push({ id, globalRows: rows.map((r) => r.globalRow), rowsPerMold: rowsInThisMold, lagenmaat, brickW, brickH, colStep, rotated: isStaand, rows });
+  }
+
+  return {
+    verband,
+    molds: numMolds,
+    rowsPerMold,
+    lagenmaat,
+    brickW,
+    brickH,
+    colStep,
+    cycleLength,
+    rotated: isStaand,
+    moldW,
+    moldH,
+    frame,
+    templates,
+  };
 }

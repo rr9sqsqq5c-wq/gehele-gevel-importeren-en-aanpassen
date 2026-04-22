@@ -1,11 +1,11 @@
-import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Fragment } from 'react';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines } from './lib/ifc.js';
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG } from './lib/battens.js';
-import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateMoldPrintHTML } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateMoldPrintHTML, getMoldTemplates } from './lib/panelization.js';
 const Viewer3D = lazy(() => import('./Viewer3D.jsx').then((m) => ({ default: m.Viewer3D })));
 const View2D = lazy(() => import('./View2D.jsx').then((m) => ({ default: m.View2D })));
 const Werktekening = lazy(() => import('./Werktekening.jsx').then((m) => ({ default: m.Werktekening })));
@@ -823,6 +823,62 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       </div>
                     )}
                   </div>
+
+                  {/* Mold template preview per verband */}
+                  {(() => {
+                    const moldDimsLocal = { hoogte: pan.malBreedte ?? 270, lengte: pan.malLengte ?? 3400 };
+                    const tpl = getMoldTemplates(verband, mat, moldDimsLocal);
+                    const previewW = 240;
+                    const scale = previewW / moldDimsLocal.lengte;
+                    const previewH = Math.round(moldDimsLocal.hoogte * scale);
+                    const COLORS = ['#60a5fa', '#34d399', '#fbbf24', '#f87171'];
+                    return (
+                      <div style={{ marginTop: 6 }}>
+                        <div style={{ fontWeight: 700, fontSize: 10, color: '#1e3a5f', marginBottom: 4 }}>
+                          Mal-template — {tpl.molds} mal{tpl.molds > 1 ? 'len' : ''}{tpl.rotated ? ' (90° gedraaid)' : ''}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {tpl.templates.map((tmpl, mi) => {
+                            const color = COLORS[mi % COLORS.length];
+                            const bW = Math.max(1, Math.round(tmpl.brickW * scale));
+                            const bH = Math.max(1, Math.round(tmpl.brickH * scale));
+                            const lm = Math.max(1, Math.round(tmpl.lagenmaat * scale));
+                            const fr = Math.round(tpl.frame * scale);
+                            return (
+                              <div key={tmpl.id} style={{ flex: '0 0 auto' }}>
+                                <div style={{ fontSize: 9, fontWeight: 700, color, marginBottom: 2 }}>MAL-{tmpl.id}</div>
+                                <svg width={previewW} height={previewH} style={{ border: '1px solid #cbd5e1', borderRadius: 3, background: '#1e293b', display: 'block' }}>
+                                  <rect x={0} y={0} width={previewW} height={previewH} fill="#334155" />
+                                  <rect x={fr} y={fr} width={previewW - 2*fr} height={previewH - 2*fr} fill="#1e293b" />
+                                  {tmpl.rows.map((row) => {
+                                    const yRow = fr + Math.round((tpl.innerH ?? (moldDimsLocal.hoogte - 2*tpl.frame)) * scale / 2 - ((tmpl.rowsPerMold - 1) * lm) / 2) + row.localRow * lm;
+                                    const off = Math.round(row.offset * scale);
+                                    const cs = Math.round(tmpl.colStep * scale);
+                                    const bricks = [];
+                                    let bx = fr - off;
+                                    const innerPW = previewW - 2*fr;
+                                    while (bx < fr + innerPW) {
+                                      const cx = Math.max(fr, bx);
+                                      const cw = Math.min(bx + bW, fr + innerPW) - cx;
+                                      if (cw > 0.5) bricks.push({ cx, cw });
+                                      bx += cs;
+                                    }
+                                    return bricks.map(({ cx, cw }, bi) => (
+                                      <rect key={bi} x={cx} y={yRow} width={cw} height={bH} fill={color} fillOpacity={0.85} stroke="#1e293b" strokeWidth={0.5} />
+                                    ));
+                                  })}
+                                  <rect x={0} y={0} width={previewW} height={previewH} fill="none" stroke={color} strokeWidth={1.5} />
+                                  <text x={fr+2} y={previewH - fr - 2} fontSize={7} fill="#e2e8f0" fontFamily="monospace">
+                                    {tmpl.rows.map((r) => `R${r.globalRow+1}: ${r.offset}mm`).join(' · ')}
+                                  </text>
+                                </svg>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </>
               );
             })()}
@@ -2310,20 +2366,26 @@ export default function App() {
                   </button>
                 </Tooltip>
                 <div style={{ width: 1, height: 16, background: '#334155' }} />
-                <span style={{ fontSize: 10, color: '#475569' }}>MAL-A:</span>
-                <Tooltip text={"DXF fabricage-tekening MAL-A (rijen 1–3) voor metaalzetterij.\nBevat buitencontour staalplaat, sleuven en bevestigingsgaten."}>
-                  <button onClick={() => handleExportMalDXF('A')} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>⬇ DXF</button>
-                </Tooltip>
-                <Tooltip text={"Printbare maltekening MAL-A in nieuw venster (A0 liggend).\nSla op als PDF via Ctrl+P → 'Opslaan als PDF'."}>
-                  <button onClick={() => handleExportMalPDF('A')} style={{ background: '#0e7490', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>🖨 PDF</button>
-                </Tooltip>
-                <span style={{ fontSize: 10, color: '#475569' }}>MAL-B:</span>
-                <Tooltip text={"DXF fabricage-tekening MAL-B (rijen 4–6) voor metaalzetterij."}>
-                  <button onClick={() => handleExportMalDXF('B')} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>⬇ DXF</button>
-                </Tooltip>
-                <Tooltip text={"Printbare maltekening MAL-B in nieuw venster (A0 liggend)."}>
-                  <button onClick={() => handleExportMalPDF('B')} style={{ background: '#0e7490', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>🖨 PDF</button>
-                </Tooltip>
+                {(() => {
+                  const firstPanelGroup = groups.find((g) => getSettings(g.id).panelen?.enabled);
+                  if (!firstPanelGroup) return null;
+                  const fps = getSettings(firstPanelGroup.id);
+                  const fpsMat = fps.material ?? DEFAULT_MATERIAL;
+                  const fpsVerband = fps.verband ?? DEFAULT_VERBAND;
+                  const fpsMoldDims = { hoogte: fps.panelen.malBreedte ?? 270, lengte: fps.panelen.malLengte ?? 3400 };
+                  const fpsTemplates = getMoldTemplates(fpsVerband, fpsMat, fpsMoldDims);
+                  return fpsTemplates.templates.map((tmpl) => (
+                    <Fragment key={tmpl.id}>
+                      <span style={{ fontSize: 10, color: '#475569' }}>MAL-{tmpl.id}:</span>
+                      <Tooltip text={`DXF fabricage-tekening MAL-${tmpl.id} (rijen ${tmpl.globalRows.map((r) => r+1).join('–')}) voor metaalzetterij.`}>
+                        <button onClick={() => handleExportMalDXF(tmpl.id)} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>⬇ DXF</button>
+                      </Tooltip>
+                      <Tooltip text={`Printbare maltekening MAL-${tmpl.id} in nieuw venster (A0 liggend).`}>
+                        <button onClick={() => handleExportMalPDF(tmpl.id)} style={{ background: '#0e7490', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>🖨 PDF</button>
+                      </Tooltip>
+                    </Fragment>
+                  ));
+                })()}
               </>
             )}
           </div>
