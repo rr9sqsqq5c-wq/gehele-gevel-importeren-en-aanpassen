@@ -1571,21 +1571,21 @@ export default function App() {
   function autoGroupByWindrichting() {
     pushHistory(groups);
     if (!allWalls.length) return;
-    const TOLERANCE = 100;
+    const TOLERANCE = 50;
     const faceMap = new Map();
     for (const w of allWalls) {
       const wo = w.wallOrigin;
       if (!wo) continue;
-      const tEnd = wo.thicknessEnd ?? (wo.thicknessStart + 200);
-      const tMid = Math.round(((wo.thicknessStart + tEnd) / 2) / TOLERANCE) * TOLERANCE;
-      const key = `${wo.thicknessAxis}:${tMid}`;
-      if (!faceMap.has(key)) faceMap.set(key, { axis: wo.thicknessAxis, mid: tMid, ids: [] });
-      faceMap.get(key).ids.push(w.expressID);
+      const tPos = Math.round(wo.thicknessStart / TOLERANCE) * TOLERANCE;
+      const key = `${wo.thicknessAxis}:${tPos}`;
+      if (!faceMap.has(key)) faceMap.set(key, { axis: wo.thicknessAxis, pos: tPos, wallObjs: [] });
+      faceMap.get(key).wallObjs.push(w);
     }
     if (!faceMap.size) return;
-    const xF = [...faceMap.values()].filter(f => f.axis === 'x').sort((a, b) => a.mid - b.mid);
-    const yF = [...faceMap.values()].filter(f => f.axis === 'y').sort((a, b) => a.mid - b.mid);
-    const zF = [...faceMap.values()].filter(f => f.axis === 'z').sort((a, b) => a.mid - b.mid);
+    const allFacades = [...faceMap.values()];
+    const xF = allFacades.filter(f => f.axis === 'x').sort((a, b) => a.pos - b.pos);
+    const yF = allFacades.filter(f => f.axis === 'y').sort((a, b) => a.pos - b.pos);
+    const zF = allFacades.filter(f => f.axis === 'z').sort((a, b) => a.pos - b.pos);
     const getLabel = (sorted, idx, ax) => {
       if (ax === 'x') { if (sorted.length === 1) return 'O/W'; if (idx === 0) return 'W'; if (idx === sorted.length - 1) return 'O'; return `O/W-${idx + 1}`; }
       if (ax === 'y') { if (sorted.length === 1) return 'N/Z'; if (idx === 0) return 'Z'; if (idx === sorted.length - 1) return 'N'; return `N/Z-${idx + 1}`; }
@@ -1594,13 +1594,18 @@ export default function App() {
     _colorIdxRef.current = 0;
     const newGroups = [];
     for (const { facades, ax } of [{ facades: yF, ax: 'y' }, { facades: xF, ax: 'x' }, { facades: zF, ax: 'z' }]) {
-      facades.forEach((f, idx) => {
-        if (!f.ids.length) return;
-        const label = getLabel(facades, idx, ax);
-        const gid = newGid();
-        const color = nextColor();
-        initColor(gid, color, `Gevel ${label}`);
-        newGroups.push({ id: gid, wallIds: sortWallsInComponent(f.ids, allWalls, adjacencies) });
+      facades.forEach((f, facadeIdx) => {
+        if (!f.wallObjs.length) return;
+        const baseLabel = getLabel(facades, facadeIdx, ax);
+        const comps = buildConnectedComponents(f.wallObjs, adjacencies);
+        comps.forEach((compIds, compIdx) => {
+          if (!compIds.length) return;
+          const label = comps.length === 1 ? `Gevel ${baseLabel}` : `Gevel ${baseLabel}-${compIdx + 1}`;
+          const gid = newGid();
+          const color = nextColor();
+          initColor(gid, color, label);
+          newGroups.push({ id: gid, wallIds: sortWallsInComponent(compIds, allWalls, adjacencies) });
+        });
       });
     }
     setGroups(newGroups);
