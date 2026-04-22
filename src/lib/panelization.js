@@ -683,7 +683,7 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   });
 
   // ── Small title in mold ──
-  parts.push(`<text x="${r2(ox + frame + 2)}" y="${r2(oy + 9)}" font-size="6" fill="#64748b">MAL-${moldId} | ${verband} | ${moldW}×${moldH}mm | ${rowsPerMold} rijen | Staal 2mm</text>`);
+  parts.push(`<text x="${r2(ox + frameLeft + 2)}" y="${r2(oy + 9)}" font-size="6" fill="#64748b">MAL-${moldId} | ${verband} | ${moldW}×${moldH}mm | ${rowsPerMold} rijen | Staal 2mm</text>`);
 
   parts.push('</svg>');
   return parts.join('\n');
