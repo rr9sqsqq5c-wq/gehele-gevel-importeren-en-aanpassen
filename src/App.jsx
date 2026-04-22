@@ -347,22 +347,26 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
           style={inp} />
       </Field>
 
-      <Field label="Kleur" tip="Kleur van de groep in de 3D viewer en het 2D gevelaanzicht.">
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <input type="color" value={settings.color} onChange={(e) => onUpdate({ color: e.target.value })}
-            style={{ width: 36, height: 28, border: '1px solid #cbd5e1', borderRadius: 3, padding: 1, cursor: 'pointer' }} />
-          <span style={{ fontSize: 11, color: '#64748b' }}>{settings.color}</span>
-        </div>
-      </Field>
+      {!(settings.zones?.length > 0) && (
+        <Field label="Kleur" tip="Kleur van de groep in de 3D viewer en het 2D gevelaanzicht.">
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input type="color" value={settings.color} onChange={(e) => onUpdate({ color: e.target.value })}
+              style={{ width: 36, height: 28, border: '1px solid #cbd5e1', borderRadius: 3, padding: 1, cursor: 'pointer' }} />
+            <span style={{ fontSize: 11, color: '#64748b' }}>{settings.color}</span>
+          </div>
+        </Field>
+      )}
 
-      <Field label="Metselverband" tip={"Halfsteens: stenen verspringen een halve steenlengte per laag — meest gebruikelijk.\nTegelverband: stenen lopen horizontaal door zonder verspinging.\nStaand tegelverband: steenstrips staan verticaal (lange kant omhoog), kolommen naast elkaar zonder verspinging."}>
-        <select value={settings.verband} onChange={(e) => onUpdate({ verband: e.target.value })} style={inp}>
-          <option value="halfsteens">Halfsteens</option>
-          <option value="tegelverband">Tegelverband</option>
-          <option value="staand_tegelverband">Staand tegelverband</option>
-          <option value="wildverband">Wildverband (6-rij herhaling)</option>
-        </select>
-      </Field>
+      {!(settings.zones?.length > 0) && (
+        <Field label="Metselverband" tip={"Halfsteens: stenen verspringen een halve steenlengte per laag — meest gebruikelijk.\nTegelverband: stenen lopen horizontaal door zonder verspinging.\nStaand tegelverband: steenstrips staan verticaal (lange kant omhoog), kolommen naast elkaar zonder verspinging."}>
+          <select value={settings.verband} onChange={(e) => onUpdate({ verband: e.target.value })} style={inp}>
+            <option value="halfsteens">Halfsteens</option>
+            <option value="tegelverband">Tegelverband</option>
+            <option value="staand_tegelverband">Staand tegelverband</option>
+            <option value="wildverband">Wildverband (6-rij herhaling)</option>
+          </select>
+        </Field>
+      )}
 
       <CollapsibleSection title="Steenstrip afmetingen" tip={"Afmetingen van de brickslip (steenstrip):\n· Lengte = zichtbare lengte van de strip\n· Hoogte = zichtbare hoogte van de strip\n· Lintvoeg = horizontale voeg tussen lagen\n· Stootvoeg = verticale voeg tussen stenen"} isOpen={isOpen('strips')} onToggle={() => toggle('strips')}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
