@@ -323,9 +323,11 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   const colStep = brickW + stoot;
   const moldW = moldDims?.lengte ?? 3400;
   const moldH = moldDims?.hoogte ?? 270;
-  const frame = 15;
-  const innerW = moldW - 2 * frame;
-  const innerH = moldH - 2 * frame;
+  const frameH    = 30;  // top + bottom margin from outer edge
+  const frameLeft = 40;  // left start, aligned with first notch
+  const frame = frameH;  // alias kept for pin-hole logic
+  const innerW = moldW - 2 * frameLeft;
+  const innerH = moldH - 2 * frameH;
   const rowsPerMold = Math.min(3, Math.max(1, Math.floor(innerH / lagenmaat)));
   // Wildverband: same module-fraction offsets as pattern.js [0, 1/3, 2/3, 1/6, 5/6, 1/2]
   const WILD_FRACS = [0, 1/3, 2/3, 1/6, 5/6, 1/2];
@@ -374,25 +376,39 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
 
   const rows = [];
   for (let r = 0; r < rowsPerMold; r++) {
-    const yRow = frame + yStartInner + r * lagenmaat;
+    const yRow = frameH + yStartInner + r * lagenmaat;
     const off = rowOffset(r);
     rows.push({ localRow: r, globalRow: globalRowBase + r, yRow, off, bricks: bricksInRow(r) });
   }
 
-  const pinYs = [frame / 2];
+  const pinYs = [frameH / 2];
   for (let r = 0; r < rowsPerMold - 1; r++) {
-    const y1 = frame + yStartInner + r * lagenmaat + brickH + 1.5;
-    const y2 = frame + yStartInner + (r + 1) * lagenmaat - 1.5;
+    const y1 = frameH + yStartInner + r * lagenmaat + brickH + 1.5;
+    const y2 = frameH + yStartInner + (r + 1) * lagenmaat - 1.5;
     pinYs.push((y1 + y2) / 2);
   }
-  pinYs.push(moldH - frame / 2);
+  pinYs.push(moldH - frameH / 2);
 
-  return { moldW, moldH, frame, innerW, innerH, brickW, brickH, colStep, lagenmaat, rowsPerMold, globalRowBase, rows, pinYs, pinStepX };
+  // Notch X-positions: first notch starts at frameLeft (=40mm), last notch ends at moldW-frameLeft
+  function calcNotchXs() {
+    const firstW = 60, midW = 62;
+    const lastStart = moldW - frameLeft - midW;
+    const firstEnd = frameLeft + firstW;
+    const nMiddle = 3;
+    const gap = (lastStart - firstEnd) / (nMiddle + 1);
+    const xs = [frameLeft];
+    for (let i = 1; i <= nMiddle; i++) xs.push(Math.round(firstEnd + i * gap - midW / 2));
+    xs.push(lastStart);
+    return { notchXs: xs, notchWs: [firstW, midW, midW, midW, midW] };
+  }
+  const { notchXs, notchWs } = calcNotchXs();
+
+  return { moldW, moldH, frame, frameH, frameLeft, innerW, innerH, brickW, brickH, colStep, lagenmaat, rowsPerMold, globalRowBase, rows, pinYs, pinStepX, notchXs, notchWs };
 }
 
 export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   const g = _moldGeometry(mat, verband, moldDims, moldId);
-  const { moldW, moldH, frame, innerW, innerH, brickH, rows, pinYs, pinStepX } = g;
+  const { moldW, moldH, frameH, frameLeft, innerW, innerH, brickH, rows, pinYs, pinStepX, notchXs, notchWs } = g;
   const r2 = (v) => Math.round(v * 100) / 100;
   const lines = [];
 
@@ -410,15 +426,8 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
       '10', String(r2(x)), '20', String(r2(y)), '30', '0.0', '40', String(r2(h)), '1', text);
   }
 
-  // Mold outline with notches at bottom
-  const refTotalW  = 3395;
-  const refNotchXs = [272, 970, 1670, 2370, 3070];
-  const refNotchWs = [60, 62, 62, 62, 62];
   const notchDepth = 20;
-  const notchXs = refNotchXs.map(p => Math.round(p * moldW / refTotalW));
-  const notchWs = refNotchWs.map(w => Math.max(16, Math.round(w * moldW / refTotalW)));
   {
-    // Top edge left→right with notches cutting downward, then right edge, bottom edge right→left with notches cutting upward
     const pts = [[0, 0]];
     for (let i = 0; i < notchXs.length; i++) {
       pts.push([notchXs[i], 0], [notchXs[i], notchDepth], [notchXs[i] + notchWs[i], notchDepth], [notchXs[i] + notchWs[i], 0]);
@@ -431,16 +440,16 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
     lines.push('0', 'LWPOLYLINE', '8', 'FRAME', '62', '7', '70', '1', '90', String(pts.length));
     for (const [px, py] of pts) lines.push('10', String(r2(px)), '20', String(r2(py)));
   }
-  addPolyRect(frame, frame, innerW, innerH, 'GUIDE', 8);
+  addPolyRect(frameLeft, frameH, innerW, innerH, 'GUIDE', 8);
 
   for (const row of rows) {
     for (const b of row.bricks) {
-      addPolyRect(frame + b.x - 1.5, row.yRow - 1.5, b.w + 3, brickH + 3, 'SLOTS', 2);
+      addPolyRect(frameLeft + b.x - 1.5, row.yRow - 1.5, b.w + 3, brickH + 3, 'SLOTS', 2);
     }
-    addText(frame, row.yRow - 10, 6, `Rij ${row.globalRow + 1}  off=${row.off}mm`, 'LABELS');
+    addText(frameLeft, row.yRow - 10, 6, `Rij ${row.globalRow + 1}  off=${row.off}mm`, 'LABELS');
   }
   for (const py of pinYs)
-    for (let x = frame; x <= moldW - frame + 0.1; x += pinStepX)
+    for (let x = frameLeft; x <= moldW - frameLeft + 0.1; x += pinStepX)
       addCircle(r2(x), r2(py), 3, 'HOLES', 1);
 
   // Alignment hole — Ø8mm, 11mm from left edge, vertically centred
@@ -472,7 +481,7 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
 
 export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const g = _moldGeometry(mat, verband, moldDims, moldId);
-  const { moldW, moldH, frame, innerW, innerH, brickH, rows, rowsPerMold, globalRowBase } = g;
+  const { moldW, moldH, frameH, frameLeft, innerW, innerH, brickH, rows, rowsPerMold, globalRowBase, notchXs, notchWs } = g;
   const isStaand = verband === 'staand_tegelverband';
   const displayBrickW = isStaand ? (mat?.steenH ?? 50) : (mat?.steenL ?? 210);
   const displayBrickH = isStaand ? (mat?.steenL ?? 210) : (mat?.steenH ?? 50);
@@ -497,13 +506,8 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const ox = mLeft;  // mold left in SVG
   const oy = mTop;   // mold top in SVG
 
-  // Notch geometry — proportional to 3395mm reference drawing
-  const refTotalW  = 3395;
-  const refNotchXs = [272, 970, 1670, 2370, 3070];
-  const refNotchWs = [60, 62, 62, 62, 62];
+  // Notch geometry — from _moldGeometry (first notch at frameLeft=40mm)
   const notchDepth = 20;
-  const notchXs = refNotchXs.map(p => rn(p * moldW / refTotalW));
-  const notchWs = refNotchWs.map(w => Math.max(16, rn(w * moldW / refTotalW)));
 
   // Mold outline path with notches cut from both top and bottom edges
   function moldOutlinePath() {
@@ -554,7 +558,7 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   // ── Mold body ──
   parts.push(`<path d="${moldOutlinePath()}" fill="#dde3ed" stroke="#1e293b" stroke-width="1.5"/>`);
   // Inner guide dashed rect
-  parts.push(`<rect x="${r2(ox + frame)}" y="${r2(oy + frame)}" width="${r2(innerW)}" height="${r2(innerH)}" fill="none" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="5,3"/>`);
+  parts.push(`<rect x="${r2(ox + frameLeft)}" y="${r2(oy + frameH)}" width="${r2(innerW)}" height="${r2(innerH)}" fill="none" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="5,3"/>`);
 
   // ── Alignment hole — Ø8mm, 11mm from left edge, vertically centred ──
   {
@@ -568,20 +572,20 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   // ── Strip slots (white rectangles inside mold) ──
   const slotPad = 1.5;
   for (const row of rows) {
-    const sTop = r2(oy + moldH - frame - row.yRow - brickH - slotPad);
+    const sTop = r2(oy + row.yRow - slotPad);
     const sH   = r2(brickH + 2 * slotPad);
     for (const b of row.bricks) {
-      const sLeft = r2(ox + frame + b.x - slotPad);
+      const sLeft = r2(ox + frameLeft + b.x - slotPad);
       const sW    = r2(b.w + 2 * slotPad);
       parts.push(`<rect x="${sLeft}" y="${sTop}" width="${sW}" height="${sH}" fill="#ffffff" stroke="#334155" stroke-width="1" rx="1"/>`);
     }
     // Row label inside mold on the left
-    const labelY = r2(oy + moldH - frame - row.yRow - brickH / 2 + 3);
-    parts.push(`<text x="${r2(ox + frame + 2)}" y="${labelY}" font-size="6" fill="#475569">R${row.globalRow + 1}</text>`);
+    const labelY = r2(oy + row.yRow + brickH / 2 + 3);
+    parts.push(`<text x="${r2(ox + frameLeft + 2)}" y="${labelY}" font-size="6" fill="#475569">R${row.globalRow + 1}</text>`);
   }
 
   // Strip size label — top-left inside mold
-  parts.push(`<text x="${r2(ox + frame + 30)}" y="${r2(oy + frame + 11)}" font-size="8" fill="#1e293b" font-weight="bold">${displayBrickW}×${displayBrickH}mm</text>`);
+  parts.push(`<text x="${r2(ox + frameLeft + 30)}" y="${r2(oy + frameH + 11)}" font-size="8" fill="#1e293b" font-weight="bold">${displayBrickW}×${displayBrickH}mm</text>`);
 
   // ── Dimension area baseline (just below mold) ──
   const dimBase = oy + moldH + 6;
@@ -604,9 +608,9 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const rowY1 = dimBase + dimRowH * 1.6;
   const refBricks = rows[0]?.bricks ?? [];
   if (refBricks.length) {
-    const absX = b => ox + frame + b.x;
+    const absX = b => ox + frameLeft + b.x;
     // left margin
-    parts.push(dimLine(ox, absX(refBricks[0]), rowY1, String(rn(frame + refBricks[0].x)), '#333333', 4, 6));
+    parts.push(dimLine(ox, absX(refBricks[0]), rowY1, String(rn(frameLeft + refBricks[0].x)), '#333333', 4, 6));
     for (let i = 0; i < refBricks.length; i++) {
       const b = refBricks[i];
       parts.push(dimLine(absX(b), absX(b) + b.w, rowY1, String(rn(b.w)), '#333333', 4, 6));
@@ -616,7 +620,7 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
       }
     }
     const lastB = refBricks[refBricks.length - 1];
-    const rightMargin = moldW - frame - lastB.x - lastB.w;
+    const rightMargin = moldW - frameLeft - lastB.x - lastB.w;
     parts.push(dimLine(absX(lastB) + lastB.w, ox + moldW, rowY1, String(rn(rightMargin)), '#333333', 4, 6));
   }
 
@@ -624,7 +628,7 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const rowY2 = dimBase + dimRowH * 2.7;
   const COL_ORANGE = '#f59e0b';
   if (refBricks.length) {
-    const cx = b => ox + frame + b.x + b.w / 2;
+    const cx = b => ox + frameLeft + b.x + b.w / 2;
     // left edge to first centre
     parts.push(dimLine(ox, cx(refBricks[0]), rowY2, String(rn(cx(refBricks[0]) - ox)), COL_ORANGE, 4, 7));
     parts.push(plusTick(cx(refBricks[0]), rowY2, COL_ORANGE));
