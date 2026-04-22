@@ -242,7 +242,7 @@ export function generateMoldRecipe(panels, mat, verband, panelDikte, moldDims, g
   const lagenmaat = verband === 'staand_tegelverband' ? steenL + lint : steenH + lint;
   const moldHoogte = moldDims?.hoogte ?? 270;
   const moldLengte = moldDims?.lengte ?? 3400;
-  const rowsPerMold = Math.max(1, Math.floor(moldHoogte / lagenmaat));
+  const rowsPerMold = Math.min(3, Math.max(1, Math.floor(moldHoogte / lagenmaat)));
 
   const rows = [];
   for (const panel of panels) {
@@ -326,7 +326,7 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   const frame = 15;
   const innerW = moldW - 2 * frame;
   const innerH = moldH - 2 * frame;
-  const rowsPerMold = Math.max(1, Math.floor(innerH / lagenmaat));
+  const rowsPerMold = Math.min(3, Math.max(1, Math.floor(innerH / lagenmaat)));
   // Wildverband: same module-fraction offsets as pattern.js [0, 1/3, 2/3, 1/6, 5/6, 1/2]
   const WILD_FRACS = [0, 1/3, 2/3, 1/6, 5/6, 1/2];
   const moldIdx = moldId === 'B' ? 1 : 0;
@@ -580,7 +580,7 @@ export function getMoldTemplates(verband, mat, moldDims) {
   const moldH = moldDims?.hoogte  ?? 270;
   const frame = 15;
   const innerH = moldH - 2 * frame;
-  const rowsPerMold = Math.max(1, Math.floor(innerH / lagenmaat));
+  const rowsPerMold = Math.min(3, Math.max(1, Math.floor(innerH / lagenmaat)));
 
   const WILD_FRACS = [0, 1/3, 2/3, 1/6, 5/6, 1/2];
 
