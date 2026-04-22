@@ -1095,6 +1095,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           const moldDims = { hoogte: panelen?.malBreedte ?? 270, lengte: panelen?.malLengte ?? 3400, tolerantieL: panelen?.tolerantieL ?? 1, tolerantieH: panelen?.tolerantieH ?? 1 };
           const tpl = getMoldTemplates(verband, mat, moldDims);
           const zonesForMal = selectedZone ? [selectedZone] : facadeZones;
+          const hasZones = facadeZones.length > 1;
 
           function exportCombinedSVG() {
             const svgStr = generateCombinedMoldSVG(mat, verband, moldDims);
@@ -1107,82 +1108,100 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             URL.revokeObjectURL(url);
           }
 
-          function exportMalSVG(moldId) {
-            const svgStr = generateMoldSVG(mat, verband, moldDims, moldId);
-            const blob = new Blob([svgStr], { type: 'image/svg+xml' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `MAL-${moldId}-${verband}.svg`;
-            a.click();
-            URL.revokeObjectURL(url);
-          }
-
           const combinedSvgHtml = generateCombinedMoldSVG(mat, verband, moldDims);
+
+          function zoneInfo(zone) {
+            const panelsInZone = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1);
+            const panelCount = panelsInZone.length;
+            const panelH = panelen?.hoogte ?? 1200;
+            const rowsPerPanel = Math.max(1, Math.floor(panelH / tpl.lagenmaat));
+            const totalPasses = Math.ceil(rowsPerPanel / tpl.rowsPerMold);
+            const passesLinks  = Math.ceil(totalPasses / 2);
+            const passesRechts = Math.floor(totalPasses / 2);
+            const passSeq = Array.from({ length: totalPasses }, (_, i) => tpl.templates[i % tpl.templates.length]?.id ?? (i % 2 === 0 ? 'Links' : 'Rechts'));
+            return { panelCount, rowsPerPanel, totalPasses, passesLinks, passesRechts, passSeq };
+          }
 
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+              {/* ── Gecombineerde maltekening (1× gedeeld voor alle zones) ── */}
               <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.10)', padding: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1 }}>
-                    Mallen — {groupSettings?.name ?? 'Groep'} · {tpl.molds} mal{tpl.molds !== 1 ? 'len' : ''} · {tpl.verband}{tpl.rotated ? ' (90° gedraaid in mal)' : ''}
+                    Maltekening — {tpl.verband}{tpl.rotated ? ' (90° gedraaid)' : ''} · {moldDims.lengte}×{moldDims.hoogte} mm · Staal 2 mm
                   </div>
                   <button onClick={exportCombinedSVG} style={{ fontSize: 10, background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    ⬇ SVG gecombineerd
+                    ⬇ SVG
                   </button>
                 </div>
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 12 }}>
-                  Lagenmaat: {tpl.lagenmaat} mm · Strip {tpl.brickW}×{tpl.brickH} mm · Stap: {tpl.colStep} mm · Cyclus: {tpl.cycleLength} rijen
-                  · <span style={{ color: '#166534', fontWeight: 600 }}>Zelfde outline voor beide mallen</span>
+                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 10 }}>
+                  Strip {tpl.brickW}×{tpl.brickH} mm · Lagenmaat {tpl.lagenmaat} mm · Stap {tpl.colStep} mm · {tpl.cycleLength}-rijcyclus
+                  · <span style={{ color: '#166534', fontWeight: 600 }}>Zelfde outline voor MAL Links en MAL Rechts</span>
                 </div>
-
                 <div
                   dangerouslySetInnerHTML={{ __html: combinedSvgHtml }}
                   style={{ maxWidth: '100%', overflowX: 'auto', borderRadius: 4, border: '1px solid #e2e8f0' }}
                 />
-
-                <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                   {tpl.templates.map((tmpl) =>
                     tmpl.rows.map((row) => (
-                      <div key={`${tmpl.id}-${row.globalRow}`} style={{ fontSize: 10, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 4, padding: '3px 8px', color: '#0c4a6e' }}>
-                        <strong>MAL {tmpl.id} · Rij {row.globalRow + 1}</strong> · offset {row.offset} mm
+                      <div key={`${tmpl.id}-${row.globalRow}`} style={{ fontSize: 10, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 4, padding: '2px 7px', color: '#0c4a6e' }}>
+                        <strong>MAL {tmpl.id} · R{row.globalRow + 1}</strong> · {row.offset} mm
                       </div>
                     ))
                   )}
                 </div>
               </div>
 
-              {zonesForMal.length > 1 && (
-                <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.10)', padding: 16 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 10 }}>Mal gebruik per zone</div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                    <thead>
-                      <tr>
-                        {['Zone', 'Breedte', 'Panelen', 'Rijen/paneel', 'Maldoorgangen/paneel'].map((h) => (
-                          <th key={h} style={{ padding: '5px 8px', borderBottom: '2px solid #1e3a5f', fontWeight: 700, color: '#1e3a5f', textAlign: 'left', background: '#f0f4f8' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {zonesForMal.map((zone) => {
-                        const zonePanelCount = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1).length;
-                        const panelH = panelen?.hoogte ?? 1200;
-                        const rowsPerPanel = Math.max(1, Math.floor(panelH / tpl.lagenmaat));
-                        const passesPerPanel = Math.ceil(rowsPerPanel / tpl.rowsPerMold);
-                        return (
-                          <tr key={zone.idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                            <td style={{ padding: '4px 8px', fontWeight: 600 }}>{zone.label}</td>
-                            <td style={{ padding: '4px 8px', color: '#475569' }}>{Math.round(zone.xEnd - zone.xStart)} mm</td>
-                            <td style={{ padding: '4px 8px', color: '#475569' }}>{zonePanelCount}</td>
-                            <td style={{ padding: '4px 8px', color: '#475569' }}>{rowsPerPanel}</td>
-                            <td style={{ padding: '4px 8px', color: '#475569' }}>{passesPerPanel}×</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+              {/* ── Per zone: welke mal en hoeveel doorgangen ── */}
+              <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.10)', padding: 16 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 10 }}>
+                  {hasZones ? 'Mal gebruik per zone' : 'Mal gebruik'}
                 </div>
-              )}
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead>
+                    <tr>
+                      {(hasZones ? ['Zone', 'Breedte', 'Panelen'] : ['Panelen']).concat(['Rijen/paneel', 'Doorg./paneel', 'MAL Links', 'MAL Rechts', 'Volgorde per paneel']).map((h) => (
+                        <th key={h} style={{ padding: '5px 8px', borderBottom: '2px solid #1e3a5f', fontWeight: 700, color: '#1e3a5f', textAlign: 'left', background: '#f0f4f8', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {zonesForMal.map((zone) => {
+                      const { panelCount, rowsPerPanel, totalPasses, passesLinks, passesRechts, passSeq } = zoneInfo(zone);
+                      return (
+                        <tr key={zone.idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                          {hasZones && <>
+                            <td style={{ padding: '5px 8px', fontWeight: 600 }}>{zone.label}</td>
+                            <td style={{ padding: '5px 8px', color: '#475569' }}>{Math.round(zone.xEnd - zone.xStart)} mm</td>
+                            <td style={{ padding: '5px 8px', color: '#475569' }}>{panelCount}</td>
+                          </>}
+                          {!hasZones && <td style={{ padding: '5px 8px', color: '#475569' }}>{panelCount}</td>}
+                          <td style={{ padding: '5px 8px', color: '#475569' }}>{rowsPerPanel}</td>
+                          <td style={{ padding: '5px 8px', fontWeight: 600 }}>{totalPasses}×</td>
+                          <td style={{ padding: '5px 8px' }}>
+                            <span style={{ background: '#1e3a5f', color: '#fff', borderRadius: 3, padding: '1px 6px', fontSize: 10 }}>{passesLinks}×</span>
+                          </td>
+                          <td style={{ padding: '5px 8px' }}>
+                            <span style={{ background: '#0f766e', color: '#fff', borderRadius: 3, padding: '1px 6px', fontSize: 10 }}>{passesRechts}×</span>
+                          </td>
+                          <td style={{ padding: '5px 8px' }}>
+                            <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                              {passSeq.map((id, i) => (
+                                <span key={i} style={{ background: i % 2 === 0 ? '#1e3a5f' : '#0f766e', color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, whiteSpace: 'nowrap' }}>
+                                  {i + 1}·{id}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
             </div>
           );
         })()}
