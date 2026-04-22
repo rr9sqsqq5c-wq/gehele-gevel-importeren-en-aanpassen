@@ -1568,6 +1568,46 @@ export default function App() {
     setActiveGroupId(newGroups[0]?.id ?? null);
   }
 
+  function autoGroupByWindrichting() {
+    pushHistory(groups);
+    if (!allWalls.length) return;
+    const TOLERANCE = 100;
+    const faceMap = new Map();
+    for (const w of allWalls) {
+      const wo = w.wallOrigin;
+      if (!wo) continue;
+      const tEnd = wo.thicknessEnd ?? (wo.thicknessStart + 200);
+      const tMid = Math.round(((wo.thicknessStart + tEnd) / 2) / TOLERANCE) * TOLERANCE;
+      const key = `${wo.thicknessAxis}:${tMid}`;
+      if (!faceMap.has(key)) faceMap.set(key, { axis: wo.thicknessAxis, mid: tMid, ids: [] });
+      faceMap.get(key).ids.push(w.expressID);
+    }
+    if (!faceMap.size) return;
+    const xF = [...faceMap.values()].filter(f => f.axis === 'x').sort((a, b) => a.mid - b.mid);
+    const yF = [...faceMap.values()].filter(f => f.axis === 'y').sort((a, b) => a.mid - b.mid);
+    const zF = [...faceMap.values()].filter(f => f.axis === 'z').sort((a, b) => a.mid - b.mid);
+    const getLabel = (sorted, idx, ax) => {
+      if (ax === 'x') { if (sorted.length === 1) return 'O/W'; if (idx === 0) return 'W'; if (idx === sorted.length - 1) return 'O'; return `O/W-${idx + 1}`; }
+      if (ax === 'y') { if (sorted.length === 1) return 'N/Z'; if (idx === 0) return 'Z'; if (idx === sorted.length - 1) return 'N'; return `N/Z-${idx + 1}`; }
+      return `G${idx + 1}`;
+    };
+    _colorIdxRef.current = 0;
+    const newGroups = [];
+    for (const { facades, ax } of [{ facades: yF, ax: 'y' }, { facades: xF, ax: 'x' }, { facades: zF, ax: 'z' }]) {
+      facades.forEach((f, idx) => {
+        if (!f.ids.length) return;
+        const label = getLabel(facades, idx, ax);
+        const gid = newGid();
+        const color = nextColor();
+        initColor(gid, color, `Gevel ${label}`);
+        newGroups.push({ id: gid, wallIds: sortWallsInComponent(f.ids, allWalls, adjacencies) });
+      });
+    }
+    setGroups(newGroups);
+    setSelectedWallIds(new Set());
+    setActiveGroupId(newGroups[0]?.id ?? null);
+  }
+
   function createGroup() {
     pushHistory(groups);
     const ids = [...selectedWallIds].filter((id) => !wallGroupMap[id]);
@@ -2498,6 +2538,11 @@ export default function App() {
                 <Tooltip block text={"Detecteert automatisch welke wanden aan elkaar grenzen en maakt voor elke verbonden groep een aparte groep.\nHandig als een heel gebouw in één keer gegroepeerd moet worden."}>
                   <button onClick={autoGroup} style={btn('#6366f1')}>
                     🔗 Auto-groeperen op aangrenzendheid
+                  </button>
+                </Tooltip>
+                <Tooltip block text={"Groepeert alle wanden automatisch per windrichting (N / O / Z / W) op basis van de richting van de muurvlakken.\nHandig om een heel gebouw in één klik per gevel in te delen."}>
+                  <button onClick={autoGroupByWindrichting} style={btn('#0891b2')}>
+                    🧭 Auto-groeperen per windrichting (N/O/Z/W)
                   </button>
                 </Tooltip>
                 {selectionHasUngrouped && (
