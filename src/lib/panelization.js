@@ -418,7 +418,12 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   const notchXs = refNotchXs.map(p => Math.round(p * moldW / refTotalW));
   const notchWs = refNotchWs.map(w => Math.max(16, Math.round(w * moldW / refTotalW)));
   {
-    const pts = [[0, 0], [moldW, 0], [moldW, moldH]];
+    // Top edge left→right with notches cutting downward, then right edge, bottom edge right→left with notches cutting upward
+    const pts = [[0, 0]];
+    for (let i = 0; i < notchXs.length; i++) {
+      pts.push([notchXs[i], 0], [notchXs[i], notchDepth], [notchXs[i] + notchWs[i], notchDepth], [notchXs[i] + notchWs[i], 0]);
+    }
+    pts.push([moldW, 0], [moldW, moldH]);
     for (let i = notchXs.length - 1; i >= 0; i--) {
       pts.push([notchXs[i] + notchWs[i], moldH], [notchXs[i] + notchWs[i], moldH - notchDepth], [notchXs[i], moldH - notchDepth], [notchXs[i], moldH]);
     }
@@ -500,11 +505,21 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const notchXs = refNotchXs.map(p => rn(p * moldW / refTotalW));
   const notchWs = refNotchWs.map(w => Math.max(16, rn(w * moldW / refTotalW)));
 
-  // Mold outline path with notches cut from bottom edge
+  // Mold outline path with notches cut from both top and bottom edges
   function moldOutlinePath() {
     let d = `M ${ox},${oy}`;
+    // Top edge left→right, notches cut downward
+    for (let i = 0; i < notchXs.length; i++) {
+      const nx = notchXs[i], nw = notchWs[i];
+      d += ` L ${ox + nx},${oy}`;
+      d += ` L ${ox + nx},${oy + notchDepth}`;
+      d += ` L ${ox + nx + nw},${oy + notchDepth}`;
+      d += ` L ${ox + nx + nw},${oy}`;
+    }
     d += ` L ${ox + moldW},${oy}`;
+    // Right edge
     d += ` L ${ox + moldW},${oy + moldH}`;
+    // Bottom edge right→left, notches cut upward
     for (let i = notchXs.length - 1; i >= 0; i--) {
       const nx = notchXs[i], nw = notchWs[i];
       d += ` L ${ox + nx + nw},${oy + moldH}`;
