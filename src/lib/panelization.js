@@ -333,7 +333,8 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   const WILD_FRACS = [0, 1/3, 2/3, 1/6, 5/6, 1/2];
   const moldIdx = moldId === 'B' ? 1 : 0;
   const globalRowBase = moldIdx * rowsPerMold;
-  const kopW = isStaand ? 0 : Math.round((steenL - stoot) / 2);
+  const kopW  = isStaand ? 0 : Math.round((steenL - stoot) / 2);
+  const drieKW = isStaand ? 0 : Math.round((steenL + stoot) * 0.75 - stoot);
 
   function rowOffset(localRow) {
     const globalRow = globalRowBase + localRow;
@@ -352,8 +353,41 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   function bricksInRow(localRow) {
     const globalRow = globalRowBase + localRow;
     const off = rowOffset(localRow);
-    const hasKop = verband === 'halfsteens' && globalRow % 2 === 1;
     const bricks = [];
+
+    if (verband === 'wildverband') {
+      const S = brickW, K = kopW, D = drieKW;
+      const SEQS = [
+        [S, S, K, S, S, D],
+        [S, K, S, S, D, S],
+        [K, S, S, D, S, S],
+        [S, S, D, S, S, K],
+        [S, D, S, S, K, S],
+        [D, S, S, K, S, S],
+      ];
+      const seq = SEQS[globalRow % 6];
+      let x = -off;
+      let si = 0;
+      while (x < innerW + 0.001) {
+        const bLen = seq[si % seq.length];
+        if (x + bLen > 0 && x < innerW) {
+          const cx = Math.max(0, x);
+          const cw = Math.min(x + bLen, innerW) - cx;
+          if (cw > 0.5) {
+            const label = Math.abs(cw - brickW) < 0.5 ? 'Vol'
+              : Math.abs(cw - kopW) < 1 ? 'Kop'
+              : Math.abs(cw - drieKW) < 1 ? 'Driekwart'
+              : 'Rest';
+            bricks.push({ x: cx, w: cw, label });
+          }
+        }
+        x = Math.round((x + bLen + stoot) * 10) / 10;
+        si++;
+      }
+      return bricks;
+    }
+
+    const hasKop = verband === 'halfsteens' && globalRow % 2 === 1;
     let x = -off;
     if (hasKop) {
       if (x + kopW > 0 && x < innerW) bricks.push({ x, w: kopW, label: 'Kop' });
@@ -497,7 +531,7 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const numDimRows = 4;
   const refGap  = 50;  // gap between last dim row and reference line
   const legendW = 210;
-  const legendH = 90;
+  const legendH = 120;
   const mBottom = legendH + 30;
 
   const svgW = mLeft + moldW + mRight;
@@ -569,15 +603,20 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
     parts.push(`<line x1="${hcx}" y1="${r2(oy + moldH / 2 - 6)}" x2="${hcx}" y2="${r2(oy + moldH / 2 + 6)}" stroke="#666" stroke-width="0.5"/>`);
   }
 
-  // ── Strip slots (white rectangles inside mold) ──
+  // ── Strip slots (colour-coded by brick type) ──
   const slotPad = 1.5;
+  const slotFill = { Vol: '#ffffff', Kop: '#fef3c7', Driekwart: '#dbeafe', Rest: '#fee2e2' };
   for (const row of rows) {
     const sTop = r2(oy + row.yRow - slotPad);
     const sH   = r2(brickH + 2 * slotPad);
     for (const b of row.bricks) {
       const sLeft = r2(ox + frameLeft + b.x - slotPad);
       const sW    = r2(b.w + 2 * slotPad);
-      parts.push(`<rect x="${sLeft}" y="${sTop}" width="${sW}" height="${sH}" fill="#ffffff" stroke="#334155" stroke-width="1" rx="1"/>`);
+      const fill  = slotFill[b.label] ?? '#ffffff';
+      parts.push(`<rect x="${sLeft}" y="${sTop}" width="${sW}" height="${sH}" fill="${fill}" stroke="#334155" stroke-width="1" rx="1"/>`);
+      if (b.label !== 'Vol' && sW > 12) {
+        parts.push(`<text x="${r2(Number(sLeft) + Number(sW)/2)}" y="${r2(Number(sTop) + Number(sH)/2 + 2.5)}" text-anchor="middle" font-size="5" fill="#475569">${b.label[0]}</text>`);
+      }
     }
     // Row label inside mold on the left
     const labelY = r2(oy + row.yRow + brickH / 2 + 3);
@@ -672,13 +711,16 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const legItems = [
     { color: COL_BLUE,    label: 'Hoofdmaatvoering' },
     { color: COL_ORANGE,  label: 'Lagenmaat' },
-    { color: '#111111',   label: 'Overige' },
-    { color: '#dc2626',   label: 'Laatste steenstrips' },
+    { color: '#111111',   label: 'Overige maatvoering' },
+    { color: '#ffffff', stroke: '#334155', label: 'Strek (Vol)' },
+    { color: '#fef3c7', stroke: '#334155', label: 'Kop' },
+    { color: '#dbeafe', stroke: '#334155', label: 'Driekwart' },
   ];
-  legItems.forEach(({ color, label }, i) => {
+  legItems.forEach(({ color, stroke, label }, i) => {
     const lx  = r2(Number(legX) + legPad);
     const ly  = r2(Number(legY) + 24 + i * 15);
-    parts.push(`<rect x="${lx}" y="${r2(Number(ly) - 7)}" width="16" height="8" fill="${color}"/>`);
+    const sw  = stroke ? ` stroke="${stroke}" stroke-width="0.8"` : '';
+    parts.push(`<rect x="${lx}" y="${r2(Number(ly) - 7)}" width="16" height="8" fill="${color}"${sw}/>`);
     parts.push(`<text x="${r2(Number(lx) + 20)}" y="${ly}" font-size="7" fill="#1e293b">${label}</text>`);
   });
 

@@ -20,32 +20,43 @@ function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX)
 
   if (verband === 'wildverband') {
     const module = steenL + stoot;
-    // 6-row repeating cycle (2 mallen × 3 rijen per mal)
-    // Offsets in mm zodat alle opeenvolgende rijen ≥ 1/3 module verspringen
-    // en rij 7 exact gelijk is aan rij 1 (naadloos repeterend):
-    // [0, 73, 146, 36, 183, 110] → stappen: 73, 73, 110, 73, 73, 110 (allen ≥ 73mm)
-    // Som van stappen = 2×220 = 660 → rij 6 sluit naadloos aan op rij 0
-    // Fractions of module: [0, 1/3, 2/3, 1/6, 5/6, 1/2]
-    // All consecutive steps ≥ 1/3 module; sum = 2 modules → row 7 = row 1 (naadloos)
+    // 6-row repeating cycle — offsets (fractions of module):
+    // [0, 1/3, 2/3, 1/6, 5/6, 1/2] — all consecutive steps ≥ 1/3 module
     const WILD_FRACS = [0, 1/3, 2/3, 1/6, 5/6, 1/2];
-    const kop = round2((steenL - stoot) / 2);         // ~100 mm
-    const driekwart = round2((steenL + stoot) * 0.75 - stoot); // ~157 mm
-    const shift = round2(WILD_FRACS[((rowIndex % 6) + 6) % 6] * module);
+    const kop = round2((steenL - stoot) / 2);                   // ~100 mm
+    const drieK = round2((steenL + stoot) * 0.75 - stoot);      // ~155 mm
+    const S = steenL, K = kop, D = drieK;
+    // Per-row brick-type sequences (6 rotations of [S,S,K,S,S,D])
+    // Each row mixes strekken, koppen en drieklezooren for authentic wildverband
+    const SEQS = [
+      [S, S, K, S, S, D],   // row 0
+      [S, K, S, S, D, S],   // row 1
+      [K, S, S, D, S, S],   // row 2
+      [S, S, D, S, S, K],   // row 3
+      [S, D, S, S, K, S],   // row 4
+      [D, S, S, K, S, S],   // row 5
+    ];
+    const rowIdx = ((rowIndex % 6) + 6) % 6;
+    const seq = SEQS[rowIdx];
+    const shift = round2(WILD_FRACS[rowIdx] * module);
     const pieces = [];
-    let brickStart = round2(-shift);
-    while (brickStart < totalWidth - 0.001) {
-      const clipStart = Math.max(brickStart, 0);
-      const clipEnd = Math.min(round2(brickStart + steenL), totalWidth);
+    let x = round2(-shift);
+    let si = 0;
+    while (x < totalWidth - 0.001) {
+      const bLen = seq[si % seq.length];
+      const clipStart = Math.max(x, 0);
+      const clipEnd = Math.min(round2(x + bLen), totalWidth);
       if (clipEnd > clipStart + 0.001) {
         const len = round2(clipEnd - clipStart);
         let label;
         if (Math.abs(len - steenL) < 0.5) label = 'Vol';
-        else if (Math.abs(len - kop) < 0.5) label = 'Kop';
-        else if (Math.abs(len - driekwart) < 0.5) label = 'Driekwart';
+        else if (Math.abs(len - kop) < 1)  label = 'Kop';
+        else if (Math.abs(len - drieK) < 1) label = 'Driekwart';
         else label = 'Rest';
         pieces.push({ start: round2(clipStart + startX), length: len, label });
       }
-      brickStart = round2(brickStart + module);
+      x = round2(x + bLen + stoot);
+      si++;
     }
     return pieces;
   }
