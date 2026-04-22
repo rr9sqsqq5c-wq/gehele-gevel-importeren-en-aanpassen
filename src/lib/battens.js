@@ -144,3 +144,19 @@ export const BATTEN_CATALOG = [
     prijsM3nom: 816.00,
   },
 ];
+
+export const BASISPLAAT_CATALOG = [
+  {
+    id: 'bluclad-proboard-10',
+    naam: 'Bluclad Proboard 10 mm',
+    fabrikant: 'Cedral / Equitone by Etex',
+    omschrijving: 'Hoogwaardige vezelcementplaat voor buitentoepassingen — ideale ondergrond voor steenstrips en buitenpleisterwerk. Geautoclaveerd, geschuurd en gekantrecht.',
+    dikteMM: 10,
+    gewichtM2: 11.8,
+    plaatBreedte: 1250,
+    plaatLengtes: [2500, 2850, 3000],
+    maxPaneelBreedte: 3000,
+    maxPaneelHoogte: 1250,
+    url: 'https://www.equitone.com',
+  },
+];

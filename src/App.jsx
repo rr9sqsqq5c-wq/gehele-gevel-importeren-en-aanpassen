@@ -4,7 +4,7 @@ warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
-import { BATTEN_CATALOG } from './lib/battens.js';
+import { BATTEN_CATALOG, BASISPLAAT_CATALOG } from './lib/battens.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateMoldPrintHTML, getMoldTemplates } from './lib/panelization.js';
 const Viewer3D = lazy(() => import('./Viewer3D.jsx').then((m) => ({ default: m.Viewer3D })));
 const View2D = lazy(() => import('./View2D.jsx').then((m) => ({ default: m.View2D })));
@@ -764,6 +764,42 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
 
               return (
                 <>
+                  {/* ── Basisplaat productfiche keuze ── */}
+                  <div style={{ marginBottom: 8 }}>
+                    {BASISPLAAT_CATALOG.map((plaat) => {
+                      const checked = pan.basisplaatId === plaat.id;
+                      return (
+                        <label key={plaat.id} style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 10,
+                          cursor: 'pointer',
+                          background: checked ? '#f0fdf4' : '#f8fafc',
+                          border: `1px solid ${checked ? '#86efac' : '#e2e8f0'}`,
+                          borderRadius: 4, padding: '6px 8px',
+                        }}>
+                          <input type="radio" name={`basisplaat-${groupId}`} checked={checked}
+                            onChange={() => upd({
+                              basisplaatId: checked ? null : plaat.id,
+                              ...(checked ? {} : {
+                                dikte: plaat.dikteMM,
+                                gewichtM2: plaat.gewichtM2,
+                                breedte: plaat.maxPaneelBreedte,
+                              }),
+                            })}
+                            style={{ marginTop: 2, flexShrink: 0, accentColor: '#16a34a' }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: 11, color: '#1e293b' }}>{plaat.naam}</div>
+                            <div style={{ fontSize: 9.5, color: '#64748b', marginTop: 1 }}>{plaat.fabrikant}</div>
+                            <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 1, lineHeight: 1.3 }}>{plaat.omschrijving}</div>
+                            <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 9, color: '#475569' }}><strong>Dikte:</strong> {plaat.dikteMM} mm</span>
+                              <span style={{ fontSize: 9, color: '#475569' }}><strong>Gewicht:</strong> {plaat.gewichtM2} kg/m²</span>
+                              <span style={{ fontSize: 9, color: '#475569' }}><strong>Plaat:</strong> {plaat.plaatBreedte}×{plaat.plaatLengtes.join('/')} mm</span>
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
                     <Field label="Breedte mm" tip="Maximale breedte van het basispaneel (mm). Standaard 3005 mm.">
                       <input type="number" min={100} step={50} value={pan.breedte ?? 3005}
