@@ -1,7 +1,8 @@
 const DB_NAME = 'ifc-planner';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_FILES = 'ifc-files';
 const STORE_WALLS = 'parsed-walls';
+const STORE_PROJECT = 'project-state';
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -13,6 +14,9 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains(STORE_WALLS)) {
         db.createObjectStore(STORE_WALLS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_PROJECT)) {
+        db.createObjectStore(STORE_PROJECT, { keyPath: 'id' });
       }
     };
     req.onsuccess = (e) => resolve(e.target.result);
@@ -126,4 +130,34 @@ export async function deleteFileHandle() {
 
 export function supportsFileSystemAccess() {
   return typeof window !== 'undefined' && 'showOpenFilePicker' in window;
+}
+
+export async function saveProjectState({ groups, groupLinks, settingsMap, ifcFileName }) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_PROJECT, 'readwrite');
+    tx.objectStore(STORE_PROJECT).put({ id: 'last', groups, groupLinks, settingsMap, ifcFileName, savedAt: Date.now() });
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function loadProjectState() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_PROJECT, 'readonly');
+    const req = tx.objectStore(STORE_PROJECT).get('last');
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function clearProjectState() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_PROJECT, 'readwrite');
+    tx.objectStore(STORE_PROJECT).delete('last');
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
 }

@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Fragment } from 'react';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines } from './lib/ifc.js';
 warmupWebIFC();
-import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess } from './lib/storage.js';
+import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG } from './lib/battens.js';
@@ -1187,6 +1187,8 @@ export default function App() {
 
   const _gidRef = useRef(1);
   const _colorIdxRef = useRef(0);
+  const _hydratedRef = useRef(false);
+  const _saveTimerRef = useRef(null);
   const newGid = useCallback(() => `G${_gidRef.current++}`, []);
   const nextColor = useCallback(() => GROUP_COLORS[_colorIdxRef.current++ % GROUP_COLORS.length], []);
 
@@ -1376,6 +1378,7 @@ export default function App() {
   function forgetSavedFile() {
     deleteSavedIfcFile().catch(() => {});
     deleteFileHandle().catch(() => {});
+    clearProjectState().catch(() => {});
     setSavedFileInfo(null);
     setSavedHandle(null);
   }
@@ -1482,7 +1485,24 @@ export default function App() {
         if (rec) setSavedFileInfo({ name: rec.file.name, size: rec.file.size, savedAt: rec.savedAt, file: rec.file });
       }).catch(() => {});
     }
+    loadProjectState().then((state) => {
+      if (state && Array.isArray(state.groups) && state.groups.length > 0) {
+        setGroups(state.groups);
+        setGroupLinks(state.groupLinks ?? {});
+        setSettingsMap(state.groupSettings ?? state.settingsMap ?? {});
+      }
+      _hydratedRef.current = true;
+    }).catch(() => { _hydratedRef.current = true; });
   }, []);
+
+  useEffect(() => {
+    if (!_hydratedRef.current) return;
+    if (_saveTimerRef.current) clearTimeout(_saveTimerRef.current);
+    _saveTimerRef.current = setTimeout(() => {
+      saveProjectState({ groups, groupLinks, settingsMap, ifcFileName }).catch(() => {});
+    }, 1500);
+    return () => clearTimeout(_saveTimerRef.current);
+  }, [groups, groupLinks, settingsMap, ifcFileName]);
 
   function pushHistory(currentGroups) {
     setGroupsHistory((h) => [...h.slice(-19), currentGroups]);
