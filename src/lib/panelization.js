@@ -538,6 +538,15 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   // Inner guide dashed rect
   parts.push(`<rect x="${r2(ox + frame)}" y="${r2(oy + frame)}" width="${r2(innerW)}" height="${r2(innerH)}" fill="none" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="5,3"/>`);
 
+  // ── Alignment hole — Ø8mm, 11mm from left edge, vertically centred ──
+  {
+    const hcx = r2(ox + 11);
+    const hcy = r2(oy + moldH / 2);
+    parts.push(`<circle cx="${hcx}" cy="${hcy}" r="4" fill="#ffffff" stroke="#1e293b" stroke-width="1"/>`);
+    parts.push(`<line x1="${r2(ox + 11 - 6)}" y1="${hcy}" x2="${r2(ox + 11 + 6)}" y2="${hcy}" stroke="#666" stroke-width="0.5"/>`);
+    parts.push(`<line x1="${hcx}" y1="${r2(oy + moldH / 2 - 6)}" x2="${hcx}" y2="${r2(oy + moldH / 2 + 6)}" stroke="#666" stroke-width="0.5"/>`);
+  }
+
   // ── Strip slots (white rectangles inside mold) ──
   const slotPad = 1.5;
   for (const row of rows) {
