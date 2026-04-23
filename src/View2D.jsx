@@ -771,6 +771,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
           width: Math.round(drawingRect.width),
           height: Math.round(drawingRect.height),
           label: `Zone ${String.fromCharCode(65 + stripZones.length)}`,
+          depthOffset: 0,
         };
         onStripZonesChange?.([...stripZones, newZone]);
         setSelectedZoneId(newZone.id);
