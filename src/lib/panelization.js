@@ -153,6 +153,43 @@ export function generateBattenPositions(groupHeight, mat, maxInterval) {
   return positions;
 }
 
+function mergeSmallSegments(breaks, minH) {
+  if (breaks.length < 2) return breaks;
+  let segs = [];
+  for (let i = 0; i < breaks.length - 1; i++) {
+    segs.push({ y0: breaks[i], y1: breaks[i + 1] });
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 0; i < segs.length; i++) {
+      const h = round2(segs[i].y1 - segs[i].y0);
+      if (h < minH - 0.001 && segs.length > 1) {
+        if (i === 0) {
+          segs[1] = { y0: segs[0].y0, y1: segs[1].y1 };
+          segs.splice(0, 1);
+        } else if (i === segs.length - 1) {
+          segs[i - 1] = { y0: segs[i - 1].y0, y1: segs[i].y1 };
+          segs.splice(i, 1);
+        } else {
+          const prevH = round2(segs[i - 1].y1 - segs[i - 1].y0);
+          const nextH = round2(segs[i + 1].y1 - segs[i + 1].y0);
+          if (prevH <= nextH) {
+            segs[i - 1] = { y0: segs[i - 1].y0, y1: segs[i].y1 };
+            segs.splice(i, 1);
+          } else {
+            segs[i] = { y0: segs[i].y0, y1: segs[i + 1].y1 };
+            segs.splice(i + 1, 1);
+          }
+        }
+        changed = true;
+        break;
+      }
+    }
+  }
+  return [segs[0].y0, ...segs.map(s => s.y1)];
+}
+
 function buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation) {
   const panels = [];
   let id = 1;
@@ -179,6 +216,7 @@ function buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation) {
 export function panelizeZone(zone, battenYs, basePanel) {
   const bpW = basePanel.width;
   const bpH = basePanel.height;
+  const minPanelH = basePanel.minHeight ?? 800;
   const targetW = basePanel.targetWidth ?? bpW;
 
   const zoneX1 = round2(zone.x);
@@ -207,6 +245,9 @@ export function panelizeZone(zone, battenYs, basePanel) {
       yBreaks = [...newSet].sort((a, b) => a - b);
     }
   }
+
+  const effectiveMinH = Math.min(minPanelH, zone.height);
+  yBreaks = mergeSmallSegments(yBreaks, effectiveMinH);
 
   const xSet = new Set([zoneX1, zoneX2]);
   if (zone.width > targetW + 1) {
@@ -306,6 +347,7 @@ export function computeEffectiveBasePanel(panelen, brickWeightM2, material) {
   return {
     width: w,
     height: effectiveH,
+    minHeight: 800,
     targetWidth:  Math.min(w, brickTargetW),
     targetHeight: Math.min(effectiveH, brickTargetH),
   };
