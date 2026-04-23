@@ -280,7 +280,7 @@ const GROUP_COLORS = [
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, minHoogte: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, minHoogte: null, minHoogteKoppelDeur: false, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -319,7 +319,7 @@ function evalPenantX(expr, gapCenters) {
   }
 }
 
-function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked, gapCenters, groupWidth }) {
+function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked, gapCenters, groupWidth, doorBottomYs = [] }) {
   const mat = settings.material ?? { ...DEFAULT_MATERIAL };
   const [openSections, setOpenSections] = useState({});
   const toggle = (k) => setOpenSections((p) => ({ ...p, [k]: !(p[k] ?? false) }));
@@ -418,16 +418,36 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
           <input type="checkbox" id="minh-enable"
             checked={settings.minHoogte !== null}
-            onChange={(e) => onUpdate({ minHoogte: e.target.checked ? 200 : null })} />
+            onChange={(e) => onUpdate({ minHoogte: e.target.checked ? 200 : null, minHoogteKoppelDeur: false })} />
           <label htmlFor="minh-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>
             Inschakelen
           </label>
         </div>
+        {settings.minHoogte !== null && doorBottomYs.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 4, padding: '4px 6px' }}>
+            <input type="checkbox" id="minh-koppel"
+              checked={!!settings.minHoogteKoppelDeur}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  onUpdate({ minHoogteKoppelDeur: true, minHoogte: Math.min(...doorBottomYs) });
+                } else {
+                  onUpdate({ minHoogteKoppelDeur: false });
+                }
+              }} />
+            <label htmlFor="minh-koppel" style={{ fontSize: 11, color: '#1d4ed8', cursor: 'pointer' }}>
+              Koppelen aan onderkant deur
+              {doorBottomYs.length === 1
+                ? ` (${doorBottomYs[0]} mm)`
+                : ` (laagste: ${Math.min(...doorBottomYs)} mm)`}
+            </label>
+          </div>
+        )}
         {settings.minHoogte !== null && (
           <Field label="Hoogte (mm)">
             <input type="number" min={0} step={10} value={settings.minHoogte}
-              onChange={(e) => onUpdate({ minHoogte: Number(e.target.value) })}
-              style={{ ...inp, width: 80 }} />
+              onChange={(e) => onUpdate({ minHoogte: Number(e.target.value), minHoogteKoppelDeur: false })}
+              style={{ ...inp, width: 80, background: settings.minHoogteKoppelDeur ? '#eff6ff' : undefined }}
+              readOnly={!!settings.minHoogteKoppelDeur} />
           </Field>
         )}
       </CollapsibleSection>
@@ -3194,6 +3214,20 @@ export default function App() {
                   if (!withOrigin.length) return 0;
                   const groupMinX = Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart));
                   return Math.max(...withOrigin.map((w) => (w.wallOrigin.lengthStart - groupMinX) + w.length));
+                })()}
+                doorBottomYs={(() => {
+                  const walls = activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean);
+                  const withOrigin = walls.filter((w) => w.wallOrigin);
+                  if (!withOrigin.length) return [];
+                  const gMinH = Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart));
+                  const ys = new Set();
+                  for (const w of withOrigin) {
+                    const offH = w.wallOrigin.heightStart - gMinH;
+                    for (const op of (w.openings ?? [])) {
+                      if (op.type === 'deur') ys.add(Math.round(offH + (op.y ?? 0)));
+                    }
+                  }
+                  return [...ys].sort((a, b) => a - b);
                 })()}
               />
             </div>
