@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG, clipPanelToFacadePolys } from './lib/panelization.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 
 function generatePaneelId(entity, projectNr, level, stramienStart, stramienEnd, seqNr, panelType) {
@@ -310,6 +310,23 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const penanten = groupSettings?.penanten ?? [];
   const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten), [facadeData, panelen, latten, mat, penanten]);
 
+  const wallGroupPolysRaw = useMemo(() => {
+    if (!walls?.length) return [];
+    const minL = Math.min(...walls.map(w => w.wallOrigin?.lengthStart ?? 0));
+    const minH0 = Math.min(...walls.map(w => w.wallOrigin?.heightStart ?? 0));
+    return walls.map(w => {
+      if (!w.facadePoly || w.facadePoly.length < 3) return null;
+      const offL = (w.wallOrigin?.lengthStart ?? 0) - minL;
+      const offH = (w.wallOrigin?.heightStart ?? 0) - minH0;
+      return w.facadePoly.map(pt => ({ l: pt.l + offL, h: pt.h + offH }));
+    }).filter(Boolean);
+  }, [walls]);
+
+  const clippedPanels = useMemo(() => {
+    if (!wallGroupPolysRaw.length) return null;
+    return allPanels.map(p => clipPanelToFacadePolys(p, wallGroupPolysRaw)).filter(Boolean);
+  }, [allPanels, wallGroupPolysRaw]);
+
   if (!facadeData) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 13 }}>
@@ -323,9 +340,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const facadeZones = computeZoneBounds(penanten, groupWidth);
   const selectedZone = selectedZoneIdx >= 0 && selectedZoneIdx < facadeZones.length ? facadeZones[selectedZoneIdx] : null;
 
+  const effectivePanels = clippedPanels ?? allPanels;
   const zonePanels = selectedZone
-    ? allPanels.filter((p) => p.x + p.width > selectedZone.xStart + 1 && p.x < selectedZone.xEnd - 1)
-    : allPanels;
+    ? effectivePanels.filter((p) => p.x + p.width > selectedZone.xStart + 1 && p.x < selectedZone.xEnd - 1)
+    : effectivePanels;
   const zoneLatten = selectedZone
     ? allLatten.filter((l) => l.x + l.width > selectedZone.xStart + 1 && l.x < selectedZone.xEnd - 1)
     : allLatten;
@@ -358,18 +376,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const latColor    = '#fde68a';
   const openColor   = '#fca5a5';
 
-  const groupMinL = walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.lengthStart ?? 0)) : 0;
-  const groupMinHOrig = walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.heightStart ?? 0)) : 0;
-  const wallGroupPolys = (walls ?? []).map(w => {
-    if (!w.facadePoly || w.facadePoly.length < 3) return null;
-    const offL = (w.wallOrigin?.lengthStart ?? 0) - groupMinL;
-    const offH = (w.wallOrigin?.heightStart ?? 0) - groupMinHOrig;
-    return w.facadePoly.map(pt => ({ l: pt.l + offL, h: pt.h + offH }));
-  }).filter(Boolean);
-  const hasWallPolys = wallGroupPolys.length > 0;
+  const hasWallPolys = wallGroupPolysRaw.length > 0;
 
   const facadeShapePath = hasWallPolys
-    ? wallGroupPolys.map(poly =>
+    ? wallGroupPolysRaw.map(poly =>
         poly.map((pt, i) => `${i === 0 ? 'M' : 'L'}${sx(pt.l)},${sy(pt.h)}`).join(' ') + ' Z'
       ).join(' ')
     : `M${OX},${OY} h${W} v${H} h${-W} Z`;
@@ -1220,24 +1230,43 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
           <path d={facadeShapePath} fill="#f8fafc" stroke={dimColor} strokeWidth={1} fillRule="nonzero" />
 
-          {drawingType === 'plaatsing' && zonePanels.map((p, i) => (
-            <g key={p.id ?? i}>
-              <rect
-                x={sx(p.x)} y={sy(p.y + p.height)}
-                width={p.width * scale} height={p.height * scale}
-                fill={panelColor} stroke={dimColor} strokeWidth={0.8} fillOpacity={0.8}
-              />
-              {p.width * scale > 24 && p.height * scale > 14 && (
-                <text
-                  x={sx(p.x + p.width / 2)} y={sy(p.y + p.height / 2)}
-                  textAnchor="middle" dominantBaseline="middle"
-                  fontSize={FONT_LBL} fill="#1e3a5f" fontFamily="Arial, sans-serif" fontWeight="bold"
-                >
-                  P{i + 1}
-                </text>
-              )}
-            </g>
-          ))}
+          {drawingType === 'plaatsing' && zonePanels.map((p, i) => {
+            const clips = p.clipPolys;
+            const cx = clips
+              ? clips[0].reduce((s, pt) => s + pt.l, 0) / clips[0].length
+              : p.x + p.width / 2;
+            const cy = clips
+              ? clips[0].reduce((s, pt) => s + pt.h, 0) / clips[0].length
+              : p.y + p.height / 2;
+            const labelVisible = p.width * scale > 24 && p.height * scale > 14;
+            return (
+              <g key={p.id ?? i}>
+                {clips ? (
+                  clips.map((cp, ci) => (
+                    <polygon key={ci}
+                      points={cp.map(pt => `${sx(pt.l)},${sy(pt.h)}`).join(' ')}
+                      fill={panelColor} stroke={dimColor} strokeWidth={0.8} fillOpacity={0.8}
+                    />
+                  ))
+                ) : (
+                  <rect
+                    x={sx(p.x)} y={sy(p.y + p.height)}
+                    width={p.width * scale} height={p.height * scale}
+                    fill={panelColor} stroke={dimColor} strokeWidth={0.8} fillOpacity={0.8}
+                  />
+                )}
+                {labelVisible && (
+                  <text
+                    x={sx(cx)} y={sy(cy)}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fontSize={FONT_LBL} fill="#1e3a5f" fontFamily="Arial, sans-serif" fontWeight="bold"
+                  >
+                    P{i + 1}
+                  </text>
+                )}
+              </g>
+            );
+          })}
 
           <g clipPath="url(#wt-openings-clip)">
             {drawingType === 'achterconstructie' && zoneLatten.map((l) => (

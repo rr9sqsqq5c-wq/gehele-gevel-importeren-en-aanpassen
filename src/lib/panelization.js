@@ -4,6 +4,70 @@ function round2(v) {
   return Math.round(v * 100) / 100;
 }
 
+function polySignedArea(poly) {
+  let area = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const j = (i + 1) % poly.length;
+    area += poly[i].l * poly[j].h - poly[j].l * poly[i].h;
+  }
+  return area / 2;
+}
+
+function clipPolygonSH(subject, clip) {
+  const clipCCW = polySignedArea(clip) >= 0 ? clip : [...clip].reverse();
+  let output = [...subject];
+  const n = clipCCW.length;
+  for (let i = 0; i < n && output.length > 0; i++) {
+    const input = [...output];
+    output = [];
+    const e0 = clipCCW[i], e1 = clipCCW[(i + 1) % n];
+    const el = e1.l - e0.l, eh = e1.h - e0.h;
+    const inside = (p) => el * (p.h - e0.h) - eh * (p.l - e0.l) >= -1e-9;
+    const intersect = (a, b) => {
+      const dl = b.l - a.l, dh = b.h - a.h;
+      const denom = dl * eh - dh * el;
+      if (Math.abs(denom) < 1e-10) return null;
+      const t = ((e0.l - a.l) * eh - (e0.h - a.h) * el) / denom;
+      return { l: a.l + t * dl, h: a.h + t * dh };
+    };
+    for (let j = 0; j < input.length; j++) {
+      const curr = input[j], prev = input[(j - 1 + input.length) % input.length];
+      if (inside(curr)) {
+        if (!inside(prev)) { const pt = intersect(prev, curr); if (pt) output.push(pt); }
+        output.push(curr);
+      } else if (inside(prev)) {
+        const pt = intersect(prev, curr); if (pt) output.push(pt);
+      }
+    }
+  }
+  return output;
+}
+
+export function clipPanelToFacadePolys(panel, facadePolys) {
+  if (!facadePolys?.length) return { ...panel, clipPolys: null };
+  const rect = [
+    { l: panel.x,              h: panel.y              },
+    { l: panel.x + panel.width, h: panel.y              },
+    { l: panel.x + panel.width, h: panel.y + panel.height },
+    { l: panel.x,              h: panel.y + panel.height },
+  ];
+  const clips = [];
+  let totalArea = 0;
+  for (const facadePoly of facadePolys) {
+    if (!facadePoly || facadePoly.length < 3) continue;
+    const clipped = clipPolygonSH(rect, facadePoly);
+    if (clipped.length < 3) continue;
+    const area = Math.abs(polySignedArea(clipped));
+    if (area < 1) continue;
+    clips.push(clipped);
+    totalArea += area;
+  }
+  if (!clips.length || totalArea < 500) return null;
+  const panelArea = panel.width * panel.height;
+  const coverRatio = totalArea / panelArea;
+  return { ...panel, clipPolys: clips, clipArea: totalArea, coverRatio };
+}
+
 export function buildFacadeZones(facadeWidth, facadeHeight, openings) {
   if (!openings.length) {
     return [{ id: 'Z1', kind: 'algemeen', x: 0, y: 0, width: facadeWidth, height: facadeHeight }];
