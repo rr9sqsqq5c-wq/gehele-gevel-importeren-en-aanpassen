@@ -1287,6 +1287,7 @@ export default function App() {
   const [viewMode, setViewMode] = useState('3d');
   const [pendingFile, setPendingFile] = useState(null);
   const [wallTypes, setWallTypes] = useState([]);
+  const [typeFilter, setTypeFilter] = useState('');
   const [selectedTypes, setSelectedTypes] = useState(new Set());
   const [zoneImportMode, setZoneImportMode] = useState(false);
   const [similarSuggestions, setSimilarSuggestions] = useState(null);
@@ -1571,6 +1572,7 @@ export default function App() {
   function cancelImport() {
     setPendingFile(null);
     setWallTypes([]);
+    setTypeFilter('');
     setLoadStatus(allWalls.length ? 'loaded' : 'idle');
   }
 
@@ -1602,7 +1604,51 @@ export default function App() {
       });
 
       if (!elements.length) throw new Error('Geen zone-elementen gevonden met de geselecteerde types');
-      addLog(`✓ ${elements.length} zone-elementen geladen, groeperen op gevel…`);
+      addLog(`✓ ${elements.length} zone-elementen geladen, achterliggende wanden laden voor openingen…`);
+
+      // Parse structural walls to extract openings and apply them to zone elements
+      try {
+        const structWalls = await parseIfc(pendingFile, null, (p) => {
+          if (p.phase === 'wanden') setLoadProgress({ current: p.current, total: p.total });
+        });
+        addLog(`✓ ${structWalls.length} constructieve wanden geanalyseerd voor openingen`);
+        let openingsCopied = 0;
+        for (const zEl of elements) {
+          const wo = zEl.wallOrigin;
+          if (!wo) continue;
+          const zThickMid = (wo.thicknessStart + wo.thicknessEnd) / 2;
+          const zL0 = wo.lengthStart, zL1 = zL0 + zEl.length;
+          const zH0 = wo.heightStart, zH1 = zH0 + zEl.height;
+          for (const sw of structWalls) {
+            const swo = sw.wallOrigin;
+            if (!swo || swo.thicknessAxis !== wo.thicknessAxis) continue;
+            const sThickMid = (swo.thicknessStart + swo.thicknessEnd) / 2;
+            if (Math.abs(sThickMid - zThickMid) > 300) continue;
+            const sL0 = swo.lengthStart, sL1 = sL0 + sw.length;
+            const sH0 = swo.heightStart, sH1 = sH0 + sw.height;
+            const overlapL = Math.min(zL1, sL1) - Math.max(zL0, sL0);
+            const overlapH = Math.min(zH1, sH1) - Math.max(zH0, sH0);
+            if (overlapL < 100 || overlapH < 100) continue;
+            const dL = swo.lengthStart - wo.lengthStart;
+            const dH = swo.heightStart - wo.heightStart;
+            for (const op of (sw.openings ?? [])) {
+              zEl.openings.push({
+                ...op,
+                id: `${op.id}_z${zEl.expressID}`,
+                x: op.x + dL,
+                y: op.y + dH,
+                polyPts: op.polyPts?.map(pt => ({ l: pt.l + dL, h: pt.h + dH })) ?? null,
+              });
+              openingsCopied++;
+            }
+          }
+        }
+        if (openingsCopied) addLog(`✓ ${openingsCopied} openingen overgenomen van constructieve wanden`);
+      } catch (e) {
+        addLog(`⚠ Openingen laden mislukt: ${e.message}`);
+      }
+
+      addLog(`Groeperen op gevel…`);
 
       const TOLERANCE = 50;
       const clusterMap = new Map();
@@ -2369,6 +2415,23 @@ export default function App() {
               </label>
             </div>
 
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="🔍 Zoeken op naam of type…"
+                value={typeFilter}
+                onChange={e => setTypeFilter(e.target.value)}
+                style={{ flex: 1, fontSize: 12, padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 4, outline: 'none' }}
+                autoFocus
+              />
+              {typeFilter && (
+                <button onClick={() => setTypeFilter('')}
+                  style={{ fontSize: 11, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: '2px 7px', cursor: 'pointer' }}>
+                  ✕
+                </button>
+              )}
+            </div>
+
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
               <button onClick={() => setSelectedTypes(new Set(wallTypes.map((t) => t.name)))}
                 style={{ fontSize: 11, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}>
@@ -2387,7 +2450,11 @@ export default function App() {
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 6 }}>
-              {wallTypes.map((t) => {
+              {wallTypes.filter(t => {
+                if (!typeFilter) return true;
+                const q = typeFilter.toLowerCase();
+                return t.name.toLowerCase().includes(q) || (t.ifcEntityType ?? '').toLowerCase().includes(q);
+              }).map((t) => {
                 const checked = selectedTypes.has(t.name);
                 const entityColor = t.ifcEntityType === 'IFCWALL' || t.ifcEntityType === 'IFCWALLSTANDARDCASE' ? '#3b82f6'
                   : t.ifcEntityType === 'IFCSLAB' ? '#8b5cf6'
@@ -2405,6 +2472,13 @@ export default function App() {
                   </label>
                 );
               })}
+              {wallTypes.filter(t => {
+                if (!typeFilter) return false;
+                const q = typeFilter.toLowerCase();
+                return t.name.toLowerCase().includes(q) || (t.ifcEntityType ?? '').toLowerCase().includes(q);
+              }).length === 0 && typeFilter && (
+                <div style={{ padding: '14px 12px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>Geen resultaten voor "{typeFilter}"</div>
+              )}
             </div>
 
             <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
