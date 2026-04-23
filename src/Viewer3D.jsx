@@ -281,48 +281,99 @@ function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls }) {
   return <group ref={groupRef} />;
 }
 
+function buildPolyExtrudeGeo(wall, upAxis) {
+  const poly = wall.facadePoly;
+  const wo = wall.wallOrigin;
+  if (!poly || poly.length < 3 || !wo) return null;
+  try {
+    const thickness = Math.max(50, Math.abs((wo.thicknessEnd ?? wo.thicknessStart + 200) - wo.thicknessStart));
+    const tStart = wo.thicknessStart;
+    const tEnd = wo.thicknessStart + thickness;
+
+    const toThree = (l, h, t) => {
+      const ifc = { x: 0, y: 0, z: 0 };
+      ifc[wo.lengthAxis]    = wo.lengthStart + l;
+      ifc[wo.heightAxis]    = wo.heightStart + h;
+      ifc[wo.thicknessAxis] = t;
+      return ifcToThree(ifc.x, ifc.y, ifc.z, upAxis);
+    };
+
+    const fp = poly.map(p => toThree(p.l, p.h, tStart));
+    const bp = poly.map(p => toThree(p.l, p.h, tEnd));
+    const n = poly.length;
+
+    const positions = [];
+    const push3 = (pt) => positions.push(pt[0], pt[1], pt[2]);
+
+    for (let i = 1; i < n - 1; i++) { push3(fp[0]); push3(fp[i]); push3(fp[i + 1]); }
+    for (let i = 1; i < n - 1; i++) { push3(bp[0]); push3(bp[i + 1]); push3(bp[i]); }
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      push3(fp[i]); push3(fp[j]); push3(bp[j]);
+      push3(fp[i]); push3(bp[j]); push3(bp[i]);
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.computeVertexNormals();
+    return geo;
+  } catch { return null; }
+}
+
 function WallMesh({ wall, isSelected, isHovered, groupColor, onSelect, onHover, upAxis }) {
   const box = useMemo(() => getWallBox(wall, upAxis), [wall, upAxis]);
-  if (!box) return null;
 
-  const wallColor = isSelected
-    ? '#facc15'
-    : isHovered
-    ? '#93c5fd'
-    : groupColor
-    ? groupColor
-    : '#94a3b8';
+  const facadeGeo = useMemo(() => {
+    const poly = wall.facadePoly;
+    if (!poly || poly.length === 4) return null;
+    return buildPolyExtrudeGeo(wall, upAxis);
+  }, [wall, upAxis]);
 
-  const wallOpacity = isSelected ? 0.85
-    : isHovered ? 0.75
-    : groupColor ? 0.55
-    : 0.7;
+  useEffect(() => () => { facadeGeo?.dispose(); }, [facadeGeo]);
+
+  if (!box && !facadeGeo) return null;
+
+  const wallColor = isSelected ? '#facc15' : isHovered ? '#93c5fd' : groupColor ?? '#94a3b8';
+  const wallOpacity = isSelected ? 0.85 : isHovered ? 0.75 : groupColor ? 0.55 : 0.7;
+
+  const handlers = {
+    onClick:        (e) => { e.stopPropagation(); onSelect(wall.expressID); },
+    onPointerEnter: (e) => { e.stopPropagation(); onHover(wall.expressID); document.body.style.cursor = 'pointer'; },
+    onPointerLeave: (e) => { e.stopPropagation(); onHover(null); document.body.style.cursor = 'default'; },
+  };
+
+  const hoverPos = box ? [box.pos[0], box.pos[1] + (box.size[1] ?? 0) / 2 + 0.05, box.pos[2]] : [0, 0, 0];
 
   return (
     <group>
-      <mesh
-        position={box.pos}
-        onClick={(e) => { e.stopPropagation(); onSelect(wall.expressID); }}
-        onPointerEnter={(e) => { e.stopPropagation(); onHover(wall.expressID); document.body.style.cursor = 'pointer'; }}
-        onPointerLeave={(e) => { e.stopPropagation(); onHover(null); document.body.style.cursor = 'default'; }}
-      >
-        <boxGeometry args={box.size} />
-        <meshStandardMaterial
-          color={wallColor}
-          transparent
-          opacity={wallOpacity}
-        />
-      </mesh>
-
-      {(isSelected || isHovered) && (
-        <mesh position={box.pos}>
-          <boxGeometry args={box.size} />
-          <meshBasicMaterial color={isSelected ? '#facc15' : '#60a5fa'} wireframe />
-        </mesh>
-      )}
+      {facadeGeo ? (
+        <>
+          <mesh geometry={facadeGeo} {...handlers}>
+            <meshStandardMaterial color={wallColor} transparent opacity={wallOpacity} side={THREE.DoubleSide} />
+          </mesh>
+          {(isSelected || isHovered) && (
+            <mesh geometry={facadeGeo}>
+              <meshBasicMaterial color={isSelected ? '#facc15' : '#60a5fa'} wireframe />
+            </mesh>
+          )}
+        </>
+      ) : box ? (
+        <>
+          <mesh position={box.pos} {...handlers}>
+            <boxGeometry args={box.size} />
+            <meshStandardMaterial color={wallColor} transparent opacity={wallOpacity} />
+          </mesh>
+          {(isSelected || isHovered) && (
+            <mesh position={box.pos}>
+              <boxGeometry args={box.size} />
+              <meshBasicMaterial color={isSelected ? '#facc15' : '#60a5fa'} wireframe />
+            </mesh>
+          )}
+        </>
+      ) : null}
 
       {isHovered && (
-        <Html position={[box.pos[0], box.pos[1] + box.size[1] / 2 + 0.05, box.pos[2]]} center style={{ pointerEvents: 'none' }}>
+        <Html position={hoverPos} center style={{ pointerEvents: 'none' }}>
           <div style={{
             background: 'rgba(15,23,42,0.9)',
             color: '#f1f5f9',
