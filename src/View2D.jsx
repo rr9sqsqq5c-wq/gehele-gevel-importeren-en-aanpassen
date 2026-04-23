@@ -20,7 +20,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [] }) {
+export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [], stripZones = [], onStripZonesChange }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -28,6 +28,10 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
 
   const transform = useRef({ scale: 1, tx: 0, ty: 0 });
   const dragStart = useRef(null);
+  const [drawMode, setDrawMode] = useState(false);
+  const drawStartRef = useRef(null);
+  const [drawingRect, setDrawingRect] = useState(null);
+  const [selectedZoneId, setSelectedZoneId] = useState(null);
 
   const mat = groupSettings?.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
   const verband = groupSettings?.verband ?? 'halfsteens';
@@ -295,6 +299,18 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
     if (vis.strips !== false) {
       const isTegel = verband === 'staand_tegelverband';
       const stripH = isTegel ? mat.steenL : steenH;
+      const hasZones = stripZones.length > 0;
+      if (hasZones) {
+        ctx.save();
+        ctx.beginPath();
+        for (const sz of stripZones) {
+          const [szSx, szSy] = toScreen(sz.x, sz.y + sz.height);
+          const szSw = sz.width * scale * 0.001;
+          const szSh = sz.height * scale * 0.001;
+          ctx.rect(szSx, szSy, szSw, szSh);
+        }
+        ctx.clip();
+      }
       for (const row of rows) {
         const clippedTop = Math.min(row.y + stripH, groupHeight);
         const clippedBottom = Math.max(row.y, patternStartH);
@@ -309,6 +325,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
           ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
         }
       }
+      if (hasZones) ctx.restore();
 
       for (const zp of zonePatterns) {
         if (!zp) continue;
@@ -564,6 +581,51 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
     ctx.lineWidth = 1;
     ctx.strokeRect(faceSx, faceSy, faceW, faceH);
 
+    // Strip zone overlays
+    for (const sz of stripZones) {
+      const [szSx, szSy] = toScreen(sz.x, sz.y + sz.height);
+      const szSw = sz.width * scale * 0.001;
+      const szSh = sz.height * scale * 0.001;
+      const isSelected = sz.id === selectedZoneId;
+      ctx.save();
+      ctx.strokeStyle = isSelected ? '#f59e0b' : '#22d3ee';
+      ctx.lineWidth = isSelected ? 2.5 : 1.5;
+      ctx.setLineDash([6, 3]);
+      ctx.strokeRect(szSx, szSy, szSw, szSh);
+      ctx.fillStyle = isSelected ? 'rgba(245,158,11,0.08)' : 'rgba(34,211,238,0.06)';
+      ctx.fillRect(szSx, szSy, szSw, szSh);
+      ctx.setLineDash([]);
+      if (szSw > 40 && szSh > 14) {
+        ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.fillStyle = isSelected ? '#f59e0b' : '#22d3ee';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`${sz.label ?? sz.id}  ${Math.round(sz.width)}×${Math.round(sz.height)} mm`, szSx + 4, szSy + 4);
+      }
+      ctx.restore();
+    }
+
+    // In-progress drawing rect preview
+    if (drawingRect && drawingRect.width > 0 && drawingRect.height > 0) {
+      const [drSx, drSy] = toScreen(drawingRect.x, drawingRect.y + drawingRect.height);
+      const drSw = drawingRect.width * scale * 0.001;
+      const drSh = drawingRect.height * scale * 0.001;
+      ctx.save();
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(drSx, drSy, drSw, drSh);
+      ctx.fillStyle = 'rgba(34,211,238,0.12)';
+      ctx.fillRect(drSx, drSy, drSw, drSh);
+      ctx.setLineDash([]);
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.fillStyle = '#22d3ee';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${Math.round(drawingRect.width)} × ${Math.round(drawingRect.height)} mm`, drSx + drSw / 2, drSy + drSh / 2);
+      ctx.restore();
+    }
+
     if (showCenterLines) {
       const withOrigin = walls.filter((w) => w.wallOrigin);
       const groupMinX = withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart)) : 0;
@@ -642,7 +704,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
-  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, gridLines, showCenterLines]);
+  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, gridLines, showCenterLines, stripZones, drawingRect, selectedZoneId]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
@@ -660,21 +722,63 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
     setRedrawTick((n) => n + 1);
   }, []);
 
-  const onMouseDown = useCallback((e) => {
-    dragStart.current = { x: e.clientX, y: e.clientY, tx: transform.current.tx, ty: transform.current.ty };
+  const screenToWorld = useCallback((sx, sy) => {
+    const { scale, tx, ty } = transform.current;
+    return [(sx - tx) / (scale * 0.001), (ty - sy) / (scale * 0.001)];
   }, []);
+
+  const onMouseDown = useCallback((e) => {
+    if (drawMode) {
+      const canvas = canvasRef.current;
+      const rect = canvas.getBoundingClientRect();
+      const [wX, wY] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      drawStartRef.current = { wX, wY };
+      setDrawingRect({ x: wX, y: wY, width: 0, height: 0 });
+      // Check if clicking an existing zone to select it
+      const hit = stripZones.find((sz) => wX >= sz.x && wX <= sz.x + sz.width && wY >= sz.y && wY <= sz.y + sz.height);
+      setSelectedZoneId(hit?.id ?? null);
+    } else {
+      dragStart.current = { x: e.clientX, y: e.clientY, tx: transform.current.tx, ty: transform.current.ty };
+    }
+  }, [drawMode, screenToWorld, stripZones]);
 
   const onMouseMove = useCallback((e) => {
-    if (!dragStart.current) return;
-    transform.current = {
-      ...transform.current,
-      tx: dragStart.current.tx + (e.clientX - dragStart.current.x),
-      ty: dragStart.current.ty + (e.clientY - dragStart.current.y),
-    };
-    setRedrawTick((n) => n + 1);
-  }, []);
+    if (drawMode && drawStartRef.current) {
+      const canvas = canvasRef.current;
+      const rect = canvas.getBoundingClientRect();
+      const [wX, wY] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      const sX = drawStartRef.current.wX;
+      const sY = drawStartRef.current.wY;
+      setDrawingRect({ x: Math.min(sX, wX), y: Math.min(sY, wY), width: Math.abs(wX - sX), height: Math.abs(wY - sY) });
+    } else if (!drawMode && dragStart.current) {
+      transform.current = {
+        ...transform.current,
+        tx: dragStart.current.tx + (e.clientX - dragStart.current.x),
+        ty: dragStart.current.ty + (e.clientY - dragStart.current.y),
+      };
+      setRedrawTick((n) => n + 1);
+    }
+  }, [drawMode, screenToWorld]);
 
-  const onMouseUp = useCallback(() => { dragStart.current = null; }, []);
+  const onMouseUp = useCallback(() => {
+    if (drawMode && drawStartRef.current && drawingRect) {
+      drawStartRef.current = null;
+      if (drawingRect.width > 20 && drawingRect.height > 20) {
+        const newZone = {
+          id: `sz_${Date.now()}`,
+          x: Math.round(drawingRect.x),
+          y: Math.round(drawingRect.y),
+          width: Math.round(drawingRect.width),
+          height: Math.round(drawingRect.height),
+          label: `Zone ${String.fromCharCode(65 + stripZones.length)}`,
+        };
+        onStripZonesChange?.([...stripZones, newZone]);
+        setSelectedZoneId(newZone.id);
+      }
+      setDrawingRect(null);
+    }
+    dragStart.current = null;
+  }, [drawMode, drawingRect, stripZones, onStripZonesChange]);
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', background: '#1e293b' }}>
@@ -682,13 +786,55 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
         ref={canvasRef}
         width={Math.round(size.w * (window.devicePixelRatio || 1))}
         height={Math.round(size.h * (window.devicePixelRatio || 1))}
-        style={{ display: 'block', width: size.w, height: size.h }}
+        style={{ display: 'block', width: size.w, height: size.h, cursor: drawMode ? 'crosshair' : 'grab' }}
         onWheel={onWheel}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
       />
+
+      {/* Toolbar top-left */}
+      <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+        <button
+          onClick={() => { setDrawMode((m) => !m); setDrawingRect(null); drawStartRef.current = null; }}
+          style={{
+            background: drawMode ? '#0e7490' : 'rgba(30,41,59,0.92)',
+            border: `1px solid ${drawMode ? '#22d3ee' : '#334155'}`,
+            color: drawMode ? '#22d3ee' : '#94a3b8',
+            padding: '4px 10px', fontSize: 11, borderRadius: 4, cursor: 'pointer', fontWeight: drawMode ? 700 : 400,
+          }}
+        >
+          {drawMode ? '✏️ Teken zone — klik & sleep' : '▭ Teken zone'}
+        </button>
+
+        {stripZones.length > 0 && (
+          <div style={{ background: 'rgba(15,23,42,0.92)', border: '1px solid #1e3a5f', borderRadius: 4, padding: '4px 6px', minWidth: 180 }}>
+            <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3, fontWeight: 600 }}>Strip-zones ({stripZones.length})</div>
+            {stripZones.map((sz) => (
+              <div key={sz.id} style={{
+                display: 'flex', alignItems: 'center', gap: 4, padding: '2px 0',
+                background: sz.id === selectedZoneId ? 'rgba(34,211,238,0.08)' : 'transparent',
+                borderRadius: 2, cursor: 'pointer',
+              }}
+                onClick={() => setSelectedZoneId(sz.id === selectedZoneId ? null : sz.id)}
+              >
+                <span style={{ width: 8, height: 8, border: '1.5px solid #22d3ee', borderRadius: 1, display: 'inline-block', flexShrink: 0 }} />
+                <span style={{ fontSize: 10, color: '#e2e8f0', flex: 1 }}>{sz.label} <span style={{ color: '#64748b' }}>{Math.round(sz.width)}×{Math.round(sz.height)}</span></span>
+                <button
+                  onClick={(ev) => { ev.stopPropagation(); onStripZonesChange?.(stripZones.filter((z) => z.id !== sz.id)); if (selectedZoneId === sz.id) setSelectedZoneId(null); }}
+                  style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
+                >✕</button>
+              </div>
+            ))}
+            <button
+              onClick={() => { onStripZonesChange?.([]); setSelectedZoneId(null); }}
+              style={{ marginTop: 4, background: 'none', border: '1px solid #334155', color: '#64748b', fontSize: 9, borderRadius: 3, padding: '2px 6px', cursor: 'pointer', width: '100%' }}
+            >Alle zones wissen</button>
+          </div>
+        )}
+      </div>
+
       <button
         onClick={fitToView}
         style={{
@@ -701,7 +847,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
         ⊡ Passend maken
       </button>
       <div style={{ position: 'absolute', bottom: 12, left: 12, color: '#475569', fontSize: 11, pointerEvents: 'none' }}>
-        Scrollen = zoom · Slepen = pannen
+        {drawMode ? '✏️ Teken een rechthoek om een strip-zone te definiëren' : 'Scrollen = zoom · Slepen = pannen'}
       </div>
     </div>
   );
