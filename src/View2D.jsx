@@ -238,12 +238,44 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
     const faceW = groupWidth * scale * 0.001;
     const faceH = groupHeight * scale * 0.001;
 
+    // Compute wall polygon shapes in group-local coords (group origin = bottom-left of bounding box)
+    const groupMinL = walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.lengthStart ?? 0)) : 0;
+    const groupMinH = walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.heightStart ?? 0)) : 0;
+    const wallGroupPolys = (walls ?? []).map(w => {
+      if (!w.facadePoly || w.facadePoly.length < 3) return null;
+      const offL = (w.wallOrigin?.lengthStart ?? 0) - groupMinL;
+      const offH = (w.wallOrigin?.heightStart ?? 0) - groupMinH;
+      return w.facadePoly.map(pt => ({ l: pt.l + offL, h: pt.h + offH }));
+    }).filter(Boolean);
+    const hasWallPolys = wallGroupPolys.length > 0;
+
+    // Helper: trace facade outline path (union of wall polygons, or full rect as fallback)
+    const traceFacadePath = () => {
+      if (hasWallPolys) {
+        for (const poly of wallGroupPolys) {
+          const pts = poly.map(pt => toScreen(pt.l, pt.h));
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+          ctx.closePath();
+        }
+      } else {
+        ctx.rect(faceSx - 1, faceSy - 1, faceW + 2, faceH + 2);
+      }
+    };
+
+    // Draw facade background using actual wall shapes
     ctx.fillStyle = hexToRgba(color, 0.15);
-    ctx.fillRect(faceSx, faceSy, faceW, faceH);
+    if (hasWallPolys) {
+      ctx.beginPath();
+      traceFacadePath();
+      ctx.fill();
+    } else {
+      ctx.fillRect(faceSx, faceSy, faceW, faceH);
+    }
 
     const applyOpeningExclusionClip = () => {
       ctx.beginPath();
-      ctx.rect(faceSx - 1, faceSy - 1, faceW + 2, faceH + 2);
+      traceFacadePath();
       for (const op of groupOpenings) {
         const poly = getOpeningPoly(op);
         const pts = poly.map((p) => toScreen(p.l, p.h));
@@ -300,8 +332,14 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
       const isTegel = verband === 'staand_tegelverband';
       const stripH = isTegel ? mat.steenL : steenH;
       const hasZones = stripZones.length > 0;
+      ctx.save();
+      // Clip strips to actual wall shape
+      if (hasWallPolys) {
+        ctx.beginPath();
+        traceFacadePath();
+        ctx.clip();
+      }
       if (hasZones) {
-        ctx.save();
         ctx.beginPath();
         for (const sz of stripZones) {
           const [szSx, szSy] = toScreen(sz.x, sz.y + sz.height);
@@ -325,7 +363,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
           ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
         }
       }
-      if (hasZones) ctx.restore();
+      ctx.restore();
 
       for (const zp of zonePatterns) {
         if (!zp) continue;
@@ -579,7 +617,13 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
 
     ctx.strokeStyle = '#64748b';
     ctx.lineWidth = 1;
-    ctx.strokeRect(faceSx, faceSy, faceW, faceH);
+    if (hasWallPolys) {
+      ctx.beginPath();
+      traceFacadePath();
+      ctx.stroke();
+    } else {
+      ctx.strokeRect(faceSx, faceSy, faceW, faceH);
+    }
 
     // Strip zone overlays
     for (const sz of stripZones) {

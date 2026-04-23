@@ -537,6 +537,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
             } catch { }
           }
 
+          const facadePoly = getFacadePolygon(api, modelID, wID, lengthAxis, heightAxis, wallBB);
           walls.push({
             expressID: wID,
             name,
@@ -544,6 +545,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
             height,
             openings,
             wallOrigin,
+            facadePoly: facadePoly ?? null,
             typeName: wallTypeMap[wID] ?? null,
           });
         } catch { }
@@ -1258,6 +1260,7 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
           thicknessAxis,
         };
 
+        const facadePoly = getFacadePolygon(api, modelID, eID, lengthAxis, heightAxis, bb);
         elements.push({
           expressID: eID,
           name,
@@ -1265,6 +1268,7 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
           height,
           openings: [],
           wallOrigin,
+          facadePoly: facadePoly ?? null,
           typeName: wallTypeMap[eID] ?? null,
           isZoneElement: true,
           ifcEntityType: elemEntityTypeMap[eID],
