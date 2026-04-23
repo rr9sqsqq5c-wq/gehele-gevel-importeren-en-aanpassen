@@ -1330,18 +1330,32 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
           <line x1={peilLineX} y1={OY} x2={peilLineX} y2={OY + H} stroke="#334155" strokeWidth={0.8} />
           {(() => {
-            const MIN_GAP = 11;
-            let lastY = -Infinity;
-            return yBreaks.map((y, i) => {
+            const MIN_GAP = 14;
+            const allPts = [
+              ...yBreaks.map(y => ({ y, kind: 'peil' })),
+              ...latYs.map(y => ({ y, kind: 'lat' })),
+            ].sort((a, b) => a.y - b.y);
+            let lastLabelY = -Infinity;
+            return allPts.map(({ y, kind }, i) => {
               const absH = (peilmatenBase + y) / 1000;
               const screenY = sy(y);
-              const showLabel = (lastY === -Infinity) || (Math.abs(screenY - lastY) >= MIN_GAP);
-              if (showLabel) lastY = screenY;
+              const isLat = kind === 'lat';
+              const showLabel = lastLabelY === -Infinity || Math.abs(screenY - lastLabelY) >= MIN_GAP;
+              if (showLabel) lastLabelY = screenY;
               return (
-                <g key={i}>
-                  <line x1={peilLineX - 4} y1={screenY} x2={peilLineX + 4} y2={screenY} stroke="#334155" strokeWidth={0.8} />
+                <g key={`${kind}-${i}`}>
+                  <line
+                    x1={peilLineX - (isLat ? 6 : 4)} y1={screenY}
+                    x2={peilLineX + (isLat ? 6 : 4)} y2={screenY}
+                    stroke={isLat ? '#92400e' : '#334155'} strokeWidth={0.8}
+                  />
                   {showLabel && (
-                    <text x={peilLineX - 6} y={screenY + 3} textAnchor="end" fontSize={FONT_DIM} fill="#334155" fontFamily="Arial, sans-serif">
+                    <text
+                      x={peilLineX - 8} y={screenY + 3}
+                      textAnchor="end" fontSize={FONT_DIM}
+                      fill={isLat ? '#92400e' : '#334155'}
+                      fontFamily="Arial, sans-serif"
+                    >
                       {absH.toFixed(3)}
                     </text>
                   )}
@@ -1349,18 +1363,6 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               );
             });
           })()}
-
-          {latYs.map((cy, i) => {
-            const absH = (peilmatenBase + cy) / 1000;
-            return (
-              <g key={i}>
-                <line x1={peilLineX - 6} y1={sy(cy)} x2={peilLineX + 6} y2={sy(cy)} stroke="#92400e" strokeWidth={0.8} />
-                <text x={peilLineX - 8} y={sy(cy) - 2} textAnchor="end" fontSize={FONT_DIM - 1} fill="#92400e" fontFamily="Arial, sans-serif">
-                  {absH.toFixed(3)}
-                </text>
-              </g>
-            );
-          })}
 
 
 
