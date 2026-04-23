@@ -358,6 +358,22 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const latColor    = '#fde68a';
   const openColor   = '#fca5a5';
 
+  const groupMinL = walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.lengthStart ?? 0)) : 0;
+  const groupMinHOrig = walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.heightStart ?? 0)) : 0;
+  const wallGroupPolys = (walls ?? []).map(w => {
+    if (!w.facadePoly || w.facadePoly.length < 3) return null;
+    const offL = (w.wallOrigin?.lengthStart ?? 0) - groupMinL;
+    const offH = (w.wallOrigin?.heightStart ?? 0) - groupMinHOrig;
+    return w.facadePoly.map(pt => ({ l: pt.l + offL, h: pt.h + offH }));
+  }).filter(Boolean);
+  const hasWallPolys = wallGroupPolys.length > 0;
+
+  const facadeShapePath = hasWallPolys
+    ? wallGroupPolys.map(poly =>
+        poly.map((pt, i) => `${i === 0 ? 'M' : 'L'}${sx(pt.l)},${sy(pt.h)}`).join(' ') + ' Z'
+      ).join(' ')
+    : `M${OX},${OY} h${W} v${H} h${-W} Z`;
+
   const peilmatenBase = groupMinH ?? 0;
 
   const xBreaks = [...new Set([viewXStart, viewXEnd, ...zonePanels.map((p) => p.x), ...zonePanels.map((p) => p.x + p.width)])].filter((x) => x >= viewXStart - 1 && x <= viewXEnd + 1).sort((a, b) => a - b);
@@ -1183,7 +1199,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           <defs>
             <clipPath id="wt-openings-clip" clipPathUnits="userSpaceOnUse">
               <path fillRule="evenodd" d={[
-                `M${OX},${OY} h${W} v${H} h${-W} Z`,
+                facadeShapePath,
                 ...groupOpenings.map((op) => {
                   const poly = op.polyPts && op.polyPts.length >= 3 ? op.polyPts : [
                     { l: op.x, h: op.y }, { l: op.x + op.width, h: op.y },
@@ -1202,7 +1218,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             Schaal 1:{Math.round(1 / scale * 1000)} · Afmetingen in mm · Peilmaten in m t.o.v. IFC-nulpunt{selectedZone ? ` · Zone breedte: ${mm(viewW_mm)} mm (X ${mm(viewXStart)}–${mm(viewXEnd)})` : ` · Totale breedte: ${mm(groupWidth)} mm`}
           </text>
 
-          <rect x={OX} y={OY} width={W} height={H} fill="#f8fafc" stroke={dimColor} strokeWidth={1} />
+          <path d={facadeShapePath} fill="#f8fafc" stroke={dimColor} strokeWidth={1} fillRule="nonzero" />
 
           {drawingType === 'plaatsing' && zonePanels.map((p, i) => (
             <g key={p.id ?? i}>
