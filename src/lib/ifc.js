@@ -231,6 +231,121 @@ function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
   return poly.length >= 3 ? poly : null;
 }
 
+function validateWallGeometryShape(facadePoly, dims, heightAxis) {
+  const issues = [];
+  let suggestedClass = null;
+
+  if (heightAxis !== 'z') {
+    issues.push(`Hoogte-as is '${heightAxis.toUpperCase()}' in plaats van 'Z' — element lijkt horizontaal`);
+    suggestedClass = 'IfcSlab';
+  }
+
+  if (facadePoly && facadePoly.length >= 3) {
+    const n = facadePoly.length;
+    if (n !== 4) {
+      const hs = facadePoly.map(p => p.h);
+      const maxH = Math.max(...hs), minH = Math.min(...hs);
+      const topPts = facadePoly.filter(p => p.h > minH + (maxH - minH) * 0.7);
+      const hasSlopedTop = topPts.length > 1 &&
+        (Math.max(...topPts.map(p => p.h)) - Math.min(...topPts.map(p => p.h))) > 50;
+      if (hasSlopedTop) {
+        issues.push(`Hellend/puntig bovenprofiel gedetecteerd (${n} hoekpunten)`);
+        suggestedClass = suggestedClass ?? 'IfcRoof';
+      } else {
+        issues.push(`Niet-rechthoekig profiel: ${n} hoekpunten (verwacht 4)`);
+        suggestedClass = suggestedClass ?? 'IfcBuildingElementProxy';
+      }
+    } else {
+      let maxCosAngle = 0;
+      for (let i = 0; i < 4; i++) {
+        const p = facadePoly[i], q = facadePoly[(i + 1) % 4], r = facadePoly[(i + 2) % 4];
+        const v1l = q.l - p.l, v1h = q.h - p.h;
+        const v2l = r.l - q.l, v2h = r.h - q.h;
+        const dot = v1l * v2l + v1h * v2h;
+        const mag = Math.sqrt((v1l ** 2 + v1h ** 2) * (v2l ** 2 + v2h ** 2));
+        const cosA = mag > 0 ? Math.abs(dot / mag) : 0;
+        if (cosA > maxCosAngle) maxCosAngle = cosA;
+      }
+      if (maxCosAngle > 0.15) {
+        issues.push(`Hoeken niet loodrecht (max afwijking ≈ ${Math.round(Math.asin(Math.min(1, maxCosAngle)) * 180 / Math.PI)}°)`);
+        suggestedClass = suggestedClass ?? 'IfcBuildingElementProxy';
+      }
+      const sortedByH = [...facadePoly].sort((a, b) => b.h - a.h);
+      const topEdgeDeltaH = Math.abs(sortedByH[0].h - sortedByH[1].h);
+      if (topEdgeDeltaH > 50) {
+        issues.push(`Bovenkant niet horizontaal (hoogteverschil: ${Math.round(topEdgeDeltaH)} mm)`);
+        suggestedClass = suggestedClass ?? 'IfcRoof';
+      }
+    }
+  } else if (!facadePoly) {
+    if (dims.thickness > dims.height * 0.5) {
+      issues.push('Dikte vergelijkbaar met hoogte — geometrie onzeker, mogelijk geen wand');
+      suggestedClass = suggestedClass ?? 'IfcSlab';
+    }
+  }
+
+  return { issues, suggestedClass: suggestedClass ?? (issues.length > 0 ? 'IfcBuildingElementProxy' : null) };
+}
+
+export async function runGeometryValidation(file, onProgress = null) {
+  const { IFC, api } = await getApi();
+
+  let modelID, ownModel = false;
+  if (_cachedModel && _cachedModel.name === file.name && _cachedModel.size === file.size) {
+    modelID = _cachedModel.modelID;
+  } else {
+    if (_cachedModel) { try { api.CloseModel(_cachedModel.modelID); } catch {} _cachedModel = null; }
+    const buffer = await file.arrayBuffer();
+    modelID = api.OpenModel(new Uint8Array(buffer), {});
+    ownModel = true;
+  }
+
+  const report = [];
+  try {
+    const allWallIDs = [];
+    for (const wType of [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL]) {
+      const idsVec = api.GetLineIDsWithType(modelID, wType);
+      for (let i = 0; i < idsVec.size(); i++) allWallIDs.push({ id: idsVec.get(i), wType });
+    }
+
+    onProgress?.({ current: 0, total: allWallIDs.length, log: `${allWallIDs.length} IfcWall elementen valideren…` });
+
+    let processed = 0, lastYield = Date.now();
+    for (const { id: wID, wType } of allWallIDs) {
+      try {
+        const wallBB = getBBox(api, modelID, wID);
+        if (wallBB) {
+          const dx = wallBB.maxX - wallBB.minX, dy = wallBB.maxY - wallBB.minY, dz = wallBB.maxZ - wallBB.minZ;
+          const sortedAxes = [{ axis: 'x', val: dx }, { axis: 'y', val: dy }, { axis: 'z', val: dz }]
+            .sort((a, b) => a.val - b.val);
+          const lengthAxis = sortedAxes[2].axis, heightAxis = sortedAxes[1].axis, thicknessAxis = sortedAxes[0].axis;
+          const length = Math.round(sortedAxes[2].val * 1000);
+          const height = Math.round(sortedAxes[1].val * 1000);
+          const thickness = Math.round(sortedAxes[0].val * 1000);
+          if (length >= 100 && height >= 100) {
+            const wallLine = api.GetLine(modelID, wID, false);
+            const name = wallLine?.Name?.value ?? `Wand #${wID}`;
+            const ifcClass = wType === IFC.IFCWALLSTANDARDCASE ? 'IfcWallStandardCase' : 'IfcWall';
+            const facadePoly = getFacadePolygon(api, modelID, wID, lengthAxis, heightAxis, wallBB);
+            const { issues, suggestedClass } = validateWallGeometryShape(facadePoly, { length, height, thickness }, heightAxis);
+            if (issues.length > 0) {
+              report.push({ expressID: wID, name, ifcClass, lengthAxis, heightAxis, thicknessAxis, length, height, thickness, facadePoly, issues, suggestedClass, overrideInclude: false });
+            }
+          }
+        }
+      } catch { }
+      processed++;
+      onProgress?.({ current: processed, total: allWallIDs.length });
+      const now = Date.now();
+      if (now - lastYield > 50) { lastYield = now; await new Promise(r => setTimeout(r, 0)); }
+    }
+    onProgress?.({ current: allWallIDs.length, total: allWallIDs.length, log: `Validatie klaar: ${report.length} mogelijke misclassificaties gevonden` });
+    return report;
+  } finally {
+    if (ownModel) { try { api.CloseModel(modelID); } catch {} }
+  }
+}
+
 export async function scanIfcWallTypes(file) {
   if (_cachedModel && _cachedModel.name === file.name && _cachedModel.size === file.size) {
     return _cachedModel.types;

@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Fragment } from 'react';
-import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements } from './lib/ifc.js';
+import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation } from './lib/ifc.js';
 import handleidingMd from '../HANDLEIDING.md?raw';
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState } from './lib/storage.js';
@@ -1299,6 +1299,11 @@ export default function App() {
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [rulesTab, setRulesTab] = useState('regels');
   const [showHandleiding, setShowHandleiding] = useState(true);
+  const [validationReport, setValidationReport] = useState(null);
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [validationRunning, setValidationRunning] = useState(false);
+  const [validationProgress, setValidationProgress] = useState({ current: 0, total: 0 });
+  const [validationLogs, setValidationLogs] = useState([]);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const { get: getSettings, update: updateSettings, initColor, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
@@ -1500,6 +1505,46 @@ export default function App() {
     clearProjectState().catch(() => {});
     setSavedFileInfo(null);
     setSavedHandle(null);
+  }
+
+  async function handleValidateGeometry() {
+    const activeFile = pendingFile ?? savedFileInfo?.file;
+    if (!activeFile && !savedHandle?.handle) return;
+    let targetFile = activeFile;
+    if (!targetFile && savedHandle?.handle) {
+      try { targetFile = await savedHandle.handle.getFile(); } catch { return; }
+    }
+    if (!targetFile) return;
+    setValidationRunning(true);
+    setValidationLogs([]);
+    setValidationProgress({ current: 0, total: 0 });
+    setShowValidationModal(true);
+    try {
+      const report = await runGeometryValidation(targetFile, (p) => {
+        setValidationProgress({ current: p.current, total: p.total });
+        if (p.log) setValidationLogs(prev => [...prev.slice(-29), p.log]);
+      });
+      setValidationReport(report);
+    } catch (e) {
+      setValidationLogs(prev => [...prev, `❌ Fout: ${e.message}`]);
+    } finally {
+      setValidationRunning(false);
+    }
+  }
+
+  function exportValidationReport() {
+    if (!validationReport?.length) return;
+    const rows = [
+      ['ExpressID', 'Naam', 'IFC Klasse', 'Lengte (mm)', 'Hoogte (mm)', 'Dikte (mm)', 'Hoogte-as', 'Problemen', 'Aanbeveling'],
+      ...validationReport.map(r => [
+        r.expressID, r.name, r.ifcClass, r.length, r.height, r.thickness, r.heightAxis,
+        r.issues.join(' | '), r.suggestedClass ?? '',
+      ]),
+    ];
+    const csv = rows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'geometrie_validatie.csv' });
+    a.click(); URL.revokeObjectURL(a.href);
   }
 
   async function confirmImport() {
@@ -2762,6 +2807,13 @@ export default function App() {
                 </Tooltip>
               </div>
             )}
+            {(pendingFile ?? savedFileInfo?.file ?? savedHandle?.handle) && (
+              <Tooltip text="Controleer of IfcWall-elementen een geldige wand-geometrie hebben (rechthoekig profiel, verticale oriëntatie)">
+                <button onClick={handleValidateGeometry} style={{ background: validationReport?.length ? '#b45309' : '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>
+                  🔍 Geometrie valideren{validationReport ? ` (${validationReport.length})` : ''}
+                </button>
+              </Tooltip>
+            )}
             <Tooltip text="Open de handleiding — chronologische uitleg van alle stappen">
               <button onClick={() => setShowHandleiding(true)} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>📖 Handleiding</button>
             </Tooltip>
@@ -3322,6 +3374,95 @@ export default function App() {
               </div>
             </div>}
             </div>
+          </div>
+        </div>
+      )}
+
+      {showValidationModal && (
+        <div onClick={() => { if (!validationRunning) setShowValidationModal(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 8, width: '100%', maxWidth: 860, display: 'flex', flexDirection: 'column', maxHeight: '85vh', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <div style={{ background: '#1d4ed8', color: '#fff', padding: '12px 18px', borderRadius: '8px 8px 0 0', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              <span style={{ fontWeight: 700, fontSize: 14, flex: 1 }}>🔍 Geometrie Validatie — IFC Wand Classificatiecheck</span>
+              {!validationRunning && <button onClick={() => setShowValidationModal(false)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 13 }}>✕</button>}
+            </div>
+
+            {validationRunning && (
+              <div style={{ padding: '14px 18px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
+                <div style={{ fontSize: 12, color: '#334155', marginBottom: 6 }}>
+                  Analyse bezig… {validationProgress.total > 0 ? `${validationProgress.current} / ${validationProgress.total} elementen` : ''}
+                </div>
+                {validationProgress.total > 0 && (
+                  <div style={{ background: '#e2e8f0', borderRadius: 4, height: 6, overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.round(100 * validationProgress.current / validationProgress.total)}%`, height: '100%', background: '#3b82f6', transition: 'width 0.1s' }} />
+                  </div>
+                )}
+                {validationLogs.slice(-3).map((l, i) => (
+                  <div key={i} style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>{l}</div>
+                ))}
+              </div>
+            )}
+
+            {!validationRunning && validationReport !== null && (
+              <div style={{ padding: '10px 18px', borderBottom: '1px solid #e2e8f0', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
+                {validationReport.length === 0 ? (
+                  <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>✓ Geen misclassificaties gevonden — alle wanden hebben een rechthoekig verticaal profiel.</span>
+                ) : (
+                  <>
+                    <span style={{ fontSize: 12, color: '#b45309', fontWeight: 600 }}>⚠ {validationReport.length} mogelijke misclassificatie{validationReport.length !== 1 ? 's' : ''} gevonden</span>
+                    <span style={{ fontSize: 11, color: '#64748b', flex: 1 }}>Controleer en pas de IFC-classificatie indien nodig aan.</span>
+                    <button onClick={exportValidationReport} style={{ fontSize: 11, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: '4px 12px', cursor: 'pointer' }}>⬇ CSV exporteren</button>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: validationReport?.length ? 0 : '18px' }}>
+              {validationReport?.length > 0 && validationReport.map((item, idx) => {
+                const issueColor = item.suggestedClass === 'IfcRoof' ? '#7c3aed'
+                  : item.suggestedClass === 'IfcSlab' ? '#0369a1'
+                  : '#b45309';
+                return (
+                  <div key={item.expressID} style={{ borderBottom: '1px solid #f1f5f9', padding: '10px 18px', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#1e293b' }}>{item.name}</span>
+                          <span style={{ fontSize: 9, background: '#dbeafe', color: '#1d4ed8', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>{item.ifcClass}</span>
+                          <span style={{ fontSize: 9, color: '#64748b' }}>#{item.expressID}</span>
+                          <span style={{ fontSize: 9, color: '#64748b' }}>L={item.length} × H={item.height} × D={item.thickness} mm</span>
+                        </div>
+                        {item.issues.map((iss, ii) => (
+                          <div key={ii} style={{ fontSize: 11, color: '#92400e', background: '#fef3c7', borderRadius: 3, padding: '2px 8px', marginBottom: 3, display: 'inline-block', marginRight: 6 }}>
+                            ⚠ {iss}
+                          </div>
+                        ))}
+                        {item.suggestedClass && (
+                          <div style={{ marginTop: 4, fontSize: 11, color: issueColor }}>
+                            → Aanbeveling: herclassificeer naar <strong>{item.suggestedClass}</strong>
+                          </div>
+                        )}
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#64748b', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                        <input type="checkbox" checked={item.overrideInclude}
+                          onChange={() => setValidationReport(prev => prev.map((r, i) => i === idx ? { ...r, overrideInclude: !r.overrideInclude } : r))} />
+                        Negeer / accepteer
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
+              {!validationRunning && !validationReport?.length && validationLogs.length > 0 && (
+                <div style={{ fontSize: 11, color: '#64748b' }}>
+                  {validationLogs.map((l, i) => <div key={i}>{l}</div>)}
+                </div>
+              )}
+            </div>
+
+            {!validationRunning && (
+              <div style={{ padding: '10px 18px', borderTop: '1px solid #e2e8f0', flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button onClick={() => setShowValidationModal(false)} style={{ fontSize: 12, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: '6px 16px', cursor: 'pointer' }}>Sluiten</button>
+              </div>
+            )}
           </div>
         </div>
       )}
