@@ -617,13 +617,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
 
     ctx.strokeStyle = '#64748b';
     ctx.lineWidth = 1;
-    if (hasWallPolys) {
-      ctx.beginPath();
-      traceFacadePath();
-      ctx.stroke();
-    } else {
-      ctx.strokeRect(faceSx, faceSy, faceW, faceH);
-    }
+    ctx.strokeRect(faceSx, faceSy, faceW, faceH);
 
     // Strip zone overlays
     for (const sz of stripZones) {
