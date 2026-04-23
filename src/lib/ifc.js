@@ -1071,3 +1071,222 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// Scans an IFC file for all common building element types (walls, slabs, proxies, coverings, etc.)
+// Returns [{ifcEntityType, name, count}] sorted by count descending
+export async function scanIfcElementTypes(file) {
+  const text = await file.text();
+  const flat = text.replace(/\r?\n/g, ' ');
+
+  const typeIdToName = {};
+  const elemIds = new Set();
+  const elemEntityType = {};
+  const elemObjectType = {};
+  const relRecords = [];
+
+  // Match element instances, their TYPE records, and RELDEFINESBYTYPE
+  const RECORD_RE = /#(\d+)\s*=\s*IFC((?:WALL(?:STANDARDCASE)?|SLAB|BUILDINGELEMENTPROXY|COVERING|CURTAINWALL|PLATE|MEMBER)TYPE|WALL(?:STANDARDCASE)?|SLAB|BUILDINGELEMENTPROXY|COVERING|CURTAINWALL|PLATE|MEMBER|RELDEFINESBYTYPE)\s*\(/gi;
+
+  let m;
+  while ((m = RECORD_RE.exec(flat)) !== null) {
+    const id = m[1];
+    const ifcName = m[2].toUpperCase();
+    const start = RECORD_RE.lastIndex - 1;
+    let end = start + 1, depth = 1, inStr = false;
+    while (end < flat.length && depth > 0) {
+      const c = flat[end];
+      if (c === "'" && !inStr) inStr = true;
+      else if (c === "'" && inStr) inStr = false;
+      else if (!inStr) { if (c === '(') depth++; else if (c === ')') depth--; }
+      end++;
+    }
+    const inner = flat.slice(start + 1, end - 1);
+    RECORD_RE.lastIndex = end;
+
+    if (ifcName === 'RELDEFINESBYTYPE') {
+      relRecords.push(inner);
+    } else if (ifcName.endsWith('TYPE')) {
+      const parts = splitStepArgs(inner);
+      const name = unquoteStep(parts[2]) ?? unquoteStep(parts[8]);
+      if (name) typeIdToName[id] = name;
+    } else {
+      elemIds.add(id);
+      elemEntityType[id] = 'IFC' + ifcName;
+      const parts = splitStepArgs(inner);
+      const objType = unquoteStep(parts[4]);
+      if (objType) elemObjectType[id] = objType;
+    }
+  }
+
+  const elemToType = {};
+  for (const inner of relRecords) {
+    const parts = splitStepArgs(inner);
+    const relatedRaw = parts[4] ?? '';
+    const typeRaw = (parts[5] ?? '').trim().replace(/^#/, '');
+    const tName = typeIdToName[typeRaw];
+    if (!tName) continue;
+    const idMatches = relatedRaw.match(/#(\d+)/g);
+    if (!idMatches) continue;
+    for (const ref of idMatches) {
+      const eid = ref.slice(1);
+      if (elemIds.has(eid)) elemToType[eid] = tName;
+    }
+  }
+
+  const counts = {};
+  for (const eid of elemIds) {
+    const entityType = elemEntityType[eid];
+    const typeName = elemToType[eid] ?? elemObjectType[eid] ?? '(geen type)';
+    const key = `${entityType}::${typeName}`;
+    if (!counts[key]) counts[key] = { ifcEntityType: entityType, name: typeName, count: 0 };
+    counts[key].count++;
+  }
+
+  return Object.values(counts).sort((a, b) => b.count - a.count);
+}
+
+// Parses zone elements from an IFC file — any building element type, not just walls.
+// allowedTypes: Map<ifcEntityType (e.g. 'IFCWALL'), Set<typeName> | null> or null for all
+// Returns elements in the same structure as parseIfc walls, with isZoneElement: true
+export async function parseIfcZoneElements(file, allowedTypes = null, onProgress = null) {
+  const { IFC, api } = await getApi();
+
+  let modelID, ownModel = false;
+  const wallTypeMap = {};
+
+  if (_cachedModel && _cachedModel.name === file.name && _cachedModel.size === file.size) {
+    modelID = _cachedModel.modelID;
+    Object.assign(wallTypeMap, _cachedModel.wallTypeMap ?? {});
+  } else {
+    if (_cachedModel) {
+      try { api.CloseModel(_cachedModel.modelID); } catch {}
+      _cachedModel = null;
+    }
+    const buffer = await file.arrayBuffer();
+    const data = new Uint8Array(buffer);
+    modelID = api.OpenModel(data, {});
+    ownModel = true;
+    try {
+      const relDefVec = api.GetLineIDsWithType(modelID, IFC.IFCRELDEFINESBYTYPE);
+      for (let i = 0; i < relDefVec.size(); i++) {
+        try {
+          const rel = api.GetLine(modelID, relDefVec.get(i), false);
+          const typeRef = rel?.RelatingType?.value;
+          if (!typeRef) continue;
+          const typeLine = api.GetLine(modelID, typeRef, false);
+          const tName = typeLine?.Name?.value ?? null;
+          const related = rel?.RelatedObjects;
+          if (!related || !tName) continue;
+          for (let j = 0; j < related.length; j++) {
+            const wid = related[j]?.value;
+            if (wid) wallTypeMap[wid] = tName;
+          }
+        } catch { }
+      }
+    } catch { }
+  }
+
+  try {
+    const SUPPORTED_ENTITY_NAMES = [
+      'IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCSLAB',
+      'IFCBUILDINGELEMENTPROXY', 'IFCCOVERING', 'IFCCURTAINWALL',
+      'IFCPLATE', 'IFCMEMBER',
+    ];
+
+    const entityNamesToLoad = allowedTypes ? [...allowedTypes.keys()] : SUPPORTED_ENTITY_NAMES;
+
+    const allElemIDs = [];
+    const elemEntityTypeMap = {};
+
+    for (const entityName of entityNamesToLoad) {
+      const code = IFC[entityName.toUpperCase()];
+      if (code === undefined) continue;
+      try {
+        const idsVec = api.GetLineIDsWithType(modelID, code);
+        for (let i = 0; i < idsVec.size(); i++) {
+          const eID = idsVec.get(i);
+          const typeName = wallTypeMap[eID] ?? '(geen type)';
+          if (allowedTypes) {
+            const allowed = allowedTypes.get(entityName.toUpperCase()) ?? allowedTypes.get(entityName);
+            if (allowed && !allowed.has(typeName)) continue;
+          }
+          allElemIDs.push(eID);
+          elemEntityTypeMap[eID] = entityName.toUpperCase();
+        }
+      } catch { }
+    }
+
+    onProgress?.({ phase: 'init', log: `${allElemIDs.length} zone-elementen gevonden` });
+    onProgress?.({ phase: 'wanden', current: 0, total: allElemIDs.length });
+
+    const elements = [];
+    let processed = 0;
+    let lastYield = Date.now();
+
+    for (const eID of allElemIDs) {
+      try {
+        const bb = getBBox(api, modelID, eID);
+        if (!bb) continue;
+
+        const dx = bb.maxX - bb.minX;
+        const dy = bb.maxY - bb.minY;
+        const dz = bb.maxZ - bb.minZ;
+        const sortedAxes = [
+          { axis: 'x', val: dx },
+          { axis: 'y', val: dy },
+          { axis: 'z', val: dz },
+        ].sort((a, b) => a.val - b.val);
+
+        const lengthAxis    = sortedAxes[2].axis;
+        const heightAxis    = sortedAxes[1].axis;
+        const thicknessAxis = sortedAxes[0].axis;
+        const length = Math.round(sortedAxes[2].val * 1000);
+        const height = Math.round(sortedAxes[1].val * 1000);
+
+        if (length < 100 || height < 100) continue;
+
+        const line = api.GetLine(modelID, eID, false);
+        const name = line?.Name?.value ?? `Element #${eID}`;
+
+        const wallOrigin = {
+          lengthStart:    Math.round(bb[`min${lengthAxis.toUpperCase()}`] * 1000),
+          heightStart:    Math.round(bb[`min${heightAxis.toUpperCase()}`] * 1000),
+          thicknessStart: Math.round(bb[`min${thicknessAxis.toUpperCase()}`] * 1000),
+          thicknessEnd:   Math.round(bb[`max${thicknessAxis.toUpperCase()}`] * 1000),
+          lengthAxis,
+          heightAxis,
+          thicknessAxis,
+        };
+
+        elements.push({
+          expressID: eID,
+          name,
+          length,
+          height,
+          openings: [],
+          wallOrigin,
+          typeName: wallTypeMap[eID] ?? null,
+          isZoneElement: true,
+          ifcEntityType: elemEntityTypeMap[eID],
+        });
+      } catch { }
+
+      processed++;
+      onProgress?.({ phase: 'wanden', current: processed, total: allElemIDs.length });
+      const now = Date.now();
+      if (now - lastYield > 50) {
+        lastYield = now;
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+
+    return elements;
+  } finally {
+    if (ownModel) {
+      api.CloseModel(modelID);
+    } else {
+      try { api.CloseModel(modelID); } catch {}
+      _cachedModel = null;
+    }
+  }
+}

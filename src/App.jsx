@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Fragment } from 'react';
-import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines } from './lib/ifc.js';
+import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements } from './lib/ifc.js';
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
@@ -1209,6 +1209,7 @@ export default function App() {
   const [pendingFile, setPendingFile] = useState(null);
   const [wallTypes, setWallTypes] = useState([]);
   const [selectedTypes, setSelectedTypes] = useState(new Set());
+  const [zoneImportMode, setZoneImportMode] = useState(false);
   const [similarSuggestions, setSimilarSuggestions] = useState(null);
   const [duplicateGroupsModal, setDuplicateGroupsModal] = useState(null);
   const [groupLinks, setGroupLinks] = useState({});
@@ -1352,12 +1353,13 @@ export default function App() {
     addLog(`Bestand: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
     addLog('web-ifc engine laden…');
     try {
-      const types = await scanIfcWallTypes(file);
-      addLog(`✓ ${types.length} wandtype(n) gevonden`);
-      if (!types.length) throw new Error('Geen wanden gevonden in IFC-bestand');
+      const types = await scanIfcElementTypes(file);
+      addLog(`✓ ${types.length} elementtype(n) gevonden`);
+      if (!types.length) throw new Error('Geen elementen gevonden in IFC-bestand');
       setPendingFile(file);
       setWallTypes(types);
       setSelectedTypes(new Set());
+      setZoneImportMode(false);
       setLoadStatus('selecting');
       if (handle) {
         saveFileHandle(handle).then(() => setSavedHandle({ handle, savedAt: Date.now(), name: file.name })).catch(() => {});
@@ -1490,6 +1492,121 @@ export default function App() {
     setPendingFile(null);
     setWallTypes([]);
     setLoadStatus(allWalls.length ? 'loaded' : 'idle');
+  }
+
+  async function confirmZoneImport() {
+    if (!pendingFile) return;
+    setLoadStatus('loading');
+    setLoadProgress({ current: 0, total: 0 });
+    loadLogsRef.current = [];
+    setLoadLogs([]);
+    const addLog = (msg) => {
+      const entry = `[${new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}] ${msg}`;
+      loadLogsRef.current = [...loadLogsRef.current.slice(-49), entry];
+      setLoadLogs([...loadLogsRef.current]);
+    };
+    addLog(`Zone-import: ${pendingFile.name}`);
+    try {
+      const allowedTypes = new Map();
+      for (const t of wallTypes) {
+        if (!selectedTypes.has(t.name)) continue;
+        const key = (t.ifcEntityType ?? 'IFCWALL').toUpperCase();
+        if (!allowedTypes.has(key)) allowedTypes.set(key, new Set());
+        allowedTypes.get(key).add(t.name);
+      }
+
+      const elements = await parseIfcZoneElements(pendingFile, allowedTypes.size ? allowedTypes : null, (p) => {
+        if (p.log) { addLog(p.log); return; }
+        setLoadProgress({ current: p.current, total: p.total });
+        if (p.total > 0 && p.current === p.total) addLog(`${p.total} zone-elementen verwerkt`);
+      });
+
+      if (!elements.length) throw new Error('Geen zone-elementen gevonden met de geselecteerde types');
+      addLog(`✓ ${elements.length} zone-elementen geladen, groeperen op gevel…`);
+
+      const TOLERANCE = 50;
+      const clusterMap = new Map();
+      for (const el of elements) {
+        const wo = el.wallOrigin;
+        if (!wo) continue;
+        const tPos = Math.round(wo.thicknessStart / TOLERANCE) * TOLERANCE;
+        const key = `${wo.thicknessAxis}:${tPos}`;
+        if (!clusterMap.has(key)) clusterMap.set(key, { axis: wo.thicknessAxis, pos: tPos, elements: [] });
+        clusterMap.get(key).elements.push(el);
+      }
+
+      const xF = [...clusterMap.values()].filter(c => c.axis === 'x').sort((a, b) => a.pos - b.pos);
+      const yF = [...clusterMap.values()].filter(c => c.axis === 'y').sort((a, b) => a.pos - b.pos);
+      const zF = [...clusterMap.values()].filter(c => c.axis === 'z').sort((a, b) => a.pos - b.pos);
+
+      const getZoneLabel = (sorted, idx, ax) => {
+        if (ax === 'x') { if (sorted.length === 1) return 'Zone O/W'; if (idx === 0) return 'Zone W'; if (idx === sorted.length - 1) return 'Zone O'; return `Zone O/W-${idx + 1}`; }
+        if (ax === 'y') { if (sorted.length === 1) return 'Zone N/Z'; if (idx === 0) return 'Zone Z'; if (idx === sorted.length - 1) return 'Zone N'; return `Zone N/Z-${idx + 1}`; }
+        return `Zone G${idx + 1}`;
+      };
+
+      _colorIdxRef.current = 0;
+      const newGroups = [];
+      const newWalls = [];
+      const newSettingsUpdates = {};
+
+      for (const { clusters, ax } of [{ clusters: yF, ax: 'y' }, { clusters: xF, ax: 'x' }, { clusters: zF, ax: 'z' }]) {
+        clusters.forEach((cluster, clusterIdx) => {
+          const elems = cluster.elements;
+          if (!elems.length) return;
+
+          const minL = Math.min(...elems.map(e => e.wallOrigin.lengthStart));
+          const maxL = Math.max(...elems.map(e => e.wallOrigin.lengthStart + e.length));
+          const minH = Math.min(...elems.map(e => e.wallOrigin.heightStart));
+
+          const stripZones = elems.map((e, idx) => ({
+            id: `sz_${e.expressID}`,
+            x: e.wallOrigin.lengthStart - minL,
+            y: e.wallOrigin.heightStart - minH,
+            width: e.length,
+            height: e.height,
+            label: e.name || `Zone ${String.fromCharCode(65 + idx)}`,
+            depthOffset: 0,
+          }));
+
+          const gid = newGid();
+          const color = nextColor();
+          const label = getZoneLabel(clusters, clusterIdx, ax);
+          initColor(gid, color, label);
+          newSettingsUpdates[gid] = { stripZones };
+          newGroups.push({ id: gid, wallIds: elems.map(e => e.expressID) });
+          newWalls.push(...elems);
+        });
+      }
+
+      addLog(`✓ ${newGroups.length} gevelgroepen aangemaakt met zone-elementen als stripzones`);
+      setAllWalls(newWalls);
+      setAdjacencies(detectAdjacencies(newWalls));
+      setGroups(newGroups);
+      setSelectedWallIds(new Set());
+      setActiveGroupId(newGroups[0]?.id ?? null);
+      setIfcFileName(pendingFile.name.replace(/\.ifc$/i, ''));
+      setSettingsMap(prev => {
+        const next = { ...prev };
+        for (const [gid, updates] of Object.entries(newSettingsUpdates)) {
+          next[gid] = { ...(next[gid] ?? {}), ...updates };
+        }
+        return next;
+      });
+      try {
+        const gl = await parseIfcGridLines(pendingFile);
+        setGridLines(gl);
+        if (gl.length) addLog(`✓ ${gl.length} stramienlijnen geïmporteerd`);
+      } catch { setGridLines([]); }
+      setLoadStatus('loaded');
+      setPendingFile(null);
+      setWallTypes([]);
+      setZoneImportMode(false);
+    } catch (err) {
+      addLog(`✗ Fout: ${err.message}`);
+      setLoadError(err.message);
+      setLoadStatus('error');
+    }
   }
 
   function toggleType(name) {
@@ -2151,10 +2268,25 @@ export default function App() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       {loadStatus === 'selecting' && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: 8, padding: 24, width: 480, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Wandtypen selecteren</div>
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 8, padding: 24, width: 520, maxHeight: '82vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Elementtypen selecteren</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
               {pendingFile?.name} · Selecteer welke typen je wilt importeren
+            </div>
+
+            {/* Zone import mode toggle */}
+            <div style={{ marginBottom: 12, padding: '8px 12px', background: zoneImportMode ? '#eff6ff' : '#f8fafc', border: `1px solid ${zoneImportMode ? '#3b82f6' : '#e2e8f0'}`, borderRadius: 6 }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                <input type="checkbox" checked={zoneImportMode} onChange={(e) => setZoneImportMode(e.target.checked)} style={{ marginTop: 2, flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: zoneImportMode ? '#1d4ed8' : '#374151' }}>
+                    Zone-import modus
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                    Gebruik de geselecteerde elementen als steenstrip-oppervlakken (de achterzijde = start van het systeem). Elk coplanair cluster wordt een gevelgroep; elk element wordt een strip-zone.
+                  </div>
+                </div>
+              </label>
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
@@ -2166,16 +2298,30 @@ export default function App() {
                 style={{ fontSize: 11, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}>
                 Geen selecteren
               </button>
+              {!zoneImportMode && (
+                <button onClick={() => setSelectedTypes(new Set(wallTypes.filter(t => t.ifcEntityType === 'IFCWALL' || t.ifcEntityType === 'IFCWALLSTANDARDCASE').map(t => t.name)))}
+                  style={{ fontSize: 11, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}>
+                  Alleen wanden
+                </button>
+              )}
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 6 }}>
               {wallTypes.map((t) => {
                 const checked = selectedTypes.has(t.name);
+                const entityColor = t.ifcEntityType === 'IFCWALL' || t.ifcEntityType === 'IFCWALLSTANDARDCASE' ? '#3b82f6'
+                  : t.ifcEntityType === 'IFCSLAB' ? '#8b5cf6'
+                  : t.ifcEntityType === 'IFCBUILDINGELEMENTPROXY' ? '#f59e0b'
+                  : t.ifcEntityType === 'IFCCOVERING' ? '#10b981'
+                  : '#64748b';
                 return (
-                  <label key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: checked ? '#eff6ff' : '#fff' }}>
+                  <label key={`${t.ifcEntityType}::${t.name}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: checked ? '#eff6ff' : '#fff' }}>
                     <input type="checkbox" checked={checked} onChange={() => toggleType(t.name)} />
+                    <span style={{ fontSize: 9, color: '#fff', background: entityColor, padding: '1px 5px', borderRadius: 3, fontWeight: 600, flexShrink: 0, letterSpacing: 0.3 }}>
+                      {(t.ifcEntityType ?? 'IFC').replace('IFC', '')}
+                    </span>
                     <span style={{ flex: 1, fontSize: 12, fontWeight: 500 }}>{t.name}</span>
-                    <span style={{ fontSize: 11, color: '#94a3b8', background: '#f1f5f9', padding: '1px 7px', borderRadius: 10 }}>{t.count} wanden</span>
+                    <span style={{ fontSize: 11, color: '#94a3b8', background: '#f1f5f9', padding: '1px 7px', borderRadius: 10 }}>{t.count}</span>
                   </label>
                 );
               })}
@@ -2183,14 +2329,15 @@ export default function App() {
 
             <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 12, color: '#64748b', flex: 1 }}>
-                {totalSelected} wanden geselecteerd
+                {totalSelected} element{totalSelected !== 1 ? 'en' : ''} geselecteerd
+                {zoneImportMode && <span style={{ color: '#3b82f6', fontWeight: 600 }}> · Zone-modus</span>}
               </span>
               <button onClick={cancelImport} style={{ fontSize: 12, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: '6px 14px', cursor: 'pointer' }}>
                 Annuleren
               </button>
-              <button onClick={confirmImport} disabled={!selectedTypes.size}
-                style={{ fontSize: 12, background: selectedTypes.size ? '#3b82f6' : '#94a3b8', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 16px', cursor: selectedTypes.size ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
-                Importeren
+              <button onClick={zoneImportMode ? confirmZoneImport : confirmImport} disabled={!selectedTypes.size}
+                style={{ fontSize: 12, background: selectedTypes.size ? (zoneImportMode ? '#059669' : '#3b82f6') : '#94a3b8', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 16px', cursor: selectedTypes.size ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
+                {zoneImportMode ? '🗺 Als zones importeren' : 'Importeren'}
               </button>
             </div>
           </div>
