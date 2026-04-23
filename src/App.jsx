@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Fragment } from 'react';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements } from './lib/ifc.js';
+import handleidingMd from '../HANDLEIDING.md?raw';
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
@@ -1189,6 +1190,84 @@ const btn = (color) => ({
   textAlign: 'left',
 });
 
+function inlineFmt(text) {
+  const parts = [];
+  const re = /\*\*(.+?)\*\*|`([^`]+)`/g;
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    if (m[1]) parts.push(<strong key={m.index}>{m[1]}</strong>);
+    else if (m[2]) parts.push(<code key={m.index} style={{ background: '#f1f5f9', padding: '1px 4px', borderRadius: 2, fontFamily: 'monospace', fontSize: 11 }}>{m[2]}</code>);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length === 0 ? text : parts;
+}
+
+function SimpleMarkdown({ text }) {
+  const lines = text.split('\n');
+  const elements = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith('```')) {
+      let code = '';
+      i++;
+      while (i < lines.length && !lines[i].startsWith('```')) { code += lines[i] + '\n'; i++; }
+      elements.push(<pre key={`pre${i}`} style={{ background: '#f1f5f9', padding: '10px 14px', borderRadius: 4, fontSize: 11, overflowX: 'auto', color: '#334155', margin: '8px 0' }}>{code}</pre>);
+      i++; continue;
+    }
+    if (line.startsWith('|')) {
+      const tableLines = [];
+      while (i < lines.length && lines[i].startsWith('|')) {
+        if (!lines[i].match(/^\|[\s\-:|]+\|/)) tableLines.push(lines[i]);
+        i++;
+      }
+      elements.push(
+        <table key={`tbl${i}`} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 10 }}>
+          <tbody>
+            {tableLines.map((tl, ri) => {
+              const cells = tl.split('|').slice(1, -1).map(c => c.trim());
+              const isH = ri === 0;
+              return (
+                <tr key={ri} style={{ borderBottom: '1px solid #e2e8f0', background: isH ? '#f8fafc' : '#fff' }}>
+                  {cells.map((cell, ci) => isH
+                    ? <th key={ci} style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 700, color: '#1e293b', verticalAlign: 'top' }}>{inlineFmt(cell)}</th>
+                    : <td key={ci} style={{ padding: '5px 8px', color: '#475569', verticalAlign: 'top' }}>{inlineFmt(cell)}</td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      );
+      continue;
+    }
+    if (line.match(/^[\-\*] /)) {
+      const items = [];
+      while (i < lines.length && lines[i].match(/^[\-\*] /)) { items.push(lines[i].slice(2)); i++; }
+      elements.push(<ul key={`ul${i}`} style={{ margin: '4px 0 10px 0', padding: '0 0 0 18px' }}>{items.map((it, ii) => <li key={ii} style={{ fontSize: 12, color: '#334155', padding: '2px 0', lineHeight: 1.5 }}>{inlineFmt(it)}</li>)}</ul>);
+      continue;
+    }
+    if (line.match(/^\d+\. /)) {
+      const items = [];
+      while (i < lines.length && lines[i].match(/^\d+\. /)) { items.push(lines[i].replace(/^\d+\. /, '')); i++; }
+      elements.push(<ol key={`ol${i}`} style={{ margin: '4px 0 10px 0', padding: '0 0 0 18px' }}>{items.map((it, ii) => <li key={ii} style={{ fontSize: 12, color: '#334155', padding: '2px 0', lineHeight: 1.5 }}>{inlineFmt(it)}</li>)}</ol>);
+      continue;
+    }
+    if (line.startsWith('# ')) { elements.push(<h1 key={`h1${i}`} style={{ fontSize: 18, fontWeight: 700, color: '#1e293b', margin: '0 0 14px 0', paddingBottom: 8, borderBottom: '2px solid #3b82f6' }}>{line.slice(2)}</h1>); i++; continue; }
+    if (line.startsWith('## ')) { elements.push(<h2 key={`h2${i}`} style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', margin: '18px 0 6px 0', paddingBottom: 4, borderBottom: '1px solid #e2e8f0' }}>{line.slice(3)}</h2>); i++; continue; }
+    if (line.startsWith('### ')) { elements.push(<h3 key={`h3${i}`} style={{ fontSize: 13, fontWeight: 600, color: '#334155', margin: '12px 0 4px 0' }}>{line.slice(4)}</h3>); i++; continue; }
+    if (line.startsWith('#### ')) { elements.push(<h4 key={`h4${i}`} style={{ fontSize: 12, fontWeight: 600, color: '#475569', margin: '8px 0 3px 0' }}>{line.slice(5)}</h4>); i++; continue; }
+    if (line.trim() === '---') { elements.push(<hr key={`hr${i}`} style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '10px 0' }} />); i++; continue; }
+    if (line.startsWith('> ')) { elements.push(<blockquote key={`bq${i}`} style={{ margin: '6px 0', padding: '8px 14px', background: '#eff6ff', borderLeft: '3px solid #3b82f6', fontSize: 12, color: '#334155', borderRadius: '0 4px 4px 0' }}>{inlineFmt(line.slice(2))}</blockquote>); i++; continue; }
+    if (line.trim() === '') { i++; continue; }
+    elements.push(<p key={`p${i}`} style={{ fontSize: 12, color: '#475569', margin: '0 0 6px 0', lineHeight: 1.6 }}>{inlineFmt(line)}</p>);
+    i++;
+  }
+  return <>{elements}</>;
+}
+
 export default function App() {
   const [allWalls, setAllWalls] = useState([]);
   const [adjacencies, setAdjacencies] = useState([]);
@@ -1218,6 +1297,7 @@ export default function App() {
   const [showCenterLines, setShowCenterLines] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [rulesTab, setRulesTab] = useState('regels');
+  const [showHandleiding, setShowHandleiding] = useState(true);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const { get: getSettings, update: updateSettings, initColor, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
@@ -2608,6 +2688,9 @@ export default function App() {
                 </Tooltip>
               </div>
             )}
+            <Tooltip text="Open de handleiding — chronologische uitleg van alle stappen">
+              <button onClick={() => setShowHandleiding(true)} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>📖 Handleiding</button>
+            </Tooltip>
             <Tooltip text="Bekijk de logica-regels per onderdeel en de wijzigingshistorie">
               <button onClick={() => setShowRulesModal(true)} style={{ background: '#475569', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>? Regels</button>
             </Tooltip>
@@ -3010,6 +3093,20 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {showHandleiding && (
+        <div onClick={() => setShowHandleiding(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9998, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 8, width: '100%', maxWidth: 860, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', fontFamily: 'system-ui, sans-serif' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: '#0f766e', borderRadius: '8px 8px 0 0' }}>
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>📖 Handleiding — IFC Brickslip Planner</span>
+              <button onClick={() => setShowHandleiding(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.8)', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ padding: '20px 24px', overflowY: 'auto', maxHeight: 'calc(100vh - 160px)' }}>
+              <SimpleMarkdown text={handleidingMd} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {showRulesModal && (
         <div onClick={() => setShowRulesModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }}>
