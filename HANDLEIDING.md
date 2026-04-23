@@ -3,36 +3,53 @@
 ## Inhoudsopgave
 
 1. [Overzicht](#overzicht)
-2. [Workflow stap voor stap](#workflow-stap-voor-stap)
-3. [Schermindeling](#schermindeling)
-4. [UI-groepen: Groep configuratie](#ui-groepen-groep-configuratie)
-5. [2D Gevelaanzicht](#2d-gevelaanzicht)
-6. [Exporteren](#exporteren)
-7. [Tips & sneltoetsen](#tips--sneltoetsen)
+2. [Twee instapscenario's](#twee-instapscenarios)
+3. [Scenario A — Volledig nieuwe opzet (eigen IFC)](#scenario-a--volledig-nieuwe-opzet-eigen-ifc)
+4. [Scenario B — Zone-import (klant levert vlakken)](#scenario-b--zone-import-klant-levert-vlakken)
+5. [Groep configureren (beide scenario's)](#groep-configureren-beide-scenarios)
+6. [Strip-zones handmatig tekenen in 2D](#strip-zones-handmatig-tekenen-in-2d)
+7. [Maltekeningen](#maltekeningen)
+8. [Werktekeningen & export](#werktekeningen--export)
+9. [Schermindeling](#schermindeling)
+10. [UI-groepen: Groep configuratie](#ui-groepen-groep-configuratie)
+11. [Tips & sneltoetsen](#tips--sneltoetsen)
 
 ---
 
 ## Overzicht
 
-De **IFC Brickslip Planner** is een tool voor het importeren van gevelelementen uit een IFC-bestand, het indelen van wanden in gevelgroepen, en het configureren en berekenen van een brickslip-patroon (steenstrip systeem) per gevelgroep. Het resultaat kan worden geëxporteerd als een nieuw IFC-bestand met alle steenstrip-elementen op de juiste positie.
+De **IFC Brickslip Planner** is een tool voor het importeren van gevelelementen uit een IFC-bestand, het indelen van wanden in gevelgroepen, en het configureren en berekenen van een steenstripsysteem per gevelgroep. Het resultaat wordt als werktekeningen, maltekeningen, zaaglijst en IFC-export aangeboden.
 
 **Kernconcept — groepen:**
-Een groep is een verzameling van één of meer wandelementen die samen één gevelvlak vormen. Per groep stel je in welk brickslip-patroon, welk zetwerk, welke panelen en welke achterconstructie van toepassing zijn. Aangrenzende wanden in een groep krijgen een doorlopend patroon.
+Een groep is een verzameling van één of meer wandelementen die samen één gevelvlak vormen. Per groep stel je in welk brickslip-patroon, welk zetwerk, welke panelen en welke achterconstructie van toepassing zijn.
 
 ---
 
-## Workflow stap voor stap
+## Twee instapscenario's
+
+Er zijn twee manieren om het systeem op te zetten, afhankelijk van wat de klant aanlevert:
+
+| | **Scenario A** | **Scenario B** |
+|---|---|---|
+| **Wat levert de klant?** | Een IFC met constructieve wanden | Een IFC waarbij vlakken met steenstrips al zijn aangeduid als aparte elementen (bijv. slabs of proxies) |
+| **Hoe start je?** | Standaard wandimport → groepen aanmaken → strip-zones handmatig tekenen | Zone-import modus → alles wordt automatisch per vlak ingedeeld |
+| **Voordeel** | Volle controle, flexibel | Snel, klantindeling wordt direct overgenomen |
+
+---
+
+## Scenario A — Volledig nieuwe opzet (eigen IFC)
 
 ### Stap 1 — IFC importeren
 
-Klik op **📂 IFC importeren** in de bovenste balk.
+1. Klik op **📂 IFC importeren** in de bovenste balk.
+2. Selecteer een `.ifc`-bestand (standaard bestandskiezer of drag-and-drop).
+3. De applicatie scant het bestand en toont alle gevonden elementtypen per IFC-entiteitstype.
+4. **Selecteer de wandtypen** die je wilt importeren (doorgaans alleen buitengevels).  
+   Gebruik de knop **Alleen wanden** om snel te filteren op `IFCWALL`/`IFCWALLSTANDARDCASE`.
+5. Laat **Zone-import modus** uitstaan.
+6. Klik op **Importeren**.
 
-- Er verschijnt een bestandskiezer. Selecteer een `.ifc`-bestand.
-- De applicatie scant het bestand en toont een lijst van **wandtypen** (Basic Wall typen).
-- Vink de typen aan die je wilt importeren. Gebruik **Alle selecteren** of **Geen selecteren** voor bulk-acties.
-- Klik op **Importeren** om de geselecteerde wanden in te laden.
-
-> **Tip:** Importeer alleen de wandtypen die je nodig hebt (bijv. buitengevels). Grote bestanden laden sneller als je onnodige binnenafscheidingen uitvinkt.
+> **Tip:** Importeer alleen de typen die je nodig hebt. Binnenafscheidingen en vloeren vertragen de berekening en zijn niet relevant.
 
 ---
 
@@ -43,59 +60,291 @@ Na het importeren verschijnen alle wanden in de **3D Viewer**.
 - **Klik** op een wand om hem te selecteren (blauw gemarkeerd).
 - **Slepen** = rondkijken (orbit).
 - Geselecteerde elementen verschijnen ook in de lijst links onder **Zonder groep**.
-- Met de checkbox **Patroon in 3D** kun je het berekende steenstrippatroon aan/uitzetten.
 
 ---
 
 ### Stap 3 — Groepen aanmaken
 
-Er zijn drie manieren om groepen te maken:
+Er zijn drie manieren:
 
-#### A — Auto-groeperen (aanbevolen voor complete gebouwen)
+#### A — Auto-groeperen per windrichting (aanbevolen voor complete gebouwen)
+
+Klik op **🧭 Auto-groeperen per windrichting (N/O/Z/W)**.
+
+De applicatie groepeert alle wanden op basis van hun oriëntatie en positie en maakt per gevelvlak een aparte groep (`Gevel N`, `Gevel Z`, etc.). Losse secties op dezelfde gevel worden gesplitst als `Gevel N-1`, `Gevel N-2`.
+
+#### B — Auto-groeperen op aangrenzendheid
 
 Klik op **🔗 Auto-groeperen op aangrenzendheid**.
 
-De applicatie detecteert automatisch welke wanden een gemeenschappelijke rand delen en maakt voor elke verbonden set een aparte groep. Dit is de snelste manier voor een volledig gebouw.
+Detecteert automatisch welke wanden een gemeenschappelijke rand delen en maakt voor elke verbonden set een aparte groep. Handig als windrichting niet relevant is.
 
-#### B — Handmatige selectie
+#### C — Handmatige selectie
 
 1. Klik op individuele wanden in de 3D Viewer om ze te selecteren.
-2. Klik op **+ Nieuwe groep van selectie** om een groep te maken van de geselecteerde elementen.
-
-> Meerdere elementen selecteren: klik achtereenvolgens op de elementen.
-
-#### C — Toevoegen aan bestaande groep
-
-Als er al groepen bestaan, kun je geselecteerde elementen toevoegen via **Voeg toe aan [groepnaam]**.
+2. Klik op **+ Nieuwe groep van selectie**.
 
 ---
 
-### Stap 4 — Vergelijkbare groeperingen koppelen
+### Stap 4 — Strip-zones tekenen (optioneel)
 
-Na het aanmaken van een groep controleert de applicatie automatisch of er **vergelijkbare groeperingen** elders in het gebouw voorkomen (zelfde samenstelling, zelfde onderlinge afmetingen en posities).
+In het **2D Gevelaanzicht** kun je met de knop **▭ Teken zone** een of meerdere rechthoeken tekenen die aangeven **waar** op de gevel steenstrips komen.
 
-Als die worden gevonden, verschijnt een pop-up:
+- Gebieden **binnen** de getekende zones krijgen strips.
+- Gebieden **buiten** de zones blijven leeg (bijv. beton-accenten, luifels).
 
-- Aangevinkte groeperingen worden automatisch aangemaakt en **gekoppeld** aan de brongroep.
-- Gekoppelde groepen kunnen later in één keer worden gesynchroniseerd via **Sync instellingen →**.
-
-> **Gebruik:** Stel de brongroep volledig in (patroon, kleur, zetwerk, etc.) en klik daarna op **Sync instellingen →** om alle instellingen door te kopiëren naar de gekoppelde groepen.
+Zie ook: [Strip-zones handmatig tekenen in 2D](#strip-zones-handmatig-tekenen-in-2d).
 
 ---
 
 ### Stap 5 — Groep configureren
 
-Klik op een groep in de lijst links om deze te activeren. Rechts verschijnt het **configuratiepaneel** met alle instellingen (zie [UI-groepen](#ui-groepen-groep-configuratie) hieronder).
+Klik op een groep in de lijst links om deze te activeren. Rechts verschijnt het **configuratiepaneel**.
 
-Schakel naar **2D Gevel** via de knop rechtsbovenaan om het gevelaanzicht te bekijken en te verfijnen.
+Stel in:
+- Metselverband (halfsteens, tegelverband, staand, wildverband)
+- Steenstrip afmetingen (lengte, hoogte, lintvoeg, stootvoeg)
+- Zetwerk rondom openingen
+- Panelen (basisplaat type en maximale afmetingen)
+- Achterconstructie latten (horizontaal of verticaal)
+- Penanten (als van toepassing)
+
+Zie [Groep configureren](#groep-configureren-beide-scenarios) voor details.
 
 ---
 
-### Stap 6 — Exporteren
+### Stap 6 — Vergelijkbare groeperingen koppelen
+
+Na het aanmaken van een groep controleert de applicatie automatisch of er vergelijkbare groeperingen elders voorkomen.
+
+Als die worden gevonden, verschijnt een pop-up:
+- Aangevinkte groeperingen worden automatisch aangemaakt en **gekoppeld** aan de brongroep.
+- Gebruik daarna **Sync instellingen →** om alle instellingen in één keer door te kopiëren.
+
+---
+
+### Stap 7 — Exporteren en tekeningen maken
+
+- **Werktekeningen**: klik op het tabblad **Werktekeningen** in het rechterpaneel.
+- **IFC exporteren**: klik op **⬇ Exporteer IFC** in de topbalk.
+- **Zaaglijst**: beschikbaar via het **Zaaglijst** tabblad.
+- **Maltekeningen**: tabblad **Maltekening** per zone.
+
+---
+
+## Scenario B — Zone-import (klant levert vlakken)
+
+Dit scenario is van toepassing als de klant een IFC aanlevert waarbij de **vlakken met steenstrips reeds zijn aangeduid** als aparte IFC-elementen (bijv. `IfcBuildingElementProxy`, `IfcSlab`, `IfcCovering`, of een specifiek wandtype). De **achterzijde** van die elementen vormt het startpunt van het systeem (gezien van binnen naar buiten).
+
+### Stap 1 — IFC importeren in zone-modus
+
+1. Klik op **📂 IFC importeren**.
+2. Selecteer het IFC-bestand van de klant.
+3. De applicatie scant **alle** elementtypen (wanden, vloeren, proxies, bekledingen, etc.) en toont ze gegroepeerd per IFC-entiteitstype:
+   - Blauwe badge = WALL
+   - Paarse badge = SLAB
+   - Oranje badge = BUILDINGELEMENTPROXY
+   - Groene badge = COVERING
+4. **Vink de elementtypen aan** die de strip-oppervlakken vertegenwoordigen.
+5. **Activeer de checkbox "Zone-import modus"** bovenin het dialoogvenster.  
+   De uitlegstekst bevestigt: *"De achterzijde = start van het systeem. Elk coplanair cluster wordt een gevelgroep; elk element wordt een strip-zone."*
+6. Klik op **🗺 Als zones importeren**.
+
+---
+
+### Stap 2 — Automatische groepering
+
+De applicatie:
+
+1. Parset de geselecteerde elementen en haalt hun geometrie op.
+2. **Clustert** alle coplanaire elementen op basis van as (X/Y/Z) en positie (50 mm tolerantie).
+3. Maakt per cluster een **gevelgroep** aan (`Zone N`, `Zone Z`, `Zone O/W`, etc.).
+4. Zet elk afzonderlijk element als **strip-zone** in het 2D gevelaanzicht van die groep.
+
+Na het importeren is de situatie direct:
+- Gevelgroepen zijn aangemaakt en zichtbaar in de lijst links.
+- In de 2D view van elke groep zijn de geïmporteerde zone-vlakken als cyaan stippelkaders te zien.
+- Strips worden **alleen** getekend binnen die kaders.
+
+---
+
+### Stap 3 — Controleer de indeling in 2D
+
+Schakel naar **2D Gevel** en klik de groepen af om te controleren:
+
+- Zijn alle zone-vlakken correct herkend?
+- Kloppen de afmetingen?
+- Zijn er zones gemist of ongewenst samengevoegd?
+
+Gebruik de **▭ Teken zone** functie om handmatig zones toe te voegen of de **✕**-knop in de zone-lijst om zones te verwijderen.
+
+---
+
+### Stap 4 — Achterliggende constructieve wanden laden (optioneel)
+
+Als naast de zone-elementen ook de constructieve wanden nodig zijn (bijv. voor het bepalen van de achterconstructie-diepte), kun je een tweede importactie uitvoeren **zonder** zone-modus en de wanden handmatig aan de bestaande groepen toevoegen.
+
+---
+
+### Stap 5 — Groep configureren en exporteren
+
+Verder identiek aan Scenario A vanaf [Stap 5](#stap-5--groep-configureren).
+
+---
+
+## Groep configureren (beide scenario's)
+
+Klik op een groep in de lijst links. Het **rechterpaneel** toont alle instellingen:
+
+### Naam en kleur
+
+- De **naam** verschijnt in de lijsten, werktekeningen en IFC-export.
+- De **kleur** onderscheidt de groep in 3D en 2D.
+
+---
+
+### Metselverband
+
+| Optie | Beschrijving |
+|---|---|
+| **Halfsteens** | Strekken verspringen een halve steenlengte per laag. Eerste laag begint links met een strek, tweede laag met een kop. |
+| **Tegelverband** | Regelmatige verspinging per halve steen, zonder koppen. |
+| **Staand tegelverband** | Stenen staan verticaal (90° gedraaid). |
+| **Wildverband** | Onregelmatig, levend verband met strekken, koppen en drieklezooren. Herhaalt na 6 rijen. |
+
+---
+
+### Steenstrip afmetingen
+
+| Veld | Standaard | Beschrijving |
+|---|---|---|
+| **Lengte mm** | 210 | Zichtbare lengte van de strip |
+| **Hoogte mm** | 50 | Zichtbare hoogte van de strip |
+| **Lintvoeg mm** | 12 | Horizontale voeg tussen lagen |
+| **Stootvoeg mm** | 10 | Verticale voeg tussen stenen |
+
+> Stapelmaat per laag = hoogte + lintvoeg (bijv. 50 + 12 = 62 mm).
+
+---
+
+### Zetwerk rondom openingen
+
+Aluminium of stalen randprofiel rondom ramen en deuren.
+
+| Veld | Standaard | Beschrijving |
+|---|---|---|
+| **Breedte mm** | 50 | Breedte van het profiel |
+| **Offset H mm** | 0 | Horizontale vrije ruimte |
+| **Offset V mm** | 0 | Verticale vrije ruimte |
+| **Strip gap mm** | 5 | Ruimte tussen profiel en strip |
+
+---
+
+### Panelen (basisplaat)
+
+Verdeelt de gevels in draagsysteem-panelen. Kies een **basisplaat type** uit de catalogus:
+
+- Bluclad Proboard 10 mm (vezelcement)
+- ROCKPANEL Natural Durable 8 mm / 10 mm
+- ROCKPANEL Natural Xtreme 8 mm / 10 mm
+
+De maximale paneelafmetingen worden automatisch ingesteld op basis van de gekozen plaat. Panelen worden gesnapt op steenstripvoegen voor minimaal snijverlies. Het **maximale gewicht** is instelbaar voor montage-eisen.
+
+---
+
+### Achterconstructie latten
+
+Houten latten als drager achter de basisplaat.
+
+- **Horizontale latten**: hartafstand wordt berekend op basis van maximale interval en steenstriprijhoogtes.
+- **Verticale latten**: gesnapt op paneelgrenzen.
+
+---
+
+### Penanten
+
+Uitstekende verticale lijsten (pilasters, dagkantverlengingen).
+
+| Veld | Beschrijving |
+|---|---|
+| **X positie mm** | Afstand van de linker groepsrand |
+| **Breedte mm** | Breedte van het penant |
+| **Diepte mm** | Uitsteek ten opzichte van het gevelvlak |
+| **Hoogte mm** | Hoogte van het penant |
+
+---
+
+## Strip-zones handmatig tekenen in 2D
+
+In het **2D Gevelaanzicht** kun je zones tekenen om aan te geven waar strips komen:
+
+1. Schakel naar **2D Gevel**.
+2. Klik op **▭ Teken zone** (linksboven in de 2D viewer). De cursor wordt een kruisje.
+3. **Klik en sleep** om een rechthoek te tekenen op het gevelvlak.
+4. Laat los — de zone verschijnt als cyaan stippelkader met label en afmetingen.
+5. Herhaal voor meerdere zones.
+
+**Zone-lijst** (linksboven):
+- Klik op een zone om hem te selecteren (oranje kader).
+- Klik **✕** naast een zone om hem te verwijderen.
+- Klik **Alle zones wissen** om opnieuw te beginnen.
+
+**Gedrag:**
+- Zonder zones → strips over het hele gevelvlak.
+- Met zones → strips alleen binnen de getekende kaders.
+
+---
+
+## Maltekeningen
+
+Per gevelgroep worden automatisch **maltekeningen** gegenereerd voor MAL Links en MAL Rechts.
+
+- Toegang via tabblad **Werktekeningen → tab Maltekening**.
+- De mallen hebben een vaste contour met inkepingen aan boven- en onderkant.
+- De indeling in steenstripvakjes past zich aan op de afmetingen van de strips en de ingestelde toleranties.
+- De toleranties (lengte en hoogte) zijn instelbaar in de instellingen.
+
+**Export:**
+- **DXF** — voor de metaalzetterij (laser- of waterjetsnijden uit 2 mm plaatstaal).
+- **PDF** — voor eigen inzicht en goedkeuring.
+
+**Productielogica:**
+- Twee identieke mallen (MAL Links / MAL Rechts) wisselen elkaar af.
+- MAL Links wordt gevuld terwijl MAL Rechts wordt geleegd.
+- Samen vormen ze een herhalend patroon van 6 rijen (3 rijen per mal).
+
+---
+
+## Werktekeningen & export
+
+### Werktekeningen
+
+Het tabblad **Werktekeningen** in het rechterpaneel bevat:
+
+| Tab | Inhoud |
+|---|---|
+| **1 — Overzicht** | Zone-indeling en groepering op gevelniveau |
+| **2 — Panelen** | Paneelplaatsing per gevel met afmetingen |
+| **3 — Latten** | Lattenpatroon en hartafstanden |
+| **4 — Penanten** | Penant-doorsneden en zijvlakdetails |
+| **5 — Productie** | Paneeluitslag met strips voor productie |
+| **6 — Maltekening** | MAL Links en MAL Rechts per zone |
+
+### Zaaglijst
+
+Het tabblad **Zaaglijst** toont alle panelen met:
+- Uniek paneel-ID (16-karakter EPC-code)
+- Afmetingen (breedte × hoogte)
+- Aantallen per striptype (Vol / Kop / Driekwart / Rest)
+- Gewicht
+
+Exporteer als **CSV** voor gebruik in de fabriek.
+
+### IFC exporteren
 
 Klik op **⬇ Exporteer IFC** als alle groepen zijn geconfigureerd.
 
-Er wordt een IFC-bestand gegenereerd met voor elke wand de individuele brickslip-objecten op de juiste positie en oriëntatie.
+Het geëxporteerde bestand bevat per wand de individuele brickslip-objecten op de juiste positie en oriëntatie.
 
 ---
 
@@ -106,12 +355,12 @@ Er wordt een IFC-bestand gegenereerd met voor elke wand de individuele brickslip
 │  TOPBALK: IFC importeren · Undo · Patroon in 3D · 3D/2D · Export │
 ├────────────┬─────────────────────────────────┬───────────────────┤
 │            │                                 │                   │
-│  LINKERZIJ │         3D VIEWER               │  GROEP            │
-│  BALK      │         of                      │  CONFIGURATIE     │
-│            │         2D GEVELAANZICHT        │  PANEEL           │
-│  · Acties  │                                 │                   │
-│  · Groepen │                                 │  (rechts, alleen  │
-│  · Zonder  │                                 │  als groep actief)│
+│  LINKER-   │       3D VIEWER                 │  GROEP            │
+│  ZIJBALK   │       of                        │  CONFIGURATIE     │
+│            │       2D GEVELAANZICHT          │  (tabs:           │
+│  · Acties  │                                 │   Instellingen    │
+│  · Groepen │                                 │   Werktekeningen  │
+│  · Zonder  │                                 │   Zaaglijst)      │
 │    groep   │                                 │                   │
 └────────────┴─────────────────────────────────┴───────────────────┘
 ```
@@ -120,11 +369,11 @@ Er wordt een IFC-bestand gegenereerd met voor elke wand de individuele brickslip
 
 | Onderdeel | Beschrijving |
 |---|---|
-| ⬡ aangrenzend banner | Geeft aan hoeveel aangrenzende relaties zijn gevonden |
-| Auto-groeperen | Maakt groepen op basis van aangrenzendheid |
-| Nieuwe groep van selectie | Groep van geselecteerde elementen |
-| Voeg toe aan [groep] | Toevoegen aan bestaande groep |
-| Deselecteer alles | Heft selectie op |
+| ⬡ aangrenzend banner | Aantal aangrenzende relaties gevonden |
+| 🔗 Auto-groeperen aangrenzendheid | Groepen op basis van aanraking |
+| 🧭 Auto-groeperen windrichting | Groepen per N/O/Z/W gevelvlak |
+| + Nieuwe groep van selectie | Groep van geselecteerde elementen |
+| Voeg toe aan [groep] | Element toevoegen aan bestaande groep |
 | Groepen | Lijst van alle aangemaakte groepen |
 | Zonder groep | Elementen die nog niet ingedeeld zijn |
 
@@ -132,179 +381,7 @@ Er wordt een IFC-bestand gegenereerd met voor elke wand de individuele brickslip
 
 ## UI-groepen: Groep configuratie
 
-Het rechterpaneel verschijnt zodra een groep is geselecteerd. Het bevat de volgende secties:
-
----
-
-### Naam
-
-De naam van de groep. Zichtbaar in de lijst, in de 2D viewer en bij de IFC-export.
-
----
-
-### Kleur
-
-De herkenningskleur van de groep in de 3D Viewer en het 2D gevelaanzicht. Gekoppelde groepen krijgen dezelfde naam maar een andere kleur.
-
----
-
-### Metselverband
-
-Bepaalt hoe de brickslips per rij verspringen:
-
-| Optie | Beschrijving |
-|---|---|
-| **Halfsteens** | Stenen verspringen een halve steenlengte per laag. Meest gebruikelijk. |
-| **Staand** | Stenen lopen verticaal door, geen verspinging. |
-
----
-
-### Steenstrip afmetingen
-
-De maatvoering van de individuele brickslip (steenstrip):
-
-| Veld | Standaard | Beschrijving |
-|---|---|---|
-| **Lengte mm** | 210 | Zichtbare lengte van de strip |
-| **Hoogte mm** | 50 | Zichtbare hoogte van de strip |
-| **Lintvoeg mm** | 12 | Horizontale voeg tussen lagen |
-| **Stootvoeg mm** | 10 | Verticale voeg tussen stenen |
-
-> De **stapelmaat** per laag = hoogte + lintvoeg (bijv. 50 + 12 = 62 mm per laag).
-
----
-
-### Strip dikte IFC (mm)
-
-De uitsteek van de strip op de wand, zoals opgenomen in het IFC-exportbestand. Dit is de fysieke dikte van de brickslip (standaard 20 mm).
-
----
-
-### Maximale strip hoogte
-
-Optioneel. Begrenst het patroon tot een bepaalde hoogte gemeten vanaf de onderkant van de groep. Handig voor:
-- Een waterslag (strook steen onderin, bijv. 300 mm)
-- Gevels die niet tot de bovenkant worden bekleed
-
-Vink in en voer de maximale hoogte in mm in.
-
----
-
-### Penanten
-
-Een penant is een uitstekende verticale lijst in de gevel (bijvoorbeeld een pilaster of dagkant-verlenging).
-
-| Veld | Beschrijving |
-|---|---|
-| **X positie mm** | Afstand van de linker groepsrand tot de linkerrand van het penant |
-| **Breedte mm** | Breedte van het penant |
-| **Diepte mm** | Uitsteek ten opzichte van het gevelvlak |
-| **Hoogte mm** | Hoogte van het penant |
-| **Patroon volgt gevel** | Als aangevinkt, lopen de strips door als op de achterliggende gevel. Anders krijgt het penant een eigen patroon. |
-
-Meerdere penanten per groep zijn mogelijk via **+ Toevoegen**.
-
-In de 2D-view worden penanten getekend als blauwe vlakken met een 3D-schaduweffect.
-
----
-
-### Zetwerk rondom openingen
-
-Aluminium of stalen randprofiel rondom ramen en deuren. Het zetwerk creëert een nette afwerking en houdt de strips op afstand van de opening.
-
-| Veld | Standaard | Beschrijving |
-|---|---|---|
-| **Breedte mm** | 50 | Breedte van het zetwerk-profiel |
-| **Offset H mm** | 0 | Horizontale ruimte tussen openingsrand en profiel |
-| **Offset V mm** | 0 | Verticale ruimte boven/onder de opening |
-| **Strip gap mm** | 5 | Extra vrije ruimte tussen profiel en de strips |
-
-In de 2D-view wordt het zetwerk getekend als grijze balken rondom elke sparing. Het steenstrippatroon houdt automatisch rekening met deze ruimte.
-
----
-
-### Panelen (basisplaat)
-
-Verdeelt de geveloppervlakte in draagsysteem-panelen (basisplaten) waarop de brickslips worden gelijmd of geklikt. De paneelgrenzen worden gesnapt op steenstripvoegen voor optimaal snijverlies.
-
-| Veld | Standaard | Beschrijving |
-|---|---|---|
-| **Breedte mm** | 3005 | Maximale breedte van een basispaneel |
-| **Hoogte mm** | 1200 | Maximale hoogte van een basispaneel |
-
-In de 2D-view worden panelen afwisselend in lichtgrijs en lichtblauw getekend met hun afmetingen als label.
-
-> De panelen houden rekening met de openingen (ramen/deuren) en het zetwerk: ze worden nooit over een sparing getekend.
-
----
-
-### Achterconstructie hout
-
-Houten latten als dragerstructuur achter de basisplaat. Twee richtingen zijn mogelijk:
-
-#### Horizontale latten
-
-Latten lopen horizontaal over de volledige gevelbreedte.
-
-| Veld | Standaard | Beschrijving |
-|---|---|---|
-| **Breedte mm** | 50 | Zichtbare breedte van de lat in het gevelaanzicht |
-| **Dikte mm** | 28 | Dikte van de lat loodrecht op de gevel |
-| **Max interval mm** | 400 | Maximale hartafstand tussen opeenvolgende latten |
-
-Positioneringsregels:
-- Altijd een lat **boven en onder** elke raam- of deuropening
-- Tussenpositie gesnapt op steenstriprijgrenzen
-- Maximale hartafstand wordt gerespecteerd
-
-#### Verticale latten
-
-Latten lopen verticaal over de volledige gevelhoogte. Posities worden bepaald op de paneelgrenzen (links, midden en rechts van elk paneel). Activeer **Panelen** voor optimale positionering.
-
-In de 2D-view worden latten getekend als oranje-bruine balken. Geforceerde latten (boven/onder openingen) zijn iets donkerder.
-
----
-
-## 2D Gevelaanzicht
-
-Schakel via de **2D Gevel** knop bovenaan. Selecteer een groep links in de lijst om het aanzicht te tonen.
-
-### Navigatie
-
-| Actie | Resultaat |
-|---|---|
-| Scrollen | Inzoomen / uitzoomen |
-| Slepen | Pannen (verschuiven) |
-| **⊡ Passend maken** | Past de weergave aan de groep aan |
-
-### Wat je ziet (van achter naar voor)
-
-1. **Achtergrondvlak** — licht gekleurde rechthoek van de volledige groep
-2. **Panelen** — afwisselend lichtgrijs/lichtblauw met afmetingen
-3. **Latten** — oranje-bruine horizontale of verticale balken
-4. **Steenstrips** — het berekende brickslip-patroon in de groepskleur
-5. **Zetwerk** — grijze profielen rondom openingen
-6. **Openingen** — lichtblauwe vlakken (ramen/deuren), met X-coördinaten
-7. **Penanten** — blauwe vlakken met 3D-diepte-effect
-8. **Max hoogte lijn** — oranje stippellijn als maximale strip hoogte is ingesteld
-9. **Patroonlogica** — tekstuele uitleg van de patroonberekening (rechtsonder in 2D modus)
-
-### X-labels bij openingen
-
-Boven elke raam- of deuropening worden de X-coördinaten (in mm) van de linker- en rechterkant weergegeven, gemeten vanaf de linkerrand van de groep.
-
----
-
-## Exporteren
-
-Klik op **⬇ Exporteer IFC** als alle groepen naar wens zijn geconfigureerd.
-
-Het geëxporteerde IFC-bestand bevat:
-- Alle originele wandelementen
-- Per wand de individuele brickslip-objecten (IfcBuildingElementProxy) op de juiste positie en oriëntatie
-- Groepsnaam en kleur als attribuut
-
-Het bestand wordt automatisch gedownload als `[originele bestandsnaam]_brickslip.ifc`.
+Zie [Groep configureren](#groep-configureren-beide-scenarios) hierboven voor alle velden.
 
 ---
 
@@ -313,10 +390,12 @@ Het bestand wordt automatisch gedownload als `[originele bestandsnaam]_brickslip
 | Actie | Sneltoets / tip |
 |---|---|
 | Ongedaan maken | **Ctrl+Z** |
-| Groepskleur aanpassen | Klik de kleurenkiezer in het configuratiepaneel |
-| Instellingen kopiëren | **Sync instellingen →** (alleen bij gekoppelde groepen) |
+| Zone-import | Activeer "Zone-import modus" in het importdialoog |
+| Strip-zone tekenen | **▭ Teken zone** knop in 2D viewer |
+| Instellingen kopiëren naar gekoppelde groepen | **Sync instellingen →** |
 | Wand uit groep verwijderen | Klik **✕** naast de wand in de groepslijst |
-| Groep verwijderen | Klik 🗑 in het configuratiepaneel, of **Groep verwijderen** in de lijst |
+| Groep verwijderen | Klik 🗑 in het configuratiepaneel |
 | Alle ongegroepeeerden selecteren | **Selecteer alle** in de sectie "Zonder groep" |
 | Patroon tijdelijk verbergen | Vink **Patroon in 3D** uit in de topbalk |
+| Bestand onthouden | Applicatie slaat het IFC-bestand automatisch op (IndexedDB); bij volgende sessie kun je direct opnieuw laden |
 | Tooltip bekijken | Zweef over het **ⓘ** icoontje naast elk veld |
