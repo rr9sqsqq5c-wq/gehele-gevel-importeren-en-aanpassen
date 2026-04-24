@@ -1087,68 +1087,92 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
         })()}
 
         {drawingType === 'maltekening' && (() => {
-          const verband = groupSettings?.verband ?? 'halfsteens';
+          const groupVerband = groupSettings?.verband ?? 'halfsteens';
           const moldDims = { hoogte: panelen?.malBreedte ?? 270, lengte: panelen?.malLengte ?? 3400, tolerantieL: panelen?.tolerantieL ?? 1, tolerantieH: panelen?.tolerantieH ?? 1 };
-          const tpl = getMoldTemplates(verband, mat, moldDims);
           const zonesForMal = selectedZone ? [selectedZone] : facadeZones;
           const hasZones = facadeZones.length > 1;
 
-          function exportCombinedSVG() {
-            const svgStr = generateCombinedMoldSVG(mat, verband, moldDims);
-            const blob = new Blob([svgStr], { type: 'image/svg+xml' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `MAL-gecombineerd-${verband}.svg`;
-            a.click();
-            URL.revokeObjectURL(url);
+          const resolvedZoneSettings = (zoneSettings ?? []);
+
+          function getZoneMat(zone) {
+            const zs = resolvedZoneSettings[zone.idx] ?? {};
+            return { ...mat, ...(zs.material ?? {}) };
+          }
+          function getZoneVerband(zone) {
+            return resolvedZoneSettings[zone.idx]?.verband ?? groupVerband;
           }
 
-          const combinedSvgHtml = generateCombinedMoldSVG(mat, verband, moldDims);
+          const uniqueMolds = (() => {
+            const seen = new Map();
+            for (const zone of zonesForMal) {
+              const zVerband = getZoneVerband(zone);
+              const zMat = getZoneMat(zone);
+              const key = `${zVerband}|${zMat.steenL}|${zMat.steenH}|${zMat.lint}|${zMat.stoot}`;
+              if (!seen.has(key)) seen.set(key, { verband: zVerband, mat: zMat, key });
+            }
+            return [...seen.values()];
+          })();
 
           function zoneInfo(zone) {
+            const zVerband = getZoneVerband(zone);
+            const zMat = getZoneMat(zone);
+            const zoneTpl = getMoldTemplates(zVerband, zMat, moldDims);
             const panelsInZone = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1);
             const panelCount = panelsInZone.length;
             const panelH = panelen?.hoogte ?? 1200;
-            const rowsPerPanel = Math.max(1, Math.floor(panelH / tpl.lagenmaat));
-            const totalPasses = Math.ceil(rowsPerPanel / tpl.rowsPerMold);
+            const rowsPerPanel = Math.max(1, Math.floor(panelH / zoneTpl.lagenmaat));
+            const totalPasses = Math.ceil(rowsPerPanel / zoneTpl.rowsPerMold);
             const passesLinks  = Math.ceil(totalPasses / 2);
             const passesRechts = Math.floor(totalPasses / 2);
-            const passSeq = Array.from({ length: totalPasses }, (_, i) => tpl.templates[i % tpl.templates.length]?.id ?? (i % 2 === 0 ? 'Links' : 'Rechts'));
-            return { panelCount, rowsPerPanel, totalPasses, passesLinks, passesRechts, passSeq };
+            const passSeq = Array.from({ length: totalPasses }, (_, i) => zoneTpl.templates[i % zoneTpl.templates.length]?.id ?? (i % 2 === 0 ? 'Links' : 'Rechts'));
+            return { panelCount, rowsPerPanel, totalPasses, passesLinks, passesRechts, passSeq, zVerband, zoneTpl };
           }
 
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-              {/* ── Gecombineerde maltekening (1× gedeeld voor alle zones) ── */}
-              <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.10)', padding: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1 }}>
-                    Maltekening — {tpl.verband}{tpl.rotated ? ' (90° gedraaid)' : ''} · {moldDims.lengte}×{moldDims.hoogte} mm · Staal 2 mm
-                  </div>
-                  <button onClick={exportCombinedSVG} style={{ fontSize: 10, background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    ⬇ SVG
-                  </button>
-                </div>
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 10 }}>
-                  Strip {tpl.brickW}×{tpl.brickH} mm · Lagenmaat {tpl.lagenmaat} mm · Stap {tpl.colStep} mm · {tpl.cycleLength}-rijcyclus
-                  · <span style={{ color: '#166534', fontWeight: 600 }}>Zelfde outline voor MAL Links en MAL Rechts</span>
-                </div>
-                <div
-                  dangerouslySetInnerHTML={{ __html: combinedSvgHtml }}
-                  style={{ maxWidth: '100%', overflowX: 'auto', borderRadius: 4, border: '1px solid #e2e8f0' }}
-                />
-                <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {tpl.templates.map((tmpl) =>
-                    tmpl.rows.map((row) => (
-                      <div key={`${tmpl.id}-${row.globalRow}`} style={{ fontSize: 10, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 4, padding: '2px 7px', color: '#0c4a6e' }}>
-                        <strong>MAL {tmpl.id} · R{row.globalRow + 1}</strong> · {row.offset} mm
+              {/* ── Maltekening per uniek verband ── */}
+              {uniqueMolds.map(({ verband: mv, mat: mm, key }) => {
+                const tpl = getMoldTemplates(mv, mm, moldDims);
+                const combinedSvgHtml = generateCombinedMoldSVG(mm, mv, moldDims);
+                function exportSVG() {
+                  const svgStr = generateCombinedMoldSVG(mm, mv, moldDims);
+                  const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url; a.download = `MAL-gecombineerd-${mv}.svg`; a.click();
+                  URL.revokeObjectURL(url);
+                }
+                return (
+                  <div key={key} style={{ background: '#fff', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.10)', padding: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1 }}>
+                        Maltekening — {tpl.verband}{tpl.rotated ? ' (90° gedraaid)' : ''} · {moldDims.lengte}×{moldDims.hoogte} mm · Staal 2 mm
                       </div>
-                    ))
-                  )}
-                </div>
-              </div>
+                      <button onClick={exportSVG} style={{ fontSize: 10, background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        ⬇ SVG
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#64748b', marginBottom: 10 }}>
+                      Strip {tpl.brickW}×{tpl.brickH} mm · Lagenmaat {tpl.lagenmaat} mm · Stap {tpl.colStep} mm · {tpl.cycleLength}-rijcyclus
+                      · <span style={{ color: '#166534', fontWeight: 600 }}>Zelfde outline voor MAL Links en MAL Rechts</span>
+                    </div>
+                    <div
+                      dangerouslySetInnerHTML={{ __html: combinedSvgHtml }}
+                      style={{ maxWidth: '100%', overflowX: 'auto', borderRadius: 4, border: '1px solid #e2e8f0' }}
+                    />
+                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {tpl.templates.map((tmpl) =>
+                        tmpl.rows.map((row) => (
+                          <div key={`${tmpl.id}-${row.globalRow}`} style={{ fontSize: 10, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 4, padding: '2px 7px', color: '#0c4a6e' }}>
+                            <strong>MAL {tmpl.id} · R{row.globalRow + 1}</strong> · {row.offset} mm
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
 
               {/* ── Per zone: welke mal en hoeveel doorgangen ── */}
               <div style={{ background: '#fff', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.10)', padding: 16 }}>
@@ -1158,14 +1182,17 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                   <thead>
                     <tr>
-                      {(hasZones ? ['Zone', 'Breedte', 'Panelen'] : ['Panelen']).concat(['Rijen/paneel', 'Doorg./paneel', 'MAL Links', 'MAL Rechts', 'Volgorde per paneel']).map((h) => (
+                      {(hasZones ? ['Zone', 'Breedte', 'Panelen'] : ['Panelen'])
+                        .concat(uniqueMolds.length > 1 ? ['Verband'] : [])
+                        .concat(['Rijen/paneel', 'Doorg./paneel', 'MAL Links', 'MAL Rechts', 'Volgorde per paneel'])
+                        .map((h) => (
                         <th key={h} style={{ padding: '5px 8px', borderBottom: '2px solid #1e3a5f', fontWeight: 700, color: '#1e3a5f', textAlign: 'left', background: '#f0f4f8', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {zonesForMal.map((zone) => {
-                      const { panelCount, rowsPerPanel, totalPasses, passesLinks, passesRechts, passSeq } = zoneInfo(zone);
+                      const { panelCount, rowsPerPanel, totalPasses, passesLinks, passesRechts, passSeq, zVerband } = zoneInfo(zone);
                       return (
                         <tr key={zone.idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
                           {hasZones && <>
@@ -1174,6 +1201,11 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                             <td style={{ padding: '5px 8px', color: '#475569' }}>{panelCount}</td>
                           </>}
                           {!hasZones && <td style={{ padding: '5px 8px', color: '#475569' }}>{panelCount}</td>}
+                          {uniqueMolds.length > 1 && (
+                            <td style={{ padding: '5px 8px' }}>
+                              <span style={{ background: '#f0f4f8', border: '1px solid #cbd5e1', borderRadius: 3, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>{zVerband}</span>
+                            </td>
+                          )}
                           <td style={{ padding: '5px 8px', color: '#475569' }}>{rowsPerPanel}</td>
                           <td style={{ padding: '5px 8px', fontWeight: 600 }}>{totalPasses}×</td>
                           <td style={{ padding: '5px 8px' }}>
