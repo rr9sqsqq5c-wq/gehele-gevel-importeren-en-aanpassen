@@ -460,7 +460,10 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
       return 0;
     }
     if (verband === 'tegelverband' || isStaand) {
-      return globalRow % 2 === 0 ? 0 : Math.round(colStep / 2);
+      // All rows within one mold share the same offset so the machine can pick
+      // up each row without sideways adjustment. The pattern offset is encoded
+      // in the mold-level index (Links=0 → offset 0; Rechts=1 → offset colStep/2).
+      return moldIdx % 2 === 0 ? 0 : Math.round(colStep / 2);
     }
     return 0;
   }
@@ -926,7 +929,10 @@ export function getMoldTemplates(verband, mat, moldDims) {
       return 0;
     }
     if (verband === 'tegelverband' || isStaand) {
-      return globalRow % 2 === 0 ? 0 : Math.round(colStep / 2);
+      // Offset is per-mold, not per-row: all rows in one mold share the same offset.
+      // Mold 0 (Links) → offset 0; Mold 1 (Rechts) → offset colStep/2.
+      const mIdx = Math.floor(globalRow / rowsPerMold);
+      return mIdx % 2 === 0 ? 0 : Math.round(colStep / 2);
     }
     return 0;
   }
