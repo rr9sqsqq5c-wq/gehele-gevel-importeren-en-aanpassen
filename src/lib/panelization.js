@@ -423,9 +423,13 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   const steenL = mat?.steenL ?? 210;
   const stoot  = mat?.stoot  ?? 10;
   const isStaand = verband === 'staand_tegelverband';
-  const lagenmaat = isStaand ? steenL + lint : steenH + lint;
-  const brickW = isStaand ? steenH : steenL;
-  const brickH = isStaand ? steenL : steenH;
+  // For staand_tegelverband the brick is rotated 90° CW in the mold so strips can be
+  // produced in horizontal rows. Long side (steenL) becomes the slot width; short side
+  // (steenH) becomes the slot height. The facade lagenmaat (steenL + lint) is NOT used
+  // here — only the physical mold slot dimensions matter.
+  const lagenmaat = steenH + lint;           // mold row pitch (= physical slot height + joint)
+  const brickW = steenL;                     // slot width in mold (long side, always horizontal)
+  const brickH = steenH;                     // slot height in mold (short side, always vertical)
   const colStep = brickW + stoot;
   const moldW = moldDims?.lengte ?? 3400;
   const moldH = moldDims?.hoogte ?? 270;
@@ -633,8 +637,10 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const g = _moldGeometry(mat, verband, moldDims, moldId);
   const { moldW, moldH, frameH, frameLeft, innerW, innerH, brickH, slotH, tolerantieL, tolerantieH, rows, rowsPerMold, globalRowBase, notchXs, notchWs } = g;
   const isStaand = verband === 'staand_tegelverband';
-  const displayBrickW = isStaand ? (mat?.steenH ?? 50) : (mat?.steenL ?? 210);
-  const displayBrickH = isStaand ? (mat?.steenL ?? 210) : (mat?.steenH ?? 50);
+  // After 90° CW rotation: long side (steenL) is horizontal in mold, short side (steenH) vertical
+  const displayBrickW = mat?.steenL ?? 210;
+  const displayBrickH = mat?.steenH ?? 50;
+  const displayNote   = isStaand ? ' ↻90°' : '';
 
   const r2 = (v) => Math.round(v * 100) / 100;
   const rn = (v) => Math.round(v);
@@ -739,7 +745,7 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   }
 
   // Strip size label — top-left inside mold
-  parts.push(`<text x="${r2(ox + frameLeft + 30)}" y="${r2(oy + frameH + 11)}" font-size="8" fill="#1e293b" font-weight="bold">${displayBrickW}×${displayBrickH}mm  tol L±${tolerantieL} H±${tolerantieH}mm</text>`);
+  parts.push(`<text x="${r2(ox + frameLeft + 30)}" y="${r2(oy + frameH + 11)}" font-size="8" fill="#1e293b" font-weight="bold">${displayBrickW}×${displayBrickH}mm${displayNote}  tol L±${tolerantieL} H±${tolerantieH}mm</text>`);
 
   // ── Dimension area baseline (just below mold) ──
   const dimBase = oy + moldH + 6;
@@ -894,9 +900,11 @@ export function getMoldTemplates(verband, mat, moldDims) {
   const stoot  = mat?.stoot  ?? 10;
   const isStaand = verband === 'staand_tegelverband';
 
+  // lagenmaat = FACADE row pitch (used for rowsPerPanel planning)
   const lagenmaat = isStaand ? steenL + lint : steenH + lint;
-  const brickW    = isStaand ? steenH : steenL;
-  const brickH    = isStaand ? steenL : steenH;
+  // Mold slot dimensions: for staand the brick is rotated 90° CW, so long side is horizontal
+  const brickW    = steenL;   // slot width in mold (long side, always horizontal)
+  const brickH    = steenH;   // slot height in mold (short side, always vertical)
   const colStep   = brickW + stoot;
 
   const moldW = moldDims?.lengte    ?? 3400;
@@ -974,8 +982,10 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
 
   const { moldW, moldH, frameH, frameLeft, innerW, innerH, slotH, tolerantieL, tolerantieH, notchXs, notchWs } = gA;
   const isStaand = verband === 'staand_tegelverband';
-  const displayBrickW = isStaand ? (mat?.steenH ?? 50) : (mat?.steenL ?? 210);
-  const displayBrickH = isStaand ? (mat?.steenL ?? 210) : (mat?.steenH ?? 50);
+  // After 90° CW rotation: long side (steenL) is horizontal in mold, short side (steenH) vertical
+  const displayBrickW = mat?.steenL ?? 210;
+  const displayBrickH = mat?.steenH ?? 50;
+  const displayNote   = isStaand ? ' ↻90°' : '';
 
   const r2 = (v) => Math.round(v * 100) / 100;
   const rn = (v) => Math.round(v);
@@ -1046,7 +1056,7 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
     out.push(`<rect x="${r2(ox + frameLeft)}" y="${r2(oy + 1)}" width="${r2(Math.min(220, innerW))}" height="16" fill="${headerColor}" rx="2" opacity="0.85"/>`);
     out.push(`<text x="${r2(ox + frameLeft + 6)}" y="${r2(oy + 12)}" font-size="9" fill="#ffffff" font-weight="bold">MAL ${moldId} — Rijen ${g.rows.map((r) => r.globalRow + 1).join(' + ')}</text>`);
     // strip size info (top right of mold)
-    out.push(`<text x="${r2(ox + frameLeft + 30)}" y="${r2(oy + frameH + 11)}" font-size="7" fill="#1e293b" font-weight="bold">${displayBrickW}×${displayBrickH}mm  tol L±${tolerantieL} H±${tolerantieH}mm</text>`);
+    out.push(`<text x="${r2(ox + frameLeft + 30)}" y="${r2(oy + frameH + 11)}" font-size="7" fill="#1e293b" font-weight="bold">${displayBrickW}×${displayBrickH}mm${displayNote}  tol L±${tolerantieL} H±${tolerantieH}mm</text>`);
     return out.join('\n');
   }
 
