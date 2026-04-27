@@ -204,6 +204,7 @@ export function generateBattenPositions(groupHeight, mat, maxInterval) {
   const lint   = mat.lint   ?? 12;
   const lagenmaat = steenH + lint;
   if (lagenmaat <= 0) return [];
+  if (!isFinite(groupHeight) || groupHeight <= 0) return [];
   const N = Math.max(1, Math.floor(maxInterval / lagenmaat));
   const lintHalf = lint / 2;
   const positions = [];

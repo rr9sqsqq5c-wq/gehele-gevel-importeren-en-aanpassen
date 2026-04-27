@@ -326,10 +326,10 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const refHeightAxis = refWall.wallOrigin.heightAxis;
   const axisWalls = withOrigin.filter((w) => w.wallOrigin.lengthAxis === refLengthAxis);
 
-  const groupMinX = Math.min(...axisWalls.map((w) => w.wallOrigin.lengthStart));
-  const groupMaxX = Math.max(...axisWalls.map((w) => w.wallOrigin.lengthStart + w.length));
-  const groupMinH = Math.min(...axisWalls.map((w) => w.wallOrigin.heightStart));
-  const groupMaxH = Math.max(...axisWalls.map((w) => w.wallOrigin.heightStart + w.height));
+  const groupMinX = Math.min(...axisWalls.map((w) => w.wallOrigin.lengthStart ?? 0));
+  const groupMaxX = Math.max(...axisWalls.map((w) => (w.wallOrigin.lengthStart ?? 0) + (w.length ?? 0)));
+  const groupMinH = Math.min(...axisWalls.map((w) => w.wallOrigin.heightStart ?? 0));
+  const groupMaxH = Math.max(...axisWalls.map((w) => (w.wallOrigin.heightStart ?? 0) + (w.height ?? 0)));
 
   const groupWidth = round2(groupMaxX - groupMinX);
   const groupHeight = round2(groupMaxH - groupMinH);
@@ -348,8 +348,8 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
 
   const rawOpenings = [];
   for (const w of withOrigin) {
-    const wallOffsetX = round2(w.wallOrigin.lengthStart - groupMinX);
-    const wallOffsetH = round2(w.wallOrigin.heightStart - groupMinH);
+    const wallOffsetX = round2((w.wallOrigin.lengthStart ?? 0) - groupMinX);
+    const wallOffsetH = round2((w.wallOrigin.heightStart ?? 0) - groupMinH);
     for (const op of (w.openings ?? [])) {
       const ox = round2(wallOffsetX + (op.x ?? 0));
       const oy = round2(wallOffsetH + (op.y ?? 0));
