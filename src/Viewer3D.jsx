@@ -554,7 +554,7 @@ function FocusGroupCamera({ activeGroupId, groups, walls, upAxis }) {
     const cz = (minZ + maxZ) / 2;
     const span = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1);
 
-    const rwo = groupWalls[0].wallOrigin;
+    const rwo = ([...groupWalls].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0]).wallOrigin;
     const { outsideDir } = getOutsideFaceInfo(rwo, walls);
     const ifcDirVec = { x: 0, y: 0, z: 0 };
     ifcDirVec[rwo.thicknessAxis] = outsideDir * 1000;
@@ -841,7 +841,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           if (!groupWalls.length) return [];
           const groupMinX = Math.min(...groupWalls.map((w) => w.wallOrigin.lengthStart));
           const groupMinH = Math.min(...groupWalls.map((w) => w.wallOrigin.heightStart));
-          const rwo = groupWalls[0].wallOrigin;
+          const rwo = ([...groupWalls].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0]).wallOrigin;
           const penLatDikte = settings?.latten?.dikte ?? 28;
           const penBrickD   = settings?.brickDepth ?? 20;
           const penPanelDikte = settings?.panelen?.dikte ?? 8;
