@@ -169,8 +169,13 @@ function fixOpeningEdgePieces(pieces, leftEdges, rightEdges, kop, driekwart, sto
     }
     if (volIdx < 0) continue;
 
-    result[volIdx] = { ...result[volIdx], length: driekwart, label: 'Driekwart' };
-    let x = result[volIdx].start + driekwart + stoot;
+    const intermediateLen = result.slice(volIdx + 1, idx).reduce((sum, p) => sum + p.length + stoot, 0);
+    const newLenIfDriekwart = round2(edgeX - (result[volIdx].start + driekwart + stoot + intermediateLen));
+    const replLen = newLenIfDriekwart >= kop - 0.5 ? driekwart : kop;
+    const replLabel = replLen === driekwart ? 'Driekwart' : 'Kop';
+
+    result[volIdx] = { ...result[volIdx], length: replLen, label: replLabel };
+    let x = result[volIdx].start + replLen + stoot;
     for (let i = volIdx + 1; i < idx; i++) {
       result[i] = { ...result[i], start: round2(x) };
       x += result[i].length + stoot;
@@ -202,8 +207,12 @@ function fixOpeningEdgePieces(pieces, leftEdges, rightEdges, kop, driekwart, sto
     if (volIdx < 0) continue;
 
     const volEnd = round2(result[volIdx].start + result[volIdx].length);
-    result[volIdx] = { ...result[volIdx], start: round2(volEnd - driekwart), length: driekwart, label: 'Driekwart' };
-    const shift = round2(steenL - driekwart);
+    const newLenIfDriekwart = round2((volEnd - driekwart - stoot) - edgeX);
+    const replLen = newLenIfDriekwart >= kop - 0.5 ? driekwart : kop;
+    const replLabel = replLen === driekwart ? 'Driekwart' : 'Kop';
+    const shift = round2(steenL - replLen);
+
+    result[volIdx] = { ...result[volIdx], start: round2(volEnd - replLen), length: replLen, label: replLabel };
     for (let i = idx + 1; i < volIdx; i++) {
       result[i] = { ...result[i], start: round2(result[i].start + shift) };
     }
