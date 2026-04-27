@@ -381,8 +381,9 @@ function WallMesh({ wall, isSelected, isHovered, groupColor, onSelect, onHover, 
       ) : null}
 
       {isHovered && (
-        <Html position={hoverPos} center style={{ pointerEvents: 'none' }}>
+        <Html position={hoverPos} style={{ pointerEvents: 'none' }}>
           <div style={{
+            transform: 'translate(18px, calc(-100% - 10px))',
             background: 'rgba(15,23,42,0.9)',
             color: '#f1f5f9',
             padding: '3px 8px',
