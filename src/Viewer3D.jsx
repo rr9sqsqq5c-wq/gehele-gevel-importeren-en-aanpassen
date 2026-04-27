@@ -533,7 +533,7 @@ function CameraPresetController({ preset, center, span, onDone }) {
   return null;
 }
 
-function FocusGroupCamera({ activeGroupId, groups, walls, upAxis }) {
+function FocusGroupCamera({ activeGroupId, groups, walls, upAxis, groupSettings }) {
   const { camera, controls } = useThree();
   const targetRef = useRef(null);
 
@@ -564,7 +564,9 @@ function FocusGroupCamera({ activeGroupId, groups, walls, upAxis }) {
     const span = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1);
 
     const rwo = ([...groupWalls].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0]).wallOrigin;
-    const { outsideDir } = getOutsideFaceInfo(rwo, walls);
+    const rawDir = getOutsideFaceInfo(rwo, walls);
+    const dirFlip = !!(groupSettings?.(activeGroupId)?.outsideDirFlip);
+    const outsideDir = dirFlip ? -rawDir.outsideDir : rawDir.outsideDir;
     const ifcDirVec = { x: 0, y: 0, z: 0 };
     ifcDirVec[rwo.thicknessAxis] = outsideDir * 1000;
     const [dx, dy, dz] = ifcToThree(ifcDirVec.x, ifcDirVec.y, ifcDirVec.z, upAxis);
@@ -574,7 +576,7 @@ function FocusGroupCamera({ activeGroupId, groups, walls, upAxis }) {
       pos: new THREE.Vector3(cx + (dx / len) * d, cy + (dy / len) * d, cz + (dz / len) * d),
       lookAt: new THREE.Vector3(cx, cy, cz),
     };
-  }, [activeGroupId, groups, walls, upAxis]);
+  }, [activeGroupId, groups, walls, upAxis, groupSettings]);
 
   useFrame(() => {
     if (!targetRef.current || !controls) return;
@@ -798,7 +800,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
         <CameraAccessor cameraRef={cameraRef} />
         <CameraInit walls={walls} upAxis={upAxis} />
         <CameraPresetController preset={preset} center={center} span={span} onDone={() => setPreset(null)} />
-        <FocusGroupCamera activeGroupId={activeGroupId} groups={groups} walls={walls} upAxis={upAxis} />
+        <FocusGroupCamera activeGroupId={activeGroupId} groups={groups} walls={walls} upAxis={upAxis} groupSettings={groupSettings} />
         <SceneLights />
         <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault enabled={!boxSelectMode} />
         <gridHelper args={[500, 100, '#1e3a5f', '#1e293b']} position={[center[0], center[1] - span * 0.5, center[2]]} />
