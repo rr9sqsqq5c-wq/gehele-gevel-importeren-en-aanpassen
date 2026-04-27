@@ -162,14 +162,15 @@ function computeLatten(facadeData, panelen, latten, mat, penanten) {
     const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
     const gH = Math.round(groupHeight);
 
+    const clampY = (y) => Math.min(gH, Math.max(0, y));
     const boundaryYs = new Set([0, gH]);
     for (const panel of allPanels) {
-      boundaryYs.add(Math.round(panel.y));
-      boundaryYs.add(Math.round(panel.y + panel.height));
+      boundaryYs.add(clampY(Math.round(panel.y)));
+      boundaryYs.add(clampY(Math.round(panel.y + panel.height)));
     }
     for (const op of groupOpenings) {
-      boundaryYs.add(Math.round(op.y));
-      boundaryYs.add(Math.round(op.y + op.height));
+      boundaryYs.add(clampY(Math.round(op.y)));
+      boundaryYs.add(clampY(Math.round(op.y + op.height)));
     }
 
     const sortedBoundaries = [...boundaryYs].sort((a, b) => a - b);
@@ -186,7 +187,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten) {
     const INSET = 5;
     const result = [];
     let globalIdx = 0;
-    for (const yr of [...allYs].sort((a, b) => a - b)) {
+    for (const yr of [...allYs].filter(y => y >= 0 && y <= gH).sort((a, b) => a - b)) {
       let latY;
       if (yr === 0) latY = 0;
       else if (yr === gH) latY = yr - latBreedte;
