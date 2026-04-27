@@ -240,6 +240,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten) {
 
 export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen, latten, groupMinH, penantFaceData, zoneSettings, epcSettings }) {
   const svgRef = useRef(null);
+  const summarySvgRef = useRef(null);
   const productiePrintRef = useRef(null);
   const [drawingType, setDrawingType] = useState('achterconstructie');
   const [productieGenerated, setProductieGenerated] = useState(false);
@@ -337,15 +338,14 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const viewW_mm   = viewXEnd - viewXStart;
 
   const VIEW_W = 960;
-  const VIEW_H = 700;
   const drawW = VIEW_W - PAD_LEFT - PAD_RIGHT;
-  const drawH = VIEW_H - PAD_TOP - PAD_BOTTOM;
   const scaleX = drawW / viewW_mm;
-  const scaleY = drawH / groupHeight;
-  const scale  = Math.min(scaleX, scaleY);
+  const MAX_DRAW_H = 1400;
+  const scale  = Math.min(scaleX, MAX_DRAW_H / groupHeight);
 
   const W = viewW_mm * scale;
   const H = groupHeight * scale;
+  const VIEW_H = PAD_TOP + Math.ceil(H) + PAD_BOTTOM;
   const OX = PAD_LEFT + (drawW - W) / 2;
   const OY = PAD_TOP;
 
@@ -394,7 +394,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const summaryBoxH = summaryLines > 0 ? summaryLines * SUMMARY_LINE_H + SUMMARY_PAD * 2 : 0;
   const LEGEND_H = 28;
 
-  const svgTotal = VIEW_H + 16 + (summaryBoxH > 0 ? summaryBoxH + 12 : 0) + LEGEND_H;
+  const svgTotal = VIEW_H + 16 + LEGEND_H;
 
   function exportSvg() {
     const svgEl = svgRef.current;
@@ -411,12 +411,15 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
     const svgEl = svgRef.current;
     if (!svgEl) return;
     const xml = new XMLSerializer().serializeToString(svgEl);
+    const summaryEl = summarySvgRef.current;
+    const summaryXml = summaryEl ? new XMLSerializer().serializeToString(summaryEl) : '';
+    const page2 = summaryXml ? `<div style="page-break-before:always;padding-top:16px">${summaryXml}</div>` : '';
     const w = window.open('', '_blank');
     if (!w) {
       alert('Sta pop-ups toe voor deze pagina om af te drukken.');
       return;
     }
-    w.document.write(`<!DOCTYPE html><html><head><title>Werktekening ${groupName}</title><style>body{margin:0;padding:16px;background:#fff} svg{max-width:100%;height:auto} @media print{body{padding:0}}</style></head><body>${xml}<script>window.onload=()=>window.print()<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><title>Werktekening ${groupName}</title><style>body{margin:0;padding:16px;background:#fff} svg{max-width:100%;height:auto} @media print{body{padding:0}}</style></head><body>${xml}${page2}<script>window.onload=()=>window.print()<\/script></body></html>`);
     w.document.close();
   }
 
@@ -1410,55 +1413,6 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
           <text x={peilLineX} y={OY - 6} textAnchor="middle" fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">PEILMATEN (m)</text>
 
-          {drawingType === 'achterconstructie' && summaryBoxH > 0 && (() => {
-            const bx = OX;
-            const by = VIEW_H + 16;
-            const bw = Math.max(260, lattenSummary.length > 0 ? 260 : 260);
-            return (
-              <g>
-                <rect x={bx} y={by} width={bw} height={summaryBoxH} fill="#fff" stroke="#000" strokeWidth={1} />
-                <text x={bx + SUMMARY_PAD} y={by + SUMMARY_PAD + SUMMARY_LINE_H - 2}
-                  fontSize={10} fontWeight="bold" fill="#000" fontFamily="Arial, sans-serif">
-                  Latten samenvatting ({lattenRichting})
-                </text>
-                <line x1={bx} y1={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} x2={bx + bw} y2={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} stroke="#000" strokeWidth={0.5} />
-                {lattenSummary.map(({ len, cnt }, i) => (
-                  <text key={i} x={bx + SUMMARY_PAD} y={by + SUMMARY_PAD + (i + 2) * SUMMARY_LINE_H + 2}
-                    fontSize={10} fill="#000" fontFamily="Arial, sans-serif">
-                    {cnt}× {len} mm
-                  </text>
-                ))}
-              </g>
-            );
-          })()}
-
-          {drawingType === 'plaatsing' && zonePanels.length > 0 && (() => {
-            const sizeGroups = {};
-            for (const p of zonePanels) {
-              const key = `${mm(p.width)}×${mm(p.height)}`;
-              sizeGroups[key] = (sizeGroups[key] ?? 0) + 1;
-            }
-            const lines = Object.entries(sizeGroups).sort((a, b) => b[1] - a[1]);
-            const bh = (lines.length + 2) * SUMMARY_LINE_H + SUMMARY_PAD * 2;
-            const bx = OX, by = VIEW_H + 16, bw = 320;
-            return (
-              <g>
-                <rect x={bx} y={by} width={bw} height={bh} fill="#fff" stroke="#000" strokeWidth={1} />
-                <text x={bx + SUMMARY_PAD} y={by + SUMMARY_PAD + SUMMARY_LINE_H - 2}
-                  fontSize={9} fontWeight="bold" fill="#000" fontFamily="Arial, sans-serif">
-                  Panelen{selectedZone ? ` ${selectedZone.label}` : ''} — totaal {zonePanels.length} st.
-                </text>
-                <line x1={bx} y1={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} x2={bx + bw} y2={by + SUMMARY_PAD + SUMMARY_LINE_H + 2} stroke="#000" strokeWidth={0.5} />
-                {lines.map(([key, cnt], i) => (
-                  <text key={i} x={bx + SUMMARY_PAD} y={by + SUMMARY_PAD + (i + 2) * SUMMARY_LINE_H + 2}
-                    fontSize={9} fill="#000" fontFamily="Arial, sans-serif">
-                    {cnt}× {key} mm
-                  </text>
-                ))}
-              </g>
-            );
-          })()}
-
           <g transform={`translate(${OX},${svgTotal - LEGEND_H + 4})`}>
             {drawingType === 'plaatsing' && <>
               <rect x={0} y={0} width={12} height={8} fill={panelColor} stroke={dimColor} strokeWidth={0.5} />
@@ -1474,6 +1428,74 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             <text x={145} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Opening (raam/deur)</text>
           </g>
         </svg>}
+
+        {drawingType !== 'productie' && drawingType !== 'zaaglijst' && drawingType !== 'maltekening' && (() => {
+          const bx = PAD_LEFT;
+          const bw = VIEW_W - PAD_LEFT - PAD_RIGHT;
+          const summaryItems = [];
+
+          if (drawingType === 'achterconstructie' && summaryBoxH > 0) {
+            const lw = 260;
+            summaryItems.push(
+              <g key="latten">
+                <rect x={bx} y={0} width={lw} height={summaryBoxH} fill="#fff" stroke="#000" strokeWidth={1} />
+                <text x={bx + SUMMARY_PAD} y={SUMMARY_PAD + SUMMARY_LINE_H - 2}
+                  fontSize={10} fontWeight="bold" fill="#000" fontFamily="Arial, sans-serif">
+                  Latten samenvatting ({lattenRichting})
+                </text>
+                <line x1={bx} y1={SUMMARY_PAD + SUMMARY_LINE_H + 2} x2={bx + lw} y2={SUMMARY_PAD + SUMMARY_LINE_H + 2} stroke="#000" strokeWidth={0.5} />
+                {lattenSummary.map(({ len, cnt }, i) => (
+                  <text key={i} x={bx + SUMMARY_PAD} y={SUMMARY_PAD + (i + 2) * SUMMARY_LINE_H + 2}
+                    fontSize={10} fill="#000" fontFamily="Arial, sans-serif">
+                    {cnt}× {len} mm
+                  </text>
+                ))}
+              </g>
+            );
+          }
+
+          if (drawingType === 'plaatsing' && zonePanels.length > 0) {
+            const sizeGroups = {};
+            for (const p of zonePanels) {
+              const key = `${mm(p.width)}×${mm(p.height)}`;
+              sizeGroups[key] = (sizeGroups[key] ?? 0) + 1;
+            }
+            const lines = Object.entries(sizeGroups).sort((a, b) => b[1] - a[1]);
+            const bh = (lines.length + 2) * SUMMARY_LINE_H + SUMMARY_PAD * 2;
+            const pw = 320;
+            summaryItems.push(
+              <g key="panelen">
+                <rect x={bx} y={0} width={pw} height={bh} fill="#fff" stroke="#000" strokeWidth={1} />
+                <text x={bx + SUMMARY_PAD} y={SUMMARY_PAD + SUMMARY_LINE_H - 2}
+                  fontSize={9} fontWeight="bold" fill="#000" fontFamily="Arial, sans-serif">
+                  Panelen{selectedZone ? ` ${selectedZone.label}` : ''} — totaal {zonePanels.length} st.
+                </text>
+                <line x1={bx} y1={SUMMARY_PAD + SUMMARY_LINE_H + 2} x2={bx + pw} y2={SUMMARY_PAD + SUMMARY_LINE_H + 2} stroke="#000" strokeWidth={0.5} />
+                {lines.map(([key, cnt], i) => (
+                  <text key={i} x={bx + SUMMARY_PAD} y={SUMMARY_PAD + (i + 2) * SUMMARY_LINE_H + 2}
+                    fontSize={9} fill="#000" fontFamily="Arial, sans-serif">
+                    {cnt}× {key} mm
+                  </text>
+                ))}
+              </g>
+            );
+          }
+
+          if (!summaryItems.length) return null;
+          const totalSummaryH = Math.max(summaryBoxH, 120);
+          return (
+            <svg ref={summarySvgRef} width={VIEW_W} height={totalSummaryH + 32}
+              viewBox={`0 0 ${VIEW_W} ${totalSummaryH + 32}`}
+              style={{ background: '#fff', display: 'block', marginTop: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.10)', borderTop: '2px solid #e2e8f0' }}
+              xmlns="http://www.w3.org/2000/svg">
+              <rect x={0} y={0} width={VIEW_W} height={totalSummaryH + 32} fill="#fff" />
+              <text x={bx} y={18} fontSize={9} fill="#64748b" fontFamily="Arial, sans-serif" fontStyle="italic">
+                {groupName ?? 'Groep'} — Hoeveelheden (pagina 2)
+              </text>
+              <g transform="translate(0,24)">{summaryItems}</g>
+            </svg>
+          );
+        })()}
       </div>
     </div>
   );
