@@ -1850,13 +1850,17 @@ export default function App() {
       }).catch(() => {});
     }
     loadProjectState().then((state) => {
+      console.log('[startup] loadProjectState resultaat:', state ? { groupsLength: state.groups?.length, hasSettingsMap: !!state.settingsMap, savedAt: state.savedAt } : null);
       if (state && Array.isArray(state.groups) && state.groups.length > 0) {
         setGroups(state.groups);
         setGroupLinks(state.groupLinks ?? {});
         setSettingsMap(state.groupSettings ?? state.settingsMap ?? {});
       }
       _hydratedRef.current = true;
-    }).catch(() => { _hydratedRef.current = true; });
+    }).catch((err) => {
+      console.error('[startup] loadProjectState mislukt:', err);
+      _hydratedRef.current = true;
+    });
   }, []);
 
   useEffect(() => {
@@ -2039,22 +2043,41 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const data = JSON.parse(ev.target.result);
-        if (!data._version || !Array.isArray(data.groups)) {
-          alert('Ongeldig projectbestand.');
+        const raw = ev.target.result;
+        console.log('[loadProject] Bestand gelezen, grootte:', raw?.length);
+        let data;
+        try {
+          data = JSON.parse(raw);
+        } catch (parseErr) {
+          console.error('[loadProject] JSON parse mislukt:', parseErr);
+          alert(`Fout bij laden: bestand is geen geldige JSON.\n${parseErr.message}`);
           return;
         }
-        setGroups(data.groups ?? []);
-        setGroupLinks(data.groupLinks ?? {});
-        setSettingsMap(data.groupSettings ?? {});
-        setGroupsHistory([]);
-        setActiveGroupId(null);
-        setSimilarSuggestions(null);
-        if (data.ifcFileName && data.ifcFileName !== ifcFileName) {
-          alert(`Project geladen.\n\nDit project hoort bij IFC-bestand: "${data.ifcFileName}".\nZorg dat dit bestand is geladen om de elementen correct te zien.`);
+        console.log('[loadProject] Geparsed:', { _version: data._version, groupsLength: data.groups?.length, hasGroupSettings: !!data.groupSettings, hasGroupLinks: !!data.groupLinks });
+        if (!data._version || !Array.isArray(data.groups)) {
+          console.warn('[loadProject] Validatie mislukt:', { _version: data._version, groups: data.groups });
+          alert('Ongeldig projectbestand (versie of groepen ontbreken).');
+          return;
         }
-      } catch {
-        alert('Fout bij laden van projectbestand.');
+        const loadedGroups = (data.groups ?? []).map((g) => ({
+          ...g,
+          wallIds: Array.isArray(g.wallIds) ? g.wallIds : [],
+        }));
+        setGroups(loadedGroups);
+        setGroupLinks(typeof data.groupLinks === 'object' && data.groupLinks !== null ? data.groupLinks : {});
+        setSettingsMap(typeof data.groupSettings === 'object' && data.groupSettings !== null ? data.groupSettings : {});
+        setGroupsHistory([]);
+        setActiveGroupId(loadedGroups[0]?.id ?? null);
+        setSimilarSuggestions(null);
+        console.log('[loadProject] Geladen:', loadedGroups.length, 'groepen');
+        if (data.ifcFileName && data.ifcFileName !== ifcFileName) {
+          alert(`Project geladen (${loadedGroups.length} groepen).\n\nDit project hoort bij IFC-bestand: "${data.ifcFileName}".\nZorg dat dit bestand is geladen om de elementen correct te zien.`);
+        } else {
+          alert(`Project geladen: ${loadedGroups.length} groepen.`);
+        }
+      } catch (err) {
+        console.error('[loadProject] Onverwachte fout:', err);
+        alert(`Fout bij laden van projectbestand:\n${err?.message ?? err}`);
       }
     };
     reader.readAsText(file);
