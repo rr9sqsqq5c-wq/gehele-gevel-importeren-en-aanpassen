@@ -280,7 +280,7 @@ const GROUP_COLORS = [
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, minHoogte: null, minHoogteKoppelDeur: false, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, maxHoogte: null, minHoogte: null, minHoogteKoppelDeur: false, minHoogteOokPenanten: false, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -439,6 +439,16 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               {doorBottomYs.length === 1
                 ? ` (${doorBottomYs[0]} mm)`
                 : ` (laagste: ${Math.min(...doorBottomYs)} mm)`}
+            </label>
+          </div>
+        )}
+        {settings.minHoogte !== null && (settings.penanten ?? []).length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, padding: '4px 6px' }}>
+            <input type="checkbox" id="minh-ook-penanten"
+              checked={!!settings.minHoogteOokPenanten}
+              onChange={(e) => onUpdate({ minHoogteOokPenanten: e.target.checked })} />
+            <label htmlFor="minh-ook-penanten" style={{ fontSize: 11, color: '#166534', cursor: 'pointer' }}>
+              Ook toepassen op penanten
             </label>
           </div>
         )}
