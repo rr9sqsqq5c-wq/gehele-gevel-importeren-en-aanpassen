@@ -187,8 +187,33 @@ function fixOpeningEdgePieces(pieces, leftEdges, rightEdges, kop, driekwart, sto
 
   for (const edgeX of rightEdges) {
     const idx = result.findIndex((p) => Math.abs(p.start - edgeX) < 1.5);
-    if (idx >= 0 && result[idx].length < kop - 0.5) {
-      result[idx] = { ...result[idx], label: 'Rest' };
+    if (idx < 0) continue;
+    if (result[idx].length >= kop - 0.5) continue;
+
+    let volIdx = -1;
+    for (let i = idx + 1; i < result.length; i++) {
+      if (result[i].label !== 'Vol') continue;
+      let gapFound = false;
+      for (let j = idx; j < i - 1; j++) {
+        if (Math.abs(result[j + 1].start - (result[j].start + result[j].length + stoot)) > 2) { gapFound = true; break; }
+      }
+      if (!gapFound) { volIdx = i; break; }
+    }
+    if (volIdx < 0) continue;
+
+    const volEnd = round2(result[volIdx].start + result[volIdx].length);
+    result[volIdx] = { ...result[volIdx], start: round2(volEnd - driekwart), length: driekwart, label: 'Driekwart' };
+    const shift = round2(steenL - driekwart);
+    for (let i = idx + 1; i < volIdx; i++) {
+      result[i] = { ...result[i], start: round2(result[i].start + shift) };
+    }
+    const newEnd = round2(result[volIdx].start - stoot);
+    const newLen = round2(newEnd - edgeX);
+    if (newLen > 0.5) {
+      const label = Math.abs(newLen - kop) < 1 ? 'Kop' : newLen < kop ? 'Rest' : result[idx].label;
+      result[idx] = { ...result[idx], start: round2(edgeX), length: newLen, label };
+    } else {
+      result.splice(idx, 1);
     }
   }
 
