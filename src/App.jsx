@@ -2179,11 +2179,11 @@ export default function App() {
       const mat = s.material ?? DEFAULT_MATERIAL;
       const vis = s.layerVisibility ?? {};
       const withOrigin = walls.filter((w) => w.wallOrigin);
-      const groupMinX = withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart)) : 0;
-      const groupMinH = withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart)) : 0;
-      const refWallOrigin = withOrigin[0]?.wallOrigin ?? null;
 
       const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte);
+      const groupMinX = facadeDataRaw?.groupMinX ?? (withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart)) : 0);
+      const groupMinH = facadeDataRaw?.groupMinH ?? (withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart)) : 0);
+      const refWallOrigin = facadeDataRaw?.refWallOrigin ?? withOrigin[0]?.wallOrigin ?? null;
       let facadeData = facadeDataRaw;
       if (facadeDataRaw && s.penanten?.length) {
         const brickD = s.brickDepth ?? 20;
