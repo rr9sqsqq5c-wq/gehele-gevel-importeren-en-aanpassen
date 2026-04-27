@@ -94,9 +94,10 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
       const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
       const openingTopYs = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
       const gH = Math.round(groupHeight);
+      const clampY = (y) => Math.min(gH, Math.max(0, y));
       const boundaryYs = new Set([0, gH]);
-      for (const p of panelList) { boundaryYs.add(Math.round(p.y)); boundaryYs.add(Math.round(p.y + p.height)); }
-      for (const op of groupOpenings) { boundaryYs.add(Math.round(op.y)); boundaryYs.add(Math.round(op.y + op.height)); }
+      for (const p of panelList) { boundaryYs.add(clampY(Math.round(p.y))); boundaryYs.add(clampY(Math.round(p.y + p.height))); }
+      for (const op of groupOpenings) { boundaryYs.add(clampY(Math.round(op.y))); boundaryYs.add(clampY(Math.round(op.y + op.height))); }
       const sorted = [...boundaryYs].sort((a, b) => a - b);
       const allYs = new Set(sorted);
       for (let i = 0; i < sorted.length - 1; i++) {
@@ -106,7 +107,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
           for (let s2 = 1; s2 < steps; s2++) allYs.add(Math.round(sorted[i] + (span / steps) * s2));
         }
       }
-      for (const yr of [...allYs].sort((a, b) => a - b)) {
+      for (const yr of [...allYs].filter(y => y >= 0 && y <= gH).sort((a, b) => a - b)) {
         let latY = yr === 0 ? 0 : yr === gH ? yr - latB : openingBottomYs.has(yr) ? yr - latB : openingTopYs.has(yr) ? yr : yr - latB / 2;
         const latTop = latY, latBot = latY + latB;
         const openingsAtY = groupOpenings.filter((op) => op.y < latBot && op.y + op.height > latTop);

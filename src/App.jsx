@@ -2291,9 +2291,10 @@ export default function App() {
             const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
             const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
 
+            const clampY = (y) => Math.min(gH, Math.max(0, y));
             const boundaryYs = new Set([0, gH]);
-            for (const op of groupOpenings) { boundaryYs.add(Math.round(op.y)); boundaryYs.add(Math.round(op.y + op.height)); }
-            for (const panel of panels) { boundaryYs.add(Math.round(panel.y)); boundaryYs.add(Math.round(panel.y + panel.height)); }
+            for (const op of groupOpenings) { boundaryYs.add(clampY(Math.round(op.y))); boundaryYs.add(clampY(Math.round(op.y + op.height))); }
+            for (const panel of panels) { boundaryYs.add(clampY(Math.round(panel.y))); boundaryYs.add(clampY(Math.round(panel.y + panel.height))); }
 
             const sortedBoundaries = [...boundaryYs].sort((a, b) => a - b);
             const allYs = new Set(sortedBoundaries);
@@ -2305,7 +2306,7 @@ export default function App() {
               }
             }
 
-            for (const yr of [...allYs].sort((a, b) => a - b)) {
+            for (const yr of [...allYs].filter(y => y >= 0 && y <= gH).sort((a, b) => a - b)) {
               let latY;
               if (yr === 0) latY = 0;
               else if (yr === gH) latY = yr - latBreedte;
