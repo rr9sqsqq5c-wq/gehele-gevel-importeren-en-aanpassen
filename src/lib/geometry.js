@@ -48,9 +48,8 @@ export function openingXCoordsAtY(op, midY) {
 
 export function brickColor(label, baseColor, length, kop) {
   if (label === 'Kop') return '#78350f';
-  if (label === 'Driekwart') return '#7c3aed';
   if (label === 'Vol') return '#1d4ed8';
-  if (label === 'Rest' || label === 'Tegel') {
+  if (label === 'Rest' || label === 'Tegel' || label === 'Driekwart') {
     if (length != null && kop != null) {
       return length < kop ? '#f97316' : '#dc2626';
     }

@@ -169,25 +169,14 @@ function fixOpeningEdgePieces(pieces, leftEdges, rightEdges, kop, driekwart, sto
     }
     if (volIdx < 0) continue;
 
-    const intermediateLen = result.slice(volIdx + 1, idx).reduce((sum, p) => sum + p.length + stoot, 0);
-    const newLenIfDriekwart = round2(edgeX - (result[volIdx].start + driekwart + stoot + intermediateLen));
-    const replLen = newLenIfDriekwart >= kop - 0.5 ? driekwart : kop;
-    const replLabel = replLen === driekwart ? 'Driekwart' : 'Kop';
-
-    result[volIdx] = { ...result[volIdx], length: replLen, label: replLabel };
-    let x = result[volIdx].start + replLen + stoot;
+    const S = result[idx].length;
+    const cutLen = round2(S + steenL - kop);
+    const shift = round2(kop - S);
+    result[volIdx] = { ...result[volIdx], length: cutLen, label: 'Rest' };
     for (let i = volIdx + 1; i < idx; i++) {
-      result[i] = { ...result[i], start: round2(x) };
-      x += result[i].length + stoot;
+      result[i] = { ...result[i], start: round2(result[i].start - shift) };
     }
-    const newStart = round2(x);
-    const newLen = round2(edgeX - newStart);
-    if (newLen > 0.5) {
-      const label = Math.abs(newLen - kop) < 1 ? 'Kop' : newLen < kop ? 'Rest' : result[idx].label;
-      result[idx] = { ...result[idx], start: newStart, length: newLen, label };
-    } else {
-      result.splice(idx, 1);
-    }
+    result[idx] = { ...result[idx], start: round2(edgeX - kop), length: kop, label: 'Kop' };
   }
 
   for (const edgeX of rightEdges) {
@@ -206,24 +195,15 @@ function fixOpeningEdgePieces(pieces, leftEdges, rightEdges, kop, driekwart, sto
     }
     if (volIdx < 0) continue;
 
+    const S = result[idx].length;
+    const cutLen = round2(S + steenL - kop);
+    const shift = round2(kop - S);
     const volEnd = round2(result[volIdx].start + result[volIdx].length);
-    const newLenIfDriekwart = round2((volEnd - driekwart - stoot) - edgeX);
-    const replLen = newLenIfDriekwart >= kop - 0.5 ? driekwart : kop;
-    const replLabel = replLen === driekwart ? 'Driekwart' : 'Kop';
-    const shift = round2(steenL - replLen);
-
-    result[volIdx] = { ...result[volIdx], start: round2(volEnd - replLen), length: replLen, label: replLabel };
+    result[idx] = { ...result[idx], start: round2(edgeX), length: kop, label: 'Kop' };
     for (let i = idx + 1; i < volIdx; i++) {
       result[i] = { ...result[i], start: round2(result[i].start + shift) };
     }
-    const newEnd = round2(result[volIdx].start - stoot);
-    const newLen = round2(newEnd - edgeX);
-    if (newLen > 0.5) {
-      const label = Math.abs(newLen - kop) < 1 ? 'Kop' : newLen < kop ? 'Rest' : result[idx].label;
-      result[idx] = { ...result[idx], start: round2(edgeX), length: newLen, label };
-    } else {
-      result.splice(idx, 1);
-    }
+    result[volIdx] = { ...result[volIdx], start: round2(volEnd - cutLen), length: cutLen, label: 'Rest' };
   }
 
   return result.filter((p) => p.length > 0.5);
