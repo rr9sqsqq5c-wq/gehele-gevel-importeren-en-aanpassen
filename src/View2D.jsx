@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { buildFullGroupFacadePattern, getOpeningPoly } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel } from './lib/panelization.js';
-import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
+import { polyXRangesAtY, openingXRangesAtY, brickColor, isTooSmall } from './lib/geometry.js';
 
 function hexToRgba(hex, alpha = 1) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -233,6 +233,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
 
     const { rows, groupWidth, groupHeight, groupOpenings, zetwerkParams, patternStartH = 0 } = facadeData;
     const steenH = mat.steenH;
+    const kopMM = Math.round((mat.steenL - mat.stoot) / 2);
 
     const [faceSx, faceSy] = toScreen(0, groupHeight);
     const faceW = groupWidth * scale * 0.001;
@@ -349,6 +350,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
         }
         ctx.clip();
       }
+      const tooSmallPieces = [];
       for (const row of rows) {
         const clippedTop = Math.min(row.y + stripH, groupHeight);
         const clippedBottom = Math.max(row.y, patternStartH);
@@ -359,8 +361,22 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
         for (const piece of row.pieces) {
           const [pSx] = toScreen(piece.start, 0);
           const pSw = piece.length * scale * 0.001;
-          ctx.fillStyle = brickColor(piece.label, color);
+          ctx.fillStyle = brickColor(piece.label, color, piece.length, kopMM);
           ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
+          if (isTooSmall(piece.label, piece.length, kopMM)) {
+            tooSmallPieces.push({ pSx, rowSy, pSw, rowSh });
+          }
+        }
+      }
+      if (tooSmallPieces.length > 0) {
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (const { pSx, rowSy, pSw, rowSh } of tooSmallPieces) {
+          const fontSize = Math.min(rowSh * 0.75, pSw * 1.2, 10);
+          if (fontSize < 3) continue;
+          ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+          ctx.fillText('!', pSx + pSw / 2, rowSy + rowSh / 2);
         }
       }
       ctx.restore();
@@ -386,14 +402,19 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
           if (zActualH <= 0) continue;
           const [, rowSy] = toScreen(0, zClippedTop);
           const rowSh = zActualH * scale * 0.001;
+          const zKop = Math.round((zMat.steenL - zMat.stoot) / 2);
           for (const piece of row.pieces) {
             const pEnd = piece.start + piece.length;
             if (pEnd <= zoneX1 || piece.start >= zoneX2) continue;
             const [pSx] = toScreen(Math.max(piece.start, zoneX1), 0);
             const [pEx] = toScreen(Math.min(pEnd, zoneX2), 0);
             const pSw = pEx - pSx;
-            ctx.fillStyle = brickColor(piece.label, zColor);
+            ctx.fillStyle = brickColor(piece.label, zColor, piece.length, zKop);
             ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
+            if (isTooSmall(piece.label, piece.length, zKop)) {
+              const fontSize = Math.min(rowSh * 0.75, pSw * 1.2, 10);
+              if (fontSize >= 3) { ctx.fillStyle = '#ffffff'; ctx.font = `bold ${fontSize}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', pSx + pSw / 2, rowSy + rowSh / 2); }
+            }
           }
         }
         ctx.restore();
@@ -513,8 +534,12 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
           for (const piece of row.pieces) {
             const [px2] = toScreen(pX + piece.start, 0);
             const pw2 = piece.length * scale * 0.001;
-            ctx.fillStyle = brickColor(piece.label, col);
+            ctx.fillStyle = brickColor(piece.label, col, piece.length, kopMM);
             ctx.fillRect(px2 + 0.5, rowTop + 0.5, Math.max(pw2 - 1, 1), Math.max(rowH - 1, 1));
+            if (isTooSmall(piece.label, piece.length, kopMM)) {
+              const fontSize = Math.min(rowH * 0.75, pw2 * 1.2, 10);
+              if (fontSize >= 3) { ctx.fillStyle = '#ffffff'; ctx.font = `bold ${fontSize}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', px2 + pw2 / 2, rowTop + rowH / 2); }
+            }
           }
         }
 

@@ -46,9 +46,19 @@ export function openingXCoordsAtY(op, midY) {
   return [op.x, op.x + op.width];
 }
 
-export function brickColor(label, baseColor) {
-  if (label === 'Kop') return '#b45309';
+export function brickColor(label, baseColor, length, kop) {
+  if (label === 'Kop') return '#78350f';
   if (label === 'Driekwart') return '#7c3aed';
-  if (label === 'Rest') return '#dc2626';
-  return baseColor ?? '#a64033';
+  if (label === 'Vol') return '#1d4ed8';
+  if (label === 'Rest' || label === 'Tegel') {
+    if (length != null && kop != null) {
+      return length < kop ? '#f97316' : '#dc2626';
+    }
+    return '#dc2626';
+  }
+  return '#1d4ed8';
+}
+
+export function isTooSmall(label, length, kop) {
+  return (label === 'Rest' || label === 'Tegel') && length != null && kop != null && length < kop;
 }
