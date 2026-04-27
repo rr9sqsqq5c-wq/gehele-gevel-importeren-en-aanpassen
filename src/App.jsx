@@ -435,7 +435,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 }
               }} />
             <label htmlFor="minh-koppel" style={{ fontSize: 11, color: '#1d4ed8', cursor: 'pointer' }}>
-              Koppelen aan onderkant deur
+              Koppelen aan onderkant openingen BGG
               {doorBottomYs.length === 1
                 ? ` (${doorBottomYs[0]} mm)`
                 : ` (laagste: ${Math.min(...doorBottomYs)} mm)`}
@@ -3224,7 +3224,7 @@ export default function App() {
                   for (const w of withOrigin) {
                     const offH = w.wallOrigin.heightStart - gMinH;
                     for (const op of (w.openings ?? [])) {
-                      if (op.type === 'deur') ys.add(Math.round(offH + (op.y ?? 0)));
+                      ys.add(Math.round(offH + (op.y ?? 0)));
                     }
                   }
                   return [...ys].sort((a, b) => a - b);
