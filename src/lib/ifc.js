@@ -861,7 +861,10 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
       return { axisStr: '$', refStr: rId ? `#${rId}` : '$' };
     };
 
-    const { outsidePos: grpOutPos, outsideDir: grpOutDir } = calcOutsideFace(rwo, allWallOrigins);
+    const rawFace = calcOutsideFace(rwo, allWallOrigins);
+    const dirFlip = !!(settings.outsideDirFlip);
+    const grpOutPos = rawFace.outsidePos;
+    const grpOutDir = dirFlip ? -rawFace.outsideDir : rawFace.outsideDir;
 
     const groupToWorld = (gx, outDepth, gz) => {
       if (!rwo) return [gx, outDepth, gz];

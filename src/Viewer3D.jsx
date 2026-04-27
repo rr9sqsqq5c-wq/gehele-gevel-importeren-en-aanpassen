@@ -101,7 +101,7 @@ function getOutsideFaceInfo(rwo, allWalls) {
   return { outsidePos: tEnd, outsideDir: +1 };
 }
 
-function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth = 20, panelDikte = 8, penantShift = 0, minHoogte = 0, minHoogteOokPenanten = false) {
+function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth = 20, panelDikte = 8, penantShift = 0, minHoogte = 0, minHoogteOokPenanten = false, outsideDirFlip = false) {
   if (!rwo) return [];
   const pX = penant.x ?? 0;
   const pB = Math.max(1, penant.breedte ?? 400);
@@ -110,7 +110,9 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, lat
   const ld = latDikte ?? 28;
   const penMinH = (minHoogteOokPenanten && minHoogte > 0) ? minHoogte : 0;
 
-  const { outsidePos, outsideDir } = getOutsideFaceInfo(rwo, allWalls);
+  const rawFace = getOutsideFaceInfo(rwo, allWalls);
+  const outsidePos = rawFace.outsidePos;
+  const outsideDir = outsideDirFlip ? -rawFace.outsideDir : rawFace.outsideDir;
 
   const stoot = 10;
   const panelT = panelDikte;
@@ -140,10 +142,10 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, lat
   ];
 }
 
-function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift = 0, minHoogte = 0, minHoogteOokPenanten = false }) {
+function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift = 0, minHoogte = 0, minHoogteOokPenanten = false, outsideDirFlip = false }) {
   const boxes = useMemo(
-    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, minHoogte, minHoogteOokPenanten),
-    [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, minHoogte, minHoogteOokPenanten]
+    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, minHoogte, minHoogteOokPenanten, outsideDirFlip),
+    [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, minHoogte, minHoogteOokPenanten, outsideDirFlip]
   );
   const cornerBattens = useMemo(() => {
     if (!rwo) return [];
@@ -154,7 +156,9 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, a
     const sh = penantShift;
     const ld = latDikte;
     const panelT = panelDikte;
-    const { outsidePos, outsideDir } = getOutsideFaceInfo(rwo, allWalls);
+    const rawFace = getOutsideFaceInfo(rwo, allWalls);
+    const outsidePos = rawFace.outsidePos;
+    const outsideDir = outsideDirFlip ? -rawFace.outsideDir : rawFace.outsideDir;
     const depthBack  = ld + ld / 2;
     const depthFront = ld + sh - panelT - ld / 2;
     const xLeft  = pX + brickDepth + panelT + ld / 2;
@@ -178,7 +182,7 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, a
         size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
       };
     });
-  }, [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, minHoogte, minHoogteOokPenanten]);
+  }, [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, minHoogte, minHoogteOokPenanten, outsideDirFlip]);
 
   if (!boxes.length) return null;
   return (
@@ -207,8 +211,10 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, a
   );
 }
 
-function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY, steenH, brickD, upAxis, allWalls) {
-  const { outsidePos, outsideDir } = getOutsideFaceInfo(rwo, allWalls);
+function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY, steenH, brickD, upAxis, allWalls, flipDir = false) {
+  const raw = getOutsideFaceInfo(rwo, allWalls);
+  const outsidePos = raw.outsidePos;
+  const outsideDir = flipDir ? -raw.outsideDir : raw.outsideDir;
   const ifc = { x: 0, y: 0, z: 0 };
   ifc[rwo.lengthAxis]    = groupMinX + pieceStart + pieceLen / 2;
   ifc[rwo.heightAxis]    = groupMinH + rowY + steenH / 2;
@@ -229,7 +235,7 @@ function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls }) {
 
   const batches = useMemo(() => {
     if (!groupPattern) return [];
-    const { batches: batchData, groupMinX, groupMinH, refWallOrigin } = groupPattern;
+    const { batches: batchData, groupMinX, groupMinH, refWallOrigin, outsideDirFlip } = groupPattern;
     if (!refWallOrigin || !batchData?.length) return [];
     const defaultSteenH = material?.steenH ?? 50;
     const depth = brickD ?? 20;
@@ -239,7 +245,7 @@ function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls }) {
         color: batch.color,
         bricks: batch.rows.flatMap((row) =>
           row.pieces.map((piece) =>
-            getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, upAxis, allWalls)
+            getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, upAxis, allWalls, !!outsideDirFlip)
           )
         ),
       };
@@ -851,6 +857,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           const penStoot = settings?.material?.stoot ?? 10;
           const penMinHoogte = settings?.minHoogte ?? 0;
           const penMinHoogteOok = !!(settings?.minHoogteOokPenanten);
+          const penFlip = !!(settings?.outsideDirFlip);
           return penanten.map((penant) => {
             const pD = Math.max(1, penant.diepte ?? 150);
             const penantShift = penPanelDikte + penBrickD + penStoot + pD;
@@ -870,6 +877,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
                 penantShift={penantShift}
                 minHoogte={penMinHoogte}
                 minHoogteOokPenanten={penMinHoogteOok}
+                outsideDirFlip={penFlip}
               />
             );
           });
