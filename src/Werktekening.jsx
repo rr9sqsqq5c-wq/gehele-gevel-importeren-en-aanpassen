@@ -138,12 +138,6 @@ function computeLatten(facadeData, panelen, latten, mat, penanten) {
   const latBreedte = Math.max(5, latten.breedte ?? 50);
   const MAX_HOC = latten.maxInterval ?? 400;
 
-  const PENANT_GAP = 10;
-  const penantRanges = (penanten ?? []).map((p) => ({
-    x1: Math.max(0, (p.x ?? 0) - PENANT_GAP),
-    x2: Math.min(groupWidth, (p.x ?? 0) + (p.breedte ?? 400) + PENANT_GAP),
-  }));
-
   const PENANT_PANEL_INSET = 20;
   let allPanels = [];
   if (panelen?.enabled) {
@@ -214,26 +208,6 @@ function computeLatten(facadeData, panelen, latten, mat, penanten) {
         }
         if (cursor < groupWidth) zones.push({ x1: cursor, x2: groupWidth });
       }
-      if (penantRanges.length > 0) {
-        const splitZones = [];
-        for (const zone of zones) {
-          let segments = [{ x1: zone.x1, x2: zone.x2 }];
-          for (const pr of penantRanges) {
-            const next = [];
-            for (const seg of segments) {
-              if (pr.x2 <= seg.x1 || pr.x1 >= seg.x2) {
-                next.push(seg);
-              } else {
-                if (pr.x1 > seg.x1) next.push({ x1: seg.x1, x2: pr.x1 });
-                if (pr.x2 < seg.x2) next.push({ x1: pr.x2, x2: seg.x2 });
-              }
-            }
-            segments = next;
-          }
-          splitZones.push(...segments);
-        }
-        zones = splitZones;
-      }
       for (const zone of zones) {
         let x1 = zone.x1, x2 = zone.x2;
         if (allPanels.length > 0) {
@@ -251,9 +225,16 @@ function computeLatten(facadeData, panelen, latten, mat, penanten) {
   } else {
     const xPositions = new Set([0, groupWidth]);
     for (const p of allPanels) { xPositions.add(Math.round(p.x)); xPositions.add(Math.round(p.x + p.width / 2)); xPositions.add(Math.round(p.x + p.width)); }
-    return [...xPositions].sort((a, b) => a - b).map((x, idx) => ({
-      id: `lat-v-${idx}`, richting: 'verticaal', x: x - latBreedte / 2, y: 0, width: latBreedte, height: groupHeight, forced: false,
-    }));
+    return [...xPositions].sort((a, b) => a - b).map((x, idx) => {
+      const lx1 = x - latBreedte / 2;
+      const pen = (penanten ?? []).find((p) => {
+        const px1 = p.x ?? 0;
+        const px2 = px1 + Math.max(1, p.breedte ?? 400);
+        return lx1 + latBreedte > px1 + 5 && lx1 < px2 - 5;
+      });
+      const latH = pen ? Math.max(1, pen.hoogte ?? 2000) : groupHeight;
+      return { id: `lat-v-${idx}`, richting: 'verticaal', x: lx1, y: 0, width: latBreedte, height: latH, forced: false };
+    });
   }
 }
 

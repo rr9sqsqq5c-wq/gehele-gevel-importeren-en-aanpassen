@@ -7,6 +7,7 @@ import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } fro
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG } from './lib/battens.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateMoldPrintHTML, getMoldTemplates } from './lib/panelization.js';
+import { openingXRangesAtY } from './lib/geometry.js';
 const Viewer3D = lazy(() => import('./Viewer3D.jsx').then((m) => ({ default: m.Viewer3D })));
 const View2D = lazy(() => import('./View2D.jsx').then((m) => ({ default: m.View2D })));
 const Werktekening = lazy(() => import('./Werktekening.jsx').then((m) => ({ default: m.Werktekening })));
@@ -2264,36 +2265,52 @@ export default function App() {
 
           if (richting === 'horizontaal') {
             const gH = Math.round(groupHeight);
-            const lintHalf = Math.round((mat.lint ?? 12) / 2);
-            const brickTopsSet = new Set();
-            for (const row of facRows) brickTopsSet.add(Math.round(row.y + mat.steenH));
-
-            const edgeYs = [0, gH];
-            for (const op of groupOpenings) { edgeYs.push(Math.round(op.y)); edgeYs.push(Math.round(op.y + op.height)); }
             const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
             const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
 
-            const allYs = new Set([...edgeYs, ...battenYs.map(Math.round)]);
+            const boundaryYs = new Set([0, gH]);
+            for (const op of groupOpenings) { boundaryYs.add(Math.round(op.y)); boundaryYs.add(Math.round(op.y + op.height)); }
+            for (const panel of panels) { boundaryYs.add(Math.round(panel.y)); boundaryYs.add(Math.round(panel.y + panel.height)); }
 
-            lattenData = [...allYs].sort((a, b) => a - b).map((yr) => {
+            const sortedBoundaries = [...boundaryYs].sort((a, b) => a - b);
+            const allYs = new Set(sortedBoundaries);
+            for (let i = 0; i < sortedBoundaries.length - 1; i++) {
+              const span = sortedBoundaries[i + 1] - sortedBoundaries[i];
+              if (span > s.latten.maxInterval) {
+                const steps = Math.ceil(span / s.latten.maxInterval);
+                for (let st = 1; st < steps; st++) allYs.add(Math.round(sortedBoundaries[i] + (span / steps) * st));
+              }
+            }
+
+            for (const yr of [...allYs].sort((a, b) => a - b)) {
               let latY;
               if (yr === 0) latY = 0;
               else if (yr === gH) latY = yr - latBreedte;
               else if (openingBottomYs.has(yr)) latY = yr - latBreedte;
               else if (openingTopYs.has(yr)) latY = yr;
-              else if (brickTopsSet.has(yr)) latY = Math.round(yr + lintHalf - latBreedte / 2);
-              else latY = Math.round(yr - lintHalf - latBreedte / 2);
-              return { richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte };
-            });
+              else latY = yr - latBreedte / 2;
+              const latTop = latY, latBot = latY + latBreedte;
+              const openingsAtY = groupOpenings.filter((op) => op.y < latBot && op.y + op.height > latTop);
+              if (openingsAtY.length === 0) {
+                lattenData.push({ richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte });
+              } else {
+                const opRanges = openingsAtY.flatMap((op) => openingXRangesAtY(op, latTop, latBot)).sort((a, b) => a.x1 - b.x1);
+                let cursor = 0;
+                for (const op of opRanges) {
+                  if (op.x1 > cursor) lattenData.push({ richting: 'horizontaal', x: cursor, y: latY, width: op.x1 - cursor, height: latBreedte });
+                  cursor = Math.max(cursor, op.x2);
+                }
+                if (cursor < groupWidth) lattenData.push({ richting: 'horizontaal', x: cursor, y: latY, width: groupWidth - cursor, height: latBreedte });
+              }
+            }
           } else {
             const xPositions = new Set([0, groupWidth]);
             for (const panel of panels) { xPositions.add(Math.round(panel.x)); xPositions.add(Math.round(panel.x + panel.width / 2)); xPositions.add(Math.round(panel.x + panel.width)); }
-            const penantRanges = (s.penanten ?? []).map((pen) => ({ x1: pen.x ?? 0, x2: (pen.x ?? 0) + Math.max(1, pen.breedte ?? 400) }));
-            lattenData = [...xPositions].sort((a, b) => a - b).flatMap((x) => {
+            lattenData = [...xPositions].sort((a, b) => a - b).map((x) => {
               const lx1 = Math.round(x) - latBreedte / 2;
-              const lx2 = lx1 + latBreedte;
-              if (penantRanges.some((r) => lx2 > r.x1 + 5 && lx1 < r.x2 - 5)) return [];
-              return [{ richting: 'verticaal', x: lx1, y: 0, width: latBreedte, height: groupHeight }];
+              const pen = (s.penanten ?? []).find((p) => { const px1 = p.x ?? 0; const px2 = px1 + Math.max(1, p.breedte ?? 400); return lx1 + latBreedte > px1 + 5 && lx1 < px2 - 5; });
+              const latH = pen ? Math.max(1, pen.hoogte ?? 2000) : groupHeight;
+              return { richting: 'verticaal', x: lx1, y: 0, width: latBreedte, height: latH };
             });
           }
         }
