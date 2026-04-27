@@ -149,7 +149,7 @@ function getRest(pieces, totalWidth) {
   return round2(totalWidth - (last.start + last.length));
 }
 
-function fixOpeningEdgePieces(pieces, leftEdges, rightEdges, kop, driekwart, stoot) {
+function fixOpeningEdgePieces(pieces, leftEdges, rightEdges, kop, driekwart, stoot, steenL) {
   if (!leftEdges.length && !rightEdges.length) return pieces;
   let result = [...pieces];
 
@@ -518,7 +518,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
         }
       }
       if (leftEdges.length) {
-        const fixed = fixOpeningEdgePieces(clipped, leftEdges, rightEdges, kop, driekwart, stoot);
+        const fixed = fixOpeningEdgePieces(clipped, leftEdges, rightEdges, kop, driekwart, stoot, steenL);
         clipped.length = 0;
         for (const p of fixed) clipped.push(p);
       }
