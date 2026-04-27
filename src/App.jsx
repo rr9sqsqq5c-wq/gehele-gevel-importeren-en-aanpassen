@@ -1450,7 +1450,7 @@ export default function App() {
         batches,
         groupMinX: facadeData.groupMinX,
         groupMinH: facadeData.groupMinH,
-        refWallOrigin: withOrigin[0].wallOrigin,
+        refWallOrigin: facadeData.refWallOrigin ?? withOrigin[0].wallOrigin,
       };
     }
     return result;

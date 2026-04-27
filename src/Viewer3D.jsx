@@ -841,9 +841,10 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           if (!penanten.length) return [];
           const groupWalls = walls.filter((w) => group.wallIds.includes(w.expressID) && w.wallOrigin);
           if (!groupWalls.length) return [];
-          const groupMinX = Math.min(...groupWalls.map((w) => w.wallOrigin.lengthStart));
-          const groupMinH = Math.min(...groupWalls.map((w) => w.wallOrigin.heightStart));
           const rwo = ([...groupWalls].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0]).wallOrigin;
+          const axisWalls = groupWalls.filter((w) => w.wallOrigin.lengthAxis === rwo.lengthAxis);
+          const groupMinX = Math.min(...axisWalls.map((w) => w.wallOrigin.lengthStart));
+          const groupMinH = Math.min(...axisWalls.map((w) => w.wallOrigin.heightStart));
           const penLatDikte = settings?.latten?.dikte ?? 28;
           const penBrickD   = settings?.brickDepth ?? 20;
           const penPanelDikte = settings?.panelen?.dikte ?? 8;

@@ -321,10 +321,15 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const withOrigin = walls.filter((w) => w.wallOrigin);
   if (!withOrigin.length || lagenmaat <= 0) return null;
 
-  const groupMinX = Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart));
-  const groupMaxX = Math.max(...withOrigin.map((w) => w.wallOrigin.lengthStart + w.length));
-  const groupMinH = Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart));
-  const groupMaxH = Math.max(...withOrigin.map((w) => w.wallOrigin.heightStart + w.height));
+  const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
+  const refLengthAxis = refWall.wallOrigin.lengthAxis;
+  const refHeightAxis = refWall.wallOrigin.heightAxis;
+  const axisWalls = withOrigin.filter((w) => w.wallOrigin.lengthAxis === refLengthAxis);
+
+  const groupMinX = Math.min(...axisWalls.map((w) => w.wallOrigin.lengthStart));
+  const groupMaxX = Math.max(...axisWalls.map((w) => w.wallOrigin.lengthStart + w.length));
+  const groupMinH = Math.min(...axisWalls.map((w) => w.wallOrigin.heightStart));
+  const groupMaxH = Math.max(...axisWalls.map((w) => w.wallOrigin.heightStart + w.height));
 
   const groupWidth = round2(groupMaxX - groupMinX);
   const groupHeight = round2(groupMaxH - groupMinH);
@@ -497,7 +502,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     if (clipped.length) rows.push({ y: rowY, pieces: clipped });
   }
 
-  return { rows, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, patternStartH: effectiveMinH, groupOpenings, zetwerkParams: zwEnabled ? { breedte: zwB, offsetH: zwH, offsetV: zwV } : null };
+  return { rows, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, patternStartH: effectiveMinH, groupOpenings, zetwerkParams: zwEnabled ? { breedte: zwB, offsetH: zwH, offsetV: zwV } : null, refWallOrigin: refWall.wallOrigin };
 }
 
 export function getGroupPatternLogic(walls, material, verband) {
