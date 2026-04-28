@@ -246,6 +246,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const [drawingType, setDrawingType] = useState('achterconstructie');
   const [productieGenerated, setProductieGenerated] = useState(false);
   const [selectedZoneIdx, setSelectedZoneIdx] = useState(-1);
+  const [tekenZone, setTekenZone] = useState({ enabled: false, x: 0, y: 0, width: null, height: null });
 
   const mat     = groupSettings?.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
   const verband = groupSettings?.verband ?? 'halfsteens';
@@ -323,35 +324,50 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const facadeZones = computeZoneBounds(penanten, groupWidth);
   const selectedZone = selectedZoneIdx >= 0 && selectedZoneIdx < facadeZones.length ? facadeZones[selectedZoneIdx] : null;
 
-  const effectivePanels = clippedPanels ?? allPanels;
-  const zonePanels = selectedZone
-    ? effectivePanels.filter((p) => p.x + p.width > selectedZone.xStart + 1 && p.x < selectedZone.xEnd - 1)
-    : effectivePanels;
-  const zoneLatten = selectedZone
-    ? allLatten.filter((l) => l.x + l.width > selectedZone.xStart + 1 && l.x < selectedZone.xEnd - 1)
-    : allLatten;
-  const zoneOpenings = selectedZone
-    ? groupOpenings.filter((op) => op.x + op.width > selectedZone.xStart + 1 && op.x < selectedZone.xEnd - 1)
-    : groupOpenings;
+  const tzX = tekenZone.enabled ? (tekenZone.x ?? 0) : null;
+  const tzW = tekenZone.enabled ? (tekenZone.width ?? groupWidth) : null;
+  const tzY = tekenZone.enabled ? (tekenZone.y ?? 0) : null;
+  const tzH = tekenZone.enabled ? (tekenZone.height ?? groupHeight) : null;
 
-  const viewXStart = selectedZone ? selectedZone.xStart : 0;
-  const viewXEnd   = selectedZone ? selectedZone.xEnd   : groupWidth;
-  const viewW_mm   = viewXEnd - viewXStart;
+  const viewXStart = tzX != null ? tzX : (selectedZone ? selectedZone.xStart : 0);
+  const viewXEnd   = tzX != null ? tzX + tzW : (selectedZone ? selectedZone.xEnd : groupWidth);
+  const viewYStart = tzY != null ? tzY : 0;
+  const viewYEnd   = tzY != null ? tzY + tzH : groupHeight;
+  const viewW_mm   = Math.max(1, viewXEnd - viewXStart);
+  const viewH_mm   = Math.max(1, viewYEnd - viewYStart);
+
+  const activeZoneLabel = tekenZone.enabled ? 'Teken zone' : selectedZone?.label ?? null;
+
+  const effectivePanels = clippedPanels ?? allPanels;
+  const zonePanels = effectivePanels.filter((p) =>
+    p.x + p.width > viewXStart + 1 && p.x < viewXEnd - 1 &&
+    p.y + p.height > viewYStart + 1 && p.y < viewYEnd - 1
+  );
+  const zoneLatten = allLatten.filter((l) =>
+    l.x + l.width > viewXStart + 1 && l.x < viewXEnd - 1 &&
+    l.y + l.height > viewYStart + 1 && l.y < viewYEnd - 1
+  );
+  const zoneOpenings = groupOpenings.filter((op) => {
+    const x1 = op.polyPts?.length >= 3 ? Math.min(...op.polyPts.map((p) => p.l)) : op.x;
+    const x2 = op.polyPts?.length >= 3 ? Math.max(...op.polyPts.map((p) => p.l)) : op.x + op.width;
+    const y1 = op.polyPts?.length >= 3 ? Math.min(...op.polyPts.map((p) => p.h)) : op.y;
+    const y2 = op.polyPts?.length >= 3 ? Math.max(...op.polyPts.map((p) => p.h)) : op.y + op.height;
+    return x2 > viewXStart + 1 && x1 < viewXEnd - 1 && y2 > viewYStart + 1 && y1 < viewYEnd - 1;
+  });
 
   const VIEW_W = 960;
   const drawW = VIEW_W - PAD_LEFT - PAD_RIGHT;
-  const scaleX = drawW / viewW_mm;
   const MAX_DRAW_H = 1400;
-  const scale  = Math.min(scaleX, MAX_DRAW_H / groupHeight);
+  const scale  = Math.min(drawW / viewW_mm, MAX_DRAW_H / viewH_mm);
 
   const W = viewW_mm * scale;
-  const H = groupHeight * scale;
+  const H = viewH_mm * scale;
   const VIEW_H = PAD_TOP + Math.ceil(H) + PAD_BOTTOM;
   const OX = PAD_LEFT + (drawW - W) / 2;
   const OY = PAD_TOP;
 
   const sx = (x) => OX + (x - viewXStart) * scale;
-  const sy = (y) => OY + H - y * scale;
+  const sy = (y) => OY + H - (y - viewYStart) * scale;
 
   const dimColor    = '#1e3a5f';
   const panelColor  = '#bfdbfe';
@@ -369,7 +385,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const peilmatenBase = groupMinH ?? 0;
 
   const xBreaks = [...new Set([viewXStart, viewXEnd, ...zonePanels.map((p) => p.x), ...zonePanels.map((p) => p.x + p.width)])].filter((x) => x >= viewXStart - 1 && x <= viewXEnd + 1).sort((a, b) => a - b);
-  const yBreaks = [...new Set([0, groupHeight, ...zonePanels.map((p) => p.y), ...zonePanels.map((p) => p.y + p.height)])].sort((a, b) => a - b);
+  const yBreaks = [...new Set([viewYStart, viewYEnd, ...zonePanels.map((p) => p.y), ...zonePanels.map((p) => p.y + p.height)])].filter((y) => y >= viewYStart - 1 && y <= viewYEnd + 1).sort((a, b) => a - b);
   const latYs   = [...new Set(zoneLatten.filter((l) => l.richting === 'horizontaal').map((l) => Math.round(l.y + l.height)))].sort((a, b) => a - b);
 
   const dimRowY   = OY + H + 28;
@@ -539,7 +555,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
         ))}
       </div>
 
-      {facadeZones.length > 1 && (
+      {facadeZones.length > 1 && !tekenZone.enabled && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', flexShrink: 0, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 4 }}>Zone:</span>
           <button
@@ -553,6 +569,37 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           ))}
         </div>
       )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: tekenZone.enabled ? '#fefce8' : '#f8fafc', borderBottom: '1px solid #e2e8f0', flexShrink: 0, flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: '#713f12', cursor: 'pointer', userSelect: 'none' }}>
+          <input type="checkbox" checked={tekenZone.enabled} onChange={(e) => setTekenZone((z) => ({ ...z, enabled: e.target.checked }))} />
+          Teken zone
+        </label>
+        {tekenZone.enabled && (
+          <>
+            {[
+              { label: 'X (mm)', key: 'x', fallback: 0 },
+              { label: 'Y (mm)', key: 'y', fallback: 0 },
+              { label: 'Breedte (mm)', key: 'width', fallback: groupWidth },
+              { label: 'Hoogte (mm)', key: 'height', fallback: groupHeight },
+            ].map(({ label, key, fallback }) => (
+              <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#713f12' }}>
+                {label}:
+                <input
+                  type="number"
+                  value={tekenZone[key] ?? fallback}
+                  onChange={(e) => setTekenZone((z) => ({ ...z, [key]: Number(e.target.value) }))}
+                  style={{ width: 68, fontSize: 10, padding: '1px 4px', border: '1px solid #ca8a04', borderRadius: 3 }}
+                />
+              </label>
+            ))}
+            <button
+              onClick={() => setTekenZone({ enabled: true, x: 0, y: 0, width: groupWidth, height: groupHeight })}
+              style={{ fontSize: 9, padding: '2px 7px', border: '1px solid #ca8a04', borderRadius: 3, cursor: 'pointer', background: 'none', color: '#713f12' }}
+            >Reset</button>
+          </>
+        )}
+      </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: drawingType === 'productie' ? 8 : 16 }}>
 
@@ -1074,7 +1121,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
         {drawingType === 'maltekening' && (() => {
           const groupVerband = groupSettings?.verband ?? 'halfsteens';
           const moldDims = { hoogte: panelen?.malBreedte ?? 270, lengte: panelen?.malLengte ?? 3400, tolerantieL: panelen?.tolerantieL ?? 1, tolerantieH: panelen?.tolerantieH ?? 1 };
-          const zonesForMal = selectedZone ? [selectedZone] : facadeZones;
+          const zonesForMal = (selectedZone && !tekenZone.enabled) ? [selectedZone] : facadeZones;
           const hasZones = facadeZones.length > 1;
 
           const resolvedZoneSettings = (zoneSettings ?? []);
@@ -1239,10 +1286,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           </defs>
 
           <text x={OX} y={20} fontSize={13} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">
-            {groupName ?? 'Groep'}{selectedZone ? ` — ${selectedZone.label}` : ''} — {drawingType === 'achterconstructie' ? 'Achterconstructie (houten latten)' : 'Panelen plaatsing op gevel'}
+            {groupName ?? 'Groep'}{activeZoneLabel ? ` — ${activeZoneLabel}` : ''} — {drawingType === 'achterconstructie' ? 'Achterconstructie (houten latten)' : 'Panelen plaatsing op gevel'}
           </text>
           <text x={OX} y={33} fontSize={8} fill="#64748b" fontFamily="Arial, sans-serif">
-            Schaal 1:{Math.round(1 / scale * 1000)} · Afmetingen in mm · Peilmaten in m t.o.v. IFC-nulpunt{selectedZone ? ` · Zone breedte: ${mm(viewW_mm)} mm (X ${mm(viewXStart)}–${mm(viewXEnd)})` : ` · Totale breedte: ${mm(groupWidth)} mm`}
+            Schaal 1:{Math.round(1 / scale * 1000)} · Afmetingen in mm · Peilmaten in m t.o.v. IFC-nulpunt{activeZoneLabel ? ` · B: ${mm(viewW_mm)} mm (X ${mm(viewXStart)}–${mm(viewXEnd)}) · H: ${mm(viewH_mm)} mm (Y ${mm(viewYStart)}–${mm(viewYEnd)})` : ` · Totale breedte: ${mm(groupWidth)} mm`}
           </text>
 
           <path d={facadeShapePath} fill="#f8fafc" stroke={dimColor} strokeWidth={1} fillRule="nonzero" />
@@ -1331,7 +1378,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           })}
 
           {xBreaks.length >= 2 && (
-            <DimH x1={sx(viewXStart)} x2={sx(viewXEnd)} y={dimRow2Y} label={selectedZone ? `${selectedZone.label}: ${mm(viewW_mm)} mm` : `TOTAAL ${mm(groupWidth)} mm`} color="#dc2626" />
+            <DimH x1={sx(viewXStart)} x2={sx(viewXEnd)} y={dimRow2Y} label={activeZoneLabel ? `${activeZoneLabel}: ${mm(viewW_mm)} mm` : `TOTAAL ${mm(groupWidth)} mm`} color="#dc2626" />
           )}
 
           {drawingType !== 'achterconstructie' && zoneOpenings.map((op, i) => (
@@ -1367,7 +1414,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           })}
 
           {yBreaks.length >= 2 && (
-            <DimV x={dimVTotalX} y1={sy(groupHeight)} y2={sy(0)} label={`TOTAAL ${mm(groupHeight)}`} color="#dc2626" side="left" />
+            <DimV x={dimVTotalX} y1={sy(viewYEnd)} y2={sy(viewYStart)} label={`TOTAAL ${mm(viewH_mm)}`} color="#dc2626" side="left" />
           )}
 
           {latYs.map((cy, i) => (
