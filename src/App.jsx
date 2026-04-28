@@ -281,7 +281,7 @@ const GROUP_COLORS = [
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, minHoogte: null, minHoogteKoppelDeur: false, minHoogteOokPenanten: false, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, minHoogte: null, minHoogteKoppelDeur: false, minHoogteOokPenanten: false, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -890,6 +890,13 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                   </div>
                   <div style={{ fontSize: 11, color: hLimited ? '#dc2626' : '#64748b', marginTop: 4 }}>
                     → max {maxM2} m²/paneel · eff. hoogte {effectiveH} mm{hLimited ? ' (gewicht begrensd)' : ''}
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#475569', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={pan.verspringen ?? false}
+                        onChange={(e) => upd({ verspringen: e.target.checked })} />
+                      Paneelvoegen verspringen (halfsteens)
+                    </label>
                   </div>
                   <div style={{ marginTop: 6, padding: '6px 8px', background: widthFits ? '#f0fdf4' : '#fef2f2', border: `1px solid ${widthFits ? '#86efac' : '#fca5a5'}`, borderRadius: 4, fontSize: 10 }}>
                     <div style={{ fontWeight: 700, color: '#1e3a5f', marginBottom: 3 }}>Mal geschiktheid — {VERBANDLABELS[verband] ?? verband}</div>

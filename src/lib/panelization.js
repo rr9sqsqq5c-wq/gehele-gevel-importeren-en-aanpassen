@@ -311,22 +311,24 @@ function mergeSmallSegments(breaks, minH) {
   return [segs[0].y0, ...segs.map(s => s.y1)];
 }
 
-function buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation) {
+function buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation, xBreaksOdd) {
   const panels = [];
   let id = 1;
   for (let yi = 0; yi < yBreaks.length - 1; yi++) {
-    for (let xi = 0; xi < xBreaks.length - 1; xi++) {
-      const w = round2(xBreaks[xi + 1] - xBreaks[xi]);
+    const xb = (xBreaksOdd && yi % 2 === 1) ? xBreaksOdd : xBreaks;
+    for (let xi = 0; xi < xb.length - 1; xi++) {
+      const w = round2(xb[xi + 1] - xb[xi]);
       const h = round2(yBreaks[yi + 1] - yBreaks[yi]);
       if (w <= 0 || h <= 0) continue;
       panels.push({
         id: `${zone.id}-P${id}`,
         zoneId: zone.id,
         row: yi + 1, col: xi + 1,
-        x: xBreaks[xi], y: yBreaks[yi],
+        x: xb[xi], y: yBreaks[yi],
         width: w, height: h,
         area: round2(w * h),
         orientation,
+        staggered: !!(xBreaksOdd && yi % 2 === 1),
       });
       id++;
     }
@@ -377,9 +379,22 @@ export function panelizeZone(zone, battenYs, basePanel) {
   }
   const xBreaks = [...xSet].sort((a, b) => a - b);
 
+  let xBreaksOdd = null;
+  if (basePanel.verspringen && nCols > 1) {
+    const panelW = zone.width / nCols;
+    const halfW = panelW / 2;
+    const oddSet = new Set([zoneX1, zoneX2]);
+    oddSet.add(round2(zoneX1 + halfW));
+    for (let i = 1; i < nCols; i++) {
+      const x = round2(zoneX1 + halfW + i * panelW);
+      if (x > zoneX1 + 0.001 && x < zoneX2 - 0.001) oddSet.add(x);
+    }
+    xBreaksOdd = [...oddSet].sort((a, b) => a - b);
+  }
+
   const fitsLandscape = zone.width <= bpW && zone.height <= bpH;
   const orientation = fitsLandscape ? 'liggend' : 'staand';
-  const panels = buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation);
+  const panels = buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation, xBreaksOdd);
   if (!panels.length) return { ok: false, panels: [] };
   return { ok: true, orientation, panelCount: panels.length, panels };
 }
@@ -468,6 +483,7 @@ export function computeEffectiveBasePanel(panelen, brickWeightM2, material) {
     minHeight: 800,
     targetWidth:  Math.min(w, brickTargetW),
     targetHeight: Math.min(effectiveH, brickTargetH),
+    verspringen: panelen?.verspringen ?? false,
   };
 }
 
