@@ -3199,6 +3199,7 @@ export default function App() {
                 return (
                   <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13 }}>Laden…</div>}>
                   <Werktekening
+                    key={activeGroup.id}
                     walls={groupWalls}
                     groupSettings={s}
                     groupName={s.name}
