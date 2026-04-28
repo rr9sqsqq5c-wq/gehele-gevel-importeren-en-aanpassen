@@ -667,6 +667,17 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
   const [preset, setPreset] = useState(null);
   const [boxSelectMode, setBoxSelectMode] = useState(false);
   const [dragRect, setDragRect] = useState(null);
+  const [hiddenGroupIds, setHiddenGroupIds] = useState(new Set());
+  const [hideUngrouped, setHideUngrouped] = useState(false);
+  const [groupPanelOpen, setGroupPanelOpen] = useState(false);
+
+  const toggleGroupVisibility = useCallback((gid) => {
+    setHiddenGroupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(gid)) next.delete(gid); else next.add(gid);
+      return next;
+    });
+  }, []);
   const dragStart = useRef(null);
   const cameraRef = useRef(null);
   const containerRef = useRef(null);
@@ -814,6 +825,8 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
         {walls.map((wall) => {
           const group = wallGroupMap[wall.expressID];
           const settings = group ? groupSettings(group.id) : null;
+          if (group && hiddenGroupIds.has(group.id)) return null;
+          if (!group && hideUngrouped) return null;
           return (
             <WallMesh
               key={wall.expressID}
@@ -829,6 +842,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
         })}
 
         {groups.map((group) => {
+          if (hiddenGroupIds.has(group.id)) return null;
           const settings = groupSettings(group.id);
           const gp = groupPatterns?.[group.id];
           if (!gp) return null;
@@ -844,13 +858,17 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           );
         })}
 
-        {walls.flatMap((wall) =>
-          (wall.openings ?? []).map((op) => (
+        {walls.flatMap((wall) => {
+          const group = wallGroupMap[wall.expressID];
+          if (group && hiddenGroupIds.has(group.id)) return [];
+          if (!group && hideUngrouped) return [];
+          return (wall.openings ?? []).map((op) => (
             <OpeningMesh key={`${wall.expressID}-${op.id}`} wall={wall} opening={op} upAxis={upAxis} />
-          ))
-        )}
+          ));
+        })}
 
         {groups.flatMap((group) => {
+          if (hiddenGroupIds.has(group.id)) return [];
           const settings = groupSettings(group.id);
           const penanten = settings?.penanten ?? [];
           if (!penanten.length) return [];
@@ -892,6 +910,83 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           });
         })}
       </Canvas>
+
+      {walls.length > 0 && groups.length > 0 && (
+        <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10, userSelect: 'none' }}>
+          <button
+            onClick={() => setGroupPanelOpen((v) => !v)}
+            title="Groepen verbergen/tonen"
+            style={{
+              background: hiddenGroupIds.size > 0 || hideUngrouped ? '#3b82f6' : 'rgba(15,23,42,0.85)',
+              color: hiddenGroupIds.size > 0 || hideUngrouped ? '#fff' : '#94a3b8',
+              border: '1px solid #334155',
+              borderRadius: 4,
+              fontSize: 11,
+              padding: '3px 8px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            👁 Zichtbaarheid {hiddenGroupIds.size > 0 ? `(${hiddenGroupIds.size} verborgen)` : ''}{groupPanelOpen ? ' ▲' : ' ▼'}
+          </button>
+          {groupPanelOpen && (
+            <div style={{
+              marginTop: 4,
+              background: 'rgba(15,23,42,0.92)',
+              border: '1px solid #334155',
+              borderRadius: 6,
+              padding: '6px 0',
+              minWidth: 180,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            }}>
+              <div style={{ display: 'flex', gap: 4, padding: '2px 8px 6px', borderBottom: '1px solid #1e293b' }}>
+                <button
+                  onClick={() => setHiddenGroupIds(new Set())}
+                  style={{ flex: 1, fontSize: 10, background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 3, padding: '2px 0', cursor: 'pointer' }}
+                >Alles tonen</button>
+                <button
+                  onClick={() => setHiddenGroupIds(new Set(groups.map((g) => g.id)))}
+                  style={{ flex: 1, fontSize: 10, background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 3, padding: '2px 0', cursor: 'pointer' }}
+                >Alles verbergen</button>
+              </div>
+              {groups.map((g) => {
+                const s = groupSettings(g.id);
+                const visible = !hiddenGroupIds.has(g.id);
+                return (
+                  <div
+                    key={g.id}
+                    onClick={() => toggleGroupVisibility(g.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px',
+                      cursor: 'pointer', opacity: visible ? 1 : 0.45,
+                    }}
+                  >
+                    <span style={{ width: 10, height: 10, borderRadius: 2, background: s.color, display: 'inline-block', flexShrink: 0, border: '1px solid rgba(255,255,255,0.2)' }} />
+                    <span style={{ flex: 1, fontSize: 11, color: visible ? '#e2e8f0' : '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                    <span style={{ fontSize: 12, color: visible ? '#60a5fa' : '#475569' }}>{visible ? '👁' : '🚫'}</span>
+                  </div>
+                );
+              })}
+              {walls.some((w) => !wallGroupMap[w.expressID]) && (
+                <div
+                  onClick={() => setHideUngrouped((v) => !v)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px',
+                    cursor: 'pointer', opacity: !hideUngrouped ? 1 : 0.45,
+                    borderTop: '1px solid #1e293b', marginTop: 2, paddingTop: 6,
+                  }}
+                >
+                  <span style={{ width: 10, height: 10, borderRadius: 2, background: '#64748b', display: 'inline-block', flexShrink: 0, border: '1px solid rgba(255,255,255,0.2)' }} />
+                  <span style={{ flex: 1, fontSize: 11, color: !hideUngrouped ? '#e2e8f0' : '#64748b' }}>Ongegroepeerd</span>
+                  <span style={{ fontSize: 12, color: !hideUngrouped ? '#60a5fa' : '#475569' }}>{!hideUngrouped ? '👁' : '🚫'}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {dragRect && (
         <div
