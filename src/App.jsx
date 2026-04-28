@@ -326,6 +326,9 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
   const [openSections, setOpenSections] = useState({});
   const toggle = (k) => setOpenSections((p) => ({ ...p, [k]: !(p[k] ?? false) }));
   const isOpen = (k) => openSections[k] ?? false;
+  const [stripFabrikant, setStripFabrikant] = useState('');
+  const [stripFormat, setStripFormat] = useState('');
+  const [stripZoek, setStripZoek] = useState('');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
@@ -1164,44 +1167,95 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
             onToggle={() => toggle('steenstripsArtikelen')}
             badge={selectedStripId ? '1 gekozen' : null}
           >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {STEENSTRIP_CATALOG.map((art) => {
-                const checked = art.id === selectedStripId;
-                const fColor = formatColors[art.formatCode] ?? '#64748b';
-                return (
-                  <label key={art.id} style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 10,
-                    cursor: 'pointer', color: checked ? '#0f172a' : '#475569',
-                    background: checked ? '#fdf4ff' : 'transparent',
-                    border: `1px solid ${checked ? '#d8b4fe' : '#e2e8f0'}`,
-                    borderRadius: 4, padding: '4px 6px',
-                  }}>
-                    <input type="radio" name={`strip-artikel-${groupId}`} checked={checked}
-                      onChange={() => selectStrip(art.id)}
-                      style={{ marginTop: 2, flexShrink: 0, accentColor: '#7c3aed' }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: 10.5, color: '#1e293b', lineHeight: 1.3 }}>{art.naam}</div>
-                      <div style={{ color: '#475569', fontSize: 9, marginTop: 1, fontStyle: 'italic' }}>{art.fabrikant}{art.serie ? ` — ${art.serie}` : ''}</div>
-                      <div style={{ color: '#64748b', fontSize: 9, marginTop: 1 }}>
-                        {[art.behandeling, art.kleurOmschrijving ?? art.kleur].filter(Boolean).join(' · ')}
-                        {art.artikelnummer && <span style={{ color: '#94a3b8', marginLeft: 4 }}>#{art.artikelnummer}</span>}
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <span style={{ background: fColor, color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600 }}>{art.formatCode}</span>
-                        <span style={{ color: '#64748b', fontSize: 9 }}>{art.steenL}×{art.steenH}×{art.dikte} mm</span>
-                        <span style={{ color: '#64748b', fontSize: 9 }}>voeg {art.lint}/{art.stoot} mm</span>
-                        <span style={{ color: '#64748b', fontSize: 9 }}>{art.stuksPerM2} st/m²</span>
-                        <span style={{ color: '#64748b', fontSize: 9 }}>{art.brickWeightM2} kg/m²</span>
-                        {art.prijsPerStuk != null
-                          ? <span style={{ marginLeft: 'auto', color: '#0f172a', fontWeight: 600, fontSize: 9.5 }}>€ {art.prijsPerStuk.toFixed(3)}/st · € {art.prijsM2.toFixed(2)}/m²</span>
-                          : <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: 9 }}>prijs n.t.b.</span>
-                        }
-                      </div>
+            {(() => {
+              const allFabrikanten = [...new Set(STEENSTRIP_CATALOG.map((a) => a.fabrikant).filter(Boolean))];
+              const allFormaten = [...new Set(STEENSTRIP_CATALOG.map((a) => a.formatCode).filter(Boolean))];
+              const zoekLower = stripZoek.toLowerCase();
+              const filtered = STEENSTRIP_CATALOG.filter((a) => {
+                if (stripFabrikant && a.fabrikant !== stripFabrikant) return false;
+                if (stripFormat && a.formatCode !== stripFormat) return false;
+                if (zoekLower) {
+                  const haystack = [a.naam, a.kleur, a.kleurOmschrijving, a.behandeling, a.artikelnummer, a.fabrikant].filter(Boolean).join(' ').toLowerCase();
+                  if (!haystack.includes(zoekLower)) return false;
+                }
+                return true;
+              });
+              const btnBase = { fontSize: 9, padding: '2px 6px', borderRadius: 3, cursor: 'pointer', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#475569', whiteSpace: 'nowrap' };
+              const btnActive = { ...btnBase, background: '#7c3aed', color: '#fff', border: '1px solid #7c3aed', fontWeight: 600 };
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 4, borderBottom: '1px solid #e2e8f0' }}>
+                    <input
+                      type="text"
+                      placeholder="Zoek op naam, kleur, artikel#…"
+                      value={stripZoek}
+                      onChange={(e) => setStripZoek(e.target.value)}
+                      style={{ fontSize: 10, padding: '3px 6px', border: '1px solid #cbd5e1', borderRadius: 3, outline: 'none', color: '#1e293b' }}
+                    />
+                    <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 9, color: '#94a3b8', alignSelf: 'center', marginRight: 2 }}>Leverancier:</span>
+                      <button style={stripFabrikant === '' ? btnActive : btnBase} onClick={() => setStripFabrikant('')}>Alle</button>
+                      {allFabrikanten.map((f) => {
+                        const label = f.includes('Wienerberger') ? 'Wienerberger' : f.includes('FRONT') ? 'FRONT' : f.includes('Eigen') ? 'Generiek' : f;
+                        return <button key={f} style={stripFabrikant === f ? btnActive : btnBase} onClick={() => setStripFabrikant(f === stripFabrikant ? '' : f)}>{label}</button>;
+                      })}
                     </div>
-                  </label>
-                );
-              })}
-            </div>
+                    <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 9, color: '#94a3b8', alignSelf: 'center', marginRight: 2 }}>Formaat:</span>
+                      <button style={stripFormat === '' ? btnActive : btnBase} onClick={() => setStripFormat('')}>Alle</button>
+                      {allFormaten.map((f) => (
+                        <button key={f} style={stripFormat === f ? btnActive : btnBase} onClick={() => setStripFormat(f === stripFormat ? '' : f)}>{f}</button>
+                      ))}
+                    </div>
+                    {(stripFabrikant || stripFormat || stripZoek) && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 9, color: '#64748b' }}>{filtered.length} van {STEENSTRIP_CATALOG.length} artikelen</span>
+                        <button style={{ ...btnBase, color: '#ef4444', borderColor: '#fca5a5' }} onClick={() => { setStripFabrikant(''); setStripFormat(''); setStripZoek(''); }}>✕ Wis filter</button>
+                      </div>
+                    )}
+                  </div>
+                  {filtered.length === 0 && (
+                    <div style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center', padding: '8px 0' }}>Geen artikelen gevonden</div>
+                  )}
+                  {filtered.map((art) => {
+                    const checked = art.id === selectedStripId;
+                    const fColor = formatColors[art.formatCode] ?? '#64748b';
+                    return (
+                      <label key={art.id} style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 10,
+                        cursor: 'pointer', color: checked ? '#0f172a' : '#475569',
+                        background: checked ? '#fdf4ff' : 'transparent',
+                        border: `1px solid ${checked ? '#d8b4fe' : '#e2e8f0'}`,
+                        borderRadius: 4, padding: '4px 6px',
+                      }}>
+                        <input type="radio" name={`strip-artikel-${groupId}`} checked={checked}
+                          onChange={() => selectStrip(art.id)}
+                          style={{ marginTop: 2, flexShrink: 0, accentColor: '#7c3aed' }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 10.5, color: '#1e293b', lineHeight: 1.3 }}>{art.naam}</div>
+                          <div style={{ color: '#475569', fontSize: 9, marginTop: 1, fontStyle: 'italic' }}>{art.fabrikant}{art.serie ? ` — ${art.serie}` : ''}</div>
+                          <div style={{ color: '#64748b', fontSize: 9, marginTop: 1 }}>
+                            {[art.behandeling, art.kleurOmschrijving ?? art.kleur].filter(Boolean).join(' · ')}
+                            {art.artikelnummer && <span style={{ color: '#94a3b8', marginLeft: 4 }}>#{art.artikelnummer}</span>}
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span style={{ background: fColor, color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600 }}>{art.formatCode}</span>
+                            <span style={{ color: '#64748b', fontSize: 9 }}>{art.steenL}×{art.steenH}×{art.dikte} mm</span>
+                            <span style={{ color: '#64748b', fontSize: 9 }}>voeg {art.lint}/{art.stoot} mm</span>
+                            <span style={{ color: '#64748b', fontSize: 9 }}>{art.stuksPerM2} st/m²</span>
+                            <span style={{ color: '#64748b', fontSize: 9 }}>{art.brickWeightM2} kg/m²</span>
+                            {art.prijsPerStuk != null
+                              ? <span style={{ marginLeft: 'auto', color: '#0f172a', fontWeight: 600, fontSize: 9.5 }}>€ {art.prijsPerStuk.toFixed(3)}/st · € {art.prijsM2.toFixed(2)}/m²</span>
+                              : <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: 9 }}>prijs n.t.b.</span>
+                            }
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </CollapsibleSection>
         );
       })()}
