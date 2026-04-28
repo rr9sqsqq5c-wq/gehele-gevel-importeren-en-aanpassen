@@ -869,15 +869,14 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     const groupMinX = group.groupMinX ?? 0;
     const groupMinH = group.groupMinH ?? 0;
 
-    const normalizeZUp = (px, py, pz, heightAxis) =>
-      heightAxis === 'y' ? [px, pz, py] : [px, py, pz];
-
     const makeGroupAxes = () => {
       if (!rwo) return { axisStr: '$', refStr: '$' };
-      const needsYRef = (rwo.heightAxis === 'y' && rwo.lengthAxis === 'z') ||
-                        (rwo.heightAxis === 'z' && rwo.lengthAxis === 'y');
-      const rId = needsYRef ? E(`IFCDIRECTION((0.,1.,0.))`) : null;
-      return { axisStr: '$', refStr: rId ? `#${rId}` : '$' };
+      const ha = rwo.heightAxis;
+      const la = rwo.lengthAxis;
+      const mkDir = (v) => `#${E(`IFCDIRECTION((${v.join(',')}))`)}`;
+      const axisStr = ha === 'z' ? mkDir([0,0,1]) : ha === 'y' ? mkDir([0,1,0]) : mkDir([1,0,0]);
+      const refStr  = la === 'x' ? mkDir([1,0,0]) : la === 'y' ? mkDir([0,1,0]) : mkDir([0,0,1]);
+      return { axisStr, refStr };
     };
 
     const rawFace = calcOutsideFace(rwo, allWallOrigins);
@@ -891,7 +890,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
       p[rwo.lengthAxis]    = groupMinX + gx;
       p[rwo.thicknessAxis] = grpOutPos + grpOutDir * outDepth;
       p[rwo.heightAxis]    = groupMinH + gz;
-      return normalizeZUp(p.x, p.y, p.z, rwo.heightAxis);
+      return [p.x, p.y, p.z];
     };
 
     if (vis.strips !== false) {
@@ -933,15 +932,11 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
             p[wo.lengthAxis]    = wo.lengthStart + localX;
             p[wo.thicknessAxis] = wallOutPos + wallOutDir * outDepth;
             p[wo.heightAxis]    = wo.heightStart + localZ;
-            return normalizeZUp(p.x, p.y, p.z, wo.heightAxis);
+            return [p.x, p.y, p.z];
           };
-          const stripNeedsYRef = wo && (
-            (wo.heightAxis === 'y' && wo.lengthAxis === 'z') ||
-            (wo.heightAxis === 'z' && wo.lengthAxis === 'y')
-          );
-          const stripRefId = stripNeedsYRef ? E(`IFCDIRECTION((0.,1.,0.))`) : null;
-          const axisStr = '$';
-          const refStr  = stripRefId ? `#${stripRefId}` : '$';
+          const _mkDir2 = (v) => `#${E(`IFCDIRECTION((${v.join(',')}))`)}`;
+          const axisStr = wo.heightAxis === 'z' ? _mkDir2([0,0,1]) : wo.heightAxis === 'y' ? _mkDir2([0,1,0]) : _mkDir2([1,0,0]);
+          const refStr  = wo.lengthAxis  === 'x' ? _mkDir2([1,0,0]) : wo.lengthAxis  === 'y' ? _mkDir2([0,1,0]) : _mkDir2([0,0,1]);
           for (const row of rows) {
             for (const piece of row.pieces) {
               const [wx, wy, wz] = toWorld(piece.start + piece.length / 2, effectiveLatDepth + panelDikte + brickD / 2, row.y);
@@ -1134,10 +1129,10 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
 
         const thickDir = { x: 0, y: 0, z: 0 };
         thickDir[rwo.thicknessAxis] = grpOutDir;
-        const [tdx, tdy, tdz] = normalizeZUp(thickDir.x, thickDir.y, thickDir.z, rwo.heightAxis);
-        const leftRefId  = E(`IFCDIRECTION((${r(tdx)},${r(tdy)},${r(tdz)}))`);
-        const rightRefId = E(`IFCDIRECTION((${r(-tdx)},${r(-tdy)},${r(-tdz)}))`);
-        const sideAxisId = E(`IFCDIRECTION((0.,0.,1.))`);
+        const leftRefId  = E(`IFCDIRECTION((${r(thickDir.x)},${r(thickDir.y)},${r(thickDir.z)}))`);
+        const rightRefId = E(`IFCDIRECTION((${r(-thickDir.x)},${r(-thickDir.y)},${r(-thickDir.z)}))`);
+        const _haVec = rwo.heightAxis === 'z' ? [0,0,1] : rwo.heightAxis === 'y' ? [0,1,0] : [1,0,0];
+        const sideAxisId = E(`IFCDIRECTION((${_haVec.join(',')}))`);
         const sideDepthOffset = latDikte + penShift - pD;
 
         for (const row of (penFaceData.leftRows ?? [])) {
@@ -1146,7 +1141,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
             lp[rwo.lengthAxis]    = groupMinX + pX + brickD / 2;
             lp[rwo.thicknessAxis] = grpOutPos + grpOutDir * (sideDepthOffset + piece.start + piece.length / 2);
             lp[rwo.heightAxis]    = groupMinH + row.y;
-            const [lpx, lpy, lpz] = normalizeZUp(lp.x, lp.y, lp.z, rwo.heightAxis);
+            const [lpx, lpy, lpz] = [lp.x, lp.y, lp.z];
             const lPlacePt = PT(lpx, lpy, lpz);
             const lPlace3D = E(`IFCAXIS2PLACEMENT3D(#${lPlacePt},#${sideAxisId},#${leftRefId})`);
             const lLocalPl = E(`IFCLOCALPLACEMENT(#${stPl},#${lPlace3D})`);
@@ -1168,7 +1163,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
             rp[rwo.lengthAxis]    = groupMinX + pX + pB - brickD / 2;
             rp[rwo.thicknessAxis] = grpOutPos + grpOutDir * (sideDepthOffset + piece.start + piece.length / 2);
             rp[rwo.heightAxis]    = groupMinH + row.y;
-            const [rpx, rpy, rpz] = normalizeZUp(rp.x, rp.y, rp.z, rwo.heightAxis);
+            const [rpx, rpy, rpz] = [rp.x, rp.y, rp.z];
             const rPlacePt = PT(rpx, rpy, rpz);
             const rPlace3D = E(`IFCAXIS2PLACEMENT3D(#${rPlacePt},#${sideAxisId},#${rightRefId})`);
             const rLocalPl = E(`IFCLOCALPLACEMENT(#${stPl},#${rPlace3D})`);
