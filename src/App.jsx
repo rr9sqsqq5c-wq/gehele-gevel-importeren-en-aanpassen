@@ -285,7 +285,8 @@ function useGroupSettings() {
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
-  return { get, update, initColor, map, setMap };
+  const forceInit = useCallback((id, color, name) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } })), []);
+  return { get, update, initColor, forceInit, map, setMap };
 }
 
 function CollapsibleSection({ title, tip, children, isOpen, onToggle, badge, extra }) {
@@ -1345,7 +1346,7 @@ export default function App() {
   const [validationLogs, setValidationLogs] = useState([]);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
-  const { get: getSettings, update: updateSettings, initColor, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
+  const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
   const _colorIdxRef = useRef(0);
@@ -1971,7 +1972,7 @@ export default function App() {
     const color = nextColor();
     const uniqueNames = new Set(groups.map((g) => getSettings(g.id).name));
     const groupName = `Groep ${uniqueNames.size + 1}`;
-    initColor(gid, color, groupName);
+    forceInit(gid, color, groupName);
     const newGroup = { id: gid, wallIds: sortWallsInComponent(ids, allWalls, adjacencies) };
     const updatedGroups = [...groups, newGroup];
     setGroups(updatedGroups);
