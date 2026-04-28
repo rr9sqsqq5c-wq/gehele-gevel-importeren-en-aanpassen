@@ -9,7 +9,7 @@
 - **3D viewer — groepen verbergen**: knop "👁 Zichtbaarheid" linksboven in de 3D viewer. Per groep in- of uitschakelbaar. Verbergt wanden, steenstrips, openingen en penanten van de verborgen groep. Knoppen "Alles tonen" / "Alles verbergen". Knop kleurt blauw als er iets verborgen is.
 
 ### Opgelost
-- **IFC export coördinaten — boven/onder flip**: elementen werden geëxporteerd in een geforceerd Z-up coördinatenstelsel (`normalizeZUp`) dat afweek van het originele model. Nu worden element-placements uitgedrukt in hetzelfde coördinatenstelsel als de bronwanden: het `IfcAxis2Placement3D` van elk element krijgt de juiste `Axis` (heightAxis-richting) en `RefDirection` (lengthAxis-richting) mee. Hierdoor komen steenstrips, panelen, latten, zetwerk en penanten correct op de wanden te liggen wanneer het export-IFC samen met het brondbestand in een IFC-viewer geopend wordt.
+- **IFC export coördinaten — boven/onder flip en rotatie**: twee oorzaken opgelost. (1) Element-placements werden geforceerd naar Z-up via `normalizeZUp`; nu worden `Axis` (heightAxis-richting) en `RefDirection` (lengthAxis-richting) per element expliciet ingesteld op de bronassen. (2) De `IfcGeometricRepresentationContext` (WCS) werd altijd als Z-up gedeclareerd, ongeacht het bronmodel; nu wordt de dominante `heightAxis` van de geïmporteerde wandgroepen gebruikt om de WCS-as correct in te stellen (bijv. Y-up bij Y-up bronmodellen). Hierdoor vallen steenstrips, panelen, latten, zetwerk en penanten correct samen met het brongebouw in een IFC-viewer.
 - **Duplicaatnamen bij gekoppelde groepen**: nieuwe gekoppelde groepen kregen dezelfde naam als de brongroep. Nu krijgen ze unieke namen op basis van de brongroepnaam + volgnummer (bijv. `Gevel Z-1`, `Gevel Z-2`).
 
 ---

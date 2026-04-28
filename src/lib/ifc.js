@@ -818,8 +818,14 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
   const owH    = E(`IFCOWNERHISTORY(#${perOrg},#${app},$,.ADDED.,$,$,$,0)`);
   const mmUnit = E(`IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)`);
   const units  = E(`IFCUNITASSIGNMENT((#${mmUnit}))`);
+  const allRefWallOrigins = groups.flatMap((g) => g.refWallOrigin ? [g.refWallOrigin] : []);
+  const haCount = { x: 0, y: 0, z: 0 };
+  for (const rwo of allRefWallOrigins) haCount[rwo.heightAxis] = (haCount[rwo.heightAxis] ?? 0) + 1;
+  const dominantHA = haCount.y >= haCount.z && haCount.y >= haCount.x ? 'y' : haCount.x >= haCount.z ? 'x' : 'z';
+  const wcsAxisVec = dominantHA === 'y' ? [0,1,0] : dominantHA === 'x' ? [1,0,0] : [0,0,1];
   const wpt    = PT(0,0,0);
-  const wax    = E(`IFCAXIS2PLACEMENT3D(#${wpt},$,$)`);
+  const wcsAxisId = E(`IFCDIRECTION((${wcsAxisVec.join(',')}))`);
+  const wax    = E(`IFCAXIS2PLACEMENT3D(#${wpt},#${wcsAxisId},$)`);
   const gCtx   = E(`IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#${wax},$)`);
   const gSub   = E(`IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#${gCtx},$,.MODEL_VIEW.,$)`);
   const proj   = E(`IFCPROJECT(${G()},#${owH},'${(fileName || 'BrickslipExport').replace(/'/g,"\\'")}' ,$,$,$,$,(#${gCtx}),#${units})`);
