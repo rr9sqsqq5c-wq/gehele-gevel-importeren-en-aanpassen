@@ -1352,6 +1352,12 @@ export default function App() {
   const _hydratedRef = useRef(false);
   const _saveTimerRef = useRef(null);
   const newGid = useCallback(() => `G${_gidRef.current++}`, []);
+  const syncGidRef = useCallback((loadedGroups) => {
+    for (const g of loadedGroups) {
+      const n = parseInt(String(g.id).replace(/^G/, ''), 10);
+      if (!isNaN(n) && n >= _gidRef.current) _gidRef.current = n + 1;
+    }
+  }, []);
   const nextColor = useCallback(() => GROUP_COLORS[_colorIdxRef.current++ % GROUP_COLORS.length], []);
 
   const wallMap = useMemo(() => Object.fromEntries(allWalls.map((w) => [w.expressID, w])), [allWalls]);
@@ -1855,6 +1861,7 @@ export default function App() {
         setGroups(state.groups);
         setGroupLinks(state.groupLinks ?? {});
         setSettingsMap(state.groupSettings ?? state.settingsMap ?? {});
+        syncGidRef(state.groups);
       }
       _hydratedRef.current = true;
     }).catch((err) => {
@@ -2068,6 +2075,7 @@ export default function App() {
         setGroupsHistory([]);
         setActiveGroupId(loadedGroups[0]?.id ?? null);
         setSimilarSuggestions(null);
+        syncGidRef(loadedGroups);
         console.log('[loadProject] Geladen:', loadedGroups.length, 'groepen');
         if (data.ifcFileName && data.ifcFileName !== ifcFileName) {
           alert(`Project geladen (${loadedGroups.length} groepen).\n\nDit project hoort bij IFC-bestand: "${data.ifcFileName}".\nZorg dat dit bestand is geladen om de elementen correct te zien.`);
