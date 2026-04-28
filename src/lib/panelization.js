@@ -301,7 +301,7 @@ export function panelizeZone(zone, battenYs, basePanel) {
     for (let i = 0; i < yBreaks.length - 1; i++) {
       const span = yBreaks[i + 1] - yBreaks[i];
       if (span > bpH + 0.001) {
-        const nSteps = Math.ceil(span / bpH);
+        const nSteps = Math.max(1, Math.round(span / bpH));
         for (let s = 1; s < nSteps; s++) extraY.push(round2(yBreaks[i] + s * (span / nSteps)));
       }
     }
@@ -314,13 +314,10 @@ export function panelizeZone(zone, battenYs, basePanel) {
   const effectiveMinH = Math.min(minPanelH, zone.height);
   yBreaks = mergeSmallSegments(yBreaks, effectiveMinH);
 
+  const nCols = Math.max(1, Math.round(zone.width / targetW));
   const xSet = new Set([zoneX1, zoneX2]);
-  if (zone.width > targetW + 1) {
-    let xCur = round2(zoneX1 + targetW);
-    while (xCur < zoneX2 - 10) {
-      xSet.add(xCur);
-      xCur = round2(xCur + targetW);
-    }
+  for (let i = 1; i < nCols; i++) {
+    xSet.add(round2(zoneX1 + (i * zone.width) / nCols));
   }
   const xBreaks = [...xSet].sort((a, b) => a - b);
 
