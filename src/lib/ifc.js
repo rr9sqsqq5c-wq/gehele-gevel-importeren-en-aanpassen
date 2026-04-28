@@ -46,6 +46,7 @@ function getBBox(api, modelID, expressID) {
   let minY = Infinity, maxY = -Infinity;
   let minZ = Infinity, maxZ = -Infinity;
   let ok = false;
+  let localYDir = null;
 
   for (let gi = 0; gi < mesh.geometries.size(); gi++) {
     const placed = mesh.geometries.get(gi);
@@ -54,6 +55,10 @@ function getBBox(api, modelID, expressID) {
       geom = api.GetGeometry(modelID, placed.geometryExpressID);
       const verts = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
       const m = placed.flatTransformation;
+
+      if (!localYDir) {
+        localYDir = { x: m[4], y: m[5], z: m[6] };
+      }
 
       for (let vi = 0; vi < verts.length; vi += 6) {
         const lx = verts[vi], ly = verts[vi + 1], lz = verts[vi + 2];
@@ -70,7 +75,7 @@ function getBBox(api, modelID, expressID) {
     }
   }
 
-  return ok ? { minX, maxX, minY, maxY, minZ, maxZ } : null;
+  return ok ? { minX, maxX, minY, maxY, minZ, maxZ, localYDir } : null;
 }
 
 function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
@@ -578,6 +583,12 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
           const wallLine = api.GetLine(modelID, wID, false);
           const name = wallLine?.Name?.value ?? `Wand #${wID}`;
 
+          let wallInsideThickDir = 0;
+          if (wallBB.localYDir) {
+            const comp = wallBB.localYDir[thicknessAxis] ?? 0;
+            if (Math.abs(comp) > 0.5) wallInsideThickDir = comp > 0 ? 1 : -1;
+          }
+
           const wallOrigin = {
             lengthStart:    Math.round(wallBB[`min${lengthAxis.toUpperCase()}`]    * 1000),
             heightStart:    Math.round(wallBB[`min${heightAxis.toUpperCase()}`]    * 1000),
@@ -586,6 +597,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
             lengthAxis,
             heightAxis,
             thicknessAxis,
+            wallInsideThickDir,
           };
 
           const openings = [];
@@ -768,6 +780,13 @@ function calcOutsideFace(rwo, allWallOrigins) {
   const axis = rwo.thicknessAxis;
   const tStart = rwo.thicknessStart;
   const tEnd = rwo.thicknessEnd ?? rwo.thicknessStart + 200;
+
+  if (rwo.wallInsideThickDir && rwo.wallInsideThickDir !== 0) {
+    const outsideDir = -rwo.wallInsideThickDir;
+    const outsidePos = outsideDir < 0 ? tStart : tEnd;
+    return { outsidePos, outsideDir };
+  }
+
   const wallsOnAxis = (allWallOrigins ?? []).filter((wo) => wo?.thicknessAxis === axis);
   const buildingMin = wallsOnAxis.length
     ? Math.min(...wallsOnAxis.map((wo) => wo.thicknessStart))
@@ -1368,6 +1387,12 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
         const line = api.GetLine(modelID, eID, false);
         const name = line?.Name?.value ?? `Element #${eID}`;
 
+        let wallInsideThickDirEl = 0;
+        if (bb.localYDir) {
+          const comp = bb.localYDir[thicknessAxis] ?? 0;
+          if (Math.abs(comp) > 0.5) wallInsideThickDirEl = comp > 0 ? 1 : -1;
+        }
+
         const wallOrigin = {
           lengthStart:    Math.round(bb[`min${lengthAxis.toUpperCase()}`] * 1000),
           heightStart:    Math.round(bb[`min${heightAxis.toUpperCase()}`] * 1000),
@@ -1376,6 +1401,7 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
           lengthAxis,
           heightAxis,
           thicknessAxis,
+          wallInsideThickDir: wallInsideThickDirEl,
         };
 
         const facadePoly = getFacadePolygon(api, modelID, eID, lengthAxis, heightAxis, bb);

@@ -86,6 +86,12 @@ function getOutsideFaceInfo(rwo, allWalls) {
   const axis = rwo.thicknessAxis;
   const tStart = rwo.thicknessStart;
   const tEnd = rwo.thicknessEnd ?? rwo.thicknessStart + 200;
+
+  if (rwo.wallInsideThickDir && rwo.wallInsideThickDir !== 0) {
+    const outsideDir = -rwo.wallInsideThickDir;
+    return { outsidePos: outsideDir < 0 ? tStart : tEnd, outsideDir };
+  }
+
   const wallsOnAxis = (allWalls ?? []).filter((w) => w.wallOrigin?.thicknessAxis === axis);
   const buildingMin = wallsOnAxis.length
     ? Math.min(...wallsOnAxis.map((w) => w.wallOrigin.thicknessStart))
