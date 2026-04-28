@@ -8,11 +8,17 @@
 4. [Scenario B — Zone-import (klant levert vlakken)](#scenario-b--zone-import-klant-levert-vlakken)
 5. [Groep configureren (beide scenario's)](#groep-configureren-beide-scenarios)
 6. [Strip-zones handmatig tekenen in 2D](#strip-zones-handmatig-tekenen-in-2d)
-7. [Maltekeningen](#maltekeningen)
-8. [Werktekeningen & export](#werktekeningen--export)
-9. [Schermindeling](#schermindeling)
-10. [UI-groepen: Groep configuratie](#ui-groepen-groep-configuratie)
-11. [Tips & sneltoetsen](#tips--sneltoetsen)
+7. [Steenstrip kleurcodering in 2D](#steenstrip-kleurcodering-in-2d)
+8. [Steenstrip artikelkeuze & catalogus](#steenstrip-artikelkeuze--catalogus)
+9. [Artikelkeuze lattenwerk](#artikelkeuze-lattenwerk)
+10. [Basisplaat catalogus](#basisplaat-catalogus)
+11. [Panelen en paneeloptimalisatie](#panelen-en-paneeloptimalisatie)
+12. [3D Viewer — groepen verbergen](#3d-viewer--groepen-verbergen)
+13. [Groepen beheren](#groepen-beheren)
+14. [Maltekeningen](#maltekeningen)
+15. [Werktekeningen & export](#werktekeningen--export)
+16. [Schermindeling](#schermindeling)
+17. [Tips & sneltoetsen](#tips--sneltoetsen)
 
 ---
 
@@ -61,6 +67,8 @@ Na het importeren verschijnen alle wanden in de **3D Viewer**.
 - **Slepen** = rondkijken (orbit).
 - Geselecteerde elementen verschijnen ook in de lijst links onder **Zonder groep**.
 
+> **Tip:** Gebruik de **👁 Zichtbaarheid** knop linksboven in de 3D viewer om groepen tijdelijk te verbergen. Handig bij tegenoverliggende wanden.
+
 ---
 
 ### Stap 3 — Groepen aanmaken
@@ -103,10 +111,10 @@ Klik op een groep in de lijst links om deze te activeren. Rechts verschijnt het 
 
 Stel in:
 - Metselverband (halfsteens, tegelverband, staand, wildverband)
-- Steenstrip afmetingen (lengte, hoogte, lintvoeg, stootvoeg)
+- Steenstrip afmetingen (of kies een artikel uit de catalogus)
 - Zetwerk rondom openingen
 - Panelen (basisplaat type en maximale afmetingen)
-- Achterconstructie latten (horizontaal of verticaal)
+- Achterconstructie latten (horizontaal of verticaal, HOH-bandbreedte)
 - Penanten (als van toepassing)
 
 Zie [Groep configureren](#groep-configureren-beide-scenarios) voor details.
@@ -119,6 +127,7 @@ Na het aanmaken van een groep controleert de applicatie automatisch of er vergel
 
 Als die worden gevonden, verschijnt een pop-up:
 - Aangevinkte groeperingen worden automatisch aangemaakt en **gekoppeld** aan de brongroep.
+- Nieuwe gekoppelde groepen krijgen een unieke naam (bijv. `Gevel N-1`, `Gevel N-2`).
 - Gebruik daarna **Sync instellingen →** om alle instellingen in één keer door te kopiëren.
 
 ---
@@ -199,6 +208,8 @@ Klik op een groep in de lijst links. Het **rechterpaneel** toont alle instelling
 ### Naam en kleur
 
 - De **naam** verschijnt in de lijsten, werktekeningen en IFC-export.
+- Wijzig de naam via het **Naam** invoerveld bovenaan het configuratiepaneel.
+- Of **dubbelklik** direct op de groepsnaam in de groepslijst links voor inline bewerking (bevestig met Enter, annuleer met Escape).
 - De **kleur** onderscheidt de groep in 3D en 2D.
 
 ---
@@ -210,7 +221,7 @@ Klik op een groep in de lijst links. Het **rechterpaneel** toont alle instelling
 | **Halfsteens** | Strekken verspringen een halve steenlengte per laag. Eerste laag begint links met een strek, tweede laag met een kop. |
 | **Tegelverband** | Regelmatige verspinging per halve steen, zonder koppen. |
 | **Staand tegelverband** | Stenen staan verticaal (90° gedraaid). |
-| **Wildverband** | Onregelmatig, levend verband met strekken, koppen en drieklezooren. Herhaalt na 6 rijen. |
+| **Wildverband** | Onregelmatig, levend verband met strekken, koppen en driekwart. Herhaalt na 6 rijen. |
 
 ---
 
@@ -224,6 +235,8 @@ Klik op een groep in de lijst links. Het **rechterpaneel** toont alle instelling
 | **Stootvoeg mm** | 10 | Verticale voeg tussen stenen |
 
 > Stapelmaat per laag = hoogte + lintvoeg (bijv. 50 + 12 = 62 mm).
+
+> **Tip:** Gebruik de **Steenstrips artikelkeuze** sectie om een artikel uit de catalogus te kiezen. De afmetingen, dikte, voegmaten en gewicht worden dan automatisch ingevuld.
 
 ---
 
@@ -242,13 +255,7 @@ Aluminium of stalen randprofiel rondom ramen en deuren.
 
 ### Panelen (basisplaat)
 
-Verdeelt de gevels in draagsysteem-panelen. Kies een **basisplaat type** uit de catalogus:
-
-- Bluclad Proboard 10 mm (vezelcement)
-- ROCKPANEL Natural Durable 8 mm / 10 mm
-- ROCKPANEL Natural Xtreme 8 mm / 10 mm
-
-De maximale paneelafmetingen worden automatisch ingesteld op basis van de gekozen plaat. Panelen worden gesnapt op steenstripvoegen voor minimaal snijverlies. Het **maximale gewicht** is instelbaar voor montage-eisen.
+Verdeelt de gevels in draagsysteem-panelen. Kies een **basisplaat type** uit de catalogus. Zie ook [Panelen en paneeloptimalisatie](#panelen-en-paneeloptimalisatie).
 
 ---
 
@@ -256,8 +263,9 @@ De maximale paneelafmetingen worden automatisch ingesteld op basis van de gekoze
 
 Houten latten als drager achter de basisplaat.
 
-- **Horizontale latten**: hartafstand wordt berekend op basis van maximale interval en steenstriprijhoogtes.
+- **Horizontale latten**: hartafstand wordt berekend op basis van een instelbare **HOH-bandbreedte** (standaard 370–430 mm). De optimale hartafstand binnen deze bandbreedte wordt automatisch gekozen.
 - **Verticale latten**: gesnapt op paneelgrenzen.
+- Kies een **latartikel** uit de Mclad catalogus. Zie [Artikelkeuze lattenwerk](#artikelkeuze-lattenwerk).
 
 ---
 
@@ -276,7 +284,9 @@ Uitstekende verticale lijsten (pilasters, dagkantverlengingen).
 
 ## Strip-zones handmatig tekenen in 2D
 
-In het **2D Gevelaanzicht** kun je zones tekenen om aan te geven waar strips komen:
+In het **2D Gevelaanzicht** kun je zones tekenen om aan te geven waar strips komen. Elke tekenzone heeft een eigen configuratiegroep in het zijpaneel.
+
+### Zone aanmaken
 
 1. Schakel naar **2D Gevel**.
 2. Klik op **▭ Teken zone** (linksboven in de 2D viewer). De cursor wordt een kruisje.
@@ -284,14 +294,175 @@ In het **2D Gevelaanzicht** kun je zones tekenen om aan te geven waar strips kom
 4. Laat los — de zone verschijnt als cyaan stippelkader met label en afmetingen.
 5. Herhaal voor meerdere zones.
 
-**Zone-lijst** (linksboven):
+### Zone aanpassen
+
+- **Verplaatsen**: sleep de zone naar een andere positie (los van overige elementen).
+- **Breedte/hoogte handmatig invoeren**: gebruik de invoervelden in de zone-configuratiegroep in het zijpaneel.
+- Openingen die **achter** een tekenzone liggen worden automatisch uit die zone verwijderd.
+
+### Zone-lijst (linksboven in 2D viewer)
+
 - Klik op een zone om hem te selecteren (oranje kader).
 - Klik **✕** naast een zone om hem te verwijderen.
 - Klik **Alle zones wissen** om opnieuw te beginnen.
 
-**Gedrag:**
+### Gedrag
+
 - Zonder zones → strips over het hele gevelvlak.
 - Met zones → strips alleen binnen de getekende kaders.
+- Elke zone heeft een **eigen UI-groep** in het configuratiepaneel rechts.
+
+---
+
+## Steenstrip kleurcodering in 2D
+
+Het 2D gevelaanzicht kleurt elke steenstrip op basis van het type (de positie in het verband):
+
+| Kleur | Type | Omschrijving |
+|---|---|---|
+| **Bruin** | Kop | Volledige kop (korte zijde zichtbaar) |
+| **Blauw** | Strek | Volledige strek (= 1 volle steen) |
+| **Paars** | Driekwart | Driekwart steen |
+| **Rood** | Zaagmaat (groot) | Afwijkende maat, groter dan een kop — wordt op maat gezaagd |
+| **Fel oranje + !** | Te klein | Kleiner dan een kop — let op: controleer of deze maat acceptabel is |
+
+> **Tip:** Rode en oranje strips duiden op posities waar de gevel of opening niet opgaat in de steen-ritmiek. Overweeg het openingsmaat of de startpositie van het patroon aan te passen.
+
+---
+
+## Steenstrip artikelkeuze & catalogus
+
+In de sectie **Steenstrips artikelkeuze** kies je één steenstriptype uit de catalogus. Het gekozen artikel vult automatisch de afmetingen, dikte, voegmaten en gewicht in.
+
+### Filteren en zoeken
+
+Gebruik de filters bovenaan de artikellijst om snel te vinden wat je zoekt:
+
+- **Zoekbalk** — zoek op naam, kleur, kleuromschrijving of artikelnummer.
+- **Leverancier-filter** — filterknop per leverancier:
+  - `Wienerberger` — Handvorm Kortemark, Phaunis serie
+  - `FRONT` — WasteBasedSlips (gerecycled)
+  - `Generiek` — maatinvoer zonder vaste leverancier
+- **Formaat-filter** — `WF` (Waalformaat), `EF` (Euroformaat), `DF` (Dikformaat), `NF`, `LF`
+- **Teller** — toont hoeveel artikelen de filter oplevert.
+- **✕ Wis filter** — zet alle filters in één klik terug.
+
+### Beschikbare leveranciers en series
+
+| Leverancier | Serie | Formaten | Artikelen |
+|---|---|---|---|
+| **Wienerberger — Handvorm Kortemark** | Phaunis | WF (210×50×18 mm), EF (210×65×18 mm) | 12 kleuren per formaat |
+| **FRONT (formerly StoneCycling)** | WasteBasedSlips | WF (218×51×20 mm) | Pistachio, Radish |
+| **Eigen keuze / nader te bepalen** | Generiek | WF, DF, NF, LF | Maatinvoer, prijs n.t.b. |
+
+### Artikel selecteren
+
+- Klik op een artikel om het te selecteren (paars kader).
+- Klik nogmaals om de selectie op te heffen.
+- De afmetingen in **Steenstrip afmetingen** worden direct overschreven door het gekozen artikel.
+
+> **Tip:** De prijzen in de catalogus zijn af-fabriek, excl. BTW. Upload eigen prijzen via de prijslijst-upload (CSV) om projectspecifieke prijzen te gebruiken.
+
+---
+
+## Artikelkeuze lattenwerk
+
+In de sectie **Achterconstructie latten → Latartikel** kies je één latprofiel uit de **Mclad catalogus**.
+
+| Artikel | Brandklasse | Toepassing | Prijs |
+|---|---|---|---|
+| Mclad® V18 47×32 / 45×30 mm | D-s2,d0 | Open gevel | Zie catalogus |
+| Mclad® V18 47×50 / 45×45 mm | D-s2,d0 | Open + gesloten gevel | Zie catalogus |
+| Mclad® V18-NSG 47×50 / 45×45 mm | D-s2,d0 | Gesloten gevel | Zie catalogus |
+| Mclad® V18-NSG 47×75 / 45×70 mm | B-s1,d0 | Gesloten gevel | Zie catalogus |
+| Mclad® V18-NSG 47×75 / 45×70 mm RAL9005 | D-s2,d0 | Open + gesloten gevel | Zie catalogus |
+
+Het gekozen artikel wordt meegenomen in de meetstaat en uittrekstaat.
+
+---
+
+## Basisplaat catalogus
+
+In de sectie **Panelen → Basisplaat** kies je de paneerplaat:
+
+| Artikel | Dikte | Gewicht | Max. afmeting |
+|---|---|---|---|
+| Bluclad Proboard 10 mm | 10 mm | 11,8 kg/m² | 1250 × 3000 mm |
+| ROCKPANEL Natural Durable 8 mm | 8 mm | 8,4 kg/m² | 1250 × 3050 mm |
+| ROCKPANEL Natural Durable 10 mm | 10 mm | 10,5 kg/m² | 1250 × 3050 mm |
+| ROCKPANEL Natural Xtreme 8 mm | 8 mm | 9,6 kg/m² | 1250 × 3050 mm |
+| ROCKPANEL Natural Xtreme 10 mm | 10 mm | 12,0 kg/m² | 1250 × 3050 mm |
+
+---
+
+## Panelen en paneeloptimalisatie
+
+### Paneelindeling
+
+De applicatie verdeelt elk gevelvlak automatisch in panelen op basis van:
+
+1. **Maximale breedte** — begrensd door de gekozen basisplaat.
+2. **Maximale hoogte** — begrensd door de gekozen basisplaat.
+3. **Maximaal gewicht** — instelbaar (standaard 75 kg) voor montage-eisen.
+4. **Snap op voeglijnen** — paneelgrenzen worden gesnapt op steenstripvoegen voor minimaal snijverlies.
+5. **HOH-optimalisatie latten** — de hartafstand van horizontale latten wordt automatisch geoptimaliseerd binnen de ingestelde bandbreedte (standaard 370–430 mm) zodat paneelgrenzen zoveel mogelijk op latten vallen.
+
+### Halfsteen verspringen van paneelvoegen
+
+Activeer de optie **Panelen halfsteen verspringen** (per groep/zone) om te voorkomen dat paneelvoegen verticaal boven elkaar liggen. De paneelindeling verspringt dan per rij een halve steenlengte, waardoor de voegen minder zichtbaar zijn in het eindresultaat.
+
+### Paneelnummering
+
+Elk paneel krijgt een uniek **EPC-code** (16 karakter) die ook op de zaaglijst en werktekeningen verschijnt. Panelen worden genummerd van links-onder naar rechts-boven.
+
+### Werktekeningen per paneel
+
+De werktekening toont alle info per paneel. Als de tekenzone te klein is voor alle informatie, wordt de hoeveelheden-tabel automatisch naar de tweede pagina verplaatst.
+
+---
+
+## 3D Viewer — groepen verbergen
+
+Linksboven in de 3D viewer staat de knop **👁 Zichtbaarheid**. Hiermee kun je groepen tijdelijk verbergen, wat handig is bij:
+
+- Tegenoverliggende wanden die elkaar overlappen in het beeld.
+- Grote modellen waarbij je één gevel apart wilt bekijken.
+- Het selecteren van wanden die achter andere wanden liggen.
+
+### Gebruik
+
+1. Klik op **👁 Zichtbaarheid** — het paneel klapt open.
+2. Klik op een groepsnaam om die groep te verbergen (halftransparant weergegeven).
+3. Klik nogmaals om de groep weer zichtbaar te maken.
+4. Gebruik **Alles tonen** of **Alles verbergen** als snelknop.
+5. **Ongegroepeerd** — verberg ook de wanden die nog geen groep hebben.
+
+De knop kleurt **blauw** als er groepen verborgen zijn, zodat je altijd ziet of de weergave gefilterd is.
+
+> **Let op:** Verbergen is puur visueel en tijdelijk. Selectie en configuratie van verborgen groepen is gewoon mogelijk via de lijst links.
+
+---
+
+## Groepen beheren
+
+### Groepsnaam wijzigen
+
+- Via het **Naam** veld bovenaan het configuratiepaneel (rechts).
+- Of **dubbelklik** op de naam in de groepslijst (links) → typ de nieuwe naam → **Enter** bevestigt, **Escape** annuleert.
+
+### Groep verwijderen
+
+Klik op het 🗑-icoon rechtsboven in het configuratiepaneel.
+
+### Wand uit groep verwijderen
+
+Klik op **✕** naast de wand in de uitklapbare groepslijst links.
+
+### Groepen koppelen
+
+Na het aanmaken van een groep worden vergelijkbare groeperingen automatisch gesuggereerd. Nieuwe gekoppelde groepen krijgen automatisch unieke namen (bijv. `Gevel Z-1`, `Gevel Z-2`).
+
+Gebruik **Sync instellingen →** om alle instellingen van de brongroep door te kopiëren naar alle gekoppelde groepen.
 
 ---
 
@@ -330,6 +501,8 @@ Het tabblad **Werktekeningen** in het rechterpaneel bevat:
 | **5 — Productie** | Paneeluitslag met strips voor productie |
 | **6 — Maltekening** | MAL Links en MAL Rechts per zone |
 
+Werktekeningen worden automatisch opgemaakt zodat alle informatie zichtbaar is. Als de tekenzone te klein is, wordt de hoeveelheden-tabel naar een tweede pagina verschoven.
+
 ### Zaaglijst
 
 Het tabblad **Zaaglijst** toont alle panelen met:
@@ -354,14 +527,14 @@ Het geëxporteerde bestand bevat per wand de individuele brickslip-objecten op d
 ┌──────────────────────────────────────────────────────────────────┐
 │  TOPBALK: IFC importeren · Undo · Patroon in 3D · 3D/2D · Export │
 ├────────────┬─────────────────────────────────┬───────────────────┤
-│            │                                 │                   │
-│  LINKER-   │       3D VIEWER                 │  GROEP            │
-│  ZIJBALK   │       of                        │  CONFIGURATIE     │
-│            │       2D GEVELAANZICHT          │  (tabs:           │
-│  · Acties  │                                 │   Instellingen    │
+│            │  [👁 Zichtbaarheid] (links)      │                   │
+│  LINKER-   │                                 │  GROEP            │
+│  ZIJBALK   │       3D VIEWER                 │  CONFIGURATIE     │
+│            │       of                        │  (tabs:           │
+│  · Acties  │       2D GEVELAANZICHT          │   Instellingen    │
 │  · Groepen │                                 │   Werktekeningen  │
-│  · Zonder  │                                 │   Zaaglijst)      │
-│    groep   │                                 │                   │
+│  · Zonder  │       [⬚ Box] [Kompas]          │   Zaaglijst)      │
+│    groep   │       (rechts)                  │                   │
 └────────────┴─────────────────────────────────┴───────────────────┘
 ```
 
@@ -374,14 +547,8 @@ Het geëxporteerde bestand bevat per wand de individuele brickslip-objecten op d
 | 🧭 Auto-groeperen windrichting | Groepen per N/O/Z/W gevelvlak |
 | + Nieuwe groep van selectie | Groep van geselecteerde elementen |
 | Voeg toe aan [groep] | Element toevoegen aan bestaande groep |
-| Groepen | Lijst van alle aangemaakte groepen |
+| Groepen | Lijst van alle aangemaakte groepen (dubbelklik = naam wijzigen) |
 | Zonder groep | Elementen die nog niet ingedeeld zijn |
-
----
-
-## UI-groepen: Groep configuratie
-
-Zie [Groep configureren](#groep-configureren-beide-scenarios) hierboven voor alle velden.
 
 ---
 
@@ -395,7 +562,10 @@ Zie [Groep configureren](#groep-configureren-beide-scenarios) hierboven voor all
 | Instellingen kopiëren naar gekoppelde groepen | **Sync instellingen →** |
 | Wand uit groep verwijderen | Klik **✕** naast de wand in de groepslijst |
 | Groep verwijderen | Klik 🗑 in het configuratiepaneel |
+| Groepsnaam wijzigen | **Dubbelklik** op naam in groepslijst, of via Naam-veld in configuratiepaneel |
+| Groep verbergen in 3D | **👁 Zichtbaarheid** knop linksboven in 3D viewer |
 | Alle ongegroepeeerden selecteren | **Selecteer alle** in de sectie "Zonder groep" |
 | Patroon tijdelijk verbergen | Vink **Patroon in 3D** uit in de topbalk |
+| Steenstrip catalogus filteren | Leverancier- en formaatknoppen + zoekbalk in "Steenstrips artikelkeuze" |
+| Paneelvoegen verspringen | Optie **Panelen halfsteen verspringen** per groep/zone activeren |
 | Bestand onthouden | Applicatie slaat het IFC-bestand automatisch op (IndexedDB); bij volgende sessie kun je direct opnieuw laden |
-| Tooltip bekijken | Zweef over het **ⓘ** icoontje naast elk veld |
