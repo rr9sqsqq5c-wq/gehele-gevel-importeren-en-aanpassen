@@ -1352,10 +1352,20 @@ export default function App() {
   const _hydratedRef = useRef(false);
   const _saveTimerRef = useRef(null);
   const newGid = useCallback(() => `G${_gidRef.current++}`, []);
-  const syncGidRef = useCallback((loadedGroups) => {
+  const syncGidRef = useCallback((loadedGroups, loadedSettingsMap) => {
+    let maxN = _gidRef.current - 1;
     for (const g of loadedGroups) {
       const n = parseInt(String(g.id).replace(/^G/, ''), 10);
-      if (!isNaN(n) && n >= _gidRef.current) _gidRef.current = n + 1;
+      if (!isNaN(n) && n > maxN) maxN = n;
+    }
+    _gidRef.current = maxN + 1;
+    if (loadedSettingsMap) {
+      const usedColors = new Set(Object.values(loadedSettingsMap).map((s) => s?.color).filter(Boolean));
+      let idx = 0;
+      while (idx < GROUP_COLORS.length * 2 && usedColors.has(GROUP_COLORS[idx % GROUP_COLORS.length])) idx++;
+      _colorIdxRef.current = idx;
+    } else {
+      _colorIdxRef.current = loadedGroups.length;
     }
   }, []);
   const nextColor = useCallback(() => GROUP_COLORS[_colorIdxRef.current++ % GROUP_COLORS.length], []);
@@ -1858,10 +1868,11 @@ export default function App() {
     loadProjectState().then((state) => {
       console.log('[startup] loadProjectState resultaat:', state ? { groupsLength: state.groups?.length, hasSettingsMap: !!state.settingsMap, savedAt: state.savedAt } : null);
       if (state && Array.isArray(state.groups) && state.groups.length > 0) {
+        const sm = state.groupSettings ?? state.settingsMap ?? {};
         setGroups(state.groups);
         setGroupLinks(state.groupLinks ?? {});
-        setSettingsMap(state.groupSettings ?? state.settingsMap ?? {});
-        syncGidRef(state.groups);
+        setSettingsMap(sm);
+        syncGidRef(state.groups, sm);
       }
       _hydratedRef.current = true;
     }).catch((err) => {
@@ -2069,13 +2080,14 @@ export default function App() {
           ...g,
           wallIds: Array.isArray(g.wallIds) ? g.wallIds : [],
         }));
+        const loadedSm = typeof data.groupSettings === 'object' && data.groupSettings !== null ? data.groupSettings : {};
         setGroups(loadedGroups);
         setGroupLinks(typeof data.groupLinks === 'object' && data.groupLinks !== null ? data.groupLinks : {});
-        setSettingsMap(typeof data.groupSettings === 'object' && data.groupSettings !== null ? data.groupSettings : {});
+        setSettingsMap(loadedSm);
         setGroupsHistory([]);
         setActiveGroupId(loadedGroups[0]?.id ?? null);
         setSimilarSuggestions(null);
-        syncGidRef(loadedGroups);
+        syncGidRef(loadedGroups, loadedSm);
         console.log('[loadProject] Geladen:', loadedGroups.length, 'groepen');
         if (data.ifcFileName && data.ifcFileName !== ifcFileName) {
           alert(`Project geladen (${loadedGroups.length} groepen).\n\nDit project hoort bij IFC-bestand: "${data.ifcFileName}".\nZorg dat dit bestand is geladen om de elementen correct te zien.`);
