@@ -1964,7 +1964,6 @@ export default function App() {
     const suggestions = findSimilarGroups(refWalls, allWalls, updatedGroups, adjacencies);
     if (suggestions.length > 0) {
       const linkId = `L${gid}`;
-      setGroupLinks((prev) => ({ ...prev, [gid]: linkId }));
       setSimilarSuggestions({ sourceGroupId: gid, sourceColor: color, linkId, groups: suggestions });
     }
   }
@@ -2715,6 +2714,7 @@ export default function App() {
                   setGroups((prev) => [...prev, ...newGroupEntries.map((e) => e.group)]);
                   setGroupLinks((prev) => {
                     const next = { ...prev };
+                    next[sourceGroupId] = linkId;
                     for (const { gid } of newGroupEntries) next[gid] = linkId;
                     return next;
                   });
