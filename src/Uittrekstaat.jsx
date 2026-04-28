@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions } from './lib/panelization.js';
 import { openingXRangesAtY } from './lib/geometry.js';
@@ -473,25 +473,74 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
                 </>}
 
                 {to.steenstripsArtikelen?.length > 0 && <>
-                  <SectionHeader title="Steenstrips artikelkeuze" />
+                  <SectionHeader title="Steenstrips — materiaalkosten" />
                   {to.steenstripsArtikelen.map((artId) => {
                     const art = STEENSTRIP_CATALOG.find((a) => a.id === artId);
                     if (!art) return null;
                     const fColors = { WF: '#92400e', DF: '#065f46', NF: '#1e3a8a', Klinker: '#4c1d95', LF: '#9a3412' };
                     const fColor = fColors[art.formatCode] ?? '#64748b';
+                    const netM2 = to.netFacadeAreaMM2 / 1e6;
+                    const berekendStuks = Math.ceil(netM2 * (art.stuksPerM2 ?? 80));
+                    const totaalExBtw = art.prijsPerStuk != null ? berekendStuks * art.prijsPerStuk : null;
+                    const totaalInclBtw = totaalExBtw != null ? totaalExBtw * 1.21 : null;
                     return (
-                      <tr key={artId}>
-                        <TD>
-                          <span style={{ fontWeight: 600 }}>{art.naam}</span>
-                          <span style={{ color: '#64748b', fontSize: 10, marginLeft: 6 }}>{art.steenL}×{art.steenH}×{art.dikte} mm</span>
-                          <span style={{ background: fColor, color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600, marginLeft: 6 }}>{art.formatCode}</span>
-                          <span style={{ color: '#64748b', fontSize: 10, marginLeft: 6 }}>voeg {art.lint}/{art.stoot} mm · {art.brickWeightM2} kg/m²</span>
-                        </TD>
-                        {art.prijsM2 != null
-                          ? <><TD right mono>€ {art.prijsM2.toFixed(2)}</TD><TD right>per m²</TD></>
-                          : <><TD right mono style={{ color: '#94a3b8' }}>—</TD><TD right>prijs n.b.</TD></>
-                        }
-                      </tr>
+                      <React.Fragment key={artId}>
+                        <tr>
+                          <TD span={3}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: 700, fontSize: 11 }}>{art.naam}</span>
+                              <span style={{ background: fColor, color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600 }}>{art.formatCode}</span>
+                              {art.kleur && <span style={{ fontSize: 10, color: '#475569' }}>Kleur: {art.kleur}</span>}
+                              {art.behandeling && <span style={{ fontSize: 10, color: '#475569' }}>{art.behandeling}</span>}
+                            </div>
+                            <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+                              {art.fabrikant} · {art.steenL}×{art.steenH}×{art.dikte} mm · voeg {art.lint}/{art.stoot} mm · {art.brickWeightM2} kg/m²
+                            </div>
+                          </TD>
+                        </tr>
+                        <tr>
+                          <TD>Netto geveloppervlak</TD>
+                          <TD right mono>{netM2.toFixed(2)}</TD>
+                          <TD right>m²</TD>
+                        </tr>
+                        <tr>
+                          <TD>Stuks per m²</TD>
+                          <TD right mono>{art.stuksPerM2 ?? '—'}</TD>
+                          <TD right>st/m²</TD>
+                        </tr>
+                        <tr>
+                          <TD>Berekend aantal strips</TD>
+                          <TD right mono bold>{berekendStuks.toLocaleString('nl-NL')}</TD>
+                          <TD right>stuks</TD>
+                        </tr>
+                        {art.prijsPerStuk != null && <>
+                          <tr>
+                            <TD>Prijs per stuk</TD>
+                            <TD right mono>€ {art.prijsPerStuk.toFixed(3)}</TD>
+                            <TD right>per st</TD>
+                          </tr>
+                          <tr>
+                            <TD>Eenheidsprijs per m²</TD>
+                            <TD right mono>€ {art.prijsM2.toFixed(2)}</TD>
+                            <TD right>per m²</TD>
+                          </tr>
+                          <tr style={{ background: '#f8fafc' }}>
+                            <TD><span style={{ fontWeight: 600 }}>Totaal materiaal ex. BTW</span></TD>
+                            <TD right mono bold>€ {totaalExBtw.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TD>
+                            <TD right>excl. 21%</TD>
+                          </tr>
+                          <tr style={{ background: '#eff6ff' }}>
+                            <TD><span style={{ fontWeight: 700, color: '#1e3a5f' }}>Totaal materiaal incl. BTW (21%)</span></TD>
+                            <TD right mono bold style={{ color: '#1e3a5f' }}>€ {totaalInclBtw.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TD>
+                            <TD right style={{ color: '#1e3a5f' }}>incl. BTW</TD>
+                          </tr>
+                        </>}
+                        {art.prijsPerStuk == null && (
+                          <tr>
+                            <TD span={3} color="#94a3b8">Prijs voor dit artikel is nader te bepalen — voer prijs in via artikelkeuze.</TD>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </>}

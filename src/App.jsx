@@ -381,11 +381,13 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
             <div style={{ background: '#fdf4ff', border: '1px solid #d8b4fe', borderRadius: 4, padding: '5px 7px', marginBottom: 6, fontSize: 9.5 }}>
               <div style={{ fontSize: 9, color: '#7c3aed', marginBottom: 2 }}>Afmetingen uit geselecteerd artikel:</div>
               <div style={{ fontWeight: 700, fontSize: 10.5, color: '#1e293b' }}>{selArt.naam}</div>
+              <div style={{ fontSize: 9, color: '#475569', fontStyle: 'italic', marginTop: 1 }}>{selArt.fabrikant}</div>
               <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ background: fColors[selArt.formatCode] ?? '#64748b', color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600 }}>{selArt.formatCode}</span>
                 <span style={{ color: '#64748b', fontSize: 9 }}>{selArt.steenL}×{selArt.steenH}×{selArt.dikte} mm</span>
                 <span style={{ color: '#64748b', fontSize: 9 }}>voeg {selArt.lint}/{selArt.stoot} mm</span>
-                <span style={{ color: '#64748b', fontSize: 9 }}>{selArt.brickWeightM2} kg/m²</span>
+                <span style={{ color: '#64748b', fontSize: 9 }}>{selArt.stuksPerM2} st/m²</span>
+                {selArt.prijsPerStuk != null && <span style={{ color: '#7c3aed', fontWeight: 600, fontSize: 9 }}>€ {selArt.prijsPerStuk.toFixed(3)}/st · € {selArt.prijsM2.toFixed(2)}/m²</span>}
               </div>
               <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 3 }}>Selecteer een ander artikel in 'Steenstrips artikelkeuze' om te wijzigen.</div>
             </div>
@@ -1179,15 +1181,18 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       style={{ marginTop: 2, flexShrink: 0, accentColor: '#7c3aed' }} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 10.5, color: '#1e293b', lineHeight: 1.3 }}>{art.naam}</div>
-                      <div style={{ color: '#64748b', fontSize: 9.5, marginTop: 1 }}>{art.omschrijving}</div>
+                      <div style={{ color: '#475569', fontSize: 9, marginTop: 1, fontStyle: 'italic' }}>{art.fabrikant}</div>
+                      {art.behandeling && <div style={{ color: '#64748b', fontSize: 9, marginTop: 1 }}>{art.behandeling}{art.kleur ? ` · ${art.kleur}` : ''}</div>}
                       <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap', alignItems: 'center' }}>
                         <span style={{ background: fColor, color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600 }}>{art.formatCode}</span>
                         <span style={{ color: '#64748b', fontSize: 9 }}>{art.steenL}×{art.steenH}×{art.dikte} mm</span>
-                        <span style={{ color: '#64748b', fontSize: 9 }}>voeg: {art.lint}/{art.stoot} mm</span>
+                        <span style={{ color: '#64748b', fontSize: 9 }}>voeg {art.lint}/{art.stoot} mm</span>
+                        <span style={{ color: '#64748b', fontSize: 9 }}>{art.stuksPerM2} st/m²</span>
                         <span style={{ color: '#64748b', fontSize: 9 }}>{art.brickWeightM2} kg/m²</span>
-                        {art.prijsM2 != null && (
-                          <span style={{ marginLeft: 'auto', color: '#0f172a', fontWeight: 600, fontSize: 9.5 }}>€ {art.prijsM2.toFixed(2)}/m²</span>
-                        )}
+                        {art.prijsPerStuk != null
+                          ? <span style={{ marginLeft: 'auto', color: '#0f172a', fontWeight: 600, fontSize: 9.5 }}>€ {art.prijsPerStuk.toFixed(3)}/st · € {art.prijsM2.toFixed(2)}/m²</span>
+                          : <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: 9 }}>prijs n.t.b.</span>
+                        }
                       </div>
                     </div>
                   </label>
