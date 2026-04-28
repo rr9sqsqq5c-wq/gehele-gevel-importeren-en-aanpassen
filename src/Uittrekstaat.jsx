@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions } from './lib/panelization.js';
 import { openingXRangesAtY } from './lib/geometry.js';
-import { BATTEN_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
+import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
 
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 
@@ -172,15 +172,20 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
     }
   }
 
+  const totalLattenLengthMM = Object.entries(lattenSummary).reduce((sum, [len, cnt]) => sum + Number(len) * cnt, 0);
+
   return {
     groupId: group.id, name, color,
     groupWidth, groupHeight,
     facadeAreaMM2, openingsAreaMM2, netFacadeAreaMM2, penantAreaMM2, hoekprofielLengthMM, uSectiesCount, vertikaleLattenLengthMM,
     stripCount, stripAreaMM2,
     panelGroups,
+    panelAreaMM2: Object.values(panelGroups).reduce((sum, pg) => sum + pg.areaMM2, 0),
     lattenSummary,
+    totalLattenLengthMM,
     lattenArtikelen: s.lattenArtikelen ?? [],
     steenstripsArtikelen: s.steenstripsArtikelen ?? [],
+    basisplaatId: s.panelen?.basisplaatId ?? null,
     zetWerkAreaMM2,
     mat,
     openingsCount: groupOpenings.length,
@@ -329,6 +334,69 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
       }
     }
     return t;
+  }, [takeoffs]);
+
+  const bestellijst = useMemo(() => {
+    const strips = {};
+    const basisplaten = {};
+    const latten = {};
+
+    for (const to of takeoffs) {
+      const netM2 = to.netFacadeAreaMM2 / 1e6;
+
+      for (const artId of to.steenstripsArtikelen ?? []) {
+        if (!strips[artId]) strips[artId] = { netM2: 0, stuks: 0, groepen: [] };
+        strips[artId].netM2 += netM2;
+        strips[artId].groepen.push(to.name);
+      }
+
+      if (to.basisplaatId && to.panelAreaMM2 > 0) {
+        if (!basisplaten[to.basisplaatId]) basisplaten[to.basisplaatId] = { panelAreaM2: 0, groepen: [] };
+        basisplaten[to.basisplaatId].panelAreaM2 += to.panelAreaMM2 / 1e6;
+        basisplaten[to.basisplaatId].groepen.push(to.name);
+      }
+
+      if (to.totalLattenLengthMM > 0) {
+        for (const artId of to.lattenArtikelen ?? []) {
+          if (!latten[artId]) latten[artId] = { lengthMM: 0, groepen: [] };
+          latten[artId].lengthMM += to.totalLattenLengthMM;
+          latten[artId].groepen.push(to.name);
+        }
+        if ((to.lattenArtikelen ?? []).length === 0) {
+          const artId = '__onbekend__';
+          if (!latten[artId]) latten[artId] = { lengthMM: 0, groepen: [] };
+          latten[artId].lengthMM += to.totalLattenLengthMM;
+          latten[artId].groepen.push(to.name);
+        }
+      }
+    }
+
+    for (const artId of Object.keys(strips)) {
+      const art = STEENSTRIP_CATALOG.find((a) => a.id === artId);
+      const netM2 = strips[artId].netM2;
+      const stuks = art ? Math.ceil(netM2 * (art.stuksPerM2 ?? 80)) : null;
+      const pallets = art?.aantalPerPallet && stuks ? Math.ceil(stuks / art.aantalPerPallet) : null;
+      const stuksOpPallet = pallets && art?.aantalPerPallet ? pallets * art.aantalPerPallet : stuks;
+      strips[artId] = { ...strips[artId], art, netM2, stuks, pallets, stuksOpPallet };
+    }
+
+    for (const id of Object.keys(basisplaten)) {
+      const plaat = BASISPLAAT_CATALOG.find((p) => p.id === id);
+      if (plaat) {
+        const standaardLengte = plaat.plaatLengtes?.[0] ?? 3000;
+        const plaatOppM2 = (plaat.plaatBreedte * standaardLengte) / 1e6;
+        const aantalPlaten = plaatOppM2 > 0 ? Math.ceil(basisplaten[id].panelAreaM2 / plaatOppM2) : null;
+        basisplaten[id] = { ...basisplaten[id], plaat, plaatOppM2, aantalPlaten };
+      }
+    }
+
+    for (const artId of Object.keys(latten)) {
+      if (artId === '__onbekend__') { latten[artId] = { ...latten[artId], art: null }; continue; }
+      const art = BATTEN_CATALOG.find((a) => a.id === artId);
+      latten[artId] = { ...latten[artId], art };
+    }
+
+    return { strips, basisplaten, latten };
   }, [takeoffs]);
 
   function printPage() {
@@ -626,6 +694,125 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
             </table>
           );
         })}
+
+        {(() => {
+          const hasAny = Object.keys(bestellijst.strips).length > 0 || Object.keys(bestellijst.basisplaten).length > 0 || Object.keys(bestellijst.latten).length > 0;
+          if (!hasAny) return null;
+          const fColors = { WF: '#92400e', DF: '#065f46', NF: '#1e3a8a', Klinker: '#4c1d95', LF: '#9a3412' };
+          return (
+            <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderRadius: 6, overflow: 'hidden', marginBottom: 24 }}>
+              <thead>
+                <tr style={{ background: '#064e3b' }}>
+                  <th colSpan={99} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 13, fontWeight: 700, color: '#f0fdf4' }}>BESTELLIJST TOTAAL — alle groepen</th>
+                </tr>
+                <tr style={{ background: '#f1f5f9' }}>
+                  <TH>Omschrijving</TH>
+                  <TH right>Waarde</TH>
+                  <TH right>Eenheid</TH>
+                </tr>
+              </thead>
+              <tbody>
+
+                {Object.keys(bestellijst.strips).length > 0 && <>
+                  <SectionHeader title="Steenstrips" />
+                  {Object.entries(bestellijst.strips).map(([artId, entry]) => {
+                    const { art, netM2, stuks, pallets, stuksOpPallet } = entry;
+                    if (!art) return null;
+                    const fColor = fColors[art.formatCode] ?? '#64748b';
+                    const prijsExBtw = art.prijsPerStuk != null && stuksOpPallet != null ? stuksOpPallet * art.prijsPerStuk : null;
+                    const prijsInclBtw = prijsExBtw != null ? prijsExBtw * 1.21 : null;
+                    return (
+                      <React.Fragment key={artId}>
+                        <tr>
+                          <TD span={3}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: 700, fontSize: 11 }}>{art.naam}</span>
+                              <span style={{ background: fColor, color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600 }}>{art.formatCode}</span>
+                              {art.kleur && <span style={{ fontSize: 10, color: '#475569' }}>Kleur: {art.kleur}</span>}
+                              {art.behandeling && <span style={{ fontSize: 10, color: '#475569' }}>{art.behandeling}</span>}
+                            </div>
+                            <div style={{ fontSize: 10, color: '#64748b', marginTop: 1 }}>
+                              {art.fabrikant}{art.serie ? ` — ${art.serie}` : ''}
+                              {art.artikelnummer && <span style={{ color: '#94a3b8', marginLeft: 4 }}>#{art.artikelnummer}</span>}
+                              <span style={{ color: '#94a3b8', marginLeft: 8 }}>Groepen: {entry.groepen.join(', ')}</span>
+                            </div>
+                          </TD>
+                        </tr>
+                        <tr><TD>Totaal netto geveloppervlak</TD><TD right mono>{netM2.toFixed(2)}</TD><TD right>m²</TD></tr>
+                        <tr><TD>Berekend aantal strips (incl. uitval)</TD><TD right mono bold>{stuks?.toLocaleString('nl-NL') ?? '—'}</TD><TD right>stuks</TD></tr>
+                        {pallets != null && <>
+                          <tr><TD>Benodigd pallets ({art.aantalPerPallet?.toLocaleString('nl-NL')} st/pallet)</TD><TD right mono bold>{pallets}</TD><TD right>pallets</TD></tr>
+                          <tr><TD>Totaal bestellen (volle pallets)</TD><TD right mono>{stuksOpPallet?.toLocaleString('nl-NL')}</TD><TD right>stuks</TD></tr>
+                        </>}
+                        {prijsExBtw != null && <>
+                          <tr style={{ background: '#f8fafc' }}><TD><span style={{ fontWeight: 600 }}>Totaal ex. BTW</span></TD><TD right mono bold>€ {prijsExBtw.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TD><TD right>excl. BTW</TD></tr>
+                          <tr style={{ background: '#f0fdf4' }}><TD><span style={{ fontWeight: 700, color: '#064e3b' }}>Totaal incl. BTW (21%)</span></TD><TD right mono bold style={{ color: '#064e3b' }}>€ {prijsInclBtw.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TD><TD right style={{ color: '#064e3b' }}>incl. BTW</TD></tr>
+                        </>}
+                        {art.prijsPerStuk == null && <tr><TD span={3} color="#94a3b8">Prijs nader te bepalen.</TD></tr>}
+                      </React.Fragment>
+                    );
+                  })}
+                </>}
+
+                {Object.keys(bestellijst.basisplaten).length > 0 && <>
+                  <SectionHeader title="Basisplaten" />
+                  {Object.entries(bestellijst.basisplaten).map(([id, entry]) => {
+                    const { plaat, panelAreaM2, plaatOppM2, aantalPlaten } = entry;
+                    if (!plaat) return null;
+                    return (
+                      <React.Fragment key={id}>
+                        <tr>
+                          <TD span={3}>
+                            <div style={{ fontWeight: 700, fontSize: 11 }}>{plaat.naam}</div>
+                            <div style={{ fontSize: 10, color: '#64748b', marginTop: 1 }}>
+                              {plaat.fabrikant} · {plaat.dikteMM} mm · {plaat.gewichtM2} kg/m²
+                              <span style={{ color: '#94a3b8', marginLeft: 8 }}>Groepen: {entry.groepen.join(', ')}</span>
+                            </div>
+                          </TD>
+                        </tr>
+                        <tr><TD>Totaal paneeloppervlak</TD><TD right mono>{panelAreaM2.toFixed(2)}</TD><TD right>m²</TD></tr>
+                        <tr><TD>Standaardplaat {plaat.plaatBreedte}×{plaat.plaatLengtes?.[0] ?? '?'} mm</TD><TD right mono>{plaatOppM2.toFixed(2)}</TD><TD right>m²/plaat</TD></tr>
+                        {aantalPlaten != null && <tr><TD><span style={{ fontWeight: 600 }}>Benodigd aantal platen (afgerond omhoog)</span></TD><TD right mono bold>{aantalPlaten}</TD><TD right>stuks</TD></tr>}
+                      </React.Fragment>
+                    );
+                  })}
+                </>}
+
+                {Object.keys(bestellijst.latten).length > 0 && <>
+                  <SectionHeader title="Houten latten" />
+                  {Object.entries(bestellijst.latten).map(([artId, entry]) => {
+                    const { art, lengthMM } = entry;
+                    const lengthM = lengthMM / 1000;
+                    const prijsExBtw = art?.prijsM1 != null ? lengthM * art.prijsM1 : null;
+                    const prijsInclBtw = prijsExBtw != null ? prijsExBtw * 1.21 : null;
+                    return (
+                      <React.Fragment key={artId}>
+                        <tr>
+                          <TD span={3}>
+                            {art ? <>
+                              <div style={{ fontWeight: 700, fontSize: 11 }}>{art.naam}</div>
+                              <div style={{ fontSize: 10, color: '#64748b', marginTop: 1 }}>
+                                {art.afmetingen} · brandklasse {art.brandklasse}
+                                <span style={{ color: '#94a3b8', marginLeft: 8 }}>Groepen: {entry.groepen.join(', ')}</span>
+                              </div>
+                            </> : <div style={{ fontWeight: 600, fontSize: 11, color: '#475569' }}>Latten — artikel niet geselecteerd</div>}
+                          </TD>
+                        </tr>
+                        <tr><TD>Totale latlengte</TD><TD right mono bold>{lengthM.toFixed(1)}</TD><TD right>m¹</TD></tr>
+                        {prijsExBtw != null && <>
+                          <tr style={{ background: '#f8fafc' }}><TD><span style={{ fontWeight: 600 }}>Totaal ex. BTW</span></TD><TD right mono bold>€ {prijsExBtw.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TD><TD right>excl. BTW</TD></tr>
+                          <tr style={{ background: '#f0fdf4' }}><TD><span style={{ fontWeight: 700, color: '#064e3b' }}>Totaal incl. BTW (21%)</span></TD><TD right mono bold style={{ color: '#064e3b' }}>€ {prijsInclBtw.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TD><TD right style={{ color: '#064e3b' }}>incl. BTW</TD></tr>
+                        </>}
+                        {art && art.prijsM1 == null && <tr><TD span={3} color="#94a3b8">Prijs nader te bepalen.</TD></tr>}
+                      </React.Fragment>
+                    );
+                  })}
+                </>}
+
+              </tbody>
+            </table>
+          );
+        })()}
 
         {(() => {
           const allOpenings = takeoffs.flatMap((to) => to.groupOpenings ?? []);

@@ -3,6 +3,7 @@
 ## [Niet gereleased] — 28-04-2026
 
 ### Toegevoegd
+- **Bestellijst totaal (Uittrekstaat)**: nieuwe sectie onderaan de uittrekstaat met een geaggregeerde bestellijst over alle groepen heen. Per materiaalsoort (steenstrips, basisplaten, latten) worden totalen opgeteld: totaal m², stuks, pallets, totaalprijs excl. en incl. BTW. Vermeldt bij elke post in welke groepen het materiaal is gebruikt.
 - **Steenstrip artikelkeuze — leverancier-filter**: zoekbalk, leverancier-knoppen (Wienerberger / FRONT / Generiek) en formaat-knoppen (WF/EF/DF/NF/LF) boven de cataloguslijst. Teller toont aantal treffers. "✕ Wis filter" reset alles.
 - **Groepsnaam inline bewerken**: dubbelklik op een groepsnaam in de groepslijst (linkerzijbalk) opent een invoerveld. Bevestig met Enter, annuleer met Escape.
 - **3D viewer — groepen verbergen**: knop "👁 Zichtbaarheid" linksboven in de 3D viewer. Per groep in- of uitschakelbaar. Verbergt wanden, steenstrips, openingen en penanten van de verborgen groep. Knoppen "Alles tonen" / "Alles verbergen". Knop kleurt blauw als er iets verborgen is.
