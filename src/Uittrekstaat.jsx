@@ -494,8 +494,14 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
                               {art.behandeling && <span style={{ fontSize: 10, color: '#475569' }}>{art.behandeling}</span>}
                             </div>
                             <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
-                              {art.fabrikant} · {art.steenL}×{art.steenH}×{art.dikte} mm · voeg {art.lint}/{art.stoot} mm · {art.brickWeightM2} kg/m²
+                              {art.fabrikant}{art.serie ? ` — ${art.serie}` : ''}
+                              {art.artikelnummer && <span style={{ color: '#94a3b8', marginLeft: 4 }}>#{art.artikelnummer}</span>}
                             </div>
+                            <div style={{ fontSize: 10, color: '#64748b', marginTop: 1 }}>
+                              {art.steenL}×{art.steenH}×{art.dikte} mm · voeg {art.lint}/{art.stoot} mm · {art.brickWeightM2} kg/m²
+                              {art.kleurOmschrijving && <span> · {art.kleurOmschrijving}</span>}
+                            </div>
+                            {art.prijsEenheid && <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 1, fontStyle: 'italic' }}>{art.prijsEenheid}{art.prijslijstDatum ? ` (prijslijst ${art.prijslijstDatum})` : ''}</div>}
                           </TD>
                         </tr>
                         <tr>
@@ -513,28 +519,80 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
                           <TD right mono bold>{berekendStuks.toLocaleString('nl-NL')}</TD>
                           <TD right>stuks</TD>
                         </tr>
-                        {art.prijsPerStuk != null && <>
-                          <tr>
-                            <TD>Prijs per stuk</TD>
-                            <TD right mono>€ {art.prijsPerStuk.toFixed(3)}</TD>
-                            <TD right>per st</TD>
-                          </tr>
-                          <tr>
-                            <TD>Eenheidsprijs per m²</TD>
-                            <TD right mono>€ {art.prijsM2.toFixed(2)}</TD>
-                            <TD right>per m²</TD>
-                          </tr>
-                          <tr style={{ background: '#f8fafc' }}>
-                            <TD><span style={{ fontWeight: 600 }}>Totaal materiaal ex. BTW</span></TD>
-                            <TD right mono bold>€ {totaalExBtw.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TD>
-                            <TD right>excl. 21%</TD>
-                          </tr>
-                          <tr style={{ background: '#eff6ff' }}>
-                            <TD><span style={{ fontWeight: 700, color: '#1e3a5f' }}>Totaal materiaal incl. BTW (21%)</span></TD>
-                            <TD right mono bold style={{ color: '#1e3a5f' }}>€ {totaalInclBtw.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TD>
-                            <TD right style={{ color: '#1e3a5f' }}>incl. BTW</TD>
-                          </tr>
-                        </>}
+                        {art.aantalPerPallet && (() => {
+                          const vollePallets = Math.ceil(berekendStuks / art.aantalPerPallet);
+                          const stuksOpPallet = vollePallets * art.aantalPerPallet;
+                          const palletM2 = art.palletM2 ?? (art.aantalPerPallet / (art.stuksPerM2 ?? 76));
+                          const totaalPalletM2 = vollePallets * palletM2;
+                          return (
+                            <>
+                              <tr>
+                                <TD>Stuks per pallet</TD>
+                                <TD right mono>{art.aantalPerPallet.toLocaleString('nl-NL')}</TD>
+                                <TD right>st/pallet</TD>
+                              </tr>
+                              <tr>
+                                <TD>Benodigd pallets (afgerond omhoog)</TD>
+                                <TD right mono bold>{vollePallets}</TD>
+                                <TD right>pallets</TD>
+                              </tr>
+                              <tr>
+                                <TD>Totaal bestellen (volle pallets)</TD>
+                                <TD right mono>{stuksOpPallet.toLocaleString('nl-NL')}</TD>
+                                <TD right>stuks</TD>
+                              </tr>
+                              {palletM2 > 0 && (
+                                <tr>
+                                  <TD>Totaal oppervlak (volle pallets)</TD>
+                                  <TD right mono>{totaalPalletM2.toFixed(1)}</TD>
+                                  <TD right>m²</TD>
+                                </tr>
+                              )}
+                            </>
+                          );
+                        })()}
+                        {art.prijsPerStuk != null && (() => {
+                          const vollePallets = art.aantalPerPallet ? Math.ceil(berekendStuks / art.aantalPerPallet) : null;
+                          const stuksOpPallet = vollePallets ? vollePallets * art.aantalPerPallet : berekendStuks;
+                          const totaalBestelling = stuksOpPallet * art.prijsPerStuk;
+                          const totaalBestellingInclBtw = totaalBestelling * 1.21;
+                          return (
+                            <>
+                              <tr>
+                                <TD>Prijs per stuk</TD>
+                                <TD right mono>€ {art.prijsPerStuk.toFixed(3)}</TD>
+                                <TD right>per st</TD>
+                              </tr>
+                              <tr>
+                                <TD>Eenheidsprijs per m²</TD>
+                                <TD right mono>€ {art.prijsM2.toFixed(2)}</TD>
+                                <TD right>per m²</TD>
+                              </tr>
+                              {vollePallets && art.prijsPerDuizend && (
+                                <tr>
+                                  <TD>Prijs per 1.000 stuks incl. pallet</TD>
+                                  <TD right mono>€ {art.prijsPerDuizend.toFixed(2)}</TD>
+                                  <TD right>per 1000 st</TD>
+                                </tr>
+                              )}
+                              <tr style={{ background: '#f8fafc' }}>
+                                <TD><span style={{ fontWeight: 600 }}>Totaal bestelling ({vollePallets ? `${vollePallets} pallet${vollePallets > 1 ? 's' : ''}` : `${stuksOpPallet} st`}) ex. BTW</span></TD>
+                                <TD right mono bold>€ {totaalBestelling.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TD>
+                                <TD right>excl. BTW</TD>
+                              </tr>
+                              <tr style={{ background: '#eff6ff' }}>
+                                <TD><span style={{ fontWeight: 700, color: '#1e3a5f' }}>Totaal bestelling incl. BTW (21%)</span></TD>
+                                <TD right mono bold style={{ color: '#1e3a5f' }}>€ {totaalBestellingInclBtw.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TD>
+                                <TD right style={{ color: '#1e3a5f' }}>incl. BTW</TD>
+                              </tr>
+                              {art.pallettoeslag && (
+                                <tr>
+                                  <TD span={3} color="#92400e"><span style={{ fontSize: 9 }}>⚠ Levering per volle pallet ({art.palletM2 ?? 25} m²). Deelpallet toeslag: € {art.pallettoeslag}. Prijzen {art.prijsEenheid ?? 'excl. BTW'}.</span></TD>
+                                </tr>
+                              )}
+                            </>
+                          );
+                        })()}
                         {art.prijsPerStuk == null && (
                           <tr>
                             <TD span={3} color="#94a3b8">Prijs voor dit artikel is nader te bepalen — voer prijs in via artikelkeuze.</TD>

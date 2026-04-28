@@ -145,7 +145,36 @@ export const BATTEN_CATALOG = [
   },
 ];
 
+const _WB_WF = { fabrikant: 'Wienerberger — Handvorm Kortemark', serie: 'Phaunis', formatCode: 'WF', behandeling: 'Handvorm', steenL: 210, steenH: 50, dikte: 18, lint: 12, stoot: 10, brickWeightM2: 35, stuksPerM2: 76, aantalPerPallet: 1900, palletM2: 25, pallettoeslag: 120, prijslijstDatum: '01-05-2026', prijsEenheid: 'per 1000 st incl. pallet, af fabriek, excl. BTW' };
+const _WB_EF = { fabrikant: 'Wienerberger — Handvorm Kortemark', serie: 'Phaunis', formatCode: 'EF', behandeling: 'Handvorm', steenL: 210, steenH: 65, dikte: 18, lint: 12, stoot: 10, brickWeightM2: 40, stuksPerM2: 60, aantalPerPallet: 1520, palletM2: 25, pallettoeslag: 120, prijslijstDatum: '01-05-2026', prijsEenheid: 'per 1000 st incl. pallet, af fabriek, excl. BTW' };
+
 export const STEENSTRIP_CATALOG = [
+  { ..._WB_WF, id: 'wb-phaunis-eifel-brown-wf', naam: 'Eifel Brown — Handvorm WF 18 mm', artikelnummer: '12780078', kleur: 'Eifel Brown', kleurOmschrijving: 'bruin genuanceerd', prijsPerDuizend: 758, prijsPerStuk: 0.758, prijsM2: 57.61 },
+  { ..._WB_WF, id: 'wb-phaunis-elbe-sand-wf', naam: 'Elbe Sand — Handvorm WF 18 mm', artikelnummer: '12780074', kleur: 'Elbe Sand', kleurOmschrijving: 'geel bruin genuanceerd', prijsPerDuizend: 696, prijsPerStuk: 0.696, prijsM2: 52.90 },
+  { ..._WB_WF, id: 'wb-phaunis-friston-red-wf', naam: 'Friston Red — Handvorm WF 18 mm', artikelnummer: '12780090', kleur: 'Friston Red', kleurOmschrijving: 'rood paars genuanceerd', prijsPerDuizend: 716, prijsPerStuk: 0.716, prijsM2: 54.42 },
+  { ..._WB_WF, id: 'wb-phaunis-haldon-red-wf', naam: 'Haldon Red — Handvorm WF 18 mm', artikelnummer: '12780086', kleur: 'Haldon Red', kleurOmschrijving: 'rood bruin genuanceerd', prijsPerDuizend: 678, prijsPerStuk: 0.678, prijsM2: 51.53 },
+  { ..._WB_WF, id: 'wb-phaunis-jura-cream-wf', naam: 'Jura Cream — Handvorm WF 18 mm', artikelnummer: '12780070', kleur: 'Jura Cream', kleurOmschrijving: 'geel wit bont', prijsPerDuizend: 709, prijsPerStuk: 0.709, prijsM2: 53.88 },
+  { ..._WB_WF, id: 'wb-phaunis-morvan-red-wf', naam: 'Morvan Red — Handvorm WF 18 mm', artikelnummer: '12780082', kleur: 'Morvan Red', kleurOmschrijving: 'rood ivoor genuanceerd', prijsPerDuizend: 691, prijsPerStuk: 0.691, prijsM2: 52.52 },
+  { ..._WB_WF, id: 'wb-phaunis-ordesa-cream-wf', naam: 'Ordesa Cream — Handvorm WF 18 mm', artikelnummer: '12780058', kleur: 'Ordesa Cream', kleurOmschrijving: 'geel effen', prijsPerDuizend: 683, prijsPerStuk: 0.683, prijsM2: 51.91 },
+  { ..._WB_WF, id: 'wb-phaunis-rila-red-wf', naam: 'Rila Red — Handvorm WF 18 mm', artikelnummer: '12780066', kleur: 'Rila Red', kleurOmschrijving: 'rood effen', prijsPerDuizend: 626, prijsPerStuk: 0.626, prijsM2: 47.58 },
+  { ..._WB_WF, id: 'wb-phaunis-rodeno-grey-wf', naam: 'Rodeno Grey — Handvorm WF 18 mm', artikelnummer: '12780062', kleur: 'Rodeno Grey', kleurOmschrijving: 'grijs effen', prijsPerDuizend: 725, prijsPerStuk: 0.725, prijsM2: 55.10 },
+  { ..._WB_WF, id: 'wb-phaunis-saxon-beige-wf', naam: 'Saxon Beige — Handvorm WF 18 mm', artikelnummer: '12780138', kleur: 'Saxon Beige', kleurOmschrijving: 'brons effen', prijsPerDuizend: 632, prijsPerStuk: 0.632, prijsM2: 48.03 },
+  { ..._WB_WF, id: 'wb-phaunis-sherwood-brown-wf', naam: 'Sherwood Brown — Handvorm WF 18 mm', artikelnummer: '12780146', kleur: 'Sherwood Brown', kleurOmschrijving: 'bruin effen', prijsPerDuizend: 726, prijsPerStuk: 0.726, prijsM2: 55.18 },
+  { ..._WB_WF, id: 'wb-phaunis-sonian-black-wf', naam: 'Sonian Black — Handvorm WF 18 mm', artikelnummer: '12780094', kleur: 'Sonian Black', kleurOmschrijving: 'grijs zwart genuanceerd', prijsPerDuizend: 765, prijsPerStuk: 0.765, prijsM2: 58.14 },
+
+  { ..._WB_EF, id: 'wb-phaunis-eifel-brown-ef', naam: 'Eifel Brown — Handvorm EF 18 mm', artikelnummer: '12780118', kleur: 'Eifel Brown', kleurOmschrijving: 'bruin genuanceerd', prijsPerDuizend: 985, prijsPerStuk: 0.985, prijsM2: 59.10 },
+  { ..._WB_EF, id: 'wb-phaunis-elbe-sand-ef', naam: 'Elbe Sand — Handvorm EF 18 mm', artikelnummer: '12780114', kleur: 'Elbe Sand', kleurOmschrijving: 'geel bruin genuanceerd', prijsPerDuizend: 905, prijsPerStuk: 0.905, prijsM2: 54.30 },
+  { ..._WB_EF, id: 'wb-phaunis-friston-red-ef', naam: 'Friston Red — Handvorm EF 18 mm', artikelnummer: '12780130', kleur: 'Friston Red', kleurOmschrijving: 'rood paars genuanceerd', prijsPerDuizend: 931, prijsPerStuk: 0.931, prijsM2: 55.86 },
+  { ..._WB_EF, id: 'wb-phaunis-haldon-red-ef', naam: 'Haldon Red — Handvorm EF 18 mm', artikelnummer: '12780126', kleur: 'Haldon Red', kleurOmschrijving: 'rood bruin genuanceerd', prijsPerDuizend: 881, prijsPerStuk: 0.881, prijsM2: 52.86 },
+  { ..._WB_EF, id: 'wb-phaunis-jura-cream-ef', naam: 'Jura Cream — Handvorm EF 18 mm', artikelnummer: '12780110', kleur: 'Jura Cream', kleurOmschrijving: 'geel wit bont', prijsPerDuizend: 922, prijsPerStuk: 0.922, prijsM2: 55.32 },
+  { ..._WB_EF, id: 'wb-phaunis-morvan-red-ef', naam: 'Morvan Red — Handvorm EF 18 mm', artikelnummer: '12780122', kleur: 'Morvan Red', kleurOmschrijving: 'rood ivoor genuanceerd', prijsPerDuizend: 898, prijsPerStuk: 0.898, prijsM2: 53.88 },
+  { ..._WB_EF, id: 'wb-phaunis-ordesa-cream-ef', naam: 'Ordesa Cream — Handvorm EF 18 mm', artikelnummer: '12780098', kleur: 'Ordesa Cream', kleurOmschrijving: 'geel effen', prijsPerDuizend: 888, prijsPerStuk: 0.888, prijsM2: 53.28 },
+  { ..._WB_EF, id: 'wb-phaunis-rila-red-ef', naam: 'Rila Red — Handvorm EF 18 mm', artikelnummer: '12780106', kleur: 'Rila Red', kleurOmschrijving: 'rood effen', prijsPerDuizend: 814, prijsPerStuk: 0.814, prijsM2: 48.84 },
+  { ..._WB_EF, id: 'wb-phaunis-rodeno-grey-ef', naam: 'Rodeno Grey — Handvorm EF 18 mm', artikelnummer: '12780102', kleur: 'Rodeno Grey', kleurOmschrijving: 'grijs effen', prijsPerDuizend: 943, prijsPerStuk: 0.943, prijsM2: 56.58 },
+  { ..._WB_EF, id: 'wb-phaunis-saxon-beige-ef', naam: 'Saxon Beige — Handvorm EF 18 mm', artikelnummer: '12780142', kleur: 'Saxon Beige', kleurOmschrijving: 'brons effen', prijsPerDuizend: 822, prijsPerStuk: 0.822, prijsM2: 49.32 },
+  { ..._WB_EF, id: 'wb-phaunis-sherwood-brown-ef', naam: 'Sherwood Brown — Handvorm EF 18 mm', artikelnummer: '12780150', kleur: 'Sherwood Brown', kleurOmschrijving: 'bruin effen', prijsPerDuizend: 944, prijsPerStuk: 0.944, prijsM2: 56.64 },
+  { ..._WB_EF, id: 'wb-phaunis-sonian-black-ef', naam: 'Sonian Black — Handvorm EF 18 mm', artikelnummer: '12780134', kleur: 'Sonian Black', kleurOmschrijving: 'grijs zwart genuanceerd', prijsPerDuizend: 995, prijsPerStuk: 0.995, prijsM2: 59.70 },
+
   {
     id: 'front-wastebasedslips-pistachio-wf',
     naam: 'WasteBasedSlips Pistachio — Punched & Sliced WF',

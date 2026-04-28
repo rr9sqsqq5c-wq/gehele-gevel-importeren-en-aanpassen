@@ -1181,8 +1181,11 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       style={{ marginTop: 2, flexShrink: 0, accentColor: '#7c3aed' }} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 10.5, color: '#1e293b', lineHeight: 1.3 }}>{art.naam}</div>
-                      <div style={{ color: '#475569', fontSize: 9, marginTop: 1, fontStyle: 'italic' }}>{art.fabrikant}</div>
-                      {art.behandeling && <div style={{ color: '#64748b', fontSize: 9, marginTop: 1 }}>{art.behandeling}{art.kleur ? ` · ${art.kleur}` : ''}</div>}
+                      <div style={{ color: '#475569', fontSize: 9, marginTop: 1, fontStyle: 'italic' }}>{art.fabrikant}{art.serie ? ` — ${art.serie}` : ''}</div>
+                      <div style={{ color: '#64748b', fontSize: 9, marginTop: 1 }}>
+                        {[art.behandeling, art.kleurOmschrijving ?? art.kleur].filter(Boolean).join(' · ')}
+                        {art.artikelnummer && <span style={{ color: '#94a3b8', marginLeft: 4 }}>#{art.artikelnummer}</span>}
+                      </div>
                       <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap', alignItems: 'center' }}>
                         <span style={{ background: fColor, color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600 }}>{art.formatCode}</span>
                         <span style={{ color: '#64748b', fontSize: 9 }}>{art.steenL}×{art.steenH}×{art.dikte} mm</span>
