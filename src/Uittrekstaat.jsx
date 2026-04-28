@@ -58,7 +58,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
   if (s.panelen?.enabled) {
     const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, mat);
     const maxInterval = s.latten?.maxInterval ?? 400;
-    const battenYs = generateBattenPositions(groupHeight, mat, maxInterval);
+    const battenYs = generateBattenPositions(groupHeight, mat, maxInterval, { minHOH: s.latten?.minHOH, maxHOH: s.latten?.maxHOH, targetPanelH: s.panelen?.hoogte, minPanelH: 800 });
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
     const PENANT_INSET = 20;
     const penantOpenings = (s.penanten ?? []).map((pen, pi) => {

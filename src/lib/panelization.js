@@ -199,13 +199,7 @@ function chooseBreaks(start, end, candidates, maxSpan, targetSpan) {
   return [...new Set(breaks)].sort((a, b) => a - b);
 }
 
-export function generateBattenPositions(groupHeight, mat, maxInterval) {
-  const steenH = mat.steenH ?? 50;
-  const lint   = mat.lint   ?? 12;
-  const lagenmaat = steenH + lint;
-  if (lagenmaat <= 0) return [];
-  if (!isFinite(groupHeight) || groupHeight <= 0) return [];
-  const N = Math.max(1, Math.floor(maxInterval / lagenmaat));
+function _battenForN(groupHeight, steenH, lint, lagenmaat, N) {
   const lintHalf = lint / 2;
   const positions = [];
   let k = 0;
@@ -216,6 +210,68 @@ export function generateBattenPositions(groupHeight, mat, maxInterval) {
     k++;
   }
   return positions;
+}
+
+function _scoreBattenLayout(groupHeight, battenYs, targetPanelH, minPanelH) {
+  const minH = minPanelH ?? 800;
+  const tH   = targetPanelH ?? 930;
+  const breaks = [0, ...battenYs.filter(y => y > 0 && y < groupHeight), groupHeight].sort((a, b) => a - b);
+  let segs = [];
+  for (let i = 0; i < breaks.length - 1; i++) segs.push(breaks[i + 1] - breaks[i]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 0; i < segs.length; i++) {
+      if (segs[i] < minH - 0.001 && segs.length > 1) {
+        if (i === 0) { segs[1] += segs[0]; segs.splice(0, 1); }
+        else if (i === segs.length - 1) { segs[i - 1] += segs[i]; segs.splice(i, 1); }
+        else if (segs[i - 1] <= segs[i + 1]) { segs[i - 1] += segs[i]; segs.splice(i, 1); }
+        else { segs[i] += segs[i + 1]; segs.splice(i + 1, 1); }
+        changed = true;
+        break;
+      }
+    }
+  }
+  const finalSegs = [];
+  for (const s of segs) {
+    if (s > tH + 0.001) {
+      const n = Math.max(1, Math.round(s / tH));
+      for (let i = 0; i < n; i++) finalSegs.push(s / n);
+    } else {
+      finalSegs.push(s);
+    }
+  }
+  if (!finalSegs.length) return Infinity;
+  const mean = finalSegs.reduce((a, b) => a + b, 0) / finalSegs.length;
+  return finalSegs.reduce((sum, h) => sum + (h - mean) ** 2, 0) / finalSegs.length;
+}
+
+export function generateBattenPositions(groupHeight, mat, maxInterval, options = {}) {
+  const steenH = mat.steenH ?? 50;
+  const lint   = mat.lint   ?? 12;
+  const lagenmaat = steenH + lint;
+  if (lagenmaat <= 0) return [];
+  if (!isFinite(groupHeight) || groupHeight <= 0) return [];
+
+  const { minHOH, maxHOH, targetPanelH, minPanelH } = options;
+
+  if (minHOH != null && maxHOH != null && minHOH > 0 && maxHOH >= minHOH) {
+    const nMin = Math.max(1, Math.ceil(minHOH / lagenmaat));
+    const nMax = Math.floor(maxHOH / lagenmaat);
+    let bestN = nMin;
+    let bestScore = Infinity;
+    for (let n = nMin; n <= nMax; n++) {
+      const hoh = n * lagenmaat;
+      if (hoh < minHOH - 0.001 || hoh > maxHOH + 0.001) continue;
+      const pos = _battenForN(groupHeight, steenH, lint, lagenmaat, n);
+      const score = _scoreBattenLayout(groupHeight, pos, targetPanelH, minPanelH);
+      if (score < bestScore) { bestScore = score; bestN = n; }
+    }
+    return _battenForN(groupHeight, steenH, lint, lagenmaat, bestN);
+  }
+
+  const N = Math.max(1, Math.floor((maxInterval ?? 400) / lagenmaat));
+  return _battenForN(groupHeight, steenH, lint, lagenmaat, N);
 }
 
 function mergeSmallSegments(breaks, minH) {

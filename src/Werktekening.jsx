@@ -142,7 +142,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten) {
   let allPanels = [];
   if (panelen?.enabled) {
     const basePanel = computeEffectiveBasePanel(panelen, mat.brickWeightM2 ?? 40, mat);
-    const battenYs = generateBattenPositions(groupHeight, mat, MAX_HOC);
+    const battenYs = generateBattenPositions(groupHeight, mat, MAX_HOC, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 });
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
     const penantOpenings = (penanten ?? []).map((p, i) => {
       const px = (p.x ?? 0) + PENANT_PANEL_INSET;
@@ -273,7 +273,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
     const { groupWidth, groupHeight, groupOpenings } = facadeData;
     const basePanel = computeEffectiveBasePanel(panelen, mat.brickWeightM2 ?? 40, mat);
     const maxInterval = latten?.maxInterval ?? 400;
-    const battenYs = generateBattenPositions(groupHeight, mat, maxInterval);
+    const battenYs = generateBattenPositions(groupHeight, mat, maxInterval, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 });
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
     const INSET = 20;
     const penantOpenings = (groupSettings?.penanten ?? []).map((p, i) => {

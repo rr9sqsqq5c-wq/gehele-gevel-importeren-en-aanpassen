@@ -281,7 +281,7 @@ const GROUP_COLORS = [
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, minHoogte: null, minHoogteKoppelDeur: false, minHoogteOokPenanten: false, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, minHoogte: null, minHoogteKoppelDeur: false, minHoogteOokPenanten: false, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -1040,10 +1040,15 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 )}
 
                 {(lat.richting ?? 'horizontaal') === 'horizontaal' && (
-                  <div style={{ marginTop: 3 }}>
-                    <Field label="Max interval mm" tip="Maximale hartafstand tussen horizontale latten (mm). Standaard 400 mm.">
-                      <input type="number" min={50} step={50} value={lat.maxInterval ?? 400}
-                        onChange={(e) => upd({ maxInterval: Number(e.target.value) })}
+                  <div style={{ marginTop: 3, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <Field label="HOH min mm" tip="Minimale hart-op-hart afstand (mm) voor automatische optimalisatie. Standaard 370 mm.">
+                      <input type="number" min={50} max={lat.maxHOH ?? 430} step={1} value={lat.minHOH ?? 370}
+                        onChange={(e) => upd({ minHOH: Number(e.target.value) })}
+                        style={{ ...inp, width: '100%' }} />
+                    </Field>
+                    <Field label="HOH max mm" tip="Maximale hart-op-hart afstand (mm) voor automatische optimalisatie. Standaard 430 mm.">
+                      <input type="number" min={lat.minHOH ?? 370} max={600} step={1} value={lat.maxHOH ?? 430}
+                        onChange={(e) => upd({ maxHOH: Number(e.target.value) })}
                         style={{ ...inp, width: '100%' }} />
                     </Field>
                   </div>
@@ -2147,7 +2152,7 @@ export default function App() {
       }
 
       const { groupWidth, groupHeight, groupOpenings } = facadeData;
-      const battenYs = generateBattenPositions(groupHeight, mat, Math.max(50, s.latten?.maxInterval ?? 400));
+      const battenYs = generateBattenPositions(groupHeight, mat, Math.max(50, s.latten?.maxInterval ?? 400), { minHOH: s.latten?.minHOH, maxHOH: s.latten?.maxHOH, targetPanelH: s.panelen?.hoogte, minPanelH: 800 });
       const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, s.material ?? mat);
 
       const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
@@ -2277,7 +2282,7 @@ export default function App() {
 
         const battenMaxInterval = Math.max(50, s.latten?.maxInterval ?? 400);
         const battenYs = (s.latten?.enabled || s.panelen?.enabled)
-          ? generateBattenPositions(groupHeight, mat, battenMaxInterval)
+          ? generateBattenPositions(groupHeight, mat, battenMaxInterval, { minHOH: s.latten?.minHOH, maxHOH: s.latten?.maxHOH, targetPanelH: s.panelen?.hoogte, minPanelH: 800 })
           : [];
 
         if (s.panelen?.enabled && vis.panelen !== false) {
