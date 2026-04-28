@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions } from './lib/panelization.js';
 import { openingXRangesAtY } from './lib/geometry.js';
-import { BATTEN_CATALOG } from './lib/battens.js';
+import { BATTEN_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
 
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 
@@ -180,6 +180,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
     panelGroups,
     lattenSummary,
     lattenArtikelen: s.lattenArtikelen ?? [],
+    steenstripsArtikelen: s.steenstripsArtikelen ?? [],
     zetWerkAreaMM2,
     mat,
     openingsCount: groupOpenings.length,
@@ -469,6 +470,30 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
                       <TD right>st</TD>
                     </tr>
                   ))}
+                </>}
+
+                {to.steenstripsArtikelen?.length > 0 && <>
+                  <SectionHeader title="Steenstrips artikelkeuze" />
+                  {to.steenstripsArtikelen.map((artId) => {
+                    const art = STEENSTRIP_CATALOG.find((a) => a.id === artId);
+                    if (!art) return null;
+                    const fColors = { WF: '#92400e', DF: '#065f46', NF: '#1e3a8a', Klinker: '#4c1d95', LF: '#9a3412' };
+                    const fColor = fColors[art.formatCode] ?? '#64748b';
+                    return (
+                      <tr key={artId}>
+                        <TD>
+                          <span style={{ fontWeight: 600 }}>{art.naam}</span>
+                          <span style={{ color: '#64748b', fontSize: 10, marginLeft: 6 }}>{art.steenL}×{art.steenH}×{art.dikte} mm</span>
+                          <span style={{ background: fColor, color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600, marginLeft: 6 }}>{art.formatCode}</span>
+                          <span style={{ color: '#64748b', fontSize: 10, marginLeft: 6 }}>voeg {art.lint}/{art.stoot} mm · {art.brickWeightM2} kg/m²</span>
+                        </TD>
+                        {art.prijsM2 != null
+                          ? <><TD right mono>€ {art.prijsM2.toFixed(2)}</TD><TD right>per m²</TD></>
+                          : <><TD right mono style={{ color: '#94a3b8' }}>—</TD><TD right>prijs n.b.</TD></>
+                        }
+                      </tr>
+                    );
+                  })}
                 </>}
 
                 {to.lattenArtikelen?.length > 0 && <>

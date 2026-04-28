@@ -5,7 +5,7 @@ warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState } from './lib/storage.js';
 import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
-import { BATTEN_CATALOG, BASISPLAAT_CATALOG } from './lib/battens.js';
+import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateMoldPrintHTML, getMoldTemplates } from './lib/panelization.js';
 import { openingXRangesAtY } from './lib/geometry.js';
 const Viewer3D = lazy(() => import('./Viewer3D.jsx').then((m) => ({ default: m.Viewer3D })));
@@ -281,7 +281,7 @@ const GROUP_COLORS = [
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, minHoogte: null, minHoogteKoppelDeur: false, minHoogteOokPenanten: false, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, minHoogte: null, minHoogteKoppelDeur: false, minHoogteOokPenanten: false, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -372,6 +372,25 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
       )}
 
       <CollapsibleSection title="Steenstrip afmetingen" tip={"Afmetingen van de brickslip (steenstrip):\n· Lengte = zichtbare lengte van de strip\n· Hoogte = zichtbare hoogte van de strip\n· Lintvoeg = horizontale voeg tussen lagen\n· Stootvoeg = verticale voeg tussen stenen"} isOpen={isOpen('strips')} onToggle={() => toggle('strips')}>
+        {(() => {
+          const selId = (settings.steenstripsArtikelen ?? [])[0] ?? null;
+          const selArt = selId ? STEENSTRIP_CATALOG.find((a) => a.id === selId) : null;
+          if (!selArt) return null;
+          const fColors = { WF: '#92400e', DF: '#065f46', NF: '#1e3a8a', Klinker: '#4c1d95', LF: '#9a3412' };
+          return (
+            <div style={{ background: '#fdf4ff', border: '1px solid #d8b4fe', borderRadius: 4, padding: '5px 7px', marginBottom: 6, fontSize: 9.5 }}>
+              <div style={{ fontSize: 9, color: '#7c3aed', marginBottom: 2 }}>Afmetingen uit geselecteerd artikel:</div>
+              <div style={{ fontWeight: 700, fontSize: 10.5, color: '#1e293b' }}>{selArt.naam}</div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ background: fColors[selArt.formatCode] ?? '#64748b', color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600 }}>{selArt.formatCode}</span>
+                <span style={{ color: '#64748b', fontSize: 9 }}>{selArt.steenL}×{selArt.steenH}×{selArt.dikte} mm</span>
+                <span style={{ color: '#64748b', fontSize: 9 }}>voeg {selArt.lint}/{selArt.stoot} mm</span>
+                <span style={{ color: '#64748b', fontSize: 9 }}>{selArt.brickWeightM2} kg/m²</span>
+              </div>
+              <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 3 }}>Selecteer een ander artikel in 'Steenstrips artikelkeuze' om te wijzigen.</div>
+            </div>
+          );
+        })()}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
           {[
             ['Lengte', 'steenL', 'Zichtbare lengte van de brickslip (mm).'],
@@ -1101,6 +1120,74 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                         <span style={{ background: bColor, color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600 }}>{art.brandklasse}</span>
                         <span style={{ color: '#94a3b8', fontSize: 9 }}>{art.toepassing}</span>
                         <span style={{ marginLeft: 'auto', color: '#0f172a', fontWeight: 600, fontSize: 9.5 }}>€ {art.prijsM1.toFixed(3)}/m¹</span>
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </CollapsibleSection>
+        );
+      })()}
+
+      {(() => {
+        const selectedStripId = (settings.steenstripsArtikelen ?? [])[0] ?? null;
+        const selectStrip = (id) => {
+          if (id === selectedStripId) {
+            onUpdate({ steenstripsArtikelen: [] });
+          } else {
+            const art = STEENSTRIP_CATALOG.find((a) => a.id === id);
+            if (art) {
+              onUpdate({
+                steenstripsArtikelen: [id],
+                brickDepth: art.dikte,
+                material: {
+                  ...(settings.material ?? {}),
+                  steenL: art.steenL,
+                  steenH: art.steenH,
+                  lint: art.lint,
+                  stoot: art.stoot,
+                  brickWeightM2: art.brickWeightM2,
+                },
+              });
+            }
+          }
+        };
+        const formatColors = { WF: '#92400e', DF: '#065f46', NF: '#1e3a8a', Klinker: '#4c1d95', LF: '#9a3412' };
+        return (
+          <CollapsibleSection
+            title="Steenstrips artikelkeuze"
+            tip={"Selecteer één steenstriptype uit de catalogus.\nHet gekozen artikel vult automatisch de afmetingen in bij 'Steenstrip afmetingen':\nLengte, hoogte, dikte, lintvoeg, stootvoeg en gewicht per m².\nKlik nogmaals op een artikel om de selectie op te heffen.\n\nTip: voeg eigen prijzen toe via de prijslijst-upload (CSV)."}
+            isOpen={isOpen('steenstripsArtikelen')}
+            onToggle={() => toggle('steenstripsArtikelen')}
+            badge={selectedStripId ? '1 gekozen' : null}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {STEENSTRIP_CATALOG.map((art) => {
+                const checked = art.id === selectedStripId;
+                const fColor = formatColors[art.formatCode] ?? '#64748b';
+                return (
+                  <label key={art.id} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 10,
+                    cursor: 'pointer', color: checked ? '#0f172a' : '#475569',
+                    background: checked ? '#fdf4ff' : 'transparent',
+                    border: `1px solid ${checked ? '#d8b4fe' : '#e2e8f0'}`,
+                    borderRadius: 4, padding: '4px 6px',
+                  }}>
+                    <input type="radio" name={`strip-artikel-${groupId}`} checked={checked}
+                      onChange={() => selectStrip(art.id)}
+                      style={{ marginTop: 2, flexShrink: 0, accentColor: '#7c3aed' }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 10.5, color: '#1e293b', lineHeight: 1.3 }}>{art.naam}</div>
+                      <div style={{ color: '#64748b', fontSize: 9.5, marginTop: 1 }}>{art.omschrijving}</div>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span style={{ background: fColor, color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 600 }}>{art.formatCode}</span>
+                        <span style={{ color: '#64748b', fontSize: 9 }}>{art.steenL}×{art.steenH}×{art.dikte} mm</span>
+                        <span style={{ color: '#64748b', fontSize: 9 }}>voeg: {art.lint}/{art.stoot} mm</span>
+                        <span style={{ color: '#64748b', fontSize: 9 }}>{art.brickWeightM2} kg/m²</span>
+                        {art.prijsM2 != null && (
+                          <span style={{ marginLeft: 'auto', color: '#0f172a', fontWeight: 600, fontSize: 9.5 }}>€ {art.prijsM2.toFixed(2)}/m²</span>
+                        )}
                       </div>
                     </div>
                   </label>
@@ -2005,7 +2092,7 @@ export default function App() {
     const srcSettings = getSettings(sourceGroupId);
     const linkedIds = groups.filter((g) => groupLinks[g.id] === linkId && g.id !== sourceGroupId).map((g) => g.id);
     for (const id of linkedIds) {
-      updateSettings(id, { name: srcSettings.name, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth, maxHoogte: srcSettings.maxHoogte, penanten: srcSettings.penanten ? [...srcSettings.penanten] : [], zetwerk: srcSettings.zetwerk ? { ...srcSettings.zetwerk } : undefined, panelen: srcSettings.panelen ? { ...srcSettings.panelen } : undefined, latten: srcSettings.latten ? { ...srcSettings.latten } : undefined, lattenArtikelen: srcSettings.lattenArtikelen ? [...srcSettings.lattenArtikelen] : [] });
+      updateSettings(id, { name: srcSettings.name, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth, maxHoogte: srcSettings.maxHoogte, penanten: srcSettings.penanten ? [...srcSettings.penanten] : [], zetwerk: srcSettings.zetwerk ? { ...srcSettings.zetwerk } : undefined, panelen: srcSettings.panelen ? { ...srcSettings.panelen } : undefined, latten: srcSettings.latten ? { ...srcSettings.latten } : undefined, lattenArtikelen: srcSettings.lattenArtikelen ? [...srcSettings.lattenArtikelen] : [], steenstripsArtikelen: srcSettings.steenstripsArtikelen ? [...srcSettings.steenstripsArtikelen] : [] });
     }
   }
 
