@@ -2884,13 +2884,21 @@ export default function App() {
                   const sourceName = getSettings(sourceGroupId).name;
                   const checkboxes = similarSuggestions.groups.map((_, idx) => document.getElementById(`sim-${idx}`)?.checked ?? true);
                   pushHistory(groups);
+                  const existingNames = new Set(groups.map((g) => getSettings(g.id).name));
+                  let newGroupCounter = 0;
                   const newGroupEntries = similarSuggestions.groups
                     .map((wallIds, idx) => ({ wallIds, checked: checkboxes[idx] }))
                     .filter(({ checked }) => checked)
                     .map(({ wallIds }) => {
                       const gid = newGid();
                       const color = nextColor();
-                      initColor(gid, color, sourceName);
+                      let candidateName;
+                      do {
+                        newGroupCounter++;
+                        candidateName = `${sourceName}-${newGroupCounter}`;
+                      } while (existingNames.has(candidateName));
+                      existingNames.add(candidateName);
+                      initColor(gid, color, candidateName);
                       return { group: { id: gid, wallIds: sortWallsInComponent(wallIds, allWalls, adjacencies) }, gid };
                     });
                   setGroups((prev) => [...prev, ...newGroupEntries.map((e) => e.group)]);
@@ -3223,7 +3231,26 @@ export default function App() {
                           style={{ padding: '6px 10px', cursor: 'pointer', background: isActive ? '#eff6ff' : '#fff', display: 'flex', alignItems: 'center', gap: 6 }}
                         >
                           <span style={{ width: 10, height: 10, borderRadius: 2, background: s.color, display: 'inline-block', flexShrink: 0 }} />
-                          <span style={{ flex: 1, fontSize: 12, fontWeight: isActive ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                          <span
+                            style={{ flex: 1, fontSize: 12, fontWeight: isActive ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}
+                            title="Dubbelklik om naam te wijzigen"
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              const span = e.currentTarget;
+                              const input = document.createElement('input');
+                              input.value = s.name;
+                              input.style.cssText = 'font-size:12px;font-weight:' + (isActive ? '600' : '400') + ';border:1px solid #6366f1;border-radius:3px;padding:0 3px;width:100%;outline:none;background:#fff;';
+                              span.replaceWith(input);
+                              input.focus();
+                              input.select();
+                              const commit = () => {
+                                const newName = input.value.trim() || s.name;
+                                updateSettings(g.id, { name: newName });
+                              };
+                              input.addEventListener('blur', commit);
+                              input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { commit(); input.blur(); } if (ev.key === 'Escape') { input.value = s.name; input.blur(); } });
+                            }}
+                          >{s.name}</span>
                           <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>{g.wallIds.length} wand{g.wallIds.length !== 1 ? 'en' : ''}</span>
                           <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>{isActive ? '▲' : '▼'}</span>
                         </div>
