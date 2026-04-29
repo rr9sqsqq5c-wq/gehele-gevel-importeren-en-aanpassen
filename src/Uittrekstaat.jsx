@@ -163,7 +163,9 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
       if (hp?.enabled !== false) hoekprofielLengthMM += 2 * pH;
       const selStripId = (s.steenstripsArtikelen ?? [])[0] ?? null;
       const selStrip = selStripId ? STEENSTRIP_CATALOG.find((a) => a.id === selStripId) : null;
-      const gewichtM2 = selStrip?.brickWeightM2 ?? p.gewichtM2 ?? 9.4;
+      const panelGewichtM2U = s.panelen?.gewichtM2 ?? 9.4;
+      const stripGewichtM2U = selStrip?.brickWeightM2 ?? 0;
+      const gewichtM2 = selStrip ? panelGewichtM2U + stripGewichtM2U : (p.gewichtM2 ?? 9.4);
       const maxKg = p.maxKg ?? 50;
       const brickDepthU = s.brickDepth ?? 20;
       const stootU = (s.material?.stoot ?? 10);

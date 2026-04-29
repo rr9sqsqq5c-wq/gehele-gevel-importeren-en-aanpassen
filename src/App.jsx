@@ -584,7 +584,9 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               const pH = Math.max(1, p.hoogte ?? 2000);
               const selStripIdP = (settings.steenstripsArtikelen ?? [])[0] ?? null;
               const selStripP = selStripIdP ? STEENSTRIP_CATALOG.find((a) => a.id === selStripIdP) : null;
-              const gewichtM2 = selStripP?.brickWeightM2 ?? p.gewichtM2 ?? 9.4;
+              const panelGewichtM2P = settings.panelen?.gewichtM2 ?? 9.4;
+              const stripGewichtM2P = selStripP?.brickWeightM2 ?? 0;
+              const gewichtM2 = selStripP ? panelGewichtM2P + stripGewichtM2P : (p.gewichtM2 ?? 9.4);
               const brickDepthP = settings.brickDepth ?? 20;
               const stootP = settings.material?.stoot ?? 10;
               const sidePanelDepthP = Math.max(1, pD - brickDepthP - stootP);
@@ -597,10 +599,10 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 <div style={{ marginTop: 6, borderTop: '1px dashed #e2e8f0', paddingTop: 5 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>U-secties</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-                    <Field label="Gewicht m² kg" tip={selStripP ? `Automatisch van geselecteerd artikel: ${selStripP.naam} (${gewichtM2} kg/m²).` : 'Geen artikel geselecteerd — handmatig invoeren. Selecteer een steenstrip artikel voor automatisch gewicht.'}>
+                    <Field label="Gewicht m² kg" tip={selStripP ? `Gecombineerd gewicht: paneel ${panelGewichtM2P} kg/m² + strips ${stripGewichtM2P} kg/m² = ${gewichtM2} kg/m²` : 'Geen artikel geselecteerd — handmatig invoeren (paneel + strip gecombineerd). Selecteer een steenstrip artikel voor automatisch gewicht.'}>
                       {selStripP ? (
                         <div style={{ ...inp, width: '100%', background: '#f0fdf4', color: '#166534', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                          {gewichtM2} kg/m² <span style={{ fontSize: 8, color: '#4ade80' }}>▶ {selStripP.formatCode}</span>
+                          {gewichtM2} kg/m² <span style={{ fontSize: 8, color: '#16a34a' }}>{panelGewichtM2P}+{stripGewichtM2P}</span>
                         </div>
                       ) : (
                         <input type="number" min={1} step={1} value={p.gewichtM2 ?? 9.4}
