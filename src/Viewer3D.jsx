@@ -217,14 +217,14 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, a
   );
 }
 
-function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY, steenH, brickD, upAxis, allWalls, flipDir = false) {
+function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY, steenH, brickD, upAxis, allWalls, flipDir = false, depthFromFace = null) {
   const raw = getOutsideFaceInfo(rwo, allWalls);
   const outsidePos = raw.outsidePos;
   const outsideDir = flipDir ? -raw.outsideDir : raw.outsideDir;
   const ifc = { x: 0, y: 0, z: 0 };
   ifc[rwo.lengthAxis]    = groupMinX + pieceStart + pieceLen / 2;
   ifc[rwo.heightAxis]    = groupMinH + rowY + steenH / 2;
-  ifc[rwo.thicknessAxis] = outsidePos + outsideDir * brickD / 2;
+  ifc[rwo.thicknessAxis] = outsidePos + outsideDir * (depthFromFace !== null ? depthFromFace : brickD / 2);
   const dims = { x: 0.01, y: 0.01, z: 0.01 };
   dims[rwo.lengthAxis]    = pieceLen;
   dims[rwo.heightAxis]    = steenH;
@@ -247,11 +247,12 @@ function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls }) {
     const depth = brickD ?? 20;
     return batchData.map((batch) => {
       const steenH = batch.brickH ?? defaultSteenH;
+      const dfr = batch.depthFromFace ?? null;
       return {
         color: batch.color,
         bricks: batch.rows.flatMap((row) =>
           row.pieces.map((piece) =>
-            getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, upAxis, allWalls, !!outsideDirFlip)
+            getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, upAxis, allWalls, !!outsideDirFlip, dfr)
           )
         ),
       };

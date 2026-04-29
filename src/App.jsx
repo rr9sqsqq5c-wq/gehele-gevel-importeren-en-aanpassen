@@ -1661,6 +1661,26 @@ export default function App() {
         ...enabledZones.map((ez) => ({ rows: ez.rows, color: ez.color, brickH: ez.brickH })),
       ];
 
+      for (const pen of (s.penanten ?? [])) {
+        const pX  = pen.x   ?? 0;
+        const pB  = Math.max(1, pen.breedte ?? 400);
+        const pD  = Math.max(1, pen.diepte  ?? 150);
+        const maxH = s.maxHoogte ?? 0;
+        const pH  = Math.max(1, (maxH != null && maxH > 0) ? Math.min(pen.hoogte ?? 2000, maxH) : (pen.hoogte ?? 2000));
+        const panelDikte = s.panelen?.dikte ?? 8;
+        const latD = s.latten?.dikte ?? 28;
+        const penStoot = mat.stoot ?? 10;
+        const penShift = panelDikte + brickD3d + penStoot + pD;
+        const depthFromFace = latD + penShift + brickD3d / 2;
+        const faceRows = buildCenteredFacePattern(pB, pH, mat, groupVerband3d);
+        if (!faceRows.length) continue;
+        const offsetRows = faceRows.map((row) => ({
+          ...row,
+          pieces: row.pieces.map((piece) => ({ ...piece, start: pX + piece.start })),
+        }));
+        batches.push({ rows: offsetRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, depthFromFace });
+      }
+
       result[group.id] = {
         batches,
         groupMinX: facadeData.groupMinX,
