@@ -235,6 +235,24 @@ function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY,
   };
 }
 
+function getPenantSideBrickPos(rwo, groupMinX, groupMinH, sideType, pX, pB, pieceStart, pieceLen, rowY, steenH, brickD, sideDepthOffset, upAxis, allWalls, flipDir = false) {
+  const raw = getOutsideFaceInfo(rwo, allWalls);
+  const outsidePos = raw.outsidePos;
+  const outsideDir = flipDir ? -raw.outsideDir : raw.outsideDir;
+  const ifc = { x: 0, y: 0, z: 0 };
+  ifc[rwo.lengthAxis]    = groupMinX + (sideType === 'left' ? pX + brickD / 2 : pX + pB - brickD / 2);
+  ifc[rwo.heightAxis]    = groupMinH + rowY + steenH / 2;
+  ifc[rwo.thicknessAxis] = outsidePos + outsideDir * (sideDepthOffset + pieceStart + pieceLen / 2);
+  const dims = { x: 0.01, y: 0.01, z: 0.01 };
+  dims[rwo.lengthAxis]    = brickD;
+  dims[rwo.heightAxis]    = steenH;
+  dims[rwo.thicknessAxis] = pieceLen;
+  return {
+    pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
+    size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+  };
+}
+
 function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls }) {
   const groupRef = useRef();
   const { invalidate } = useThree();
@@ -247,6 +265,17 @@ function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls }) {
     const depth = brickD ?? 20;
     return batchData.map((batch) => {
       const steenH = batch.brickH ?? defaultSteenH;
+      if (batch.sideType) {
+        const { sideType, penantX, penantB, sideDepthOffset } = batch;
+        return {
+          color: batch.color,
+          bricks: batch.rows.flatMap((row) =>
+            row.pieces.map((piece) =>
+              getPenantSideBrickPos(refWallOrigin, groupMinX, groupMinH, sideType, penantX, penantB, piece.start, piece.length, row.y, steenH, depth, sideDepthOffset, upAxis, allWalls, !!outsideDirFlip)
+            )
+          ),
+        };
+      }
       const dfr = batch.depthFromFace ?? null;
       return {
         color: batch.color,

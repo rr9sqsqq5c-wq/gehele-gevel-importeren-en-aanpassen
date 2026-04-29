@@ -1679,6 +1679,23 @@ export default function App() {
           pieces: row.pieces.map((piece) => ({ ...piece, start: pX + piece.start })),
         }));
         batches.push({ rows: offsetRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, depthFromFace });
+
+        const sideDepth = Math.max(1, pD - 6);
+        const sideClipOff = Math.max(penStoot, panelDikte);
+        const sideDepthOffset = latD + panelDikte + brickD3d + penStoot;
+        const clipSide = (rawRows) => rawRows.map((row) => ({
+          ...row,
+          pieces: row.pieces.flatMap((pc) => {
+            if (pc.start + pc.length <= sideClipOff) return [];
+            if (pc.start >= sideClipOff) return [pc];
+            const ns = Math.round(sideClipOff * 100) / 100;
+            return [{ ...pc, start: ns, length: Math.round((pc.start + pc.length - ns) * 100) / 100 }];
+          }),
+        })).filter((row) => row.pieces.length > 0);
+        const leftRows = clipSide(buildFacePattern(sideDepth, pH, mat, groupVerband3d));
+        const rightRows = clipSide(buildMirroredFacePattern(sideDepth, pH, mat, groupVerband3d));
+        if (leftRows.length) batches.push({ rows: leftRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, sideType: 'left', penantX: pX, penantB: pB, sideDepthOffset });
+        if (rightRows.length) batches.push({ rows: rightRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, sideType: 'right', penantX: pX, penantB: pB, sideDepthOffset });
       }
 
       result[group.id] = {
