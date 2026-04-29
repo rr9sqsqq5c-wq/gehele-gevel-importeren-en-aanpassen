@@ -1060,13 +1060,15 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const pen = penanten[pi];
         const pX  = pen.x   ?? 0;
         const pB  = Math.max(1, pen.breedte ?? 400);
-        const pD  = Math.max(1, pen.diepte  ?? 150);
+        const pDL = Math.max(1, pen.diepteLinks  ?? pen.diepte ?? 150);
+        const pDR = Math.max(1, pen.diepteRechts ?? pen.diepte ?? 150);
         const pH  = Math.max(1, (maxHoogte != null && maxHoogte > 0) ? Math.min(pen.hoogte ?? 2000, maxHoogte) : (pen.hoogte ?? 2000));
         const penStoot = material.stoot ?? 10;
         const penFrontW = Math.max(1, pB - 2 * brickD);
-        const penSideD  = Math.max(1, pD + brickD);
+        const penSideDL = Math.max(1, pDL + brickD);
+        const penSideDR = Math.max(1, pDR + brickD);
         const penPanelT = panelDikte;
-        const penShift = panelDikte + brickD + penStoot + pD;
+        const penShift = panelDikte + brickD + penStoot + Math.max(pDL, pDR);
 
         const emitPenantBox = (gxCenter, depthCenter, boxW, boxThick, label) => {
           const [bwx, bwy, bwz] = groupToWorld(gxCenter, depthCenter, 0);
@@ -1085,8 +1087,8 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         };
 
         emitPenantBox(pX + pB / 2, latDikte + penShift - penPanelT / 2, penFrontW, penPanelT, 'Penant voorzijde');
-        emitPenantBox(pX + brickD + penPanelT / 2, latDikte + penShift - penPanelT - penSideD / 2, penPanelT, penSideD, 'Penant linkerbeen');
-        emitPenantBox(pX + pB - brickD - penPanelT / 2, latDikte + penShift - penPanelT - penSideD / 2, penPanelT, penSideD, 'Penant rechterbeen');
+        emitPenantBox(pX + brickD + penPanelT / 2, latDikte + penShift - penPanelT - penSideDL / 2, penPanelT, penSideDL, 'Penant linkerbeen');
+        emitPenantBox(pX + pB - brickD - penPanelT / 2, latDikte + penShift - penPanelT - penSideDR / 2, penPanelT, penSideDR, 'Penant rechterbeen');
 
         const penFaceData = penantFaceRows[pi] ?? {};
         const fRows = penFaceData.frontRows ?? penFaceData ?? [];

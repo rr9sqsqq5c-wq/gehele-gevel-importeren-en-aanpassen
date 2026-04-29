@@ -155,10 +155,11 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
   if (s.penanten?.length) {
     for (const p of s.penanten) {
       const pB = Math.max(1, p.breedte ?? 400);
-      const pD = Math.max(1, p.diepte ?? 150);
+      const pDLU = Math.max(1, p.diepteLinks  ?? p.diepte ?? 150);
+      const pDRU = Math.max(1, p.diepteRechts ?? p.diepte ?? 150);
       const maxH = s.maxHoogte != null && s.maxHoogte > 0 ? s.maxHoogte : groupHeight;
       const pH = Math.min(Math.max(1, p.hoogte ?? 2000), maxH);
-      penantAreaMM2 += pB * pH + 2 * pD * pH;
+      penantAreaMM2 += pB * pH + pDLU * pH + pDRU * pH;
       const hp = p.hoekprofiel;
       if (hp?.enabled !== false) hoekprofielLengthMM += 2 * pH;
       const panelGewichtM2U = s.panelen?.gewichtM2 ?? 9.4;
@@ -167,8 +168,9 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
       const maxKg = p.maxKg ?? 50;
       const brickDepthU = s.brickDepth ?? 20;
       const stootU = (s.material?.stoot ?? 10);
-      const sidePanelDepthU = Math.max(1, pD - brickDepthU - stootU);
-      const omtrekM2perMM = (pB + 2 * sidePanelDepthU) / 1e6;
+      const sidePanelDepthUL = Math.max(1, pDLU - brickDepthU - stootU);
+      const sidePanelDepthUR = Math.max(1, pDRU - brickDepthU - stootU);
+      const omtrekM2perMM = (pB + sidePanelDepthUL + sidePanelDepthUR) / 1e6;
       const kgPerMM = omtrekM2perMM * gewichtM2;
       const maxSectieH = kgPerMM > 0 ? Math.floor(maxKg / kgPerMM) : pH;
       uSectiesCount += kgPerMM > 0 ? Math.ceil(pH / maxSectieH) : 1;

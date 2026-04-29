@@ -494,10 +494,11 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
     }
 
     if (penantFaceData?.length) {
-      for (const { penant: p, front, left: leftSideRows = [], right: rightSideRows = [], height: pH, panelDepth: penPanelDepth } of penantFaceData) {
+      for (const { penant: p, front, left: leftSideRows = [], right: rightSideRows = [], height: pH, panelDepthL: penPanelDepthL, panelDepthR: penPanelDepthR, pDL: penDL, pDR: penDR } of penantFaceData) {
         const pX = p.x ?? 0;
         const pB = Math.max(1, p.breedte ?? 400);
-        const pD = Math.max(1, p.diepte ?? 150);
+        const pDL = Math.max(1, penDL ?? p.diepteLinks ?? p.diepte ?? 150);
+        const pDR = Math.max(1, penDR ?? p.diepteRechts ?? p.diepte ?? 150);
         const baseVY = 0;
 
         const [sx, baseY] = toScreen(pX, baseVY + pH);
@@ -505,7 +506,8 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
         const [, bottomY] = toScreen(0, baseVY);
         const pW = ex - sx;
         const pHpx = bottomY - baseY;
-        const depthPx = Math.min(pD * scale * 0.001, 30);
+        const depthPxR = Math.min(pDR * scale * 0.001, 30);
+        const depthPxL = Math.min(pDL * scale * 0.001, 30);
 
         ctx.fillStyle = 'rgba(99,102,241,0.15)';
         ctx.fillRect(sx, baseY, pW, pHpx);
@@ -513,8 +515,8 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
         ctx.fillStyle = 'rgba(99,102,241,0.25)';
         ctx.beginPath();
         ctx.moveTo(sx + pW, baseY);
-        ctx.lineTo(sx + pW + depthPx, baseY - depthPx);
-        ctx.lineTo(sx + pW + depthPx, bottomY - depthPx);
+        ctx.lineTo(sx + pW + depthPxR, baseY - depthPxR);
+        ctx.lineTo(sx + pW + depthPxR, bottomY - depthPxR);
         ctx.lineTo(sx + pW, bottomY);
         ctx.closePath();
         ctx.fill();
@@ -523,8 +525,8 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
           ctx.save();
           ctx.beginPath();
           ctx.moveTo(sx + pW, baseY);
-          ctx.lineTo(sx + pW + depthPx, baseY - depthPx);
-          ctx.lineTo(sx + pW + depthPx, bottomY - depthPx);
+          ctx.lineTo(sx + pW + depthPxR, baseY - depthPxR);
+          ctx.lineTo(sx + pW + depthPxR, bottomY - depthPxR);
           ctx.lineTo(sx + pW, bottomY);
           ctx.closePath();
           ctx.clip();
@@ -533,16 +535,16 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
             for (const piece of row.pieces) {
               const dm = piece.start;
               const l = piece.length;
-              const dFracL = Math.max(0, Math.min(1, (pD - dm - l) / pD));
-              const dFracR = Math.max(0, Math.min(1, (pD - dm) / pD));
+              const dFracL = Math.max(0, Math.min(1, (pDR - dm - l) / pDR));
+              const dFracR = Math.max(0, Math.min(1, (pDR - dm) / pDR));
               const topFrac = (pH - row.y - steenH) / pH;
               const botFrac = (pH - row.y) / pH;
               ctx.fillStyle = brickColor(piece.label, col, piece.length, kopMM);
               ctx.beginPath();
-              ctx.moveTo(sx + pW + dFracL * depthPx, baseY + topFrac * pHpx - dFracL * depthPx);
-              ctx.lineTo(sx + pW + dFracR * depthPx, baseY + topFrac * pHpx - dFracR * depthPx);
-              ctx.lineTo(sx + pW + dFracR * depthPx, baseY + botFrac * pHpx - dFracR * depthPx);
-              ctx.lineTo(sx + pW + dFracL * depthPx, baseY + botFrac * pHpx - dFracL * depthPx);
+              ctx.moveTo(sx + pW + dFracL * depthPxR, baseY + topFrac * pHpx - dFracL * depthPxR);
+              ctx.lineTo(sx + pW + dFracR * depthPxR, baseY + topFrac * pHpx - dFracR * depthPxR);
+              ctx.lineTo(sx + pW + dFracR * depthPxR, baseY + botFrac * pHpx - dFracR * depthPxR);
+              ctx.lineTo(sx + pW + dFracL * depthPxR, baseY + botFrac * pHpx - dFracL * depthPxR);
               ctx.closePath();
               ctx.fill();
             }
@@ -553,34 +555,34 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
         ctx.fillStyle = 'rgba(99,102,241,0.25)';
         ctx.beginPath();
         ctx.moveTo(sx, baseY);
-        ctx.lineTo(sx - depthPx, baseY - depthPx);
-        ctx.lineTo(sx - depthPx, bottomY - depthPx);
+        ctx.lineTo(sx - depthPxL, baseY - depthPxL);
+        ctx.lineTo(sx - depthPxL, bottomY - depthPxL);
         ctx.lineTo(sx, bottomY);
         ctx.closePath();
         ctx.fill();
 
-        if (leftSideRows.length && penPanelDepth > 0) {
+        if (leftSideRows.length && (penPanelDepthL ?? 0) > 0) {
           ctx.save();
           ctx.beginPath();
           ctx.moveTo(sx, baseY);
-          ctx.lineTo(sx - depthPx, baseY - depthPx);
-          ctx.lineTo(sx - depthPx, bottomY - depthPx);
+          ctx.lineTo(sx - depthPxL, baseY - depthPxL);
+          ctx.lineTo(sx - depthPxL, bottomY - depthPxL);
           ctx.lineTo(sx, bottomY);
           ctx.closePath();
           ctx.clip();
           const col = groupColor ?? '#a64033';
           for (const row of leftSideRows) {
             for (const piece of row.pieces) {
-              const dFracFront = Math.max(0, Math.min(1, piece.start / penPanelDepth));
-              const dFracBack  = Math.max(0, Math.min(1, (piece.start + piece.length) / penPanelDepth));
+              const dFracFront = Math.max(0, Math.min(1, piece.start / penPanelDepthL));
+              const dFracBack  = Math.max(0, Math.min(1, (piece.start + piece.length) / penPanelDepthL));
               const topFrac = (pH - row.y - steenH) / pH;
               const botFrac = (pH - row.y) / pH;
               ctx.fillStyle = brickColor(piece.label, col, piece.length, kopMM);
               ctx.beginPath();
-              ctx.moveTo(sx - dFracFront * depthPx, baseY + topFrac * pHpx - dFracFront * depthPx);
-              ctx.lineTo(sx - dFracBack  * depthPx, baseY + topFrac * pHpx - dFracBack  * depthPx);
-              ctx.lineTo(sx - dFracBack  * depthPx, baseY + botFrac * pHpx - dFracBack  * depthPx);
-              ctx.lineTo(sx - dFracFront * depthPx, baseY + botFrac * pHpx - dFracFront * depthPx);
+              ctx.moveTo(sx - dFracFront * depthPxL, baseY + topFrac * pHpx - dFracFront * depthPxL);
+              ctx.lineTo(sx - dFracBack  * depthPxL, baseY + topFrac * pHpx - dFracBack  * depthPxL);
+              ctx.lineTo(sx - dFracBack  * depthPxL, baseY + botFrac * pHpx - dFracBack  * depthPxL);
+              ctx.lineTo(sx - dFracFront * depthPxL, baseY + botFrac * pHpx - dFracFront * depthPxL);
               ctx.closePath();
               ctx.fill();
             }

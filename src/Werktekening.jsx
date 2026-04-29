@@ -616,7 +616,8 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
           pens.forEach((p, idx) => {
             const pB = Math.max(1, p.breedte ?? 400);
-            const pD = Math.max(1, p.diepte ?? 150);
+            const pDL = Math.max(1, p.diepteLinks  ?? p.diepte ?? 150);
+            const pDR = Math.max(1, p.diepteRechts ?? p.diepte ?? 150);
             const pH = Math.max(1, p.hoogte ?? 2000);
             const maxKg = p.maxKg ?? 50;
             const brickDepth = groupSettings?.brickDepth ?? 20;
@@ -630,8 +631,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               : `paneel ${panelGewichtM2} kg/m²  +  strip ${stripGewichtM2} kg/m² (uit materiaalinstellingen)  =  ${gewichtM2} kg/m²`;
             const stootWT = mat.stoot ?? 10;
             const panelDikteWT = groupSettings?.panelen?.dikte ?? 8;
-            const sidePanelDepth = Math.max(1, pD - brickDepth - stootWT);
-            const stripOmtrekPerMM = (pB + 2 * sidePanelDepth) / 1e6;
+            const sidePanelDepthL = Math.max(1, pDL - brickDepth - stootWT);
+            const sidePanelDepthR = Math.max(1, pDR - brickDepth - stootWT);
+            const stripOmtrekPerMM = (pB + sidePanelDepthL + sidePanelDepthR) / 1e6;
             const kgPerMM = stripOmtrekPerMM * gewichtM2;
             const maxSectieH = kgPerMM > 0 ? Math.floor(maxKg / kgPerMM) : pH;
             const aantalSecties = kgPerMM > 0 ? Math.ceil(pH / maxSectieH) : 1;
@@ -644,7 +646,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             const hpEnabled = hp.enabled !== false;
             const hpD = hp.dikte ?? 2;
 
-            const totalUnfoldW = 2 * pD + pB;
+            const totalUnfoldW = pDL + pB + pDR;
             const sc = Math.min((MAX_UNFOLD_W - PAD_L - PAD_R) / totalUnfoldW, (MAX_UNFOLD_H - PAD_T - PAD_B) / pH);
             const dW = Math.round(totalUnfoldW * sc);
             const dH = Math.round(pH * sc);
@@ -654,17 +656,17 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
             const ux = (x) => ox + x * sc;
             const uy = (y) => oy + dH - y * sc;
-            const leftX = 0; const frontX = pD; const rightX = pD + pB;
+            const leftX = 0; const frontX = pDL; const rightX = pDL + pB;
 
             const sectionYs = [];
             for (let s = 0; s <= aantalSecties; s++) sectionYs.push(Math.round(Math.min(s * sectieH, pH)));
 
             const faceData = (penantFaceData ?? []).find((fd) => fd.penant.id === p.id);
             const sideClipOffWT = Math.max(stootWT, panelDikteWT);
-            const clipSideLeft = (rows) => rows.map((row) => ({
+            const clipSideLeft = (rows, spd) => rows.map((row) => ({
               ...row,
               pieces: row.pieces.flatMap((pc) => {
-                const clipEnd = sidePanelDepth - sideClipOffWT;
+                const clipEnd = spd - sideClipOffWT;
                 if (pc.start >= clipEnd) return [];
                 if (pc.start + pc.length <= clipEnd) return [pc];
                 return [{ ...pc, length: Math.round((clipEnd - pc.start) * 100) / 100 }];
@@ -679,16 +681,18 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 return [{ ...pc, start: newStart, length: Math.round((pc.start + pc.length - newStart) * 100) / 100 }];
               }),
             })).filter((row) => row.pieces.length > 0);
-            const localLeftRows = clipSideLeft(buildFacePattern(sidePanelDepth, pH, mat, verband));
-            const localRightRows = clipSideRight(buildMirroredFacePattern(sidePanelDepth, pH, mat, verband));
+            const localLeftRows = clipSideLeft(buildFacePattern(sidePanelDepthL, pH, mat, verband), sidePanelDepthL);
+            const localRightRows = clipSideRight(buildMirroredFacePattern(sidePanelDepthR, pH, mat, verband));
 
             (() => {
               const stoot = mat.stoot ?? 10;
               const hpD_cs = (p.hoekprofiel?.enabled !== false) ? (p.hoekprofiel?.dikte ?? 2) : 0;
               const panelDikte_cs = groupSettings?.panelen?.dikte ?? 8;
               const sideClipOffset = Math.max(stoot, panelDikte_cs);
-              const panelDepth_cs = Math.max(1, pD + brickDepth);
-              const zijPaneel = panelDepth_cs + stoot;
+              const panelDepthL_cs = Math.max(1, pDL + brickDepth);
+              const panelDepthR_cs = Math.max(1, pDR + brickDepth);
+              const pDmax_cs = Math.max(pDL, pDR);
+              const zijPaneelMax = Math.max(panelDepthL_cs, panelDepthR_cs) + stoot;
               const frontPanelW_cs = Math.max(0, pB - 2 * brickDepth);
               const innerClearW_cs = Math.max(0, frontPanelW_cs - 2 * panelDikte_cs);
 
@@ -698,7 +702,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               const drawH = CSH - pad.t - pad.b;
 
               const totalCSW = pB;
-              const totalCSH = pD + brickDepth + stoot + panelDikte_cs + 14;
+              const totalCSH = pDmax_cs + brickDepth + stoot + panelDikte_cs + 14;
               const scH = drawH / totalCSH;
               const scW = drawW / totalCSW;
               const sc2 = Math.min(scH, scW);
@@ -708,8 +712,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               const pT   = panelDikte_cs * sc2;
               const pB2  = pB * sc2;
               const fpW2 = innerClearW_cs * sc2;
-              const pD2  = panelDepth_cs * sc2;
-              const zij2 = zijPaneel * sc2;
+              const pDL2 = panelDepthL_cs * sc2;
+              const pDR2 = panelDepthR_cs * sc2;
+              const zij2 = zijPaneelMax * sc2;
               const hp2  = hpD_cs * sc2;
               const clip2 = sideClipOffset * sc2;
 
@@ -743,7 +748,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     {`Penant ${idx + 1} — dwarsdoorsnede U-vorm (bovenaanzicht)`}
                   </text>
                   <text x={cx} y={27} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
-                    {`Voorzijde strips = ${mm(pB)} mm  ·  Voorzijde paneel = ${mm(frontPanelW_cs)} mm  ·  Zijpaneel diepte = ${mm(panelDepth_cs)} mm (${mm(pD)} + strip ${mm(brickDepth)})  ·  Strip diepte = ${mm(brickDepth)} mm`}
+                    {`Voorzijde strips = ${mm(pB)} mm  ·  Voorzijde paneel = ${mm(frontPanelW_cs)} mm  ·  Links: ${mm(panelDepthL_cs)} mm (${mm(pDL)}+strip)  ·  Rechts: ${mm(panelDepthR_cs)} mm (${mm(pDR)}+strip)  ·  Strip: ${mm(brickDepth)} mm`}
                   </text>
                   <text x={cx} y={37} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
                     {`Paneeldikte = ${mm(panelDikte_cs)} mm  ·  Clip offset = max(sv, pD) = max(${mm(stoot)}, ${mm(panelDikte_cs)}) = ${mm(sideClipOffset)} mm`}
@@ -753,10 +758,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   <text x={cx} y={gevelY + 16} textAnchor="middle" fontSize={7} fill="#94a3b8" fontFamily="Arial, sans-serif">▼ GEVEL</text>
 
                   {/* Linkerzijde strip - start ONDER voorzijdestrip + stootvoeg gap */}
-                  <rect x={lStripL} y={fpTopY + sv2} width={bd2} height={pT + pD2 - sv2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
+                  <rect x={lStripL} y={fpTopY + sv2} width={bd2} height={pT + pDL2 - sv2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
 
                   {/* Rechterzijde strip - start ONDER voorzijdestrip + stootvoeg gap */}
-                  <rect x={rPanelR} y={fpTopY + sv2} width={bd2} height={pT + pD2 - sv2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
+                  <rect x={rPanelR} y={fpTopY + sv2} width={bd2} height={pT + pDR2 - sv2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
 
                   {/* Stootvoeg hoek L: witte gap tussen voorzijdestrip en zijstrip */}
                   <rect x={lStripL} y={fpTopY} width={bd2} height={sv2} fill="#fff" stroke="#d97706" strokeWidth={0.5} strokeDasharray="2,2" />
@@ -764,17 +769,17 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   <rect x={rPanelR} y={fpTopY} width={bd2} height={sv2} fill="#fff" stroke="#d97706" strokeWidth={0.5} strokeDasharray="2,2" />
 
                   {/* Linkerzijde paneel - begint ACHTER voorzijde paneel (fpBotY) */}
-                  <rect x={lPanelL} y={fpBotY} width={pT} height={pD2} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
-                  <rect x={lPanelL} y={fpBotY + pD2} width={pT} height={sv2} fill="#fff7ed" stroke="#f59e0b" strokeWidth={0.8} strokeDasharray="2,2" />
+                  <rect x={lPanelL} y={fpBotY} width={pT} height={pDL2} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                  <rect x={lPanelL} y={fpBotY + pDL2} width={pT} height={sv2} fill="#fff7ed" stroke="#f59e0b" strokeWidth={0.8} strokeDasharray="2,2" />
 
                   {/* Rechterzijde paneel - begint ACHTER voorzijde paneel */}
-                  <rect x={rPanelL} y={fpBotY} width={pT} height={pD2} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
-                  <rect x={rPanelL} y={fpBotY + pD2} width={pT} height={sv2} fill="#fff7ed" stroke="#f59e0b" strokeWidth={0.8} strokeDasharray="2,2" />
+                  <rect x={rPanelL} y={fpBotY} width={pT} height={pDR2} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                  <rect x={rPanelL} y={fpBotY + pDR2} width={pT} height={sv2} fill="#fff7ed" stroke="#f59e0b" strokeWidth={0.8} strokeDasharray="2,2" />
 
                   {/* L-profielen in de binnenhoeken */}
                   {hpD_cs > 0 && <>
-                    <rect x={fpL - hp2} y={fpBotY} width={hp2} height={pD2} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
-                    <rect x={fpR} y={fpBotY} width={hp2} height={pD2} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
+                    <rect x={fpL - hp2} y={fpBotY} width={hp2} height={pDL2} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
+                    <rect x={fpR} y={fpBotY} width={hp2} height={pDR2} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
                   </>}
 
                   {/* Voorzijde paneel - volle breedte (doorlopen, VOOR zijpanelen) */}
@@ -806,14 +811,14 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   ))}
 
                   {/* Maatlijn: zijpaneel diepte - rechts van het rechter zijpaneel */}
-                  <line x1={rStripR + 2} y1={fpBotY} x2={rStripR + 2} y2={fpBotY + pD2} stroke="#1e3a5f" strokeWidth={0.8} />
+                  <line x1={rStripR + 2} y1={fpBotY} x2={rStripR + 2} y2={fpBotY + pDR2} stroke="#1e3a5f" strokeWidth={0.8} />
                   <line x1={rStripR - 2} y1={fpBotY} x2={rStripR + 6} y2={fpBotY} stroke="#1e3a5f" strokeWidth={0.8} />
-                  <line x1={rStripR - 2} y1={fpBotY + pD2} x2={rStripR + 6} y2={fpBotY + pD2} stroke="#1e3a5f" strokeWidth={0.8} />
-                  <text x={rStripR + 10} y={(fpBotY + fpBotY + pD2) / 2} textAnchor="start" dominantBaseline="middle" fontSize={7} fill="#1e3a5f" fontFamily="Arial, sans-serif" transform={`rotate(-90,${rStripR + 10},${(fpBotY + fpBotY + pD2) / 2})`}>{`paneel = ${mm(panelDepth_cs)} mm`}</text>
+                  <line x1={rStripR - 2} y1={fpBotY + pDR2} x2={rStripR + 6} y2={fpBotY + pDR2} stroke="#1e3a5f" strokeWidth={0.8} />
+                  <text x={rStripR + 10} y={(fpBotY + fpBotY + pDR2) / 2} textAnchor="start" dominantBaseline="middle" fontSize={7} fill="#1e3a5f" fontFamily="Arial, sans-serif" transform={`rotate(-90,${rStripR + 10},${(fpBotY + fpBotY + pDR2) / 2})`}>{`R paneel = ${mm(panelDepthR_cs)} mm`}</text>
 
                   {/* Maatlijn: stootvoeg - ook rechts */}
-                  <line x1={rStripR + 2} y1={fpBotY + pD2} x2={rStripR + 2} y2={fpBotY + pD2 + sv2} stroke="#f59e0b" strokeWidth={0.5} strokeDasharray="3,3" />
-                  <text x={rStripR + 6} y={fpBotY + pD2 + sv2 / 2} textAnchor="start" dominantBaseline="middle" fontSize={6} fill="#b45309" fontFamily="Arial, sans-serif">{`sv ${mm(stoot)}`}</text>
+                  <line x1={rStripR + 2} y1={fpBotY + pDR2} x2={rStripR + 2} y2={fpBotY + pDR2 + sv2} stroke="#f59e0b" strokeWidth={0.5} strokeDasharray="3,3" />
+                  <text x={rStripR + 6} y={fpBotY + pDR2 + sv2 / 2} textAnchor="start" dominantBaseline="middle" fontSize={6} fill="#b45309" fontFamily="Arial, sans-serif">{`sv ${mm(stoot)}`}</text>
 
                   <g transform={`translate(18, ${CSH - 40})`}>
                     <rect x={0} y={0} width={10} height={7} fill="#dbeafe" stroke="#3b82f6" strokeWidth={0.8} /><text x={13} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">Voorzijde paneel</text>
@@ -840,7 +845,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   Uitgeslagen breedte: {mm(totalUnfoldW)} mm · Hoogte: {mm(pH)} mm · {aantalSecties} U-sectie{aantalSecties !== 1 ? 's' : ''} · ≈{mm(sectieH)} mm/sectie
                 </text>
 
-                <rect x={ux(leftX)} y={uy(pH)} width={pD * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                <rect x={ux(leftX)} y={uy(pH)} width={pDL * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
                 {localLeftRows.length > 0 && (() => {
                   const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
                   return localLeftRows.flatMap((row, ri) => {
@@ -853,7 +858,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     }).filter(Boolean);
                   });
                 })()}
-                <text x={ux(leftX + pD / 2)} y={uy(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={7} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${ux(leftX + pD / 2)},${uy(pH / 2)})`}>LINKERZIJDE</text>
+                <text x={ux(leftX + pDL / 2)} y={uy(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={7} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${ux(leftX + pDL / 2)},${uy(pH / 2)})`}>LINKERZIJDE</text>
 
                 <rect x={ux(frontX + brickDepth)} y={uy(pH)} width={Math.max(0, pB - 2 * brickDepth) * sc} height={dH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1.2} />
                 {faceData?.front && (() => {
@@ -882,7 +887,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 })()}
                 <text x={ux(frontX + pB / 2)} y={uy(pH) - 6} textAnchor="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">VOORZIJDE</text>
 
-                <rect x={ux(rightX)} y={uy(pH)} width={pD * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                <rect x={ux(rightX)} y={uy(pH)} width={pDR * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
                 {localRightRows.length > 0 && (() => {
                   const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
                   return localRightRows.flatMap((row, ri) => {
@@ -895,15 +900,15 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     }).filter(Boolean);
                   });
                 })()}
-                <text x={ux(rightX + pD / 2)} y={uy(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={7} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${ux(rightX + pD / 2)},${uy(pH / 2)})`}>RECHTERZIJDE</text>
+                <text x={ux(rightX + pDR / 2)} y={uy(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={7} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${ux(rightX + pDR / 2)},${uy(pH / 2)})`}>RECHTERZIJDE</text>
 
                 <line x1={ux(frontX)} y1={uy(pH)} x2={ux(frontX)} y2={uy(0)} stroke="#475569" strokeWidth={0.8} strokeDasharray="4,3" />
                 <line x1={ux(rightX)} y1={uy(pH)} x2={ux(rightX)} y2={uy(0)} stroke="#475569" strokeWidth={0.8} strokeDasharray="4,3" />
 
                 {sectionYs.slice(1, -1).map((sy_val, si) => (
                   <g key={si}>
-                    <line x1={ux(leftX)} y1={uy(sy_val)} x2={ux(rightX + pD)} y2={uy(sy_val)} stroke="#dc2626" strokeWidth={1} strokeDasharray="6,3" />
-                    <text x={ux(rightX + pD) + 4} y={uy(sy_val) + 3} fontSize={7} fill="#dc2626" fontFamily="Arial, sans-serif">U{si + 1}|U{si + 2}</text>
+                    <line x1={ux(leftX)} y1={uy(sy_val)} x2={ux(rightX + pDR)} y2={uy(sy_val)} stroke="#dc2626" strokeWidth={1} strokeDasharray="6,3" />
+                    <text x={ux(rightX + pDR) + 4} y={uy(sy_val) + 3} fontSize={7} fill="#dc2626" fontFamily="Arial, sans-serif">U{si + 1}|U{si + 2}</text>
                   </g>
                 ))}
 
@@ -915,10 +920,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   );
                 })}
 
-                {vlEnabled && [leftX, rightX].map((fx, fi) => (
+                {vlEnabled && [{ fx: leftX, depth: pDL }, { fx: rightX, depth: pDR }].map(({ fx, depth }, fi) => (
                   <g key={fi}>
-                    <rect x={fi === 0 ? ux(fx + pD - vlD) : ux(fx)} y={uy(pH)} width={vlD * sc} height={dH} fill="#92400e" fillOpacity={0.3} stroke="#92400e" strokeWidth={0.5} />
-                    <text x={fi === 0 ? ux(fx + pD - vlD / 2) : ux(fx + vlD / 2)} y={uy(pH) - 4} textAnchor="middle" fontSize={6} fill="#92400e" fontFamily="Arial, sans-serif">{mm(vlD)}</text>
+                    <rect x={fi === 0 ? ux(fx + depth - vlD) : ux(fx)} y={uy(pH)} width={vlD * sc} height={dH} fill="#92400e" fillOpacity={0.3} stroke="#92400e" strokeWidth={0.5} />
+                    <text x={fi === 0 ? ux(fx + depth - vlD / 2) : ux(fx + vlD / 2)} y={uy(pH) - 4} textAnchor="middle" fontSize={6} fill="#92400e" fontFamily="Arial, sans-serif">{mm(vlD)}</text>
                   </g>
                 ))}
 
@@ -931,9 +936,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 ))}
 
                 <DimH x1={ux(frontX)} x2={ux(rightX)} y={uy(0) + 22} label={`strips ${mm(pB)} mm`} />
-                <DimH x1={ux(leftX)} x2={ux(frontX)} y={uy(0) + 38} label={`${mm(pD)} mm`} flip />
-                <DimH x1={ux(rightX)} x2={ux(rightX + pD)} y={uy(0) + 38} label={`${mm(pD)} mm`} flip />
-                <DimH x1={ux(leftX)} x2={ux(rightX + pD)} y={uy(0) + 56} label={`${mm(totalUnfoldW)} mm`} />
+                <DimH x1={ux(leftX)} x2={ux(frontX)} y={uy(0) + 38} label={`${mm(pDL)} mm`} flip />
+                <DimH x1={ux(rightX)} x2={ux(rightX + pDR)} y={uy(0) + 38} label={`${mm(pDR)} mm`} flip />
+                <DimH x1={ux(leftX)} x2={ux(rightX + pDR)} y={uy(0) + 56} label={`${mm(totalUnfoldW)} mm`} />
                 <DimV x={ox - 20} y1={uy(pH)} y2={uy(0)} label={`${mm(pH)} mm`} side="left" />
 
                 {sectionYs.slice(1, -1).map((sy_val, si) => (
@@ -946,13 +951,13 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 {(() => {
                   const calcX = ox;
                   const calcY = uy(0) + 68;
-                  const stripOmtrek = pB + 2 * sidePanelDepth;
+                  const stripOmtrek = pB + sidePanelDepthL + sidePanelDepthR;
                   const gPerMM = kgPerMM * 1000;
                   return (
                     <g fontFamily="Arial, sans-serif" fontSize={9} fill="#334155">
                       <text x={calcX} y={calcY} fontWeight="bold" fill="#0f172a" fontSize={10}>Gewichtsberekening (U-sectie opdeling):</text>
                       <text x={calcX} y={calcY + 14}>{`Stripgewicht bron: ${gewichtBron}`}</text>
-                      <text x={calcX} y={calcY + 27}>{`Voorzijde: ${mm(pB)} mm  +  2 × zijkant: ${mm(sidePanelDepth)} mm  =  strip-omtrek: ${mm(stripOmtrek)} mm`}</text>
+                      <text x={calcX} y={calcY + 27}>{`Voorzijde: ${mm(pB)} mm  +  links: ${mm(sidePanelDepthL)} mm  +  rechts: ${mm(sidePanelDepthR)} mm  =  strip-omtrek: ${mm(stripOmtrek)} mm`}</text>
                       <text x={calcX} y={calcY + 40}>{`Gewicht/mm hoogte: ${mm(stripOmtrek)} mm × ${gewichtM2} kg/m²  =  ${gPerMM.toFixed(2)} g/mm  →  max sectie: ⌊${maxKg} kg ÷ ${kgPerMM.toFixed(5)} kg/mm⌋ = ${maxSectieH} mm`}</text>
                       <text x={calcX} y={calcY + 54} fontWeight="bold" fill="#1e3a5f" fontSize={10}>{`Resultaat: ${aantalSecties} sectie${aantalSecties !== 1 ? 's' : ''} van ca. ${mm(sectieH)} mm  (totale hoogte: ${mm(pH)} mm)`}</text>
                     </g>
@@ -996,17 +1001,17 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     <text x={sox} y={30} fontSize={7.5} fill="#64748b" fontFamily="Arial, sans-serif">
                       {mm(secBottom)}–{mm(secTop)} mm · {mm(totalUnfoldW)} mm breed · {verband}
                     </text>
-                    <rect x={sux(leftX)} y={suy(secTop)} width={pD * secSc} height={sdH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.7} fillOpacity={0.3} />
-                    <text x={sux(leftX + pD / 2)} y={suy(secTop + secH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={6.5} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${sux(leftX + pD / 2)},${suy(secTop + secH / 2)})`}>LINKS</text>
+                    <rect x={sux(leftX)} y={suy(secTop)} width={pDL * secSc} height={sdH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.7} fillOpacity={0.3} />
+                    <text x={sux(leftX + pDL / 2)} y={suy(secTop + secH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={6.5} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${sux(leftX + pDL / 2)},${suy(secTop + secH / 2)})`}>LINKS</text>
                     <rect x={sux(frontX + brickDepth)} y={suy(secTop)} width={Math.max(0, pB - 2 * brickDepth) * secSc} height={sdH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1} fillOpacity={0.4} />
                     <text x={sux(frontX + pB / 2)} y={suy(secTop) - 6} textAnchor="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">VOORZIJDE</text>
-                    <rect x={sux(rightX)} y={suy(secTop)} width={pD * secSc} height={sdH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.7} fillOpacity={0.3} />
-                    <text x={sux(rightX + pD / 2)} y={suy(secTop + secH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={6.5} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${sux(rightX + pD / 2)},${suy(secTop + secH / 2)})`}>RECHTS</text>
+                    <rect x={sux(rightX)} y={suy(secTop)} width={pDR * secSc} height={sdH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.7} fillOpacity={0.3} />
+                    <text x={sux(rightX + pDR / 2)} y={suy(secTop + secH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={6.5} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${sux(rightX + pDR / 2)},${suy(secTop + secH / 2)})`}>RECHTS</text>
                     <line x1={sux(frontX)} y1={suy(secTop)} x2={sux(frontX)} y2={suy(secBottom)} stroke="#475569" strokeWidth={0.7} strokeDasharray="3,2" />
                     <line x1={sux(rightX)} y1={suy(secTop)} x2={sux(rightX)} y2={suy(secBottom)} stroke="#475569" strokeWidth={0.7} strokeDasharray="3,2" />
-                    <DimH x1={sux(leftX)} x2={sux(frontX)} y={suy(secBottom) + 28} label={`${mm(pD)} mm`} />
+                    <DimH x1={sux(leftX)} x2={sux(frontX)} y={suy(secBottom) + 28} label={`${mm(pDL)} mm`} />
                     <DimH x1={sux(frontX)} x2={sux(rightX)} y={suy(secBottom) + 28} label={`${mm(pB)} mm`} />
-                    <DimH x1={sux(rightX)} x2={sux(rightX + pD)} y={suy(secBottom) + 28} label={`${mm(pD)} mm`} />
+                    <DimH x1={sux(rightX)} x2={sux(rightX + pDR)} y={suy(secBottom) + 28} label={`${mm(pDR)} mm`} />
                     <DimV x={sox - 20} y1={suy(secTop)} y2={suy(secBottom)} label={`${mm(secH)} mm`} side="left" />
                   </svg>
                 );

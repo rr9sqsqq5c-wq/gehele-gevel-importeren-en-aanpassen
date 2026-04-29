@@ -540,13 +540,23 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                   );
                 })()}
               </Field>
-              {[['Breedte', 'breedte'], ['Diepte', 'diepte'], ['Hoogte', 'hoogte']].map(([lbl, key]) => (
+              {[['Breedte', 'breedte'], ['Hoogte', 'hoogte']].map(([lbl, key]) => (
                 <Field key={key} label={`${lbl} mm`}>
                   <input type="number" min={0} step={10} value={p[key] ?? 0}
                     onChange={(e) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, [key]: Number(e.target.value) } : q) })}
                     style={{ ...inp, width: '100%' }} />
                 </Field>
               ))}
+              <Field label="Diepte links mm" tip="Diepte van de linkerzijde van het penant (mm). Bepaalt hoe ver de linker arm uitsteekt.">
+                <input type="number" min={0} step={10} value={p.diepteLinks ?? p.diepte ?? 150}
+                  onChange={(e) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, diepteLinks: Number(e.target.value) } : q) })}
+                  style={{ ...inp, width: '100%' }} />
+              </Field>
+              <Field label="Diepte rechts mm" tip="Diepte van de rechterzijde van het penant (mm). Bepaalt hoe ver de rechter arm uitsteekt.">
+                <input type="number" min={0} step={10} value={p.diepteRechts ?? p.diepte ?? 150}
+                  onChange={(e) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, diepteRechts: Number(e.target.value) } : q) })}
+                  style={{ ...inp, width: '100%' }} />
+              </Field>
             </div>
 
             {(() => {
@@ -580,7 +590,8 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               const updP = (patch) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, ...patch } : q) });
               const maxKg = p.maxKg ?? 50;
               const pB = Math.max(1, p.breedte ?? 400);
-              const pD = Math.max(1, p.diepte ?? 150);
+              const pDL = Math.max(1, p.diepteLinks ?? p.diepte ?? 150);
+              const pDR = Math.max(1, p.diepteRechts ?? p.diepte ?? 150);
               const pH = Math.max(1, p.hoogte ?? 2000);
               const selStripIdP = (settings.steenstripsArtikelen ?? [])[0] ?? null;
               const selStripP = selStripIdP ? STEENSTRIP_CATALOG.find((a) => a.id === selStripIdP) : null;
@@ -589,8 +600,9 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               const gewichtM2 = panelGewichtM2P + stripGewichtM2P;
               const brickDepthP = settings.brickDepth ?? 20;
               const stootP = settings.material?.stoot ?? 10;
-              const sidePanelDepthP = Math.max(1, pD - brickDepthP - stootP);
-              const omtrekM2perMM = (pB + 2 * sidePanelDepthP) / 1e6;
+              const sidePanelDepthL = Math.max(1, pDL - brickDepthP - stootP);
+              const sidePanelDepthR = Math.max(1, pDR - brickDepthP - stootP);
+              const omtrekM2perMM = (pB + sidePanelDepthL + sidePanelDepthR) / 1e6;
               const kgPerMM = omtrekM2perMM * gewichtM2;
               const maxSectieH = kgPerMM > 0 ? Math.floor(maxKg / kgPerMM) : pH;
               const aantalSecties = kgPerMM > 0 ? Math.ceil(pH / maxSectieH) : 1;
@@ -1671,13 +1683,15 @@ export default function App() {
       for (const pen of (s.penanten ?? [])) {
         const pX  = pen.x   ?? 0;
         const pB  = Math.max(1, pen.breedte ?? 400);
-        const pD  = Math.max(1, pen.diepte  ?? 150);
+        const pDL3 = Math.max(1, pen.diepteLinks  ?? pen.diepte ?? 150);
+        const pDR3 = Math.max(1, pen.diepteRechts ?? pen.diepte ?? 150);
+        const pDmax3 = Math.max(pDL3, pDR3);
         const maxH = s.maxHoogte ?? 0;
         const pH  = Math.max(1, (maxH != null && maxH > 0) ? Math.min(pen.hoogte ?? 2000, maxH) : (pen.hoogte ?? 2000));
         const panelDikte = s.panelen?.dikte ?? 8;
         const latD = s.latten?.dikte ?? 28;
         const penStoot = mat.stoot ?? 10;
-        const penShift = panelDikte + brickD3d + penStoot + pD;
+        const penShift = panelDikte + brickD3d + penStoot + pDmax3;
         const depthFromFace = latD + penShift + brickD3d / 2;
         const faceRows = buildCenteredFacePattern(pB, pH, mat, groupVerband3d);
         if (!faceRows.length) continue;
@@ -1687,7 +1701,6 @@ export default function App() {
         }));
         batches.push({ rows: offsetRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, depthFromFace });
 
-        const sideDepth = Math.max(1, pD - 6);
         const sideClipOff = Math.max(penStoot, panelDikte);
         const sideDepthOffset = latD + penStoot;
         const clipSide = (rawRows) => rawRows.map((row) => ({
@@ -1699,8 +1712,8 @@ export default function App() {
             return [{ ...pc, start: ns, length: Math.round((pc.start + pc.length - ns) * 100) / 100 }];
           }),
         })).filter((row) => row.pieces.length > 0);
-        const leftRows = clipSide(buildFacePattern(sideDepth, pH, mat, groupVerband3d));
-        const rightRows = clipSide(buildMirroredFacePattern(sideDepth, pH, mat, groupVerband3d));
+        const leftRows = clipSide(buildFacePattern(Math.max(1, pDL3 - 6), pH, mat, groupVerband3d));
+        const rightRows = clipSide(buildMirroredFacePattern(Math.max(1, pDR3 - 6), pH, mat, groupVerband3d));
         if (leftRows.length) batches.push({ rows: leftRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, sideType: 'left', penantX: pX, penantB: pB, sideDepthOffset });
         if (rightRows.length) batches.push({ rows: rightRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, sideType: 'right', penantX: pX, penantB: pB, sideDepthOffset });
       }
@@ -2606,16 +2619,18 @@ export default function App() {
 
       const penantFaceRows = (s.penanten ?? []).map((p) => {
         const pB = Math.max(1, p.breedte ?? 400);
-        const pD = Math.max(1, p.diepte ?? 150);
+        const pDL2 = Math.max(1, p.diepteLinks  ?? p.diepte ?? 150);
+        const pDR2 = Math.max(1, p.diepteRechts ?? p.diepte ?? 150);
         const pH = Math.max(1, p.hoogte ?? 2000);
         const brickDepth = s.brickDepth ?? 20;
         const panelDikteP = s.panelen?.dikte ?? 8;
         const stoot = mat.stoot ?? 10;
-        const sideDepth = Math.max(1, pD - 6);
+        const sideDepthL = Math.max(1, pDL2 - 6);
+        const sideDepthR = Math.max(1, pDR2 - 6);
         const clipOff = Math.max(stoot, panelDikteP);
         const frontRows = buildCenteredFacePattern(pB, pH, mat, s.verband ?? DEFAULT_VERBAND);
-        const rawLeft = buildFacePattern(sideDepth, pH, mat, s.verband ?? DEFAULT_VERBAND);
-        const rawRight = buildMirroredFacePattern(sideDepth, pH, mat, s.verband ?? DEFAULT_VERBAND);
+        const rawLeft = buildFacePattern(sideDepthL, pH, mat, s.verband ?? DEFAULT_VERBAND);
+        const rawRight = buildMirroredFacePattern(sideDepthR, pH, mat, s.verband ?? DEFAULT_VERBAND);
         const clipSide = (rawRows) => rawRows.map((row) => ({
           ...row,
           pieces: row.pieces.flatMap((pc) => {
@@ -2627,7 +2642,7 @@ export default function App() {
         })).filter((row) => row.pieces.length > 0);
         const leftRows = clipSide(rawLeft);
         const rightRows = clipSide(rawRight);
-        return { frontRows, leftRows, rightRows, sideDepth, pD };
+        return { frontRows, leftRows, rightRows, sideDepthL, sideDepthR, pDL: pDL2, pDR: pDR2 };
       });
 
       const stripBatches = (() => {
@@ -2735,19 +2750,21 @@ export default function App() {
     return s.penanten.map((p) => {
       const pX = p.x ?? 0;
       const pB = Math.max(1, p.breedte ?? 400);
-      const pD = Math.max(1, p.diepte ?? 150);
+      const pDL = Math.max(1, p.diepteLinks  ?? p.diepte ?? 150);
+      const pDR = Math.max(1, p.diepteRechts ?? p.diepte ?? 150);
       const pH = Math.max(1, p.hoogte ?? 2000);
       const frontRows = buildCenteredFacePattern(pB, pH, mat, verband);
 
       const brickDepth = s.brickDepth ?? 20;
       const panelDikte = s.panelen?.dikte ?? 8;
       const stoot = mat.stoot ?? 10;
-      const panelDepth = Math.max(1, pD - brickDepth - stoot);
+      const panelDepthL = Math.max(1, pDL - brickDepth - stoot);
+      const panelDepthR = Math.max(1, pDR - brickDepth - stoot);
       const sideClipOffset = Math.max(stoot, panelDikte);
-      const clipLeft = (rows) => rows.map((row) => ({
+      const clipLeft = (rows, pd) => rows.map((row) => ({
         ...row,
         pieces: row.pieces.flatMap((pc) => {
-          const clipEnd = panelDepth - sideClipOffset;
+          const clipEnd = pd - sideClipOffset;
           if (pc.start >= clipEnd) return [];
           if (pc.start + pc.length <= clipEnd) return [pc];
           return [{ ...pc, length: Math.round((clipEnd - pc.start) * 100) / 100 }];
@@ -2762,9 +2779,9 @@ export default function App() {
           return [{ ...pc, start: newStart, length: Math.round((pc.start + pc.length - newStart) * 100) / 100 }];
         }),
       })).filter((row) => row.pieces.length > 0);
-      const leftRows = clipLeft(buildFacePattern(panelDepth, pH, mat, verband));
-      const rightRows = clipRight(buildMirroredFacePattern(panelDepth, pH, mat, verband));
-      return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: pH, groupMinH, sideClipOffset, panelDepth };
+      const leftRows = clipLeft(buildFacePattern(panelDepthL, pH, mat, verband), panelDepthL);
+      const rightRows = clipRight(buildMirroredFacePattern(panelDepthR, pH, mat, verband));
+      return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: pH, groupMinH, sideClipOffset, panelDepthL, panelDepthR, pDL, pDR };
     });
   }, [activeGroup, getSettings, wallMap, adjacencies]);
   const adjWallIds = useMemo(() => new Set(adjacencies.flatMap((a) => [a.wallIdA, a.wallIdB])), [adjacencies]);

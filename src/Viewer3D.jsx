@@ -111,7 +111,8 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, lat
   if (!rwo) return [];
   const pX = penant.x ?? 0;
   const pB = Math.max(1, penant.breedte ?? 400);
-  const pD = Math.max(1, penant.diepte ?? 150);
+  const pDL = Math.max(1, penant.diepteLinks  ?? penant.diepte ?? 150);
+  const pDR = Math.max(1, penant.diepteRechts ?? penant.diepte ?? 150);
   const pH = Math.max(1, penant.hoogte ?? 2000);
   const ld = latDikte ?? 28;
   const penMinH = (minHoogteOokPenanten && minHoogte > 0) ? minHoogte : 0;
@@ -123,7 +124,8 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, lat
   const stoot = 10;
   const panelT = panelDikte;
   const frontW  = Math.max(1, pB - 2 * brickDepth);
-  const sideD   = Math.max(1, pD + brickDepth);
+  const sideDL  = Math.max(1, pDL + brickDepth);
+  const sideDR  = Math.max(1, pDR + brickDepth);
 
   const makeBox = (gxOff, depthCenter, boxW, boxThick) => {
     const ifc = { x: 0, y: 0, z: 0 };
@@ -142,9 +144,9 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, lat
 
   const sh = penantShift;
   return [
-    makeBox(pX + pB / 2,                              ld + sh - panelT / 2,         frontW, panelT),
-    makeBox(pX + brickDepth + panelT / 2,             ld + sh - panelT - sideD / 2, panelT, sideD),
-    makeBox(pX + pB - brickDepth - panelT / 2,        ld + sh - panelT - sideD / 2, panelT, sideD),
+    makeBox(pX + pB / 2,                              ld + sh - panelT / 2,          frontW, panelT),
+    makeBox(pX + brickDepth + panelT / 2,             ld + sh - panelT - sideDL / 2, panelT, sideDL),
+    makeBox(pX + pB - brickDepth - panelT / 2,        ld + sh - panelT - sideDR / 2, panelT, sideDR),
   ];
 }
 
@@ -916,8 +918,9 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           const penMinHoogteOok = !!(settings?.minHoogteOokPenanten);
           const penFlip = !!(settings?.outsideDirFlip);
           return penanten.map((penant) => {
-            const pD = Math.max(1, penant.diepte ?? 150);
-            const penantShift = penPanelDikte + penBrickD + penStoot + pD;
+            const pDL3V = Math.max(1, penant.diepteLinks  ?? penant.diepte ?? 150);
+            const pDR3V = Math.max(1, penant.diepteRechts ?? penant.diepte ?? 150);
+            const penantShift = penPanelDikte + penBrickD + penStoot + Math.max(pDL3V, pDR3V);
             return (
               <PenantMesh3D
                 key={`penant-${group.id}-${penant.id ?? penant.x}`}
