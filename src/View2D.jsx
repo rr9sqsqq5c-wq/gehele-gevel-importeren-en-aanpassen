@@ -593,8 +593,8 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
         ctx.fillStyle = 'rgba(99,102,241,0.2)';
         ctx.beginPath();
         ctx.moveTo(sx, baseY);
-        ctx.lineTo(sx + depthPx, baseY - depthPx);
-        ctx.lineTo(sx + pW + depthPx, baseY - depthPx);
+        ctx.lineTo(sx + depthPxL, baseY - depthPxL);
+        ctx.lineTo(sx + pW + depthPxR, baseY - depthPxR);
         ctx.lineTo(sx + pW, baseY);
         ctx.closePath();
         ctx.fill();
