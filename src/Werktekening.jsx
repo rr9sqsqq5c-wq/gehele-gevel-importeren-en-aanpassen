@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { buildFullGroupFacadePattern, buildFacePattern, buildMirroredFacePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG, clipPanelToFacadePolys } from './lib/panelization.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
+import { STEENSTRIP_CATALOG } from './lib/battens.js';
 
 function generatePaneelId(entity, projectNr, level, stramienStart, stramienEnd, seqNr, panelType) {
   const e  = ((entity ?? 'P') + '').slice(0, 1).toUpperCase();
@@ -607,7 +608,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           const pens = groupSettings?.penanten ?? [];
           if (!pens.length) return <div style={{ color: '#64748b', fontSize: 13, padding: 20 }}>Geen penanten geconfigureerd.</div>;
 
-          const PAD_L = 100; const PAD_R = 50; const PAD_T = 50; const PAD_B = 130;
+          const PAD_L = 100; const PAD_R = 50; const PAD_T = 50; const PAD_B = 145;
           const MAX_UNFOLD_W = 860; const MAX_UNFOLD_H = 480;
           const color = groupSettings?.color ?? '#a64033';
 
@@ -617,9 +618,12 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             const pB = Math.max(1, p.breedte ?? 400);
             const pD = Math.max(1, p.diepte ?? 150);
             const pH = Math.max(1, p.hoogte ?? 2000);
-            const gewichtM2 = p.gewichtM2 ?? 9.4;
             const maxKg = p.maxKg ?? 50;
             const brickDepth = groupSettings?.brickDepth ?? 20;
+            const selStripId = (groupSettings?.steenstripsArtikelen ?? [])[0] ?? null;
+            const selStrip = selStripId ? STEENSTRIP_CATALOG.find((a) => a.id === selStripId) : null;
+            const gewichtM2 = selStrip?.brickWeightM2 ?? p.gewichtM2 ?? 9.4;
+            const gewichtBron = selStrip ? `${selStrip.naam} (${selStrip.formatCode}) — ${gewichtM2} kg/m²` : `handmatig ingesteld — ${gewichtM2} kg/m²`;
             const stootWT = mat.stoot ?? 10;
             const panelDikteWT = groupSettings?.panelen?.dikte ?? 8;
             const sidePanelDepth = Math.max(1, pD - brickDepth - stootWT);
@@ -943,9 +947,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   return (
                     <g fontFamily="Arial, sans-serif" fontSize={7} fill="#334155">
                       <text x={calcX} y={calcY} fontWeight="bold" fill="#0f172a">Gewichtsberekening (U-sectie opdeling):</text>
-                      <text x={calcX} y={calcY + 11}>{`Voorzijde: ${mm(pB)} mm  +  2 × zijkant: ${mm(sidePanelDepth)} mm  =  strip-omtrek: ${mm(stripOmtrek)} mm`}</text>
-                      <text x={calcX} y={calcY + 22}>{`Gewicht/mm hoogte: ${mm(stripOmtrek)} mm × ${gewichtM2} kg/m²  =  ${gPerMM.toFixed(2)} g/mm  →  max sectie: ⌊${maxKg} kg ÷ ${kgPerMM.toFixed(5)} kg/mm⌋ = ${maxSectieH} mm`}</text>
-                      <text x={calcX} y={calcY + 33} fontWeight="bold" fill="#1e3a5f">{`Resultaat: ${aantalSecties} sectie${aantalSecties !== 1 ? 's' : ''} van ca. ${mm(sectieH)} mm  (totale hoogte: ${mm(pH)} mm)`}</text>
+                      <text x={calcX} y={calcY + 11}>{`Stripgewicht bron: ${gewichtBron}`}</text>
+                      <text x={calcX} y={calcY + 22}>{`Voorzijde: ${mm(pB)} mm  +  2 × zijkant: ${mm(sidePanelDepth)} mm  =  strip-omtrek: ${mm(stripOmtrek)} mm`}</text>
+                      <text x={calcX} y={calcY + 33}>{`Gewicht/mm hoogte: ${mm(stripOmtrek)} mm × ${gewichtM2} kg/m²  =  ${gPerMM.toFixed(2)} g/mm  →  max sectie: ⌊${maxKg} kg ÷ ${kgPerMM.toFixed(5)} kg/mm⌋ = ${maxSectieH} mm`}</text>
+                      <text x={calcX} y={calcY + 44} fontWeight="bold" fill="#1e3a5f">{`Resultaat: ${aantalSecties} sectie${aantalSecties !== 1 ? 's' : ''} van ca. ${mm(sectieH)} mm  (totale hoogte: ${mm(pH)} mm)`}</text>
                     </g>
                   );
                 })()}
