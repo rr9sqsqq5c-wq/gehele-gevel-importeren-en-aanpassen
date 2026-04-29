@@ -494,7 +494,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
     }
 
     if (penantFaceData?.length) {
-      for (const { penant: p, front, right: rightSideRows = [], height: pH } of penantFaceData) {
+      for (const { penant: p, front, left: leftSideRows = [], right: rightSideRows = [], height: pH, panelDepth: penPanelDepth } of penantFaceData) {
         const pX = p.x ?? 0;
         const pB = Math.max(1, p.breedte ?? 400);
         const pD = Math.max(1, p.diepte ?? 150);
@@ -543,6 +543,44 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
               ctx.lineTo(sx + pW + dFracR * depthPx, baseY + topFrac * pHpx - dFracR * depthPx);
               ctx.lineTo(sx + pW + dFracR * depthPx, baseY + botFrac * pHpx - dFracR * depthPx);
               ctx.lineTo(sx + pW + dFracL * depthPx, baseY + botFrac * pHpx - dFracL * depthPx);
+              ctx.closePath();
+              ctx.fill();
+            }
+          }
+          ctx.restore();
+        }
+
+        ctx.fillStyle = 'rgba(99,102,241,0.25)';
+        ctx.beginPath();
+        ctx.moveTo(sx, baseY);
+        ctx.lineTo(sx - depthPx, baseY - depthPx);
+        ctx.lineTo(sx - depthPx, bottomY - depthPx);
+        ctx.lineTo(sx, bottomY);
+        ctx.closePath();
+        ctx.fill();
+
+        if (leftSideRows.length && penPanelDepth > 0) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(sx, baseY);
+          ctx.lineTo(sx - depthPx, baseY - depthPx);
+          ctx.lineTo(sx - depthPx, bottomY - depthPx);
+          ctx.lineTo(sx, bottomY);
+          ctx.closePath();
+          ctx.clip();
+          const col = groupColor ?? '#a64033';
+          for (const row of leftSideRows) {
+            for (const piece of row.pieces) {
+              const dFracFront = Math.max(0, Math.min(1, piece.start / penPanelDepth));
+              const dFracBack  = Math.max(0, Math.min(1, (piece.start + piece.length) / penPanelDepth));
+              const topFrac = (pH - row.y - steenH) / pH;
+              const botFrac = (pH - row.y) / pH;
+              ctx.fillStyle = brickColor(piece.label, col, piece.length, kopMM);
+              ctx.beginPath();
+              ctx.moveTo(sx - dFracFront * depthPx, baseY + topFrac * pHpx - dFracFront * depthPx);
+              ctx.lineTo(sx - dFracBack  * depthPx, baseY + topFrac * pHpx - dFracBack  * depthPx);
+              ctx.lineTo(sx - dFracBack  * depthPx, baseY + botFrac * pHpx - dFracBack  * depthPx);
+              ctx.lineTo(sx - dFracFront * depthPx, baseY + botFrac * pHpx - dFracFront * depthPx);
               ctx.closePath();
               ctx.fill();
             }

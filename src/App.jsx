@@ -1682,7 +1682,7 @@ export default function App() {
 
         const sideDepth = Math.max(1, pD - 6);
         const sideClipOff = Math.max(penStoot, panelDikte);
-        const sideDepthOffset = latD + panelDikte + brickD3d + penStoot;
+        const sideDepthOffset = latD + penStoot;
         const clipSide = (rawRows) => rawRows.map((row) => ({
           ...row,
           pieces: row.pieces.flatMap((pc) => {
@@ -2757,7 +2757,7 @@ export default function App() {
       })).filter((row) => row.pieces.length > 0);
       const leftRows = clipLeft(buildFacePattern(panelDepth, pH, mat, verband));
       const rightRows = clipRight(buildMirroredFacePattern(panelDepth, pH, mat, verband));
-      return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: pH, groupMinH, sideClipOffset };
+      return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: pH, groupMinH, sideClipOffset, panelDepth };
     });
   }, [activeGroup, getSettings, wallMap, adjacencies]);
   const adjWallIds = useMemo(() => new Set(adjacencies.flatMap((a) => [a.wallIdA, a.wallIdB])), [adjacencies]);

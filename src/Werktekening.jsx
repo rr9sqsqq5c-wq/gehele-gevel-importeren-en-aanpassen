@@ -607,7 +607,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           const pens = groupSettings?.penanten ?? [];
           if (!pens.length) return <div style={{ color: '#64748b', fontSize: 13, padding: 20 }}>Geen penanten geconfigureerd.</div>;
 
-          const PAD_L = 100; const PAD_R = 50; const PAD_T = 50; const PAD_B = 55;
+          const PAD_L = 100; const PAD_R = 50; const PAD_T = 50; const PAD_B = 80;
           const MAX_UNFOLD_W = 860; const MAX_UNFOLD_H = 480;
           const color = groupSettings?.color ?? '#a64033';
 
@@ -809,6 +809,18 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 </text>
 
                 <rect x={ux(leftX)} y={uy(pH)} width={pD * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                {faceData?.left && (() => {
+                  const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+                  return faceData.left.flatMap((row, ri) => {
+                    if (row.y + stripH <= 0 || row.y >= pH) return [];
+                    return row.pieces.map((pc, pi) => {
+                      const clipY1 = Math.max(row.y, 0); const clipY2 = Math.min(row.y + stripH, pH);
+                      if (clipY2 - clipY1 < 0.5) return null;
+                      const rh = Math.max((clipY2 - clipY1) * sc, 1.5);
+                      return <rect key={`ls-${ri}-${pi}`} x={ux(leftX + pc.start)} y={uy(clipY2)} width={Math.max(pc.length * sc, 1)} height={rh} fill={brickColor(pc.label, color)} stroke="rgba(0,0,0,0.25)" strokeWidth={0.3} />;
+                    }).filter(Boolean);
+                  });
+                })()}
                 <text x={ux(leftX + pD / 2)} y={uy(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={7} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${ux(leftX + pD / 2)},${uy(pH / 2)})`}>LINKERZIJDE</text>
 
                 <rect x={ux(frontX + brickDepth)} y={uy(pH)} width={Math.max(0, pB - 2 * brickDepth) * sc} height={dH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1.2} />
@@ -839,6 +851,18 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 <text x={ux(frontX + pB / 2)} y={uy(pH) - 6} textAnchor="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">VOORZIJDE</text>
 
                 <rect x={ux(rightX)} y={uy(pH)} width={pD * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                {faceData?.right && (() => {
+                  const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+                  return faceData.right.flatMap((row, ri) => {
+                    if (row.y + stripH <= 0 || row.y >= pH) return [];
+                    return row.pieces.map((pc, pi) => {
+                      const clipY1 = Math.max(row.y, 0); const clipY2 = Math.min(row.y + stripH, pH);
+                      if (clipY2 - clipY1 < 0.5) return null;
+                      const rh = Math.max((clipY2 - clipY1) * sc, 1.5);
+                      return <rect key={`rs-${ri}-${pi}`} x={ux(rightX + pc.start)} y={uy(clipY2)} width={Math.max(pc.length * sc, 1)} height={rh} fill={brickColor(pc.label, color)} stroke="rgba(0,0,0,0.25)" strokeWidth={0.3} />;
+                    }).filter(Boolean);
+                  });
+                })()}
                 <text x={ux(rightX + pD / 2)} y={uy(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={7} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${ux(rightX + pD / 2)},${uy(pH / 2)})`}>RECHTERZIJDE</text>
 
                 <line x1={ux(frontX)} y1={uy(pH)} x2={ux(frontX)} y2={uy(0)} stroke="#475569" strokeWidth={0.8} strokeDasharray="4,3" />
@@ -874,10 +898,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   </g>
                 ))}
 
-                <DimH x1={ux(leftX)} x2={ux(frontX)} y={uy(0) + 28} label={`${mm(pD)} mm`} />
-                <DimH x1={ux(frontX)} x2={ux(rightX)} y={uy(0) + 28} label={`strips ${mm(pB)} mm`} />
-                <DimH x1={ux(rightX)} x2={ux(rightX + pD)} y={uy(0) + 28} label={`${mm(pD)} mm`} />
-                <DimH x1={ux(leftX)} x2={ux(rightX + pD)} y={uy(0) + 42} label={`${mm(totalUnfoldW)} mm`} />
+                <DimH x1={ux(frontX)} x2={ux(rightX)} y={uy(0) + 22} label={`strips ${mm(pB)} mm`} />
+                <DimH x1={ux(leftX)} x2={ux(frontX)} y={uy(0) + 36} label={`${mm(pD)} mm`} />
+                <DimH x1={ux(rightX)} x2={ux(rightX + pD)} y={uy(0) + 36} label={`${mm(pD)} mm`} />
+                <DimH x1={ux(leftX)} x2={ux(rightX + pD)} y={uy(0) + 50} label={`${mm(totalUnfoldW)} mm`} />
                 <DimV x={ox - 20} y1={uy(pH)} y2={uy(0)} label={`${mm(pH)} mm`} side="left" />
 
                 {sectionYs.slice(1, -1).map((sy_val, si) => (
