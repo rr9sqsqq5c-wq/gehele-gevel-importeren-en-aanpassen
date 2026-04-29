@@ -619,8 +619,12 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             const pH = Math.max(1, p.hoogte ?? 2000);
             const gewichtM2 = p.gewichtM2 ?? 9.4;
             const maxKg = p.maxKg ?? 50;
-            const omtrekM2perMM = (pB + 2 * pD) / 1e6;
-            const kgPerMM = omtrekM2perMM * gewichtM2;
+            const brickDepth = groupSettings?.brickDepth ?? 20;
+            const stootWT = mat.stoot ?? 10;
+            const panelDikteWT = groupSettings?.panelen?.dikte ?? 8;
+            const sidePanelDepth = Math.max(1, pD - brickDepth - stootWT);
+            const stripOmtrekPerMM = (pB + 2 * sidePanelDepth) / 1e6;
+            const kgPerMM = stripOmtrekPerMM * gewichtM2;
             const maxSectieH = kgPerMM > 0 ? Math.floor(maxKg / kgPerMM) : pH;
             const aantalSecties = kgPerMM > 0 ? Math.ceil(pH / maxSectieH) : 1;
             const sectieH = aantalSecties > 0 ? Math.round(pH / aantalSecties) : pH;
@@ -648,11 +652,6 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             for (let s = 0; s <= aantalSecties; s++) sectionYs.push(Math.round(Math.min(s * sectieH, pH)));
 
             const faceData = (penantFaceData ?? []).find((fd) => fd.penant.id === p.id);
-            const brickDepth = groupSettings?.brickDepth ?? 20;
-
-            const stootWT = mat.stoot ?? 10;
-            const panelDikteWT = groupSettings?.panelen?.dikte ?? 8;
-            const sidePanelDepth = Math.max(1, pD - brickDepth - stootWT);
             const sideClipOffWT = Math.max(stootWT, panelDikteWT);
             const clipSideLeft = (rows) => rows.map((row) => ({
               ...row,
