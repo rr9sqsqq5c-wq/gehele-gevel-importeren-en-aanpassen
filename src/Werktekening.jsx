@@ -623,11 +623,11 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             const selStripId = (groupSettings?.steenstripsArtikelen ?? [])[0] ?? null;
             const selStrip = selStripId ? STEENSTRIP_CATALOG.find((a) => a.id === selStripId) : null;
             const panelGewichtM2 = groupSettings?.panelen?.gewichtM2 ?? 9.4;
-            const stripGewichtM2 = selStrip?.brickWeightM2 ?? 0;
-            const gewichtM2 = selStrip ? panelGewichtM2 + stripGewichtM2 : (p.gewichtM2 ?? 9.4);
+            const stripGewichtM2 = mat.brickWeightM2 ?? 40;
+            const gewichtM2 = panelGewichtM2 + stripGewichtM2;
             const gewichtBron = selStrip
               ? `paneel ${panelGewichtM2} kg/m²  +  strip ${stripGewichtM2} kg/m² (${selStrip.naam} ${selStrip.formatCode})  =  ${gewichtM2} kg/m²`
-              : `handmatig ingesteld — ${gewichtM2} kg/m²`;
+              : `paneel ${panelGewichtM2} kg/m²  +  strip ${stripGewichtM2} kg/m² (uit materiaalinstellingen)  =  ${gewichtM2} kg/m²`;
             const stootWT = mat.stoot ?? 10;
             const panelDikteWT = groupSettings?.panelen?.dikte ?? 8;
             const sidePanelDepth = Math.max(1, pD - brickDepth - stootWT);
