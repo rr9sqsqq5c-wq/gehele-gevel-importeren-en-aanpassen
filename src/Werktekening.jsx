@@ -608,7 +608,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           const pens = groupSettings?.penanten ?? [];
           if (!pens.length) return <div style={{ color: '#64748b', fontSize: 13, padding: 20 }}>Geen penanten geconfigureerd.</div>;
 
-          const PAD_L = 100; const PAD_R = 50; const PAD_T = 50; const PAD_B = 145;
+          const PAD_L = 100; const PAD_R = 50; const PAD_T = 50; const PAD_B = 160;
           const MAX_UNFOLD_W = 860; const MAX_UNFOLD_H = 480;
           const color = groupSettings?.color ?? '#a64033';
 
@@ -644,7 +644,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             const sc = Math.min((MAX_UNFOLD_W - PAD_L - PAD_R) / totalUnfoldW, (MAX_UNFOLD_H - PAD_T - PAD_B) / pH);
             const dW = Math.round(totalUnfoldW * sc);
             const dH = Math.round(pH * sc);
-            const svgW = dW + PAD_L + PAD_R;
+            const svgW = Math.max(dW + PAD_L + PAD_R, 820);
             const svgH = dH + PAD_T + PAD_B;
             const ox = PAD_L; const oy = PAD_T;
 
@@ -945,12 +945,12 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   const stripOmtrek = pB + 2 * sidePanelDepth;
                   const gPerMM = kgPerMM * 1000;
                   return (
-                    <g fontFamily="Arial, sans-serif" fontSize={7} fill="#334155">
-                      <text x={calcX} y={calcY} fontWeight="bold" fill="#0f172a">Gewichtsberekening (U-sectie opdeling):</text>
-                      <text x={calcX} y={calcY + 11}>{`Stripgewicht bron: ${gewichtBron}`}</text>
-                      <text x={calcX} y={calcY + 22}>{`Voorzijde: ${mm(pB)} mm  +  2 × zijkant: ${mm(sidePanelDepth)} mm  =  strip-omtrek: ${mm(stripOmtrek)} mm`}</text>
-                      <text x={calcX} y={calcY + 33}>{`Gewicht/mm hoogte: ${mm(stripOmtrek)} mm × ${gewichtM2} kg/m²  =  ${gPerMM.toFixed(2)} g/mm  →  max sectie: ⌊${maxKg} kg ÷ ${kgPerMM.toFixed(5)} kg/mm⌋ = ${maxSectieH} mm`}</text>
-                      <text x={calcX} y={calcY + 44} fontWeight="bold" fill="#1e3a5f">{`Resultaat: ${aantalSecties} sectie${aantalSecties !== 1 ? 's' : ''} van ca. ${mm(sectieH)} mm  (totale hoogte: ${mm(pH)} mm)`}</text>
+                    <g fontFamily="Arial, sans-serif" fontSize={9} fill="#334155">
+                      <text x={calcX} y={calcY} fontWeight="bold" fill="#0f172a" fontSize={10}>Gewichtsberekening (U-sectie opdeling):</text>
+                      <text x={calcX} y={calcY + 14}>{`Stripgewicht bron: ${gewichtBron}`}</text>
+                      <text x={calcX} y={calcY + 27}>{`Voorzijde: ${mm(pB)} mm  +  2 × zijkant: ${mm(sidePanelDepth)} mm  =  strip-omtrek: ${mm(stripOmtrek)} mm`}</text>
+                      <text x={calcX} y={calcY + 40}>{`Gewicht/mm hoogte: ${mm(stripOmtrek)} mm × ${gewichtM2} kg/m²  =  ${gPerMM.toFixed(2)} g/mm  →  max sectie: ⌊${maxKg} kg ÷ ${kgPerMM.toFixed(5)} kg/mm⌋ = ${maxSectieH} mm`}</text>
+                      <text x={calcX} y={calcY + 54} fontWeight="bold" fill="#1e3a5f" fontSize={10}>{`Resultaat: ${aantalSecties} sectie${aantalSecties !== 1 ? 's' : ''} van ca. ${mm(sectieH)} mm  (totale hoogte: ${mm(pH)} mm)`}</text>
                     </g>
                   );
                 })()}
