@@ -578,12 +578,17 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
             })()}
             {(() => {
               const updP = (patch) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, ...patch } : q) });
-              const gewichtM2 = p.gewichtM2 ?? 9.4;
               const maxKg = p.maxKg ?? 50;
               const pB = Math.max(1, p.breedte ?? 400);
               const pD = Math.max(1, p.diepte ?? 150);
               const pH = Math.max(1, p.hoogte ?? 2000);
-              const omtrekM2perMM = (pB + 2 * pD) / 1e6;
+              const selStripIdP = (settings.steenstripsArtikelen ?? [])[0] ?? null;
+              const selStripP = selStripIdP ? STEENSTRIP_CATALOG.find((a) => a.id === selStripIdP) : null;
+              const gewichtM2 = selStripP?.brickWeightM2 ?? p.gewichtM2 ?? 9.4;
+              const brickDepthP = settings.brickDepth ?? 20;
+              const stootP = settings.material?.stoot ?? 10;
+              const sidePanelDepthP = Math.max(1, pD - brickDepthP - stootP);
+              const omtrekM2perMM = (pB + 2 * sidePanelDepthP) / 1e6;
               const kgPerMM = omtrekM2perMM * gewichtM2;
               const maxSectieH = kgPerMM > 0 ? Math.floor(maxKg / kgPerMM) : pH;
               const aantalSecties = kgPerMM > 0 ? Math.ceil(pH / maxSectieH) : 1;
@@ -592,10 +597,16 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 <div style={{ marginTop: 6, borderTop: '1px dashed #e2e8f0', paddingTop: 5 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>U-secties</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-                    <Field label="Gewicht m² kg" tip="Gewicht van de strips/panelen op het penant per m² oppervlak (kg/m²).">
-                      <input type="number" min={1} step={1} value={gewichtM2}
-                        onChange={(e) => updP({ gewichtM2: Number(e.target.value) })}
-                        style={{ ...inp, width: '100%' }} />
+                    <Field label="Gewicht m² kg" tip={selStripP ? `Automatisch van geselecteerd artikel: ${selStripP.naam} (${gewichtM2} kg/m²).` : 'Geen artikel geselecteerd — handmatig invoeren. Selecteer een steenstrip artikel voor automatisch gewicht.'}>
+                      {selStripP ? (
+                        <div style={{ ...inp, width: '100%', background: '#f0fdf4', color: '#166534', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {gewichtM2} kg/m² <span style={{ fontSize: 8, color: '#4ade80' }}>▶ {selStripP.formatCode}</span>
+                        </div>
+                      ) : (
+                        <input type="number" min={1} step={1} value={p.gewichtM2 ?? 9.4}
+                          onChange={(e) => updP({ gewichtM2: Number(e.target.value) })}
+                          style={{ ...inp, width: '100%' }} />
+                      )}
                     </Field>
                     <Field label="Max gewicht kg" tip="Maximaal gewicht per U-sectie (kg). Het penant wordt verticaal opgedeeld in secties die elk dit gewicht niet overschrijden.">
                       <input type="number" min={1} step={5} value={maxKg}
