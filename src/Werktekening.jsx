@@ -607,7 +607,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           const pens = groupSettings?.penanten ?? [];
           if (!pens.length) return <div style={{ color: '#64748b', fontSize: 13, padding: 20 }}>Geen penanten geconfigureerd.</div>;
 
-          const PAD_L = 100; const PAD_R = 50; const PAD_T = 50; const PAD_B = 95;
+          const PAD_L = 100; const PAD_R = 50; const PAD_T = 50; const PAD_B = 130;
           const MAX_UNFOLD_W = 860; const MAX_UNFOLD_H = 480;
           const color = groupSettings?.color ?? '#a64033';
 
@@ -934,6 +934,21 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 {aantalSecties > 0 && (
                   <DimV x={ox - 50} y1={uy(sectionYs[aantalSecties - 1])} y2={uy(pH)} label={`${mm(pH - sectionYs[aantalSecties - 1])} mm`} side="left" />
                 )}
+
+                {(() => {
+                  const calcX = ox;
+                  const calcY = uy(0) + 68;
+                  const stripOmtrek = pB + 2 * sidePanelDepth;
+                  const gPerMM = kgPerMM * 1000;
+                  return (
+                    <g fontFamily="Arial, sans-serif" fontSize={7} fill="#334155">
+                      <text x={calcX} y={calcY} fontWeight="bold" fill="#0f172a">Gewichtsberekening (U-sectie opdeling):</text>
+                      <text x={calcX} y={calcY + 11}>{`Voorzijde: ${mm(pB)} mm  +  2 × zijkant: ${mm(sidePanelDepth)} mm  =  strip-omtrek: ${mm(stripOmtrek)} mm`}</text>
+                      <text x={calcX} y={calcY + 22}>{`Gewicht/mm hoogte: ${mm(stripOmtrek)} mm × ${gewichtM2} kg/m²  =  ${gPerMM.toFixed(2)} g/mm  →  max sectie: ⌊${maxKg} kg ÷ ${kgPerMM.toFixed(5)} kg/mm⌋ = ${maxSectieH} mm`}</text>
+                      <text x={calcX} y={calcY + 33} fontWeight="bold" fill="#1e3a5f">{`Resultaat: ${aantalSecties} sectie${aantalSecties !== 1 ? 's' : ''} van ca. ${mm(sectieH)} mm  (totale hoogte: ${mm(pH)} mm)`}</text>
+                    </g>
+                  );
+                })()}
 
                 <g transform={`translate(${ox},${svgH - 20})`}>
                   <rect x={0} y={0} width={10} height={7} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.5} />
