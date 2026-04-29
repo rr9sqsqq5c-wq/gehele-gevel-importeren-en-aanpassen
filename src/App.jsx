@@ -1550,7 +1550,35 @@ export default function App() {
       if (!withOrigin.length) continue;
       const mat = s.material ?? DEFAULT_MATERIAL;
       const facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte);
-      if (!facadeData) continue;
+      if (!facadeData) {
+        const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
+        if (!refWall) continue;
+        const rwo = refWall.wallOrigin;
+        const axisW = withOrigin.filter((w) => w.wallOrigin.lengthAxis === rwo.lengthAxis);
+        const gMinX = Math.min(...axisW.map((w) => w.wallOrigin.lengthStart));
+        const gMinH = Math.min(...axisW.map((w) => w.wallOrigin.heightStart));
+        const gAdj = adjacencies.filter((a) => group.wallIds.includes(a.wallIdA) && group.wallIds.includes(a.wallIdB));
+        const wallRowMap = buildGroupPattern(walls, gAdj, mat, s.verband ?? DEFAULT_VERBAND, 'all');
+        const brickH3d = (s.verband ?? DEFAULT_VERBAND) === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+        const allRows = [];
+        for (const w of axisW) {
+          const wo = w.wallOrigin;
+          const offsetX = wo.lengthStart - gMinX;
+          const offsetH = wo.heightStart - gMinH;
+          for (const row of (wallRowMap[w.expressID] ?? [])) {
+            allRows.push({ y: row.y + offsetH, pieces: row.pieces.map((p) => ({ ...p, start: p.start + offsetX })) });
+          }
+        }
+        if (!allRows.length) continue;
+        result[group.id] = {
+          batches: [{ rows: allRows, color: s.color ?? '#a64033', brickH: brickH3d }],
+          groupMinX: gMinX,
+          groupMinH: gMinH,
+          refWallOrigin: rwo,
+          outsideDirFlip: !!(s.outsideDirFlip),
+        };
+        continue;
+      }
       const brickD3d = s.brickDepth ?? 20;
       const gW = facadeData.groupWidth;
 
@@ -1642,7 +1670,7 @@ export default function App() {
       };
     }
     return result;
-  }, [groups, getSettings, wallMap, showPattern]);
+  }, [groups, getSettings, wallMap, showPattern, adjacencies]);
 
   async function startScan(file, handle) {
     setLoadStatus('scanning');
@@ -2395,9 +2423,12 @@ export default function App() {
       const withOrigin = walls.filter((w) => w.wallOrigin);
 
       const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte);
-      const groupMinX = facadeDataRaw?.groupMinX ?? (withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.lengthStart)) : 0);
-      const groupMinH = facadeDataRaw?.groupMinH ?? (withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart)) : 0);
-      const refWallOrigin = facadeDataRaw?.refWallOrigin ?? withOrigin[0]?.wallOrigin ?? null;
+      const _refWall = facadeDataRaw ? null : ([...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0] ?? null);
+      const refWallOrigin = facadeDataRaw?.refWallOrigin ?? _refWall?.wallOrigin ?? null;
+      const _axisW = refWallOrigin ? withOrigin.filter((w) => w.wallOrigin.lengthAxis === refWallOrigin.lengthAxis) : withOrigin;
+      const _axisH = refWallOrigin ? withOrigin.filter((w) => w.wallOrigin.heightAxis === refWallOrigin.heightAxis) : withOrigin;
+      const groupMinX = facadeDataRaw?.groupMinX ?? (_axisW.length ? Math.min(..._axisW.map((w) => w.wallOrigin.lengthStart)) : 0);
+      const groupMinH = facadeDataRaw?.groupMinH ?? (_axisH.length ? Math.min(..._axisH.map((w) => w.wallOrigin.heightStart)) : 0);
       let facadeData = facadeDataRaw;
       if (facadeDataRaw && s.penanten?.length) {
         const brickD = s.brickDepth ?? 20;
