@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { buildFullGroupFacadePattern } from './lib/pattern.js';
+import { buildFullGroupFacadePattern, buildFacePattern, buildMirroredFacePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG, clipPanelToFacadePolys } from './lib/panelization.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 
@@ -607,7 +607,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           const pens = groupSettings?.penanten ?? [];
           if (!pens.length) return <div style={{ color: '#64748b', fontSize: 13, padding: 20 }}>Geen penanten geconfigureerd.</div>;
 
-          const PAD_L = 100; const PAD_R = 50; const PAD_T = 50; const PAD_B = 80;
+          const PAD_L = 100; const PAD_R = 50; const PAD_T = 50; const PAD_B = 95;
           const MAX_UNFOLD_W = 860; const MAX_UNFOLD_H = 480;
           const color = groupSettings?.color ?? '#a64033';
 
@@ -649,6 +649,31 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
             const faceData = (penantFaceData ?? []).find((fd) => fd.penant.id === p.id);
             const brickDepth = groupSettings?.brickDepth ?? 20;
+
+            const stootWT = mat.stoot ?? 10;
+            const panelDikteWT = groupSettings?.panelen?.dikte ?? 8;
+            const sidePanelDepth = Math.max(1, pD - brickDepth - stootWT);
+            const sideClipOffWT = Math.max(stootWT, panelDikteWT);
+            const clipSideLeft = (rows) => rows.map((row) => ({
+              ...row,
+              pieces: row.pieces.flatMap((pc) => {
+                const clipEnd = sidePanelDepth - sideClipOffWT;
+                if (pc.start >= clipEnd) return [];
+                if (pc.start + pc.length <= clipEnd) return [pc];
+                return [{ ...pc, length: Math.round((clipEnd - pc.start) * 100) / 100 }];
+              }),
+            })).filter((row) => row.pieces.length > 0);
+            const clipSideRight = (rows) => rows.map((row) => ({
+              ...row,
+              pieces: row.pieces.flatMap((pc) => {
+                if (pc.start + pc.length <= sideClipOffWT) return [];
+                if (pc.start >= sideClipOffWT) return [pc];
+                const newStart = Math.round(sideClipOffWT * 100) / 100;
+                return [{ ...pc, start: newStart, length: Math.round((pc.start + pc.length - newStart) * 100) / 100 }];
+              }),
+            })).filter((row) => row.pieces.length > 0);
+            const localLeftRows = clipSideLeft(buildFacePattern(sidePanelDepth, pH, mat, verband));
+            const localRightRows = clipSideRight(buildMirroredFacePattern(sidePanelDepth, pH, mat, verband));
 
             (() => {
               const stoot = mat.stoot ?? 10;
@@ -809,9 +834,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 </text>
 
                 <rect x={ux(leftX)} y={uy(pH)} width={pD * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
-                {faceData?.left && (() => {
+                {localLeftRows.length > 0 && (() => {
                   const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
-                  return faceData.left.flatMap((row, ri) => {
+                  return localLeftRows.flatMap((row, ri) => {
                     if (row.y + stripH <= 0 || row.y >= pH) return [];
                     return row.pieces.map((pc, pi) => {
                       const clipY1 = Math.max(row.y, 0); const clipY2 = Math.min(row.y + stripH, pH);
@@ -851,9 +876,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 <text x={ux(frontX + pB / 2)} y={uy(pH) - 6} textAnchor="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">VOORZIJDE</text>
 
                 <rect x={ux(rightX)} y={uy(pH)} width={pD * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
-                {faceData?.right && (() => {
+                {localRightRows.length > 0 && (() => {
                   const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
-                  return faceData.right.flatMap((row, ri) => {
+                  return localRightRows.flatMap((row, ri) => {
                     if (row.y + stripH <= 0 || row.y >= pH) return [];
                     return row.pieces.map((pc, pi) => {
                       const clipY1 = Math.max(row.y, 0); const clipY2 = Math.min(row.y + stripH, pH);
@@ -899,9 +924,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 ))}
 
                 <DimH x1={ux(frontX)} x2={ux(rightX)} y={uy(0) + 22} label={`strips ${mm(pB)} mm`} />
-                <DimH x1={ux(leftX)} x2={ux(frontX)} y={uy(0) + 36} label={`${mm(pD)} mm`} />
-                <DimH x1={ux(rightX)} x2={ux(rightX + pD)} y={uy(0) + 36} label={`${mm(pD)} mm`} />
-                <DimH x1={ux(leftX)} x2={ux(rightX + pD)} y={uy(0) + 50} label={`${mm(totalUnfoldW)} mm`} />
+                <DimH x1={ux(leftX)} x2={ux(frontX)} y={uy(0) + 38} label={`${mm(pD)} mm`} flip />
+                <DimH x1={ux(rightX)} x2={ux(rightX + pD)} y={uy(0) + 38} label={`${mm(pD)} mm`} flip />
+                <DimH x1={ux(leftX)} x2={ux(rightX + pD)} y={uy(0) + 56} label={`${mm(totalUnfoldW)} mm`} />
                 <DimV x={ox - 20} y1={uy(pH)} y2={uy(0)} label={`${mm(pH)} mm`} side="left" />
 
                 {sectionYs.slice(1, -1).map((sy_val, si) => (
