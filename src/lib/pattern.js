@@ -348,9 +348,12 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const groupWidth = round2(groupMaxX - groupMinX);
   const groupHeight = round2(groupMaxH - groupMinH);
   const effectiveHeight = maxHoogte != null && maxHoogte > 0 ? Math.min(groupHeight, maxHoogte) : groupHeight;
-  const totalLagen = Math.ceil((effectiveHeight) / lagenmaat);
   const effectiveMinH = (minHoogte != null && minHoogte > 0 && minHoogte < effectiveHeight) ? minHoogte : 0;
-  const startLaag = effectiveMinH > 0 ? Math.ceil(effectiveMinH / lagenmaat) : 0;
+  const patternOffset = startLijn != null
+    ? ((startLijn % lagenmaat) + lagenmaat) % lagenmaat
+    : 0;
+  const rStart = Math.ceil((effectiveMinH - patternOffset) / lagenmaat);
+  const rEnd = Math.ceil((effectiveHeight - patternOffset) / lagenmaat);
 
   const zwEnabled = zetwerk?.enabled;
   const zwB = zwEnabled ? Math.max(1, zetwerk.breedte ?? 50) : 0;
@@ -480,8 +483,8 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const driekwart = round2((steenL + stoot) * 0.75 - stoot);
 
   const rows = [];
-  for (let r = startLaag; r < totalLagen; r++) {
-    const rowY = round2(r * lagenmaat);
+  for (let r = rStart; r < rEnd; r++) {
+    const rowY = round2(patternOffset + r * lagenmaat);
     const rawPieces = buildRowPiecesForWidth(groupWidth, material, verband, r, 0);
     const clipped = [];
     for (const piece of rawPieces) {
