@@ -988,22 +988,62 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     if (vis.latten !== false && (group.lattenData ?? []).length) {
       const { axisStr, refStr } = makeGroupAxes();
       for (const lat of group.lattenData) {
-        const cx = lat.x + lat.width / 2;
-        const cy = lat.y;
-        const depth = lat.richting === 'verticaal' ? latDikte + latDikte / 2 : latDikte / 2;
-        const [wx, wy, wz] = groupToWorld(cx, depth, cy);
-        const placePt = PT(wx, wy, wz);
-        const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
-        const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
-        const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
-        const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(lat.width)},${r(latDikte)})`);
-        const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(lat.height)})`);
-        const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
-        const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
         const safeName = `${group.name ?? 'Groep'} - Lat ${lat.richting}`.replace(/'/g, "\\'");
-        const proxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'AchterconstructieLat',#${localPl},#${pds},$,.NOTDEFINED.)`);
-        E(`IFCSTYLEDITEM(#${solid},(#${getStyle('#b45309')}),$)`);
-        allProxyIds.push(proxy);
+        if (lat.v18ProfilePts && lat.richting === 'horizontaal') {
+          const profPts = lat.v18ProfilePts;
+          const nokH = lat.v18NokHeight ?? 18;
+          const nokFW = lat.v18NokFootWidth ?? 45;
+          const nokPitch = lat.v18NokPitch ?? 200;
+          const nokOffset = lat.v18NokOffset ?? 100;
+          const [wx, wy, wz] = groupToWorld(lat.x, 0, lat.y);
+          const placePt = PT(wx, wy, wz);
+          const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
+          const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
+          const v18AxisDir = E(`IFCDIRECTION((1.,0.,0.))`);
+          const v18RefDir  = E(`IFCDIRECTION((0.,1.,0.))`);
+          const v18Ax = E(`IFCAXIS2PLACEMENT3D(#${PT(0,0,0)},#${v18AxisDir},#${v18RefDir})`);
+          const v18ExtDir = E(`IFCDIRECTION((0.,0.,1.))`);
+          const ptIds = profPts.map(([d, h]) => E(`IFCCARTESIANPOINT((${r(d)},${r(h)}))`));
+          const poly  = E(`IFCPOLYLINE((${ptIds.map(id => '#' + id).join(',')}))`);
+          const prof  = E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${poly})`);
+          const bodyS = E(`IFCEXTRUDEDAREASOLID(#${prof},#${v18Ax},#${v18ExtDir},${r(lat.width)})`);
+          E(`IFCSTYLEDITEM(#${bodyS},(#${getStyle('#b45309')}),$)`);
+          const solids = [bodyS];
+          const nokAxDir = E(`IFCDIRECTION((1.,0.,0.))`);
+          const nokRefDir = E(`IFCDIRECTION((0.,1.,0.))`);
+          for (let ni = 0; nokOffset + ni * nokPitch < lat.width; ni++) {
+            const nokCx = nokOffset + ni * nokPitch;
+            const nokStart = nokCx - nokFW / 2;
+            if (nokStart < 0 || nokStart + nokFW > lat.width) continue;
+            const nokAx = E(`IFCAXIS2PLACEMENT3D(#${PT(nokStart, 0, 0)},#${nokAxDir},#${nokRefDir})`);
+            const nokExt = E(`IFCDIRECTION((0.,0.,1.))`);
+            const nokProfAx = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
+            const nokProf = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${nokProfAx},${r(latDikte)},${r(nokH)})`);
+            const nokS = E(`IFCEXTRUDEDAREASOLID(#${nokProf},#${nokAx},#${nokExt},${r(nokFW)})`);
+            E(`IFCSTYLEDITEM(#${nokS},(#${getStyle('#b45309')}),$)`);
+            solids.push(nokS);
+          }
+          const shRep = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(${solids.map(id => '#' + id).join(',')}))`);
+          const pds   = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
+          const proxy = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'AchterconstructieLat',#${localPl},#${pds},$,.NOTDEFINED.)`);
+          allProxyIds.push(proxy);
+        } else {
+          const cx = lat.x + lat.width / 2;
+          const cy = lat.y;
+          const depth = lat.richting === 'verticaal' ? latDikte + latDikte / 2 : latDikte / 2;
+          const [wx, wy, wz] = groupToWorld(cx, depth, cy);
+          const placePt = PT(wx, wy, wz);
+          const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
+          const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
+          const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
+          const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(lat.width)},${r(latDikte)})`);
+          const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(lat.height)})`);
+          const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
+          const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
+          const proxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'AchterconstructieLat',#${localPl},#${pds},$,.NOTDEFINED.)`);
+          E(`IFCSTYLEDITEM(#${solid},(#${getStyle('#b45309')}),$)`);
+          allProxyIds.push(proxy);
+        }
       }
     }
 

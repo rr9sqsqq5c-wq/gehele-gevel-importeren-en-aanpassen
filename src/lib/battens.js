@@ -58,6 +58,11 @@ export const BATTEN_CATALOG = [
     dikteMM: 95,
     prijsM1: 3.375,
     prijsM3nom: 718.00,
+    v18ProfilePts: [[0, 18], [95, 18], [87.765, 45], [0, 45]],
+    v18NokHeight: 18,
+    v18NokFootWidth: 45,
+    v18NokPitch: 200,
+    v18NokOffset: 100,
   },
   {
     id: 'vl18s-47x100-NSG',
@@ -70,6 +75,11 @@ export const BATTEN_CATALOG = [
     dikteMM: 95,
     prijsM1: 2.905,
     prijsM3nom: 618.00,
+    v18ProfilePts: [[0, 18], [95, 18], [87.765, 45], [0, 45]],
+    v18NokHeight: 18,
+    v18NokFootWidth: 45,
+    v18NokPitch: 200,
+    v18NokOffset: 100,
   },
   {
     id: 'vl18t-47x50-B',

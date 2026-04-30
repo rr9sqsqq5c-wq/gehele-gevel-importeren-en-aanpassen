@@ -82,12 +82,13 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, startLijn, 
       if (facadeData?.rows) {
         for (const row of facadeData.rows) brickTopsSet2d.add(Math.round(row.y + mat.steenH));
       }
-      const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
-      const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
-
+      const zwExpV = (zetwerk?.enabled) ? Math.max(0, (zetwerk.offsetV ?? 0)) + Math.max(1, zetwerk.breedte ?? 50) : 0;
       const clampY = (y) => Math.min(gH, Math.max(0, y));
+      const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(clampY(op.y - zwExpV))));
+      const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(clampY(op.y + op.height + zwExpV))));
+
       const edgeYs = [0, gH];
-      for (const op of groupOpenings) { edgeYs.push(clampY(Math.round(op.y))); edgeYs.push(clampY(Math.round(op.y + op.height))); }
+      for (const op of groupOpenings) { edgeYs.push(clampY(Math.round(op.y - zwExpV))); edgeYs.push(clampY(Math.round(op.y + op.height + zwExpV))); }
       const allYs = new Set([...edgeYs, ...battenYs2d.map(y => clampY(Math.round(y)))]);
 
       const result = [];

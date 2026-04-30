@@ -2677,6 +2677,12 @@ export default function App() {
       const _artId = (s.lattenArtikelen ?? [])[0] ?? null;
       const _art = _artId ? BATTEN_CATALOG.find((a) => a.id === _artId) : null;
       const latDikteEff = _art ? _art.dikteMM : (s.latten?.dikte ?? 28);
+      const latV18ProfilePts = _art?.v18ProfilePts ?? null;
+      const latV18NokHeight = _art?.v18NokHeight ?? null;
+      const latV18NokFootWidth = _art?.v18NokFootWidth ?? null;
+      const latV18NokPitch = _art?.v18NokPitch ?? null;
+      const latV18NokOffset = _art?.v18NokOffset ?? null;
+      const latV18Data = latV18ProfilePts ? { v18ProfilePts: latV18ProfilePts, v18NokHeight: latV18NokHeight, v18NokFootWidth: latV18NokFootWidth, v18NokPitch: latV18NokPitch, v18NokOffset: latV18NokOffset } : {};
 
       if (facadeData) {
         const { rows: facRows, groupWidth, groupHeight, groupOpenings } = facadeData;
@@ -2714,12 +2720,13 @@ export default function App() {
 
           if (richting === 'horizontaal') {
             const gH = Math.round(groupHeight);
-            const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
-            const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
-
+            const zwExpV = (s.zetwerk?.enabled) ? Math.max(0, (s.zetwerk.offsetV ?? 0)) + Math.max(1, s.zetwerk.breedte ?? 50) : 0;
             const clampY = (y) => Math.min(gH, Math.max(0, y));
+            const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(clampY(op.y - zwExpV))));
+            const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(clampY(op.y + op.height + zwExpV))));
+
             const boundaryYs = new Set([0, gH]);
-            for (const op of groupOpenings) { boundaryYs.add(clampY(Math.round(op.y))); boundaryYs.add(clampY(Math.round(op.y + op.height))); }
+            for (const op of groupOpenings) { boundaryYs.add(clampY(Math.round(op.y - zwExpV))); boundaryYs.add(clampY(Math.round(op.y + op.height + zwExpV))); }
             for (const panel of panels) { boundaryYs.add(clampY(Math.round(panel.y))); boundaryYs.add(clampY(Math.round(panel.y + panel.height))); }
 
             const sortedBoundaries = [...boundaryYs].sort((a, b) => a - b);
@@ -2742,15 +2749,15 @@ export default function App() {
               const latTop = latY, latBot = latY + latBreedte;
               const openingsAtY = groupOpenings.filter((op) => op.y < latBot && op.y + op.height > latTop);
               if (openingsAtY.length === 0) {
-                lattenData.push({ richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte });
+                lattenData.push({ richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte, ...latV18Data });
               } else {
                 const opRanges = openingsAtY.flatMap((op) => openingXRangesAtY(op, latTop, latBot)).sort((a, b) => a.x1 - b.x1);
                 let cursor = 0;
                 for (const op of opRanges) {
-                  if (op.x1 > cursor) lattenData.push({ richting: 'horizontaal', x: cursor, y: latY, width: op.x1 - cursor, height: latBreedte });
+                  if (op.x1 > cursor) lattenData.push({ richting: 'horizontaal', x: cursor, y: latY, width: op.x1 - cursor, height: latBreedte, ...latV18Data });
                   cursor = Math.max(cursor, op.x2);
                 }
-                if (cursor < groupWidth) lattenData.push({ richting: 'horizontaal', x: cursor, y: latY, width: groupWidth - cursor, height: latBreedte });
+                if (cursor < groupWidth) lattenData.push({ richting: 'horizontaal', x: cursor, y: latY, width: groupWidth - cursor, height: latBreedte, ...latV18Data });
               }
             }
           } else {

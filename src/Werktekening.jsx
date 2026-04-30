@@ -132,7 +132,7 @@ function DimV({ x, y1, y2, label, color = '#1e3a5f', side = 'left' }) {
   );
 }
 
-function computeLatten(facadeData, panelen, latten, mat, penanten) {
+function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk) {
   if (!facadeData || !latten?.enabled) return [];
   const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
   const richting = latten.richting ?? 'horizontaal';
@@ -159,19 +159,20 @@ function computeLatten(facadeData, panelen, latten, mat, penanten) {
   }
 
   if (richting === 'horizontaal') {
-    const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(op.y)));
-    const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(op.y + op.height)));
     const gH = Math.round(groupHeight);
-
+    const zwExpV = (zetwerk?.enabled) ? Math.max(0, (zetwerk.offsetV ?? 0)) + Math.max(1, zetwerk.breedte ?? 50) : 0;
     const clampY = (y) => Math.min(gH, Math.max(0, y));
+    const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(clampY(op.y - zwExpV))));
+    const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(clampY(op.y + op.height + zwExpV))));
+
     const boundaryYs = new Set([0, gH]);
     for (const panel of allPanels) {
       boundaryYs.add(clampY(Math.round(panel.y)));
       boundaryYs.add(clampY(Math.round(panel.y + panel.height)));
     }
     for (const op of groupOpenings) {
-      boundaryYs.add(clampY(Math.round(op.y)));
-      boundaryYs.add(clampY(Math.round(op.y + op.height)));
+      boundaryYs.add(clampY(Math.round(op.y - zwExpV)));
+      boundaryYs.add(clampY(Math.round(op.y + op.height + zwExpV)));
     }
 
     const sortedBoundaries = [...boundaryYs].sort((a, b) => a - b);
@@ -293,7 +294,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   }, [facadeData, panelen, mat, groupSettings, latten]);
 
   const penanten = groupSettings?.penanten ?? [];
-  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten), [facadeData, panelen, latten, mat, penanten]);
+  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk), [facadeData, panelen, latten, mat, penanten, zetwerk]);
 
   const wallGroupPolysRaw = useMemo(() => {
     if (!walls?.length) return [];
