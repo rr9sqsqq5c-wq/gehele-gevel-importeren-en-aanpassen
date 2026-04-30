@@ -2782,7 +2782,8 @@ export default function App() {
         }).filter(Boolean);
       }
 
-      if (s.zetwerk?.enabled && groupOpenings.length > 0) {
+      const _zwOpenings = facadeData?.groupOpenings ?? [];
+      if (s.zetwerk?.enabled && _zwOpenings.length > 0) {
         const CLEARANCE = 10;
         const sideExpand = (s.zetwerk.offsetH ?? 0) + (s.zetwerk.breedte ?? 50) + CLEARANCE;
         const vertExpand = (s.zetwerk.offsetV ?? 0) + (s.zetwerk.breedte ?? 50) + (s.zetwerk.stripOffset ?? 5);
@@ -2790,7 +2791,7 @@ export default function App() {
         for (const lat of lattenData) {
           if (lat.richting !== 'horizontaal' || lat.openingForced) { clippedLats.push(lat); continue; }
           const latMidY = lat.y + lat.height / 2;
-          const relevant = groupOpenings.filter((op) => latMidY >= op.y - vertExpand && latMidY <= op.y + op.height + vertExpand);
+          const relevant = _zwOpenings.filter((op) => latMidY >= op.y - vertExpand && latMidY <= op.y + op.height + vertExpand);
           if (relevant.length === 0) { clippedLats.push(lat); continue; }
           let segments = [{ start: lat.x, end: lat.x + lat.width }];
           for (const op of relevant) {
