@@ -2782,6 +2782,36 @@ export default function App() {
         }).filter(Boolean);
       }
 
+      if (s.zetwerk?.enabled && groupOpenings.length > 0) {
+        const CLEARANCE = 10;
+        const sideExpand = (s.zetwerk.offsetH ?? 0) + (s.zetwerk.breedte ?? 50) + CLEARANCE;
+        const vertExpand = (s.zetwerk.offsetV ?? 0) + (s.zetwerk.breedte ?? 50) + (s.zetwerk.stripOffset ?? 5);
+        const clippedLats = [];
+        for (const lat of lattenData) {
+          if (lat.richting !== 'horizontaal' || lat.openingForced) { clippedLats.push(lat); continue; }
+          const latMidY = lat.y + lat.height / 2;
+          const relevant = groupOpenings.filter((op) => latMidY >= op.y - vertExpand && latMidY <= op.y + op.height + vertExpand);
+          if (relevant.length === 0) { clippedLats.push(lat); continue; }
+          let segments = [{ start: lat.x, end: lat.x + lat.width }];
+          for (const op of relevant) {
+            const exFrom = op.x - sideExpand;
+            const exTo = op.x + op.width + sideExpand;
+            const next = [];
+            for (const seg of segments) {
+              if (seg.end <= exFrom || seg.start >= exTo) { next.push(seg); continue; }
+              if (seg.start < exFrom) next.push({ start: seg.start, end: exFrom });
+              if (seg.end > exTo) next.push({ start: exTo, end: seg.end });
+            }
+            segments = next;
+          }
+          for (const seg of segments) {
+            const w = seg.end - seg.start;
+            if (w > 0.5) clippedLats.push({ ...lat, x: seg.start, width: w });
+          }
+        }
+        lattenData = clippedLats;
+      }
+
       const penantFaceRows = (s.penanten ?? []).map((p) => {
         const pB = Math.max(1, p.breedte ?? 400);
         const pDL2 = Math.max(1, p.diepteLinks  ?? p.diepte ?? 150);
