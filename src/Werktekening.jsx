@@ -132,7 +132,7 @@ function DimV({ x, y1, y2, label, color = '#1e3a5f', side = 'left' }) {
   );
 }
 
-function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk) {
+function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, minHoogte) {
   if (!facadeData || !latten?.enabled) return [];
   const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
   const richting = latten.richting ?? 'horizontaal';
@@ -160,10 +160,11 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk) {
 
   if (richting === 'horizontaal') {
     const gH = Math.round(groupHeight);
+    const minH = Math.max(0, Math.round(minHoogte ?? 0));
     const zwExpV = (zetwerk?.enabled) ? Math.max(0, (zetwerk.offsetV ?? 0)) + Math.max(1, zetwerk.breedte ?? 50) : 0;
     const clampY = (y) => Math.min(gH, Math.max(0, y));
 
-    const boundaryYs = new Set([0, gH]);
+    const boundaryYs = new Set([minH, gH]);
     for (const panel of allPanels) {
       boundaryYs.add(clampY(Math.round(panel.y)));
       boundaryYs.add(clampY(Math.round(panel.y + panel.height)));
@@ -183,12 +184,12 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk) {
     const INSET = 5;
     const result = [];
     let globalIdx = 0;
-    for (const yr of [...allYs].filter(y => y >= 0 && y <= gH).sort((a, b) => a - b)) {
+    for (const yr of [...allYs].filter(y => y >= minH && y <= gH).sort((a, b) => a - b)) {
       let latY;
-      if (yr === 0) latY = 0;
+      if (yr === minH) latY = minH;
       else if (yr === gH) latY = yr - latBreedte;
       else latY = yr - latBreedte / 2;
-      const isForced = yr === 0 || yr === gH;
+      const isForced = yr === minH || yr === gH;
       const latTop = latY, latBot = latY + latBreedte;
       const openingsAtY = groupOpenings.filter((op) => op.y < latBot && op.y + op.height > latTop);
       let zones = [];
@@ -292,7 +293,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   }, [facadeData, panelen, mat, groupSettings, latten]);
 
   const penanten = groupSettings?.penanten ?? [];
-  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk), [facadeData, panelen, latten, mat, penanten, zetwerk]);
+  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings?.minHoogte ?? null), [facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings]);
 
   const wallGroupPolysRaw = useMemo(() => {
     if (!walls?.length) return [];

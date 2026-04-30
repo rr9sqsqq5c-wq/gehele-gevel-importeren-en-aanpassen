@@ -2731,6 +2731,24 @@ export default function App() {
               return panel;
             }).filter(Boolean);
           }
+          if (s.zetwerk?.enabled && groupOpenings.length > 0) {
+            const CLEARANCE = 10;
+            const sideExpand = (s.zetwerk.offsetH ?? 0) + (s.zetwerk.breedte ?? 50) + CLEARANCE;
+            panels = panels.map((panel) => {
+              let { x, width } = panel;
+              for (const op of groupOpenings) {
+                if (panel.y + panel.height <= op.y || panel.y >= op.y + op.height) continue;
+                if (x < op.x && x + width > op.x - sideExpand) width = Math.max(0, op.x - sideExpand - x);
+                if (x >= op.x + op.width && x < op.x + op.width + sideExpand) {
+                  const newX = op.x + op.width + sideExpand;
+                  width = Math.max(0, x + width - newX);
+                  x = newX;
+                }
+              }
+              if (width <= 0) return null;
+              return { ...panel, x, width };
+            }).filter(Boolean);
+          }
         }
 
         if (s.latten?.enabled && vis.latten !== false) {
@@ -2739,10 +2757,11 @@ export default function App() {
 
           if (richting === 'horizontaal') {
             const gH = Math.round(groupHeight);
+            const minH = Math.max(0, Math.round(s.minHoogte ?? 0));
             const zwExpV = (s.zetwerk?.enabled) ? Math.max(0, (s.zetwerk.offsetV ?? 0)) + Math.max(1, s.zetwerk.breedte ?? 50) : 0;
             const clampY = (y) => Math.min(gH, Math.max(0, y));
 
-            const boundaryYs = new Set([0, gH]);
+            const boundaryYs = new Set([minH, gH]);
             for (const panel of panels) { boundaryYs.add(clampY(Math.round(panel.y))); boundaryYs.add(clampY(Math.round(panel.y + panel.height))); }
 
             const sortedBoundaries = [...boundaryYs].sort((a, b) => a - b);
@@ -2755,9 +2774,9 @@ export default function App() {
               }
             }
 
-            for (const yr of [...allYs].filter(y => y >= 0 && y <= gH).sort((a, b) => a - b)) {
+            for (const yr of [...allYs].filter(y => y >= minH && y <= gH).sort((a, b) => a - b)) {
               let latY;
-              if (yr === 0) latY = 0;
+              if (yr === minH) latY = minH;
               else if (yr === gH) latY = yr - latBreedte;
               else latY = yr - latBreedte / 2;
               const latTop = latY, latBot = latY + latBreedte;

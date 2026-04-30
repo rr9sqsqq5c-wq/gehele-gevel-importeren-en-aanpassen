@@ -82,20 +82,21 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, startLijn, 
       if (facadeData?.rows) {
         for (const row of facadeData.rows) brickTopsSet2d.add(Math.round(row.y + mat.steenH));
       }
+      const minH = Math.max(0, Math.round(minHoogte ?? 0));
       const zwExpV = (zetwerk?.enabled) ? Math.max(0, (zetwerk.offsetV ?? 0)) + Math.max(1, zetwerk.breedte ?? 50) : 0;
       const clampY = (y) => Math.min(gH, Math.max(0, y));
 
-      const allYs = new Set([0, gH, ...battenYs2d.map(y => clampY(Math.round(y)))]);
+      const allYs = new Set([minH, gH, ...battenYs2d.map(y => clampY(Math.round(y)))]);
 
       const result = [];
       let idx = 0;
-      for (const yr of [...allYs].filter(y => y >= 0 && y <= gH).sort((a, b) => a - b)) {
+      for (const yr of [...allYs].filter(y => y >= minH && y <= gH).sort((a, b) => a - b)) {
         let latY;
-        if (yr === 0) latY = 0;
+        if (yr === minH) latY = minH;
         else if (yr === gH) latY = yr - latBreedte;
         else if (brickTopsSet2d.has(yr)) latY = Math.round(yr + lintHalf - latBreedte / 2);
         else latY = Math.round(yr - lintHalf - latBreedte / 2);
-        result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte, forced: yr === 0 || yr === gH });
+        result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte, forced: yr === minH || yr === gH });
       }
       for (const op of groupOpenings) {
         const belowLatY = Math.round(clampY(op.y - zwExpV)) - latBreedte;
