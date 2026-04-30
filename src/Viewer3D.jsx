@@ -634,12 +634,12 @@ function FocusGroupCamera({ activeGroupId, groups, walls, upAxis, groupSettings 
 }
 
 function CameraInit({ walls, upAxis }) {
-  const { camera } = useThree();
+  const { camera, controls } = useThree();
   const done = useRef(false);
+  const pendingRef = useRef(null);
 
   useEffect(() => {
     if (done.current || !walls.length) return;
-    done.current = true;
 
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
@@ -657,12 +657,8 @@ function CameraInit({ walls, upAxis }) {
       minZ = Math.min(minZ, pz - sz / 2); maxZ = Math.max(maxZ, pz + sz / 2);
     }
 
-    console.log('[Viewer3D CameraInit] walls:', walls.length, 'validBoxes:', validBoxCount, 'upAxis:', upAxis);
-
     if (validBoxCount === 0 || !isFinite(minX)) {
-      console.warn('[Viewer3D CameraInit] geen geldige muurboxen — camera op standaardpositie');
-      camera.position.set(10, 10, 10);
-      camera.lookAt(0, 0, 0);
+      pendingRef.current = { cx: 0, cy: 0, cz: 0, pos: new THREE.Vector3(10, 10, 10) };
       return;
     }
 
@@ -673,15 +669,24 @@ function CameraInit({ walls, upAxis }) {
     const spanZ = maxZ - minZ;
     const spanAll = Math.max(spanX, maxY - minY, spanZ, 0.1);
 
-    console.log('[Viewer3D CameraInit] center:', cx, cy, cz, 'span:', spanAll);
+    pendingRef.current = {
+      cx, cy, cz,
+      pos: new THREE.Vector3(cx + spanX * 0.6, cy + spanAll * 0.5, cz + spanZ * 0.6),
+    };
+  }, [walls, upAxis]);
 
-    camera.position.set(
-      cx + spanX * 0.6,
-      cy + spanAll * 0.5,
-      cz + spanZ * 0.6,
-    );
+  useFrame(() => {
+    if (done.current || !pendingRef.current) return;
+    done.current = true;
+    const { cx, cy, cz, pos } = pendingRef.current;
+    pendingRef.current = null;
+    camera.position.copy(pos);
     camera.lookAt(cx, cy, cz);
-  }, [walls, upAxis, camera]);
+    if (controls) {
+      controls.target.set(cx, cy, cz);
+      controls.update();
+    }
+  });
 
   return null;
 }
