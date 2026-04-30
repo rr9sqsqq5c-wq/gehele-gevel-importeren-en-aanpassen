@@ -132,7 +132,7 @@ function DimV({ x, y1, y2, label, color = '#1e3a5f', side = 'left' }) {
   );
 }
 
-function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk) {
+function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, startLijn) {
   if (!facadeData || !latten?.enabled) return [];
   const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
   const richting = latten.richting ?? 'horizontaal';
@@ -160,7 +160,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk) {
 
   if (richting === 'horizontaal') {
     const gH = Math.round(groupHeight);
-    const minH = 0;
+    const minH = Math.max(0, Math.round(startLijn ?? 0));
     const zwExpV = (zetwerk?.enabled) ? Math.max(0, (zetwerk.offsetV ?? 0)) + Math.max(1, zetwerk.breedte ?? 50) : 0;
     const clampY = (y) => Math.min(gH, Math.max(0, y));
 
@@ -292,7 +292,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   }, [facadeData, panelen, mat, groupSettings, latten]);
 
   const penanten = groupSettings?.penanten ?? [];
-  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk), [facadeData, panelen, latten, mat, penanten, zetwerk]);
+  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings?.startLijn ?? null), [facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings]);
 
   const wallGroupPolysRaw = useMemo(() => {
     if (!walls?.length) return [];

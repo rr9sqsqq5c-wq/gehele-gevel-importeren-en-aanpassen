@@ -82,7 +82,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       if (facadeData?.rows) {
         for (const row of facadeData.rows) brickTopsSet2d.add(Math.round(row.y + mat.steenH));
       }
-      const minH = 0;
+      const minH = Math.max(0, Math.round(startLijn ?? 0));
       const zwExpV = (zetwerk?.enabled) ? Math.max(0, (zetwerk.offsetV ?? 0)) + Math.max(1, zetwerk.breedte ?? 50) : 0;
       const clampY = (y) => Math.min(gH, Math.max(0, y));
 

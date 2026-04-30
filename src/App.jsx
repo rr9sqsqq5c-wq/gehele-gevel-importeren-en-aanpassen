@@ -2676,6 +2676,13 @@ export default function App() {
               return panel;
             }).filter(Boolean);
           }
+          if (s.startLijn != null && s.startLijn > 0) {
+            panels = panels.map((panel) => {
+              if (panel.y + panel.height <= s.startLijn) return null;
+              if (panel.y < s.startLijn) return { ...panel, y: s.startLijn, height: panel.y + panel.height - s.startLijn };
+              return panel;
+            }).filter(Boolean);
+          }
           if (s.zetwerk?.enabled && groupOpenings.length > 0) {
             const CLEARANCE = 10;
             const sideExpand = (s.zetwerk.offsetH ?? 0) + (s.zetwerk.breedte ?? 50) + CLEARANCE;
@@ -2702,7 +2709,7 @@ export default function App() {
 
           if (richting === 'horizontaal') {
             const gH = Math.round(groupHeight);
-            const minH = 0;
+            const minH = Math.max(0, Math.round(s.startLijn ?? 0));
             const zwExpV = (s.zetwerk?.enabled) ? Math.max(0, (s.zetwerk.offsetV ?? 0)) + Math.max(1, s.zetwerk.breedte ?? 50) : 0;
             const clampY = (y) => Math.min(gH, Math.max(0, y));
 
