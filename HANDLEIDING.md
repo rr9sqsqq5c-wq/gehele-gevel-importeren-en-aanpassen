@@ -6,19 +6,21 @@
 2. [Twee instapscenario's](#twee-instapscenarios)
 3. [Scenario A — Volledig nieuwe opzet (eigen IFC)](#scenario-a--volledig-nieuwe-opzet-eigen-ifc)
 4. [Scenario B — Zone-import (klant levert vlakken)](#scenario-b--zone-import-klant-levert-vlakken)
-5. [Groep configureren (beide scenario's)](#groep-configureren-beide-scenarios)
-6. [Strip-zones handmatig tekenen in 2D](#strip-zones-handmatig-tekenen-in-2d)
-7. [Steenstrip kleurcodering in 2D](#steenstrip-kleurcodering-in-2d)
-8. [Steenstrip artikelkeuze & catalogus](#steenstrip-artikelkeuze--catalogus)
-9. [Artikelkeuze lattenwerk](#artikelkeuze-lattenwerk)
-10. [Basisplaat catalogus](#basisplaat-catalogus)
-11. [Panelen en paneeloptimalisatie](#panelen-en-paneeloptimalisatie)
-12. [3D Viewer — groepen verbergen](#3d-viewer--groepen-verbergen)
-13. [Groepen beheren](#groepen-beheren)
-14. [Maltekeningen](#maltekeningen)
-15. [Werktekeningen & export](#werktekeningen--export)
-16. [Schermindeling](#schermindeling)
-17. [Tips & sneltoetsen](#tips--sneltoetsen)
+5. [Aanvullen uit een tweede IFC-bestand](#aanvullen-uit-een-tweede-ifc-bestand)
+6. [Groep configureren (beide scenario's)](#groep-configureren-beide-scenarios)
+7. [Wandafmetingen overschrijven](#wandafmetingen-overschrijven)
+8. [Strip-zones handmatig tekenen in 2D](#strip-zones-handmatig-tekenen-in-2d)
+9. [Steenstrip kleurcodering in 2D](#steenstrip-kleurcodering-in-2d)
+10. [Steenstrip artikelkeuze & catalogus](#steenstrip-artikelkeuze--catalogus)
+11. [Artikelkeuze lattenwerk](#artikelkeuze-lattenwerk)
+12. [Basisplaat catalogus](#basisplaat-catalogus)
+13. [Panelen en paneeloptimalisatie](#panelen-en-paneeloptimalisatie)
+14. [3D Viewer — groepen verbergen](#3d-viewer--groepen-verbergen)
+15. [Groepen beheren](#groepen-beheren)
+16. [Maltekeningen](#maltekeningen)
+17. [Werktekeningen & export](#werktekeningen--export)
+18. [Schermindeling](#schermindeling)
+19. [Tips & sneltoetsen](#tips--sneltoetsen)
 
 ---
 
@@ -191,13 +193,69 @@ Gebruik de **▭ Teken zone** functie om handmatig zones toe te voegen of de **�
 
 ### Stap 4 — Achterliggende constructieve wanden laden (optioneel)
 
-Als naast de zone-elementen ook de constructieve wanden nodig zijn (bijv. voor het bepalen van de achterconstructie-diepte), kun je een tweede importactie uitvoeren **zonder** zone-modus en de wanden handmatig aan de bestaande groepen toevoegen.
+Als naast de zone-elementen ook de constructieve wanden nodig zijn (bijv. voor het bepalen van de achterconstructie-diepte), gebruik dan de knop **➕ Aanvullen…** in de topbalk om het tweede IFC-bestand (met de wanden) toe te voegen zonder de bestaande zone-groepen te verwijderen. Zie [Aanvullen uit een tweede IFC-bestand](#aanvullen-uit-een-tweede-ifc-bestand).
 
 ---
 
 ### Stap 5 — Groep configureren en exporteren
 
 Verder identiek aan Scenario A vanaf [Stap 5](#stap-5--groep-configureren).
+
+---
+
+## Aanvullen uit een tweede IFC-bestand
+
+Soms levert de klant meerdere IFC-bestanden aan — bijv. één met de constructieve wanden en één met dakrandelementen of gevelbekleding. Met de **➕ Aanvullen…** knop laad je elementen uit een tweede (of derde) bestand **in hetzelfde project**, zonder de bestaande groepen te verwijderen.
+
+### Wanneer gebruiken?
+
+| Situatie | Aanpak |
+|---|---|
+| Dakranden als aparte `IFCELEMENTASSEMBLY` entiteiten | Aanvullen → ELEMENTASSEMBLY typen selecteren |
+| Extra gevelbekleding-elementen in apart bestand | Aanvullen → gewenste typen selecteren |
+| Constructieve wanden + zone-vlakken in aparte bestanden | Eerst normaal importeren, dan aanvullen in zone-modus |
+
+### Stap-voor-stap
+
+1. Importeer het hoofdbestand normaal via **📂 IFC kiezen** en stel groepen in.
+2. Klik op **➕ Aanvullen…** in de topbalk (verschijnt zodra er wanden zijn geladen).
+3. Selecteer het tweede IFC-bestand.
+4. De applicatie scant alle elementtypen — inclusief `IFCELEMENTASSEMBLY` (bijv. dakranden uit Tekla).  
+   Badge-kleuren in het dialoog:
+   - Blauw = WALL
+   - Paars = SLAB
+   - Oranje = BUILDINGELEMENTPROXY
+   - Groen = COVERING
+   - Grijs = ELEMENTASSEMBLY / overige typen
+5. **Vink de typen aan** die je wilt toevoegen.
+6. Klik op **➕ Toevoegen** — de geselecteerde elementen worden aan de wandenlijst toegevoegd.
+7. De bestaande groepen blijven **ongewijzigd**. De nieuwe elementen verschijnen in **Zonder groep**.
+8. Voeg de nieuwe elementen toe aan een bestaande groep of maak een nieuwe groep aan.
+
+> **Let op:** elementen uit een aanvullend bestand krijgen intern een uniek prefix (`m1_…`, `m2_…`) zodat ID-conflicten worden voorkomen. Dit is zichtbaar als je met de muisaanwijzer over een element hovert.
+
+> **Tip:** Je kunt **Aanvullen…** meerdere keren uitvoeren met verschillende bestanden. Elk aanvulbestand telt op.
+
+---
+
+## Wandafmetingen overschrijven
+
+Soms klopt de IFC-geometrie niet met de werkelijkheid, of wil je een wand groter of kleiner tekenen zonder het IFC-bronbestand te wijzigen. Met de **afmetingsoverschrijving** per wand pas je de breedte en hoogte lokaal aan.
+
+### Gebruik
+
+1. Klik op een groep in de groepslijst (linkerzijbalk) om hem uit te klappen.
+2. Per wand in de groep zie je twee invoervelden: **breedte (mm)** × **hoogte (mm)**.
+3. Wijzig de waarde — het veld kleurt **paars** als de originele IFC-waarde is overschreven.
+4. Klik op **↺** naast een wand om de originele waarden te herstellen.
+
+### Gedrag
+
+- **Openingen blijven op hun positie**: sparingen, ramen en deuren staan opgeslagen in lokale wandcoördinaten. Het aanpassen van de wandgrootte verplaatst de openingen **niet** — ze blijven op hun absolute positie ten opzichte van de wandrand.
+- **Patroonberekening** en alle tekeningen (2D, 3D, werktekening) gebruiken direct de overschreven afmetingen.
+- **Opgeslagen** in het projectbestand (JSON via **💾 Opslaan**) en in de automatische sessie-opslag (IndexedDB).
+
+> **Tip:** Als een wand in de IFC een afwijkende hoogte heeft door een schuindak of schuin atelier, kun je de hoogte hier corrigeren zonder het bronmodel te wijzigen.
 
 ---
 
@@ -558,6 +616,9 @@ Het geëxporteerde bestand bevat per wand de individuele brickslip-objecten op d
 |---|---|
 | Ongedaan maken | **Ctrl+Z** |
 | Zone-import | Activeer "Zone-import modus" in het importdialoog |
+| Elementen uit tweede IFC toevoegen | **➕ Aanvullen…** knop in de topbalk (verschijnt na eerste import) |
+| Wandbreedte/hoogte aanpassen | Invoervelden per wand in de uitgeklapte groepslijst links |
+| Wandafmeting herstellen naar IFC | **↺** knop naast de wand in de groepslijst |
 | Strip-zone tekenen | **▭ Teken zone** knop in 2D viewer |
 | Instellingen kopiëren naar gekoppelde groepen | **Sync instellingen →** |
 | Wand uit groep verwijderen | Klik **✕** naast de wand in de groepslijst |

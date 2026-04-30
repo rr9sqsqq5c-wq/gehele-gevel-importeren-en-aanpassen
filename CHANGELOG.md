@@ -1,5 +1,12 @@
 # IFC Brickslip Planner — Changelog
 
+## [Niet gereleased] — 30-04-2026
+
+### Toegevoegd
+- **Wandafmetingen overschrijven**: per wand in de groepslijst (linkerzijbalk) zijn twee invoervelden beschikbaar voor **breedte (mm)** en **hoogte (mm)**. Een overschreven waarde wordt paars/blauw gemarkeerd. Een **↺** knop verschijnt om de originele IFC-waarde te herstellen. Openingen blijven op hun absolute positie staan — alleen het wandoppervlak verandert. Overrides worden opgeslagen in het projectbestand (JSON) en de automatische sessie-opslag (IndexedDB).
+- **Aanvullen uit tweede IFC-bestand**: nieuwe knop **➕ Aanvullen…** in de topbalk (verschijnt zodra er wanden zijn geladen). Hiermee kunnen elementen uit een aanvullend IFC-bestand worden toegevoegd aan het huidige project zonder de bestaande groepen te verwijderen. Elementen krijgen een intern prefix (`m1_`, `m2_`, …) zodat ID-conflicten worden voorkomen.
+- **IFCELEMENTASSEMBLY ondersteuning**: het element-scannertje en de zone-importparser herkennen nu ook `IFCELEMENTASSEMBLY`-entiteiten (bijv. dakrand-elementen uit Tekla Structures). Ze worden gegroepeerd op de `Name`-waarde van de assembly (bijv. `ELEMENT`, `BOVENREK`). Beschikbaar in zowel de "Aanvullen"-modus als de reguliere zone-import.
+
 ## [Niet gereleased] — 28-04-2026
 
 ### Toegevoegd
