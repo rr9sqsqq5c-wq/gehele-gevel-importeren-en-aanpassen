@@ -2200,6 +2200,12 @@ export default function App() {
         setGroupLinks(state.groupLinks ?? {});
         setSettingsMap(sm);
         if (state.wallDimOverrides && typeof state.wallDimOverrides === 'object') setWallDimOverrides(state.wallDimOverrides);
+        if (Array.isArray(state.allWalls) && state.allWalls.length > 0) {
+          setAllWalls(state.allWalls);
+          setAdjacencies(detectAdjacencies(state.allWalls));
+          if (state.ifcFileName) setIfcFileName(state.ifcFileName);
+          setLoadStatus('loaded');
+        }
         syncGidRef(state.groups, sm);
       }
       _hydratedRef.current = true;
@@ -2213,10 +2219,10 @@ export default function App() {
     if (!_hydratedRef.current) return;
     if (_saveTimerRef.current) clearTimeout(_saveTimerRef.current);
     _saveTimerRef.current = setTimeout(() => {
-      saveProjectState({ groups, groupLinks, settingsMap, ifcFileName, wallDimOverrides }).catch(() => {});
+      saveProjectState({ groups, groupLinks, settingsMap, ifcFileName, wallDimOverrides, allWalls }).catch(() => {});
     }, 1500);
     return () => clearTimeout(_saveTimerRef.current);
-  }, [groups, groupLinks, settingsMap, ifcFileName, wallDimOverrides]);
+  }, [groups, groupLinks, settingsMap, ifcFileName, wallDimOverrides, allWalls]);
 
   function pushHistory(currentGroups) {
     setGroupsHistory((h) => [...h.slice(-19), currentGroups]);
@@ -2365,13 +2371,14 @@ export default function App() {
 
   function handleSaveProject() {
     const projectData = {
-      _version: 1,
+      _version: 2,
       _savedAt: new Date().toISOString(),
       ifcFileName: ifcFileName ?? null,
       groups,
       groupLinks,
       groupSettings: settingsMap,
       wallDimOverrides,
+      walls: allWalls,
     };
     const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -2418,8 +2425,17 @@ export default function App() {
         setActiveGroupId(loadedGroups[0]?.id ?? null);
         setSimilarSuggestions(null);
         syncGidRef(loadedGroups, loadedSm);
-        console.log('[loadProject] Geladen:', loadedGroups.length, 'groepen');
-        if (data.ifcFileName && data.ifcFileName !== ifcFileName) {
+        const loadedWalls = Array.isArray(data.walls) ? data.walls : [];
+        if (loadedWalls.length > 0) {
+          setAllWalls(loadedWalls);
+          setAdjacencies(detectAdjacencies(loadedWalls));
+          setLoadStatus('loaded');
+        }
+        if (data.ifcFileName) setIfcFileName(data.ifcFileName);
+        console.log('[loadProject] Geladen:', loadedGroups.length, 'groepen,', loadedWalls.length, 'wanden');
+        if (loadedWalls.length > 0) {
+          alert(`Project geladen: ${loadedGroups.length} groepen, ${loadedWalls.length} wanden.`);
+        } else if (data.ifcFileName && data.ifcFileName !== ifcFileName) {
           alert(`Project geladen (${loadedGroups.length} groepen).\n\nDit project hoort bij IFC-bestand: "${data.ifcFileName}".\nZorg dat dit bestand is geladen om de elementen correct te zien.`);
         } else {
           alert(`Project geladen: ${loadedGroups.length} groepen.`);
