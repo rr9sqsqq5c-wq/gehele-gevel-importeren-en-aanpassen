@@ -669,6 +669,27 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, penantFaceD
       ctx.restore();
     }
 
+    {
+      const [, sy] = toScreen(0, 0);
+      const [sx1] = toScreen(0, 0);
+      const [sx2] = toScreen(groupWidth, 0);
+      ctx.save();
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(Math.max(0, sx1 - 30), sy);
+      ctx.lineTo(Math.min(W, sx2 + 30), sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#facc15';
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('± 0 peilmaat', Math.max(4, sx1), sy - 2);
+      ctx.restore();
+    }
+
     if (penantFaceData?.length >= 1) {
       const sorted = [...penantFaceData].sort((a, b) => (a.penant.x ?? 0) - (b.penant.x ?? 0));
       const flatZones = [];
