@@ -3,7 +3,7 @@ import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGr
 import handleidingMd from '../HANDLEIDING.md?raw';
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState } from './lib/storage.js';
-import { detectAdjacencies, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
+import { detectAdjacencies, detectAdjacenciesAsync, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateMoldPrintHTML, getMoldTemplates } from './lib/panelization.js';
@@ -1819,6 +1819,43 @@ export default function App() {
     setSavedHandle(null);
   }
 
+  function handleNewProject() {
+    if (allWalls.length > 0 && !window.confirm('Huidig project wissen en opnieuw beginnen?')) return;
+    deleteSavedIfcFile().catch(() => {});
+    deleteFileHandle().catch(() => {});
+    clearProjectState().catch(() => {});
+    setAllWalls([]);
+    setWallDimOverrides({});
+    setAdjacencies([]);
+    setGroups([]);
+    setGroupsHistory([]);
+    setSelectedWallIds(new Set());
+    setActiveGroupId(null);
+    setLoadStatus('idle');
+    setLoadProgress({ current: 0, total: 0 });
+    setLoadLogs([]);
+    loadLogsRef.current = [];
+    setLoadError(null);
+    setSavedFileInfo(null);
+    setSavedHandle(null);
+    setIfcFileName(null);
+    setPendingFile(null);
+    setWallTypes([]);
+    setTypeFilter('');
+    setSelectedTypes(new Set());
+    setZoneImportMode(false);
+    setMergeMode(false);
+    setSimilarSuggestions(null);
+    setDuplicateGroupsModal(null);
+    setGroupLinks({});
+    setGridLines([]);
+    setHiddenGroupIds(new Set());
+    setSettingsMap({});
+    _gidRef.current = 1;
+    _colorIdxRef.current = 0;
+    _mergeCounterRef.current = 0;
+  }
+
   async function handleValidateGeometry() {
     const activeFile = pendingFile ?? savedFileInfo?.file;
     if (!activeFile && !savedHandle?.handle) return;
@@ -1902,8 +1939,10 @@ export default function App() {
 
       if (!walls.length) throw new Error('Geen wanden gevonden met de geselecteerde types');
       addLog(`✓ ${walls.length} wanden geladen, aangrenzendheid detecteren…`);
-      const adj = detectAdjacencies(walls);
-      addLog(`✓ Klaar — ${walls.length} wanden, ${Object.keys(adj).length} adjacenties`);
+      const adj = await detectAdjacenciesAsync(walls, (i, total) => {
+        addLog(`Aangrenzendheid: ${i}/${total} wanden verwerkt…`);
+      });
+      addLog(`✓ Klaar — ${walls.length} wanden, ${adj.length} adjacenties`);
       setAllWalls(walls);
       setAdjacencies(adj);
       setGroups([]);
@@ -2136,7 +2175,7 @@ export default function App() {
 
       addLog(`✓ ${newGroups.length} gevelgroepen aangemaakt met zone-elementen als stripzones`);
       setAllWalls(newWalls);
-      setAdjacencies(detectAdjacencies(newWalls));
+      setAdjacencies(await detectAdjacenciesAsync(newWalls));
       setGroups(newGroups);
       setSelectedWallIds(new Set());
       setActiveGroupId(newGroups[0]?.id ?? null);
@@ -2193,7 +2232,7 @@ export default function App() {
         if (rec) setSavedFileInfo({ name: rec.file.name, size: rec.file.size, savedAt: rec.savedAt, file: rec.file });
       }).catch(() => {});
     }
-    loadProjectState().then((state) => {
+    loadProjectState().then(async (state) => {
       console.log('[startup] loadProjectState resultaat:', state ? { groupsLength: state.groups?.length, hasSettingsMap: !!state.settingsMap, savedAt: state.savedAt } : null);
       if (state && Array.isArray(state.groups) && state.groups.length > 0) {
         const sm = state.groupSettings ?? state.settingsMap ?? {};
@@ -2203,7 +2242,7 @@ export default function App() {
         if (state.wallDimOverrides && typeof state.wallDimOverrides === 'object') setWallDimOverrides(state.wallDimOverrides);
         if (Array.isArray(state.allWalls) && state.allWalls.length > 0) {
           setAllWalls(state.allWalls);
-          setAdjacencies(detectAdjacencies(state.allWalls));
+          setAdjacencies(await detectAdjacenciesAsync(state.allWalls));
           if (state.ifcFileName) setIfcFileName(state.ifcFileName);
           setLoadStatus('loaded');
         }
@@ -2395,7 +2434,7 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
         const raw = ev.target.result;
         console.log('[loadProject] Bestand gelezen, grootte:', raw?.length);
@@ -2429,7 +2468,7 @@ export default function App() {
         const loadedWalls = Array.isArray(data.walls) ? data.walls : [];
         if (loadedWalls.length > 0) {
           setAllWalls(loadedWalls);
-          setAdjacencies(detectAdjacencies(loadedWalls));
+          setAdjacencies(await detectAdjacenciesAsync(loadedWalls));
           setLoadStatus('loaded');
         }
         if (data.ifcFileName) setIfcFileName(data.ifcFileName);
@@ -3246,6 +3285,11 @@ export default function App() {
               📂 Laden
               <input type="file" accept=".json" style={{ display: 'none' }} onChange={handleLoadProject} />
             </label>
+          </Tooltip>
+          <Tooltip text={"Wis het huidige project en begin opnieuw. Alle wanden, groepen en instellingen worden verwijderd."}>
+            <button onClick={handleNewProject} style={{ background: '#7f1d1d', color: '#fca5a5', border: '1px solid #991b1b', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              🗑 Nieuw project
+            </button>
           </Tooltip>
 
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
