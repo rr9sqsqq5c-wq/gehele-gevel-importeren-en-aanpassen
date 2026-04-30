@@ -1490,6 +1490,7 @@ function SimpleMarkdown({ text }) {
 
 export default function App() {
   const [allWalls, setAllWalls] = useState([]);
+  const [wallDimOverrides, setWallDimOverrides] = useState({});
   const [adjacencies, setAdjacencies] = useState([]);
   const [groups, setGroups] = useState([]);
   const [groupsHistory, setGroupsHistory] = useState([]);
@@ -1551,7 +1552,11 @@ export default function App() {
   }, []);
   const nextColor = useCallback(() => GROUP_COLORS[_colorIdxRef.current++ % GROUP_COLORS.length], []);
 
-  const wallMap = useMemo(() => Object.fromEntries(allWalls.map((w) => [w.expressID, w])), [allWalls]);
+  const effectiveWalls = useMemo(() => allWalls.map((w) => {
+    const ov = wallDimOverrides[w.expressID];
+    return ov ? { ...w, ...ov } : w;
+  }), [allWalls, wallDimOverrides]);
+  const wallMap = useMemo(() => Object.fromEntries(effectiveWalls.map((w) => [w.expressID, w])), [effectiveWalls]);
 
   const wallGroupMap = useMemo(() => {
     const m = {};
@@ -2119,6 +2124,7 @@ export default function App() {
         setGroups(state.groups);
         setGroupLinks(state.groupLinks ?? {});
         setSettingsMap(sm);
+        if (state.wallDimOverrides && typeof state.wallDimOverrides === 'object') setWallDimOverrides(state.wallDimOverrides);
         syncGidRef(state.groups, sm);
       }
       _hydratedRef.current = true;
@@ -2132,10 +2138,10 @@ export default function App() {
     if (!_hydratedRef.current) return;
     if (_saveTimerRef.current) clearTimeout(_saveTimerRef.current);
     _saveTimerRef.current = setTimeout(() => {
-      saveProjectState({ groups, groupLinks, settingsMap, ifcFileName }).catch(() => {});
+      saveProjectState({ groups, groupLinks, settingsMap, ifcFileName, wallDimOverrides }).catch(() => {});
     }, 1500);
     return () => clearTimeout(_saveTimerRef.current);
-  }, [groups, groupLinks, settingsMap, ifcFileName]);
+  }, [groups, groupLinks, settingsMap, ifcFileName, wallDimOverrides]);
 
   function pushHistory(currentGroups) {
     setGroupsHistory((h) => [...h.slice(-19), currentGroups]);
@@ -2290,6 +2296,7 @@ export default function App() {
       groups,
       groupLinks,
       groupSettings: settingsMap,
+      wallDimOverrides,
     };
     const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -2331,6 +2338,7 @@ export default function App() {
         setGroups(loadedGroups);
         setGroupLinks(typeof data.groupLinks === 'object' && data.groupLinks !== null ? data.groupLinks : {});
         setSettingsMap(loadedSm);
+        setWallDimOverrides(typeof data.wallDimOverrides === 'object' && data.wallDimOverrides !== null ? data.wallDimOverrides : {});
         setGroupsHistory([]);
         setActiveGroupId(loadedGroups[0]?.id ?? null);
         setSimilarSuggestions(null);
@@ -2733,7 +2741,7 @@ export default function App() {
     exportGroupsToIfc(exportGroups, settingsMap, ifcFileName ?? 'export');
   }
 
-  const ungrouped = allWalls.filter((w) => !wallGroupMap[w.expressID]);
+  const ungrouped = effectiveWalls.filter((w) => !wallGroupMap[w.expressID]);
   const activeGroup = groups.find((g) => g.id === activeGroupId);
   const selectionHasUngrouped = [...selectedWallIds].some((id) => !wallGroupMap[id]);
   const ungroupedSelCount = [...selectedWallIds].filter((id) => !wallGroupMap[id]).length;
@@ -3352,9 +3360,30 @@ export default function App() {
                               const w = wallMap[wid];
                               if (!w) return null;
                               return (
-                                <div key={wid} style={{ padding: '4px 10px 4px 24px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, borderBottom: '1px solid #f1f5f9' }}>
-                                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#334155' }}>{w.name}</span>
-                                  <span style={{ color: '#94a3b8', flexShrink: 0, fontSize: 10 }}>{w.length}mm</span>
+                                <div key={wid} style={{ padding: '4px 10px 4px 24px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
+                                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#334155' }}>{w.name}</span>
+                                  <input
+                                    type="number" min={1} step={10}
+                                    title="Breedte overschrijven (mm) — openingen blijven op hun positie"
+                                    value={w.length}
+                                    onChange={(e) => setWallDimOverrides((prev) => ({ ...prev, [wid]: { ...(prev[wid] ?? {}), length: Math.max(1, Number(e.target.value)) } }))}
+                                    style={{ width: 54, fontSize: 10, border: '1px solid #e2e8f0', borderRadius: 3, padding: '1px 3px', color: wallDimOverrides[wid]?.length != null ? '#6366f1' : '#94a3b8', background: wallDimOverrides[wid]?.length != null ? '#eff0fe' : '#fff', flexShrink: 0 }}
+                                  />
+                                  <span style={{ fontSize: 9, color: '#cbd5e1', flexShrink: 0 }}>×</span>
+                                  <input
+                                    type="number" min={1} step={10}
+                                    title="Hoogte overschrijven (mm) — openingen blijven op hun positie"
+                                    value={w.height}
+                                    onChange={(e) => setWallDimOverrides((prev) => ({ ...prev, [wid]: { ...(prev[wid] ?? {}), height: Math.max(1, Number(e.target.value)) } }))}
+                                    style={{ width: 54, fontSize: 10, border: '1px solid #e2e8f0', borderRadius: 3, padding: '1px 3px', color: wallDimOverrides[wid]?.height != null ? '#6366f1' : '#94a3b8', background: wallDimOverrides[wid]?.height != null ? '#eff0fe' : '#fff', flexShrink: 0 }}
+                                  />
+                                  {(wallDimOverrides[wid]?.length != null || wallDimOverrides[wid]?.height != null) && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setWallDimOverrides((prev) => { const n = { ...prev }; delete n[wid]; return n; }); }}
+                                      style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', fontSize: 10, padding: '0 1px', flexShrink: 0 }}
+                                      title="Herstel originele afmetingen"
+                                    >↺</button>
+                                  )}
                                   <button
                                     onClick={(e) => { e.stopPropagation(); removeFromGroup(g.id, wid); }}
                                     style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 11, padding: '0 2px', flexShrink: 0 }}
