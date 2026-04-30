@@ -3312,7 +3312,7 @@ export default function App() {
             {groups.length > 0 && (
               <Tooltip text={"Exporteert zichtbare groepen als een nieuw IFC-bestand.\nVerborgen groepen (👁 Zichtbaarheid in de 3D-viewer) worden overgeslagen.\nDit bestand bevat ALLEEN de gevelbekleding — GEEN originele wandelementen.\nImporteer dit bestand naast het originele IFC in je BIM-software.\nWelke lagen worden geëxporteerd is per groep te regelen via 'Laagzichtbaarheid 2D'."}>
                 <button onClick={handleExport} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                  ⬇ Gevelbekleding IFC{hiddenGroupIds.size > 0 ? ` (${groups.length - hiddenGroupIds.size}/${groups.length})` : ''}
+                  ⬇ Gevelbekleding IFC{groups.some((g) => hiddenGroupIds.has(g.id)) ? ` (${groups.filter((g) => !hiddenGroupIds.has(g.id)).length}/${groups.length})` : ''}
                 </button>
               </Tooltip>
             )}
