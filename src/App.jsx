@@ -1511,6 +1511,7 @@ export default function App() {
   const [typeFilter, setTypeFilter] = useState('');
   const [selectedTypes, setSelectedTypes] = useState(new Set());
   const [zoneImportMode, setZoneImportMode] = useState(false);
+  const [mergeMode, setMergeMode] = useState(false);
   const [similarSuggestions, setSimilarSuggestions] = useState(null);
   const [duplicateGroupsModal, setDuplicateGroupsModal] = useState(null);
   const [groupLinks, setGroupLinks] = useState({});
@@ -1533,6 +1534,7 @@ export default function App() {
   const _colorIdxRef = useRef(0);
   const _hydratedRef = useRef(false);
   const _saveTimerRef = useRef(null);
+  const _mergeCounterRef = useRef(0);
   const newGid = useCallback(() => `G${_gidRef.current++}`, []);
   const syncGidRef = useCallback((loadedGroups, loadedSettingsMap) => {
     let maxN = _gidRef.current - 1;
@@ -1734,7 +1736,8 @@ export default function App() {
     return result;
   }, [groups, getSettings, wallMap, showPattern, adjacencies]);
 
-  async function startScan(file, handle) {
+  async function startScan(file, handle, isMerge = false) {
+    setMergeMode(isMerge);
     setLoadStatus('scanning');
     setLoadError(null);
     loadLogsRef.current = [];
@@ -1926,7 +1929,79 @@ export default function App() {
     setPendingFile(null);
     setWallTypes([]);
     setTypeFilter('');
+    setMergeMode(false);
     setLoadStatus(allWalls.length ? 'loaded' : 'idle');
+  }
+
+  async function handlePickMergeFile() {
+    if (supportsFileSystemAccess()) {
+      try {
+        const [handle] = await window.showOpenFilePicker({ types: [{ description: 'IFC bestanden', accept: { 'application/x-step': ['.ifc'] } }], multiple: false });
+        const file = await handle.getFile();
+        await startScan(file, null, true);
+      } catch (err) {
+        if (err.name !== 'AbortError') { setLoadError(err.message); setLoadStatus('error'); }
+      }
+    } else {
+      document.getElementById('ifc-merge-file-input').click();
+    }
+  }
+
+  async function handleMergeFileChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    await startScan(file, null, true);
+  }
+
+  async function confirmMergeImport() {
+    if (!pendingFile) return;
+    setLoadStatus('loading');
+    setLoadProgress({ current: 0, total: 0 });
+    loadLogsRef.current = [];
+    setLoadLogs([]);
+    const addLog = (msg) => {
+      const entry = `[${new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}] ${msg}`;
+      loadLogsRef.current = [...loadLogsRef.current.slice(-49), entry];
+      setLoadLogs([...loadLogsRef.current]);
+    };
+    addLog(`Aanvullen: ${pendingFile.name}`);
+    try {
+      const allowedTypes = new Map();
+      for (const t of wallTypes) {
+        if (!selectedTypes.has(t.name)) continue;
+        const key = (t.ifcEntityType ?? 'IFCWALL').toUpperCase();
+        if (!allowedTypes.has(key)) allowedTypes.set(key, new Set());
+        allowedTypes.get(key).add(t.name);
+      }
+
+      const elements = await parseIfcZoneElements(pendingFile, allowedTypes.size ? allowedTypes : null, (p) => {
+        if (p.log) { addLog(p.log); return; }
+        setLoadProgress({ current: p.current, total: p.total });
+        if (p.total > 0 && p.current === p.total) addLog(`${p.total} elementen verwerkt`);
+      });
+
+      if (!elements.length) throw new Error('Geen elementen gevonden met de geselecteerde types');
+
+      const prefix = `m${++_mergeCounterRef.current}_`;
+      const prefixed = elements.map((el) => ({
+        ...el,
+        expressID: `${prefix}${el.expressID}`,
+        openings: (el.openings ?? []).map((op) => ({ ...op, id: `${prefix}${op.id}` })),
+        mergedFrom: pendingFile.name,
+      }));
+
+      addLog(`✓ ${prefixed.length} elementen toegevoegd aan bestaande wanden`);
+      setAllWalls((prev) => [...prev, ...prefixed]);
+      setLoadStatus('loaded');
+      setPendingFile(null);
+      setWallTypes([]);
+      setMergeMode(false);
+    } catch (err) {
+      addLog(`✗ Fout: ${err.message}`);
+      setLoadError(err.message);
+      setLoadStatus('error');
+    }
   }
 
   async function confirmZoneImport() {
@@ -2801,25 +2876,32 @@ export default function App() {
       {loadStatus === 'selecting' && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', borderRadius: 8, padding: 24, width: 520, maxHeight: '82vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Elementtypen selecteren</div>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{mergeMode ? 'Aanvullen uit IFC' : 'Elementtypen selecteren'}</div>
             <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
-              {pendingFile?.name} · Selecteer welke typen je wilt importeren
+              {pendingFile?.name} · {mergeMode ? 'Selecteer welke typen je wilt toevoegen aan het huidige project' : 'Selecteer welke typen je wilt importeren'}
             </div>
 
-            {/* Zone import mode toggle */}
-            <div style={{ marginBottom: 12, padding: '8px 12px', background: zoneImportMode ? '#eff6ff' : '#f8fafc', border: `1px solid ${zoneImportMode ? '#3b82f6' : '#e2e8f0'}`, borderRadius: 6 }}>
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                <input type="checkbox" checked={zoneImportMode} onChange={(e) => setZoneImportMode(e.target.checked)} style={{ marginTop: 2, flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: zoneImportMode ? '#1d4ed8' : '#374151' }}>
-                    Zone-import modus
+            {/* Zone import mode toggle — hidden in merge mode */}
+            {!mergeMode && (
+              <div style={{ marginBottom: 12, padding: '8px 12px', background: zoneImportMode ? '#eff6ff' : '#f8fafc', border: `1px solid ${zoneImportMode ? '#3b82f6' : '#e2e8f0'}`, borderRadius: 6 }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={zoneImportMode} onChange={(e) => setZoneImportMode(e.target.checked)} style={{ marginTop: 2, flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: zoneImportMode ? '#1d4ed8' : '#374151' }}>
+                      Zone-import modus
+                    </div>
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                      Gebruik de geselecteerde elementen als steenstrip-oppervlakken (de achterzijde = start van het systeem). Elk coplanair cluster wordt een gevelgroep; elk element wordt een strip-zone.
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                    Gebruik de geselecteerde elementen als steenstrip-oppervlakken (de achterzijde = start van het systeem). Elk coplanair cluster wordt een gevelgroep; elk element wordt een strip-zone.
-                  </div>
-                </div>
-              </label>
-            </div>
+                </label>
+              </div>
+            )}
+            {mergeMode && (
+              <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fefce8', border: '1px solid #ca8a04', borderRadius: 6, fontSize: 11, color: '#92400e' }}>
+                De geselecteerde elementen worden <strong>toegevoegd</strong> aan de huidige wanden. Bestaande groepen blijven behouden.
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
               <input
@@ -2890,14 +2972,15 @@ export default function App() {
             <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 12, color: '#64748b', flex: 1 }}>
                 {totalSelected} element{totalSelected !== 1 ? 'en' : ''} geselecteerd
-                {zoneImportMode && <span style={{ color: '#3b82f6', fontWeight: 600 }}> · Zone-modus</span>}
+                {!mergeMode && zoneImportMode && <span style={{ color: '#3b82f6', fontWeight: 600 }}> · Zone-modus</span>}
+                {mergeMode && <span style={{ color: '#b45309', fontWeight: 600 }}> · Aanvullen</span>}
               </span>
               <button onClick={cancelImport} style={{ fontSize: 12, background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 4, padding: '6px 14px', cursor: 'pointer' }}>
                 Annuleren
               </button>
-              <button onClick={zoneImportMode ? confirmZoneImport : confirmImport} disabled={!selectedTypes.size}
-                style={{ fontSize: 12, background: selectedTypes.size ? (zoneImportMode ? '#059669' : '#3b82f6') : '#94a3b8', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 16px', cursor: selectedTypes.size ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
-                {zoneImportMode ? '🗺 Als zones importeren' : 'Importeren'}
+              <button onClick={mergeMode ? confirmMergeImport : zoneImportMode ? confirmZoneImport : confirmImport} disabled={!selectedTypes.size}
+                style={{ fontSize: 12, background: selectedTypes.size ? (mergeMode ? '#b45309' : zoneImportMode ? '#059669' : '#3b82f6') : '#94a3b8', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 16px', cursor: selectedTypes.size ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
+                {mergeMode ? '➕ Toevoegen' : zoneImportMode ? '🗺 Als zones importeren' : 'Importeren'}
               </button>
             </div>
           </div>
@@ -3104,6 +3187,18 @@ export default function App() {
             </button>
           </Tooltip>
           <input id="ifc-file-input" type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} />
+          <input id="ifc-merge-file-input" type="file" accept=".ifc" onChange={handleMergeFileChange} style={{ display: 'none' }} />
+          {allWalls.length > 0 && (
+            <Tooltip text={"Voeg elementen uit een tweede IFC-bestand toe aan het huidige project. Bestaande groepen blijven behouden."}>
+              <button
+                onClick={handlePickMergeFile}
+                disabled={loadStatus === 'loading' || loadStatus === 'scanning'}
+                style={{ background: (loadStatus === 'loading' || loadStatus === 'scanning') ? '#475569' : '#92400e', color: '#fff', padding: '4px 10px', borderRadius: 4, fontSize: 11, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                ➕ Aanvullen…
+              </button>
+            </Tooltip>
+          )}
           {ifcFileName && <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{ifcFileName}.ifc · {allWalls.length} wanden</span>}
           {loadError && <span style={{ fontSize: 11, color: '#f87171' }}>⚠ {loadError}</span>}
 

@@ -1227,7 +1227,7 @@ export async function scanIfcElementTypes(file) {
   const relRecords = [];
 
   // Match element instances, their TYPE records, and RELDEFINESBYTYPE
-  const RECORD_RE = /#(\d+)\s*=\s*IFC((?:WALL(?:STANDARDCASE)?|SLAB|BUILDINGELEMENTPROXY|COVERING|CURTAINWALL|PLATE|MEMBER)TYPE|WALL(?:STANDARDCASE)?|SLAB|BUILDINGELEMENTPROXY|COVERING|CURTAINWALL|PLATE|MEMBER|RELDEFINESBYTYPE)\s*\(/gi;
+  const RECORD_RE = /#(\d+)\s*=\s*IFC((?:WALL(?:STANDARDCASE)?|SLAB|BUILDINGELEMENTPROXY|COVERING|CURTAINWALL|PLATE|MEMBER|ELEMENTASSEMBLY)TYPE|WALL(?:STANDARDCASE)?|SLAB|BUILDINGELEMENTPROXY|COVERING|CURTAINWALL|PLATE|MEMBER|ELEMENTASSEMBLY|RELDEFINESBYTYPE)\s*\(/gi;
 
   let m;
   while ((m = RECORD_RE.exec(flat)) !== null) {
@@ -1256,7 +1256,12 @@ export async function scanIfcElementTypes(file) {
       elemEntityType[id] = 'IFC' + ifcName;
       const parts = splitStepArgs(inner);
       const objType = unquoteStep(parts[4]);
-      if (objType) elemObjectType[id] = objType;
+      if (objType) {
+        elemObjectType[id] = objType;
+      } else if (ifcName === 'ELEMENTASSEMBLY') {
+        const nameVal = unquoteStep(parts[2]);
+        if (nameVal) elemObjectType[id] = nameVal;
+      }
     }
   }
 
@@ -1332,7 +1337,7 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
     const SUPPORTED_ENTITY_NAMES = [
       'IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCSLAB',
       'IFCBUILDINGELEMENTPROXY', 'IFCCOVERING', 'IFCCURTAINWALL',
-      'IFCPLATE', 'IFCMEMBER',
+      'IFCPLATE', 'IFCMEMBER', 'IFCELEMENTASSEMBLY',
     ];
 
     const entityNamesToLoad = allowedTypes ? [...allowedTypes.keys()] : SUPPORTED_ENTITY_NAMES;
