@@ -162,17 +162,11 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk) {
     const gH = Math.round(groupHeight);
     const zwExpV = (zetwerk?.enabled) ? Math.max(0, (zetwerk.offsetV ?? 0)) + Math.max(1, zetwerk.breedte ?? 50) : 0;
     const clampY = (y) => Math.min(gH, Math.max(0, y));
-    const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(clampY(op.y - zwExpV))));
-    const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(clampY(op.y + op.height + zwExpV))));
 
     const boundaryYs = new Set([0, gH]);
     for (const panel of allPanels) {
       boundaryYs.add(clampY(Math.round(panel.y)));
       boundaryYs.add(clampY(Math.round(panel.y + panel.height)));
-    }
-    for (const op of groupOpenings) {
-      boundaryYs.add(clampY(Math.round(op.y - zwExpV)));
-      boundaryYs.add(clampY(Math.round(op.y + op.height + zwExpV)));
     }
 
     const sortedBoundaries = [...boundaryYs].sort((a, b) => a - b);
@@ -193,10 +187,8 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk) {
       let latY;
       if (yr === 0) latY = 0;
       else if (yr === gH) latY = yr - latBreedte;
-      else if (openingBottomYs.has(yr)) latY = yr - latBreedte;
-      else if (openingTopYs.has(yr)) latY = yr;
       else latY = yr - latBreedte / 2;
-      const isForced = openingBottomYs.has(yr) || openingTopYs.has(yr) || yr === 0 || yr === gH;
+      const isForced = yr === 0 || yr === gH;
       const latTop = latY, latBot = latY + latBreedte;
       const openingsAtY = groupOpenings.filter((op) => op.y < latBot && op.y + op.height > latTop);
       let zones = [];
@@ -223,6 +215,12 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk) {
         if (x2 <= x1) continue;
         result.push({ id: `lat-h-${globalIdx++}`, richting: 'horizontaal', x: x1, y: latY, width: x2 - x1, height: latBreedte, forced: isForced });
       }
+    }
+    for (const op of groupOpenings) {
+      const belowLatY = Math.round(clampY(op.y - zwExpV)) - latBreedte;
+      const aboveLatY = Math.round(clampY(op.y + op.height + zwExpV));
+      if (belowLatY >= 0) result.push({ id: `lat-h-${globalIdx++}`, richting: 'horizontaal', x: op.x, y: belowLatY, width: op.width, height: latBreedte, forced: true });
+      if (aboveLatY + latBreedte <= gH) result.push({ id: `lat-h-${globalIdx++}`, richting: 'horizontaal', x: op.x, y: aboveLatY, width: op.width, height: latBreedte, forced: true });
     }
     return result;
   } else {

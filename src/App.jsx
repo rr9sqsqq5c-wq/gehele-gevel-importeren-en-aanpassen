@@ -2722,11 +2722,8 @@ export default function App() {
             const gH = Math.round(groupHeight);
             const zwExpV = (s.zetwerk?.enabled) ? Math.max(0, (s.zetwerk.offsetV ?? 0)) + Math.max(1, s.zetwerk.breedte ?? 50) : 0;
             const clampY = (y) => Math.min(gH, Math.max(0, y));
-            const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(clampY(op.y - zwExpV))));
-            const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(clampY(op.y + op.height + zwExpV))));
 
             const boundaryYs = new Set([0, gH]);
-            for (const op of groupOpenings) { boundaryYs.add(clampY(Math.round(op.y - zwExpV))); boundaryYs.add(clampY(Math.round(op.y + op.height + zwExpV))); }
             for (const panel of panels) { boundaryYs.add(clampY(Math.round(panel.y))); boundaryYs.add(clampY(Math.round(panel.y + panel.height))); }
 
             const sortedBoundaries = [...boundaryYs].sort((a, b) => a - b);
@@ -2743,8 +2740,6 @@ export default function App() {
               let latY;
               if (yr === 0) latY = 0;
               else if (yr === gH) latY = yr - latBreedte;
-              else if (openingBottomYs.has(yr)) latY = yr - latBreedte;
-              else if (openingTopYs.has(yr)) latY = yr;
               else latY = yr - latBreedte / 2;
               const latTop = latY, latBot = latY + latBreedte;
               const openingsAtY = groupOpenings.filter((op) => op.y < latBot && op.y + op.height > latTop);
@@ -2759,6 +2754,12 @@ export default function App() {
                 }
                 if (cursor < groupWidth) lattenData.push({ richting: 'horizontaal', x: cursor, y: latY, width: groupWidth - cursor, height: latBreedte, ...latV18Data });
               }
+            }
+            for (const op of groupOpenings) {
+              const belowLatY = Math.round(clampY(op.y - zwExpV)) - latBreedte;
+              const aboveLatY = Math.round(clampY(op.y + op.height + zwExpV));
+              if (belowLatY >= 0) lattenData.push({ richting: 'horizontaal', x: op.x, y: belowLatY, width: op.width, height: latBreedte, ...latV18Data });
+              if (aboveLatY + latBreedte <= gH) lattenData.push({ richting: 'horizontaal', x: op.x, y: aboveLatY, width: op.width, height: latBreedte, ...latV18Data });
             }
           } else {
             const xPositions = new Set([0, groupWidth]);

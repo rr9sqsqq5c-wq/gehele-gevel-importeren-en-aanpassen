@@ -84,12 +84,8 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, startLijn, 
       }
       const zwExpV = (zetwerk?.enabled) ? Math.max(0, (zetwerk.offsetV ?? 0)) + Math.max(1, zetwerk.breedte ?? 50) : 0;
       const clampY = (y) => Math.min(gH, Math.max(0, y));
-      const openingBottomYs = new Set(groupOpenings.map((op) => Math.round(clampY(op.y - zwExpV))));
-      const openingTopYs    = new Set(groupOpenings.map((op) => Math.round(clampY(op.y + op.height + zwExpV))));
 
-      const edgeYs = [0, gH];
-      for (const op of groupOpenings) { edgeYs.push(clampY(Math.round(op.y - zwExpV))); edgeYs.push(clampY(Math.round(op.y + op.height + zwExpV))); }
-      const allYs = new Set([...edgeYs, ...battenYs2d.map(y => clampY(Math.round(y)))]);
+      const allYs = new Set([0, gH, ...battenYs2d.map(y => clampY(Math.round(y)))]);
 
       const result = [];
       let idx = 0;
@@ -97,11 +93,15 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, startLijn, 
         let latY;
         if (yr === 0) latY = 0;
         else if (yr === gH) latY = yr - latBreedte;
-        else if (openingBottomYs.has(yr)) latY = yr - latBreedte;
-        else if (openingTopYs.has(yr)) latY = yr;
         else if (brickTopsSet2d.has(yr)) latY = Math.round(yr + lintHalf - latBreedte / 2);
         else latY = Math.round(yr - lintHalf - latBreedte / 2);
-        result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte, forced: openingBottomYs.has(yr) || openingTopYs.has(yr) || yr === 0 || yr === gH });
+        result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte, forced: yr === 0 || yr === gH });
+      }
+      for (const op of groupOpenings) {
+        const belowLatY = Math.round(clampY(op.y - zwExpV)) - latBreedte;
+        const aboveLatY = Math.round(clampY(op.y + op.height + zwExpV));
+        if (belowLatY >= 0) result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: op.x, y: belowLatY, width: op.width, height: latBreedte, forced: true, openingForced: true });
+        if (aboveLatY + latBreedte <= gH) result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: op.x, y: aboveLatY, width: op.width, height: latBreedte, forced: true, openingForced: true });
       }
 
       if (zetwerk?.enabled && groupOpenings.length > 0) {
@@ -114,7 +114,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, startLijn, 
           const relevant = groupOpenings.filter(
             (op) => latMidY >= op.y - vertExpand && latMidY <= op.y + op.height + vertExpand
           );
-          if (relevant.length === 0) { clipped.push(lat); continue; }
+          if (relevant.length === 0 || lat.openingForced) { clipped.push(lat); continue; }
           let segments = [{ start: lat.x, end: lat.x + lat.width }];
           for (const op of relevant) {
             const exFrom = op.x - sideExpand;
