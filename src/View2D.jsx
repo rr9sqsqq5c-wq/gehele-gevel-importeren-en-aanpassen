@@ -20,7 +20,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, minHoogte, startLijn, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [], stripZones = [], onStripZonesChange }) {
+export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [], stripZones = [], onStripZonesChange }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -39,9 +39,9 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, startLijn, 
 
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
-    const result = buildFullGroupFacadePattern(walls, mat, verband, maxHoogte, zetwerk, minHoogte, startLijn);
+    const result = buildFullGroupFacadePattern(walls, mat, verband, maxHoogte, zetwerk, null, startLijn);
     return result;
-  }, [walls, mat, verband, maxHoogte, minHoogte, startLijn, zetwerk]);
+  }, [walls, mat, verband, maxHoogte, startLijn, zetwerk]);
 
   const PENANT_PANEL_INSET = 20;
 
@@ -82,7 +82,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, startLijn, 
       if (facadeData?.rows) {
         for (const row of facadeData.rows) brickTopsSet2d.add(Math.round(row.y + mat.steenH));
       }
-      const minH = Math.max(0, Math.round(minHoogte ?? 0));
+      const minH = 0;
       const zwExpV = (zetwerk?.enabled) ? Math.max(0, (zetwerk.offsetV ?? 0)) + Math.max(1, zetwerk.breedte ?? 50) : 0;
       const clampY = (y) => Math.min(gH, Math.max(0, y));
 
@@ -180,11 +180,11 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, startLijn, 
       const zoneMat = zs.material ?? mat;
       const zoneVerband = zs.verband ?? verband;
       const zoneMaxHoogte = zs.maxHoogte ?? maxHoogte;
-      const patternData = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxHoogte, zetwerk, minHoogte, startLijn);
+      const patternData = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxHoogte, zetwerk, null, startLijn);
       result.push(patternData ? { patternData, zoneX1, zoneX2, color: zs.color ?? groupColor, zoneMat, zoneVerband } : null);
     }
     return result;
-  }, [walls, facadeData, groupSettings, zoneSettings, mat, verband, maxHoogte, minHoogte, startLijn, zetwerk, groupColor]);
+  }, [walls, facadeData, groupSettings, zoneSettings, mat, verband, maxHoogte, startLijn, zetwerk, groupColor]);
 
   const bounds = useMemo(() => {
     if (!facadeData) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };

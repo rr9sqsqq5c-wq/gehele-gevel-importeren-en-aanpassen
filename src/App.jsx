@@ -281,7 +281,7 @@ const GROUP_COLORS = [
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', stripColor: null, verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, minHoogte: null, minHoogteKoppelDeur: false, minHoogteOokPenanten: false, startLijn: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', stripColor: null, verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, startLijn: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -456,54 +456,6 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
             <input type="number" min={0} step={10} value={settings.maxHoogte}
               onChange={(e) => onUpdate({ maxHoogte: Number(e.target.value) })}
               style={{ ...inp, width: 80 }} />
-          </Field>
-        )}
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Minimale strip hoogte (vanaf lijn)" tip={"Begrenst het steenstrippatroon aan de onderkant.\nStrips onder deze hoogte worden niet getoond.\nHandig als de onderkant van de gevel een ander materiaal heeft of een drempel."} isOpen={isOpen('minhoogte')} onToggle={() => toggle('minhoogte')} badge={settings.minHoogte !== null ? `${settings.minHoogte} mm` : null}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-          <input type="checkbox" id="minh-enable"
-            checked={settings.minHoogte !== null}
-            onChange={(e) => onUpdate({ minHoogte: e.target.checked ? 200 : null, minHoogteKoppelDeur: false })} />
-          <label htmlFor="minh-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>
-            Inschakelen
-          </label>
-        </div>
-        {settings.minHoogte !== null && doorBottomYs.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 4, padding: '4px 6px' }}>
-            <input type="checkbox" id="minh-koppel"
-              checked={!!settings.minHoogteKoppelDeur}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  onUpdate({ minHoogteKoppelDeur: true, minHoogte: Math.min(...doorBottomYs) });
-                } else {
-                  onUpdate({ minHoogteKoppelDeur: false });
-                }
-              }} />
-            <label htmlFor="minh-koppel" style={{ fontSize: 11, color: '#1d4ed8', cursor: 'pointer' }}>
-              Koppelen aan onderkant openingen BGG
-              {doorBottomYs.length === 1
-                ? ` (${doorBottomYs[0]} mm)`
-                : ` (laagste: ${Math.min(...doorBottomYs)} mm)`}
-            </label>
-          </div>
-        )}
-        {settings.minHoogte !== null && (settings.penanten ?? []).length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, padding: '4px 6px' }}>
-            <input type="checkbox" id="minh-ook-penanten"
-              checked={!!settings.minHoogteOokPenanten}
-              onChange={(e) => onUpdate({ minHoogteOokPenanten: e.target.checked })} />
-            <label htmlFor="minh-ook-penanten" style={{ fontSize: 11, color: '#166534', cursor: 'pointer' }}>
-              Ook toepassen op penanten
-            </label>
-          </div>
-        )}
-        {settings.minHoogte !== null && (
-          <Field label="Hoogte (mm)">
-            <input type="number" min={0} step={10} value={settings.minHoogte}
-              onChange={(e) => onUpdate({ minHoogte: Number(e.target.value), minHoogteKoppelDeur: false })}
-              style={{ ...inp, width: 80, background: settings.minHoogteKoppelDeur ? '#eff6ff' : undefined }}
-              readOnly={!!settings.minHoogteKoppelDeur} />
           </Field>
         )}
       </CollapsibleSection>
@@ -1606,7 +1558,7 @@ export default function App() {
       const withOrigin = walls.filter((w) => w.wallOrigin);
       if (!withOrigin.length) continue;
       const mat = s.material ?? DEFAULT_MATERIAL;
-      const facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte, s.startLijn);
+      const facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn);
       if (!facadeData) {
         const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
         if (!refWall) continue;
@@ -1679,7 +1631,7 @@ export default function App() {
         if (zX2 <= zX1) continue;
         const zoneMat = zs.material ?? mat;
         const zoneVerband3d = zs.verband ?? (s.verband ?? DEFAULT_VERBAND);
-        const zoneFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband3d, zs.maxHoogte ?? s.maxHoogte, s.zetwerk, s.minHoogte, s.startLijn);
+        const zoneFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband3d, zs.maxHoogte ?? s.maxHoogte, s.zetwerk, null, s.startLijn);
         if (!zoneFull) continue;
         const clipRows = zoneFull.rows.map((row) => ({
           ...row,
@@ -2530,7 +2482,7 @@ export default function App() {
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const mat = s.material ?? DEFAULT_MATERIAL;
       const verband = s.verband ?? DEFAULT_VERBAND;
-      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, s.zetwerk, s.minHoogte, s.startLijn);
+      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, s.zetwerk, null, s.startLijn);
       if (!facadeDataRaw) continue;
 
       let facadeData = facadeDataRaw;
@@ -2648,7 +2600,7 @@ export default function App() {
       const vis = s.layerVisibility ?? {};
       const withOrigin = walls.filter((w) => w.wallOrigin);
 
-      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte, s.startLijn);
+      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn);
       const _refWall = facadeDataRaw ? null : ([...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0] ?? null);
       const refWallOrigin = facadeDataRaw?.refWallOrigin ?? _refWall?.wallOrigin ?? null;
       const _axisW = refWallOrigin ? withOrigin.filter((w) => w.wallOrigin.lengthAxis === refWallOrigin.lengthAxis) : withOrigin;
@@ -2724,13 +2676,6 @@ export default function App() {
               return panel;
             }).filter(Boolean);
           }
-          if (s.minHoogte != null && s.minHoogte > 0) {
-            panels = panels.map((panel) => {
-              if (panel.y + panel.height <= s.minHoogte) return null;
-              if (panel.y < s.minHoogte) return { ...panel, y: s.minHoogte, height: panel.y + panel.height - s.minHoogte };
-              return panel;
-            }).filter(Boolean);
-          }
           if (s.zetwerk?.enabled && groupOpenings.length > 0) {
             const CLEARANCE = 10;
             const sideExpand = (s.zetwerk.offsetH ?? 0) + (s.zetwerk.breedte ?? 50) + CLEARANCE;
@@ -2757,7 +2702,7 @@ export default function App() {
 
           if (richting === 'horizontaal') {
             const gH = Math.round(groupHeight);
-            const minH = Math.max(0, Math.round(s.minHoogte ?? 0));
+            const minH = 0;
             const zwExpV = (s.zetwerk?.enabled) ? Math.max(0, (s.zetwerk.offsetV ?? 0)) + Math.max(1, s.zetwerk.breedte ?? 50) : 0;
             const clampY = (y) => Math.min(gH, Math.max(0, y));
 
@@ -2898,7 +2843,7 @@ export default function App() {
           const zoneMat = zs.material ?? mat;
           const zoneVerband = zs.verband ?? (s.verband ?? DEFAULT_VERBAND);
           const zoneMaxH = zs.maxHoogte ?? (s.maxHoogte ?? null);
-          const zFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxH, s.zetwerk, s.minHoogte, s.startLijn);
+          const zFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxH, s.zetwerk, null, s.startLijn);
           if (!zFull) continue;
           const clipRows = zFull.rows.map((row) => ({
             ...row,
@@ -2943,9 +2888,6 @@ export default function App() {
           let wallRows = rows[wall.expressID] ?? [];
           if (s.maxHoogte != null && s.maxHoogte > 0) {
             wallRows = wallRows.filter((row) => wallHeightOffset + row.y < s.maxHoogte);
-          }
-          if (s.minHoogte != null && s.minHoogte > 0) {
-            wallRows = wallRows.filter((row) => wallHeightOffset + row.y >= s.minHoogte);
           }
           return { wall, rows: wallRows };
         }),
@@ -3746,7 +3688,6 @@ export default function App() {
                     walls={activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean)}
                     groupSettings={getSettings(activeGroup.id)}
                     maxHoogte={getSettings(activeGroup.id).maxHoogte}
-                    minHoogte={getSettings(activeGroup.id).minHoogte}
                     startLijn={getSettings(activeGroup.id).startLijn}
                     penantFaceData={penantFaceData}
                     groupColor={getSettings(activeGroup.id).color}

@@ -327,7 +327,7 @@ export function buildGroupPattern(walls, adjacencies, material, verband, opening
   return result;
 }
 
-export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk, minHoogte, startLijn) {
+export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk, _minHoogte, startLijn) {
   const { steenL, steenH, lint, stoot } = material;
   const lagenmaat = getLagenmaat(material, verband);
   const rowH = verband === 'staand_tegelverband' ? material.steenL : steenH;
@@ -348,7 +348,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const groupWidth = round2(groupMaxX - groupMinX);
   const groupHeight = round2(groupMaxH - groupMinH);
   const effectiveHeight = maxHoogte != null && maxHoogte > 0 ? Math.min(groupHeight, maxHoogte) : groupHeight;
-  const effectiveMinH = (minHoogte != null && minHoogte > 0 && minHoogte < effectiveHeight) ? minHoogte : 0;
+  const effectiveMinH = 0;
   const patternOffset = startLijn != null
     ? ((startLijn % lagenmaat) + lagenmaat) % lagenmaat
     : 0;

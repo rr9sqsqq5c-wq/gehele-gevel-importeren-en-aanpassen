@@ -107,7 +107,7 @@ function getOutsideFaceInfo(rwo, allWalls) {
   return { outsidePos: tEnd, outsideDir: +1 };
 }
 
-function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth = 20, panelDikte = 8, penantShift = 0, minHoogte = 0, minHoogteOokPenanten = false, outsideDirFlip = false) {
+function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth = 20, panelDikte = 8, penantShift = 0, outsideDirFlip = false) {
   if (!rwo) return [];
   const pX = penant.x ?? 0;
   const pB = Math.max(1, penant.breedte ?? 400);
@@ -115,7 +115,7 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, lat
   const pDR = Math.max(1, penant.diepteRechts ?? penant.diepte ?? 150);
   const pH = Math.max(1, penant.hoogte ?? 2000);
   const ld = latDikte ?? 28;
-  const penMinH = (minHoogteOokPenanten && minHoogte > 0) ? minHoogte : 0;
+  const penMinH = 0;
 
   const rawFace = getOutsideFaceInfo(rwo, allWalls);
   const outsidePos = rawFace.outsidePos;
@@ -150,17 +150,17 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, lat
   ];
 }
 
-function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift = 0, minHoogte = 0, minHoogteOokPenanten = false, outsideDirFlip = false }) {
+function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift = 0, outsideDirFlip = false }) {
   const boxes = useMemo(
-    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, minHoogte, minHoogteOokPenanten, outsideDirFlip),
-    [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, minHoogte, minHoogteOokPenanten, outsideDirFlip]
+    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip),
+    [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip]
   );
   const cornerBattens = useMemo(() => {
     if (!rwo) return [];
     const pX = penant.x ?? 0;
     const pB = Math.max(1, penant.breedte ?? 400);
     const pH = Math.max(1, penant.hoogte ?? 2000);
-    const penMinH = (minHoogteOokPenanten && minHoogte > 0) ? minHoogte : 0;
+    const penMinH = 0;
     const sh = penantShift;
     const ld = latDikte;
     const panelT = panelDikte;
@@ -190,7 +190,7 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, a
         size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
       };
     });
-  }, [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, minHoogte, minHoogteOokPenanten, outsideDirFlip]);
+  }, [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip]);
 
   if (!boxes.length) return null;
   return (
@@ -929,8 +929,6 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           const penBrickD   = settings?.brickDepth ?? 20;
           const penPanelDikte = settings?.panelen?.dikte ?? 8;
           const penStoot = settings?.material?.stoot ?? 10;
-          const penMinHoogte = settings?.minHoogte ?? 0;
-          const penMinHoogteOok = !!(settings?.minHoogteOokPenanten);
           const penFlip = !!(settings?.outsideDirFlip);
           return penanten.map((penant) => {
             const pDL3V = Math.max(1, penant.diepteLinks  ?? penant.diepte ?? 150);
@@ -950,8 +948,6 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
                 brickDepth={penBrickD}
                 panelDikte={penPanelDikte}
                 penantShift={penantShift}
-                minHoogte={penMinHoogte}
-                minHoogteOokPenanten={penMinHoogteOok}
                 outsideDirFlip={penFlip}
               />
             );

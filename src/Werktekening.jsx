@@ -132,7 +132,7 @@ function DimV({ x, y1, y2, label, color = '#1e3a5f', side = 'left' }) {
   );
 }
 
-function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, minHoogte) {
+function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk) {
   if (!facadeData || !latten?.enabled) return [];
   const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
   const richting = latten.richting ?? 'horizontaal';
@@ -160,7 +160,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, minH
 
   if (richting === 'horizontaal') {
     const gH = Math.round(groupHeight);
-    const minH = Math.max(0, Math.round(minHoogte ?? 0));
+    const minH = 0;
     const zwExpV = (zetwerk?.enabled) ? Math.max(0, (zetwerk.offsetV ?? 0)) + Math.max(1, zetwerk.breedte ?? 50) : 0;
     const clampY = (y) => Math.min(gH, Math.max(0, y));
 
@@ -252,7 +252,6 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const mat     = groupSettings?.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
   const verband = groupSettings?.verband ?? 'halfsteens';
   const maxH    = groupSettings?.maxHoogte ?? null;
-  const minH    = groupSettings?.minHoogte ?? null;
 
   const epcProjectNr = epcSettings?.projectNummer ?? groupSettings?.epcProjectNummer ?? '00000';
   const epcLevel     = epcSettings?.level ?? groupSettings?.epcLevel ?? 0;
@@ -293,7 +292,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   }, [facadeData, panelen, mat, groupSettings, latten]);
 
   const penanten = groupSettings?.penanten ?? [];
-  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings?.minHoogte ?? null), [facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings]);
+  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk), [facadeData, panelen, latten, mat, penanten, zetwerk]);
 
   const wallGroupPolysRaw = useMemo(() => {
     if (!walls?.length) return [];

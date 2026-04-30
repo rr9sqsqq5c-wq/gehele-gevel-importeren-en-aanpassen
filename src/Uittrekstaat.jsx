@@ -30,7 +30,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
   const groupWalls = group.wallIds.map((id) => walls.find((w) => w.expressID === id)).filter(Boolean);
   if (!groupWalls.length) return null;
 
-  const facadeData = buildFullGroupFacadePattern(groupWalls, mat, verband, s.maxHoogte, s.zetwerk, s.minHoogte);
+  const facadeData = buildFullGroupFacadePattern(groupWalls, mat, verband, s.maxHoogte, s.zetwerk, null);
   if (!facadeData) return null;
 
   const { groupWidth, groupHeight, groupOpenings, rows } = facadeData;
