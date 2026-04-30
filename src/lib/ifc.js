@@ -861,7 +861,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
 
   for (const group of groups) {
     const settings = wallSettings[group.id] ?? {};
-    const brickColor = settings.color ?? '#a64033';
+    const brickColor = settings.stripColor ?? settings.color ?? '#a64033';
     const brickD = settings.brickDepth ?? 20;
     const material = settings.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
     const groupVerband = settings.verband ?? 'halfsteens';
