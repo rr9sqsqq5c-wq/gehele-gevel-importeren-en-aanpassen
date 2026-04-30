@@ -102,6 +102,39 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, startLijn, 
         else latY = Math.round(yr - lintHalf - latBreedte / 2);
         result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte, forced: openingBottomYs.has(yr) || openingTopYs.has(yr) || yr === 0 || yr === gH });
       }
+
+      if (zetwerk?.enabled && groupOpenings.length > 0) {
+        const CLEARANCE = 10;
+        const sideExpand = (zetwerk.offsetH ?? 0) + (zetwerk.breedte ?? 50) + CLEARANCE;
+        const vertExpand = (zetwerk.offsetV ?? 0) + (zetwerk.breedte ?? 50) + (zetwerk.stripOffset ?? 5);
+        const clipped = [];
+        for (const lat of result) {
+          const latMidY = lat.y + lat.height / 2;
+          const relevant = groupOpenings.filter(
+            (op) => latMidY >= op.y - vertExpand && latMidY <= op.y + op.height + vertExpand
+          );
+          if (relevant.length === 0) { clipped.push(lat); continue; }
+          let segments = [{ start: lat.x, end: lat.x + lat.width }];
+          for (const op of relevant) {
+            const exFrom = op.x - sideExpand;
+            const exTo = op.x + op.width + sideExpand;
+            const next = [];
+            for (const seg of segments) {
+              if (seg.end <= exFrom || seg.start >= exTo) { next.push(seg); continue; }
+              if (seg.start < exFrom) next.push({ start: seg.start, end: exFrom });
+              if (seg.end > exTo) next.push({ start: exTo, end: seg.end });
+            }
+            segments = next;
+          }
+          let si = 0;
+          for (const seg of segments) {
+            const w = seg.end - seg.start;
+            if (w > 0.5) clipped.push({ ...lat, id: `${lat.id}-s${si++}`, x: seg.start, width: w });
+          }
+        }
+        return clipped;
+      }
+
       return result;
     } else {
       const xPositions = new Set();
@@ -124,7 +157,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, startLijn, 
           forced: false,
         }));
     }
-  }, [facadeData, latten, allPanels, mat]);
+  }, [facadeData, latten, allPanels, mat, zetwerk]);
 
   const zonePatterns = useMemo(() => {
     if (!walls?.length || !facadeData) return [];
