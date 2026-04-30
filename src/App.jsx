@@ -2811,7 +2811,7 @@ export default function App() {
             wallRows = wallRows.filter((row) => wallHeightOffset + row.y < s.maxHoogte);
           }
           if (s.minHoogte != null && s.minHoogte > 0) {
-            wallRows = wallRows.filter((row) => wallHeightOffset + row.y + mat.steenH > s.minHoogte);
+            wallRows = wallRows.filter((row) => wallHeightOffset + row.y >= s.minHoogte);
           }
           return { wall, rows: wallRows };
         }),
