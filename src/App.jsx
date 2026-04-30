@@ -2724,6 +2724,13 @@ export default function App() {
               return panel;
             }).filter(Boolean);
           }
+          if (s.minHoogte != null && s.minHoogte > 0) {
+            panels = panels.map((panel) => {
+              if (panel.y + panel.height <= s.minHoogte) return null;
+              if (panel.y < s.minHoogte) return { ...panel, y: s.minHoogte, height: panel.y + panel.height - s.minHoogte };
+              return panel;
+            }).filter(Boolean);
+          }
         }
 
         if (s.latten?.enabled && vis.latten !== false) {
