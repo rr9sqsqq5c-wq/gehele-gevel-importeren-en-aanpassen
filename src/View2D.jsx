@@ -20,7 +20,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, minHoogte, maxHoogteNaastOpeningen, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [], stripZones = [], onStripZonesChange }) {
+export function View2D({ walls, groupSettings, maxHoogte, minHoogte, startLijn, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [], stripZones = [], onStripZonesChange }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -39,9 +39,9 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, maxHoogteNa
 
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
-    const result = buildFullGroupFacadePattern(walls, mat, verband, maxHoogte, zetwerk, minHoogte, maxHoogteNaastOpeningen);
+    const result = buildFullGroupFacadePattern(walls, mat, verband, maxHoogte, zetwerk, minHoogte, startLijn);
     return result;
-  }, [walls, mat, verband, maxHoogte, minHoogte, maxHoogteNaastOpeningen, zetwerk]);
+  }, [walls, mat, verband, maxHoogte, minHoogte, startLijn, zetwerk]);
 
   const PENANT_PANEL_INSET = 20;
 
@@ -145,11 +145,11 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, maxHoogteNa
       const zoneMat = zs.material ?? mat;
       const zoneVerband = zs.verband ?? verband;
       const zoneMaxHoogte = zs.maxHoogte ?? maxHoogte;
-      const patternData = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxHoogte, zetwerk, minHoogte, maxHoogteNaastOpeningen);
+      const patternData = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxHoogte, zetwerk, minHoogte, startLijn);
       result.push(patternData ? { patternData, zoneX1, zoneX2, color: zs.color ?? groupColor, zoneMat, zoneVerband } : null);
     }
     return result;
-  }, [walls, facadeData, groupSettings, zoneSettings, mat, verband, maxHoogte, minHoogte, maxHoogteNaastOpeningen, zetwerk, groupColor]);
+  }, [walls, facadeData, groupSettings, zoneSettings, mat, verband, maxHoogte, minHoogte, startLijn, zetwerk, groupColor]);
 
   const bounds = useMemo(() => {
     if (!facadeData) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
@@ -648,27 +648,24 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, maxHoogteNa
       ctx.restore();
     }
 
-    if (maxHoogteNaastOpeningen != null && maxHoogteNaastOpeningen > 0 && facadeData?.groupOpenings?.length > 0) {
-      const [, sy] = toScreen(0, maxHoogteNaastOpeningen);
+    if (startLijn != null) {
+      const [sx1] = toScreen(0, 0);
+      const [sx2] = toScreen(groupWidth, 0);
+      const [, sy] = toScreen(0, startLijn);
       ctx.save();
       ctx.strokeStyle = '#a855f7';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([5, 4]);
-      for (const op of facadeData.groupOpenings) {
-        const [sox1] = toScreen(op.x, 0);
-        const [sox2] = toScreen(op.x + op.width, 0);
-        ctx.beginPath();
-        ctx.moveTo(sox1, sy);
-        ctx.lineTo(sox2, sy);
-        ctx.stroke();
-      }
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 5]);
+      ctx.beginPath();
+      ctx.moveTo(Math.max(0, sx1 - 20), sy);
+      ctx.lineTo(Math.min(W, sx2 + 20), sy);
+      ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = '#a855f7';
       ctx.font = '10px system-ui, sans-serif';
       ctx.textAlign = 'left';
-      ctx.textBaseline = 'bottom';
-      const [sx1] = toScreen(0, 0);
-      ctx.fillText(`▲ max naast openingen ${maxHoogteNaastOpeningen} mm`, Math.max(4, sx1), sy - 2);
+      ctx.textBaseline = 'top';
+      ctx.fillText(`▼ startlijn ${startLijn} mm`, Math.max(4, sx1), sy + 2);
       ctx.restore();
     }
 
@@ -884,7 +881,7 @@ export function View2D({ walls, groupSettings, maxHoogte, minHoogte, maxHoogteNa
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
-  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, maxHoogteNaastOpeningen, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, gridLines, showCenterLines, stripZones, drawingRect, selectedZoneId]);
+  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, startLijn, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, gridLines, showCenterLines, stripZones, drawingRect, selectedZoneId]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();

@@ -281,7 +281,7 @@ const GROUP_COLORS = [
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, minHoogte: null, minHoogteKoppelDeur: false, minHoogteOokPenanten: false, maxHoogteNaastOpeningen: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, minHoogte: null, minHoogteKoppelDeur: false, minHoogteOokPenanten: false, startLijn: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -496,19 +496,19 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         )}
       </CollapsibleSection>
 
-      <CollapsibleSection title="Max hoogte naast openingen" tip={"Strips/rijen die zich in de X-breedte van een opening bevinden worden verwijderd boven deze hoogte.\nHandig om strips naast ramen/deuren te beperken tot een bepaalde hoogte."} isOpen={isOpen('maxhoogtenaastopeningen')} onToggle={() => toggle('maxhoogtenaastopeningen')} badge={settings.maxHoogteNaastOpeningen !== null ? `${settings.maxHoogteNaastOpeningen} mm` : null}>
+      <CollapsibleSection title="Startlijn t.o.v. peil = 0" tip={"Bepaalt de laagste referentielijn vanaf waar steenstrips starten.\nStrips buiten de X-breedte van openingen worden niet getoond onder deze lijn.\nVlakken onder openingen (bijv. onder een raam) behouden hun eigen startlogica en tonen strips tot de wand-onderkant.\nNegatieve waarden: startlijn ligt onder peil = 0 (strips starten volledig onderaan)."} isOpen={isOpen('startlijn')} onToggle={() => toggle('startlijn')} badge={settings.startLijn !== null ? `${settings.startLijn} mm` : null}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-          <input type="checkbox" id="mhno-enable"
-            checked={settings.maxHoogteNaastOpeningen !== null}
-            onChange={(e) => onUpdate({ maxHoogteNaastOpeningen: e.target.checked ? 2000 : null })} />
-          <label htmlFor="mhno-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>
+          <input type="checkbox" id="startlijn-enable"
+            checked={settings.startLijn !== null}
+            onChange={(e) => onUpdate({ startLijn: e.target.checked ? 0 : null })} />
+          <label htmlFor="startlijn-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>
             Inschakelen
           </label>
         </div>
-        {settings.maxHoogteNaastOpeningen !== null && (
-          <Field label="Hoogte (mm)">
-            <input type="number" min={0} step={10} value={settings.maxHoogteNaastOpeningen}
-              onChange={(e) => onUpdate({ maxHoogteNaastOpeningen: Number(e.target.value) })}
+        {settings.startLijn !== null && (
+          <Field label="Hoogte t.o.v. peil (mm)">
+            <input type="number" step={10} value={settings.startLijn}
+              onChange={(e) => onUpdate({ startLijn: Number(e.target.value) })}
               style={{ ...inp, width: 80 }} />
           </Field>
         )}
@@ -1594,7 +1594,7 @@ export default function App() {
       const withOrigin = walls.filter((w) => w.wallOrigin);
       if (!withOrigin.length) continue;
       const mat = s.material ?? DEFAULT_MATERIAL;
-      const facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte, s.maxHoogteNaastOpeningen);
+      const facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte, s.startLijn);
       if (!facadeData) {
         const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
         if (!refWall) continue;
@@ -1667,7 +1667,7 @@ export default function App() {
         if (zX2 <= zX1) continue;
         const zoneMat = zs.material ?? mat;
         const zoneVerband3d = zs.verband ?? (s.verband ?? DEFAULT_VERBAND);
-        const zoneFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband3d, zs.maxHoogte ?? s.maxHoogte, s.zetwerk, s.minHoogte, s.maxHoogteNaastOpeningen);
+        const zoneFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband3d, zs.maxHoogte ?? s.maxHoogte, s.zetwerk, s.minHoogte, s.startLijn);
         if (!zoneFull) continue;
         const clipRows = zoneFull.rows.map((row) => ({
           ...row,
@@ -2518,7 +2518,7 @@ export default function App() {
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const mat = s.material ?? DEFAULT_MATERIAL;
       const verband = s.verband ?? DEFAULT_VERBAND;
-      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, s.zetwerk, s.minHoogte, s.maxHoogteNaastOpeningen);
+      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, s.zetwerk, s.minHoogte, s.startLijn);
       if (!facadeDataRaw) continue;
 
       let facadeData = facadeDataRaw;
@@ -2636,7 +2636,7 @@ export default function App() {
       const vis = s.layerVisibility ?? {};
       const withOrigin = walls.filter((w) => w.wallOrigin);
 
-      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte, s.maxHoogteNaastOpeningen);
+      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, s.minHoogte, s.startLijn);
       const _refWall = facadeDataRaw ? null : ([...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0] ?? null);
       const refWallOrigin = facadeDataRaw?.refWallOrigin ?? _refWall?.wallOrigin ?? null;
       const _axisW = refWallOrigin ? withOrigin.filter((w) => w.wallOrigin.lengthAxis === refWallOrigin.lengthAxis) : withOrigin;
@@ -2821,7 +2821,7 @@ export default function App() {
           const zoneMat = zs.material ?? mat;
           const zoneVerband = zs.verband ?? (s.verband ?? DEFAULT_VERBAND);
           const zoneMaxH = zs.maxHoogte ?? (s.maxHoogte ?? null);
-          const zFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxH, s.zetwerk, s.minHoogte, s.maxHoogteNaastOpeningen);
+          const zFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxH, s.zetwerk, s.minHoogte, s.startLijn);
           if (!zFull) continue;
           const clipRows = zFull.rows.map((row) => ({
             ...row,
@@ -3670,7 +3670,7 @@ export default function App() {
                     groupSettings={getSettings(activeGroup.id)}
                     maxHoogte={getSettings(activeGroup.id).maxHoogte}
                     minHoogte={getSettings(activeGroup.id).minHoogte}
-                    maxHoogteNaastOpeningen={getSettings(activeGroup.id).maxHoogteNaastOpeningen}
+                    startLijn={getSettings(activeGroup.id).startLijn}
                     penantFaceData={penantFaceData}
                     groupColor={getSettings(activeGroup.id).color}
                     zetwerk={getSettings(activeGroup.id).zetwerk}
