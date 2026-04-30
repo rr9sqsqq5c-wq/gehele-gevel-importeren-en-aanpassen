@@ -349,7 +349,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const groupHeight = round2(groupMaxH - groupMinH);
   const effectiveHeight = maxHoogte != null && maxHoogte > 0 ? Math.min(groupHeight, maxHoogte) : groupHeight;
   const effectiveMinH = startLijn != null && startLijn > 0 ? startLijn : 0;
-  const patternOffset = startLijn != null
+  const patternOffset = startLijn != null && startLijn > 0
     ? ((startLijn % lagenmaat) + lagenmaat) % lagenmaat
     : 0;
   const rStart = Math.ceil((effectiveMinH - patternOffset) / lagenmaat);
@@ -516,7 +516,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       }
     }
 
-    if (startLijn != null && rowY < startLijn) {
+    if (effectiveMinH > 0 && rowY < effectiveMinH) {
       if (groupOpenings.length === 0) {
         clipped.length = 0;
       } else {
