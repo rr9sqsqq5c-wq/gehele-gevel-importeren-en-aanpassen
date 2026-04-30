@@ -327,7 +327,7 @@ export function buildGroupPattern(walls, adjacencies, material, verband, opening
   return result;
 }
 
-export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk, minHoogte) {
+export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk, minHoogte, maxHoogteNaastOpeningen) {
   const { steenL, steenH, lint, stoot } = material;
   const lagenmaat = getLagenmaat(material, verband);
   const rowH = verband === 'staand_tegelverband' ? material.steenL : steenH;
@@ -511,6 +511,21 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
         clipped.length = 0;
         for (const p of fixed) clipped.push(p);
       }
+    }
+
+    if (maxHoogteNaastOpeningen != null && maxHoogteNaastOpeningen > 0 && rowY >= maxHoogteNaastOpeningen && groupOpenings.length > 0) {
+      const adjusted = [];
+      for (const piece of clipped) {
+        let segs = [{ start: piece.start, end: piece.start + piece.length }];
+        for (const op of groupOpenings) {
+          segs = cutSegments(segs, op.x, op.x + op.width);
+        }
+        for (const seg of segs) {
+          if (seg.end - seg.start > 0.5) adjusted.push({ ...piece, start: round2(seg.start), length: round2(seg.end - seg.start) });
+        }
+      }
+      clipped.length = 0;
+      for (const p of adjusted) clipped.push(p);
     }
 
     if (clipped.length) rows.push({ y: rowY, pieces: clipped });
