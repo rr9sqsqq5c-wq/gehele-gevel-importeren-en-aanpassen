@@ -1528,6 +1528,7 @@ export default function App() {
   const [validationLogs, setValidationLogs] = useState([]);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [hiddenGroupIds, setHiddenGroupIds] = useState(new Set());
   const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
@@ -2568,7 +2569,7 @@ export default function App() {
   }
 
   function handleExport() {
-    const exportGroups = groups.map((group) => {
+    const exportGroups = groups.filter((group) => !hiddenGroupIds.has(group.id)).map((group) => {
       const s = getSettings(group.id);
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const gAdj = adjacencies.filter((a) => group.wallIds.includes(a.wallIdA) && group.wallIds.includes(a.wallIdB));
@@ -3309,9 +3310,9 @@ export default function App() {
           <div style={{ padding: '4px 14px', display: 'flex', alignItems: 'center', gap: 6, background: '#172033', borderBottom: '1px solid #263148', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, color: '#475569', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 4 }}>Export</span>
             {groups.length > 0 && (
-              <Tooltip text={"Exporteert alle aangevinkte lagen als een nieuw IFC-bestand.\nDit bestand bevat ALLEEN de gevelbekleding — GEEN originele wandelementen.\nImporteer dit bestand naast het originele IFC in je BIM-software.\nWelke lagen worden geëxporteerd is per groep te regelen via 'Laagzichtbaarheid 2D'."}>
+              <Tooltip text={"Exporteert zichtbare groepen als een nieuw IFC-bestand.\nVerborgen groepen (👁 Zichtbaarheid in de 3D-viewer) worden overgeslagen.\nDit bestand bevat ALLEEN de gevelbekleding — GEEN originele wandelementen.\nImporteer dit bestand naast het originele IFC in je BIM-software.\nWelke lagen worden geëxporteerd is per groep te regelen via 'Laagzichtbaarheid 2D'."}>
                 <button onClick={handleExport} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                  ⬇ Gevelbekleding IFC
+                  ⬇ Gevelbekleding IFC{hiddenGroupIds.size > 0 ? ` (${groups.length - hiddenGroupIds.size}/${groups.length})` : ''}
                 </button>
               </Tooltip>
             )}
@@ -3569,6 +3570,8 @@ export default function App() {
                   return next;
                 })}
                 activeGroupId={activeGroup?.id ?? null}
+                hiddenGroupIds={hiddenGroupIds}
+                onHiddenGroupIdsChange={setHiddenGroupIds}
               />
 
               {allWalls.length === 0 && (

@@ -694,14 +694,24 @@ const COMPASS = [
   { key: 'Top',  label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
 ];
 
-export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId }) {
+export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange }) {
   const [hoveredWallId, setHoveredWallId] = useState(null);
   const [preset, setPreset] = useState(null);
   const [boxSelectMode, setBoxSelectMode] = useState(false);
   const [dragRect, setDragRect] = useState(null);
-  const [hiddenGroupIds, setHiddenGroupIds] = useState(new Set());
+  const [hiddenGroupIdsInternal, setHiddenGroupIdsInternal] = useState(new Set());
   const [hideUngrouped, setHideUngrouped] = useState(false);
   const [groupPanelOpen, setGroupPanelOpen] = useState(false);
+
+  const hiddenGroupIds = hiddenGroupIdsProp ?? hiddenGroupIdsInternal;
+  const setHiddenGroupIds = useCallback((valOrFn) => {
+    if (onHiddenGroupIdsChange) {
+      const next = typeof valOrFn === 'function' ? valOrFn(hiddenGroupIds) : valOrFn;
+      onHiddenGroupIdsChange(next);
+    } else {
+      setHiddenGroupIdsInternal(valOrFn);
+    }
+  }, [hiddenGroupIds, onHiddenGroupIdsChange]);
 
   const toggleGroupVisibility = useCallback((gid) => {
     setHiddenGroupIds((prev) => {
@@ -709,7 +719,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
       if (next.has(gid)) next.delete(gid); else next.add(gid);
       return next;
     });
-  }, []);
+  }, [setHiddenGroupIds]);
   const dragStart = useRef(null);
   const cameraRef = useRef(null);
   const containerRef = useRef(null);
