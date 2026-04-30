@@ -459,7 +459,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   function splitAroundOpenings(piece, rowY) {
     let segments = [{ start: piece.start, end: piece.start + piece.length }];
     for (const op of maskOpenings) {
-      if (rowY + 1 < op.y || rowY + rowH > op.y + op.height + 1) continue;
+      if (rowY + rowH < op.y + 1 || rowY > op.y + op.height + 1) continue;
       if (op.polyPts && op.polyPts.length >= 3) {
         const midY = rowY + rowH * 0.5;
         const ranges = polyXRangesAtY(op.polyPts, midY);

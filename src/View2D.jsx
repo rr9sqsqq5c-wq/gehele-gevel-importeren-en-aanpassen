@@ -64,8 +64,14 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       const result = panelizeZone(zone, battenYs, basePanel);
       if (result.ok) panels.push(...result.panels);
     }
+    if (startLijn != null && startLijn < 0 && panels.length > 0) {
+      const minY = Math.min(...panels.map((p) => p.y));
+      if (minY === 0) {
+        return panels.map((p) => p.y === 0 ? { ...p, y: startLijn, height: p.height - startLijn } : p);
+      }
+    }
     return panels;
-  }, [facadeData, panelen, latten, mat, groupSettings]);
+  }, [facadeData, panelen, latten, mat, groupSettings, startLijn]);
 
   const allLatten = useMemo(() => {
     if (!facadeData || !latten?.enabled) return [];
@@ -188,8 +194,8 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
 
   const bounds = useMemo(() => {
     if (!facadeData) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
-    return { minX: 0, maxX: facadeData.groupWidth, minY: 0, maxY: facadeData.groupHeight };
-  }, [facadeData]);
+    return { minX: 0, maxX: facadeData.groupWidth, minY: Math.min(0, startLijn ?? 0), maxY: facadeData.groupHeight };
+  }, [facadeData, startLijn]);
 
   const fitToView = useCallback(() => {
     const canvas = canvasRef.current;
@@ -313,6 +319,11 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     const applyOpeningExclusionClip = () => {
       ctx.beginPath();
       traceFacadePath();
+      if (startLijn != null && startLijn < 0) {
+        const [bx, byPeil] = toScreen(0, 0);
+        const [, byStart] = toScreen(0, startLijn);
+        ctx.rect(bx - 1, byPeil, faceW + 2, byStart - byPeil + 1);
+      }
       for (const op of groupOpenings) {
         const poly = getOpeningPoly(op);
         const pts = poly.map((p) => toScreen(p.l, p.h));
@@ -370,12 +381,18 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       const stripH = isTegel ? mat.steenL : steenH;
       const hasZones = stripZones.length > 0;
       ctx.save();
-      // Clip strips to actual wall shape
+      ctx.beginPath();
       if (hasWallPolys) {
-        ctx.beginPath();
         traceFacadePath();
-        ctx.clip();
+      } else {
+        ctx.rect(faceSx - 1, faceSy - 1, faceW + 2, faceH + 2);
       }
+      if (startLijn != null && startLijn < 0) {
+        const [bx, byPeil] = toScreen(0, 0);
+        const [, byStart] = toScreen(0, startLijn);
+        ctx.rect(bx - 1, byPeil, faceW + 2, byStart - byPeil + 1);
+      }
+      ctx.clip();
       if (hasZones) {
         ctx.beginPath();
         for (const sz of stripZones) {
