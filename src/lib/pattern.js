@@ -348,11 +348,13 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const groupWidth = round2(groupMaxX - groupMinX);
   const groupHeight = round2(groupMaxH - groupMinH);
   const effectiveHeight = maxHoogte != null && maxHoogte > 0 ? Math.min(groupHeight, maxHoogte) : groupHeight;
-  const effectiveMinH = startLijn != null && startLijn > 0 ? startLijn : 0;
-  const patternOffset = startLijn != null && startLijn > 0
+  const effectiveMinH = startLijn ?? 0;
+  const patternOffset = startLijn != null
     ? ((startLijn % lagenmaat) + lagenmaat) % lagenmaat
     : 0;
-  const rStart = Math.ceil((effectiveMinH - patternOffset) / lagenmaat);
+  const rStart = startLijn != null
+    ? Math.floor((startLijn - patternOffset) / lagenmaat)
+    : 0;
   const rEnd = Math.ceil((effectiveHeight - patternOffset) / lagenmaat);
 
   const zwEnabled = zetwerk?.enabled;
