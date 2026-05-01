@@ -2658,7 +2658,11 @@ export default function App() {
         const zwExpVExport = s.zetwerk?.enabled ? Math.max(0, s.zetwerk.offsetV ?? 0) + Math.max(1, s.zetwerk.breedte ?? 50) : 0;
         const clampToGroupH = (y) => Math.min(groupHeight, Math.max(0, y));
         const openingLathYsExport = groupOpenings
-          .map((op) => Math.round(clampToGroupH(op.y + op.height + zwExpVExport)))
+          .map((op) => {
+            const latBottom = Math.round(clampToGroupH(op.y + op.height + zwExpVExport));
+            const firstRow = (facRows ?? []).filter((row) => row.y >= latBottom - 0.5).sort((a, b) => a.y - b.y)[0];
+            return firstRow ? firstRow.y : latBottom;
+          })
           .filter((y) => y > 0 && y < groupHeight);
         const battenYs = openingLathYsExport.length
           ? [...new Set([...baseBattenYs, ...openingLathYsExport])].sort((a, b) => a - b)

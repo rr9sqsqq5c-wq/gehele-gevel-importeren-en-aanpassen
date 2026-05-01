@@ -53,7 +53,11 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     const zwExpV = zetwerk?.enabled ? Math.max(0, zetwerk.offsetV ?? 0) + Math.max(1, zetwerk.breedte ?? 50) : 0;
     const clampToGroup = (y) => Math.min(groupHeight, Math.max(0, y));
     const openingLathYs = groupOpenings
-      .map((op) => Math.round(clampToGroup(op.y + op.height + zwExpV)))
+      .map((op) => {
+        const latBottom = Math.round(clampToGroup(op.y + op.height + zwExpV));
+        const firstRow = (rows ?? []).filter((row) => row.y >= latBottom - 0.5).sort((a, b) => a.y - b.y)[0];
+        return firstRow ? firstRow.y : latBottom;
+      })
       .filter((y) => y > 0 && y < groupHeight);
     const baseBattenYs = generateBattenPositions(groupHeight, mat, maxInterval, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 });
     const battenYs = openingLathYs.length
