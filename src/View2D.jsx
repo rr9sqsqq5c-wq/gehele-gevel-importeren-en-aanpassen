@@ -79,7 +79,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         for (const op of groupOpenings) {
           const opTop = op.y + op.height;
           if (panel.y >= opTop) {
-            const latBottom = Math.round(clampToGroup(opTop + zwExpV));
+            const latBottom = Math.round(clampToGroup(opTop));
             const firstAbove = allRowYsSorted.find((ry) => ry >= latBottom - 0.5);
             if (firstAbove != null && panel.y < firstAbove) {
               const newH = panel.y + panel.height - firstAbove;

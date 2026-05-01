@@ -2685,7 +2685,7 @@ export default function App() {
               for (const op of groupOpenings) {
                 const opTop = op.y + op.height;
                 if (panel.y >= opTop) {
-                  const latBottom = Math.round(clampToGroupH(opTop + zwExpVExport));
+                  const latBottom = Math.round(clampToGroupH(opTop));
                   const firstAbove = allRowYsExport.find((ry) => ry >= latBottom - 0.5);
                   if (firstAbove != null && panel.y < firstAbove) {
                     const newH = panel.y + panel.height - firstAbove;
