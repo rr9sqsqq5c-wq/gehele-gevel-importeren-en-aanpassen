@@ -298,13 +298,18 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
     if (!walls?.length) return [];
     const minL = Math.min(...walls.map(w => w.wallOrigin?.lengthStart ?? 0));
     const minH0 = Math.min(...walls.map(w => w.wallOrigin?.heightStart ?? 0));
-    return walls.map(w => {
+    const perWall = walls.map(w => {
       if (!w.facadePoly || w.facadePoly.length < 3) return null;
       const offL = (w.wallOrigin?.lengthStart ?? 0) - minL;
       const offH = (w.wallOrigin?.heightStart ?? 0) - minH0;
       return w.facadePoly.map(pt => ({ l: pt.l + offL, h: pt.h + offH }));
     }).filter(Boolean);
-  }, [walls]);
+    if (perWall.length > 1 && facadeData) {
+      const { groupWidth: gw, groupHeight: gh } = facadeData;
+      return [[ { l: 0, h: 0 }, { l: gw, h: 0 }, { l: gw, h: gh }, { l: 0, h: gh } ]];
+    }
+    return perWall;
+  }, [walls, facadeData]);
 
   const clippedPanels = useMemo(() => {
     if (!wallGroupPolysRaw.length) return null;
