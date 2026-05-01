@@ -342,11 +342,18 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     // Compute wall polygon shapes in group-local coords (group origin = bottom-left of bounding box)
     const groupMinL = walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.lengthStart ?? 0)) : 0;
     const groupMinH = walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.heightStart ?? 0)) : 0;
+    const WALL_GAP_CLOSE = 2;
     const wallGroupPolys = (walls ?? []).map(w => {
       if (!w.facadePoly || w.facadePoly.length < 3) return null;
       const offL = (w.wallOrigin?.lengthStart ?? 0) - groupMinL;
       const offH = (w.wallOrigin?.heightStart ?? 0) - groupMinH;
-      return w.facadePoly.map(pt => ({ l: pt.l + offL, h: pt.h + offH }));
+      const pts = w.facadePoly.map(pt => ({ l: pt.l + offL, h: pt.h + offH }));
+      const cx = pts.reduce((s, p) => s + p.l, 0) / pts.length;
+      const cy = pts.reduce((s, p) => s + p.h, 0) / pts.length;
+      return pts.map(p => ({
+        l: p.l + (p.l >= cx ? WALL_GAP_CLOSE : -WALL_GAP_CLOSE),
+        h: p.h + (p.h >= cy ? WALL_GAP_CLOSE : -WALL_GAP_CLOSE),
+      }));
     }).filter(Boolean);
     const hasWallPolys = wallGroupPolys.length > 0;
 
