@@ -1448,7 +1448,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             const cy = clips
               ? clips[0].reduce((s, pt) => s + pt.h, 0) / clips[0].length
               : p.y + p.height / 2;
-            const labelVisible = p.width * scale > 24 && p.height * scale > 14;
+            const pxW = p.width * scale;
+            const pxH = p.height * scale;
+            const fitSize = Math.min(pxW * 0.9, pxH * 0.8, FONT_LBL);
+            const lblFontSize = Math.max(3, fitSize);
             return (
               <g key={p.id ?? i}>
                 {clips ? (
@@ -1461,19 +1464,17 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 ) : (
                   <rect
                     x={sx(p.x)} y={sy(p.y + p.height)}
-                    width={p.width * scale} height={p.height * scale}
+                    width={pxW} height={pxH}
                     fill={panelColor} stroke={dimColor} strokeWidth={0.8} fillOpacity={0.8}
                   />
                 )}
-                {labelVisible && (
-                  <text
-                    x={sx(cx)} y={sy(cy)}
-                    textAnchor="middle" dominantBaseline="middle"
-                    fontSize={FONT_LBL} fill="#1e3a5f" fontFamily="Arial, sans-serif" fontWeight="bold"
-                  >
-                    P{i + 1}
-                  </text>
-                )}
+                <text
+                  x={sx(cx)} y={sy(cy)}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fontSize={lblFontSize} fill="#1e3a5f" fontFamily="Arial, sans-serif" fontWeight="bold"
+                >
+                  P{i + 1}
+                </text>
               </g>
             );
           })}
