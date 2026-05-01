@@ -15,7 +15,7 @@ export function getOpeningPoly(op) {
   ];
 }
 
-function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX) {
+export function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX) {
   const { steenL, steenH, lint, stoot } = material;
 
   if (verband === 'wildverband') {

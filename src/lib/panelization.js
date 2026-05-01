@@ -1,4 +1,5 @@
 import { polyXRangesAtY, openingCoversX, openingXCoordsAtY } from './geometry.js';
+import { buildRowPiecesForWidth } from './pattern.js';
 
 function round2(v) {
   return Math.round(v * 100) / 100;
@@ -336,7 +337,24 @@ function buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation, xBreaksOdd) 
   return panels;
 }
 
-export function panelizeZone(zone, battenYs, basePanel, snapFn = null) {
+export const PANEL_GAP = 3;
+
+function collectStootvoegBreaks(zoneWidth, material, verband, stoot) {
+  const breaks = new Set();
+  const rowCount = verband === 'wildverband' ? 6 : verband === 'halfsteens' ? 2 : 1;
+  for (let r = 0; r < rowCount; r++) {
+    const pieces = buildRowPiecesForWidth(zoneWidth, material, verband, r, 0);
+    for (let i = 0; i < pieces.length - 1; i++) {
+      const voegEnd = round2(pieces[i].start + pieces[i].length + stoot);
+      if (voegEnd > 0.001 && voegEnd < zoneWidth - 0.001) {
+        breaks.add(voegEnd);
+      }
+    }
+  }
+  return [...breaks].sort((a, b) => a - b);
+}
+
+export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material = null, verband = null) {
   const bpW = basePanel.width;
   const bpH = basePanel.height;
   const minPanelH = basePanel.minHeight ?? 800;
@@ -376,30 +394,104 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null) {
   yBreaks = mergeSmallSegments(yBreaks, effectiveMinH);
 
   const nCols = Math.max(1, Math.round(zone.width / targetW));
-  const xSet = new Set([zoneX1, zoneX2]);
-  for (let i = 1; i < nCols; i++) {
-    xSet.add(round2(zoneX1 + (i * zone.width) / nCols));
+
+  const stoot = material?.stoot ?? 10;
+  const hasStripAlign = material != null && verband != null && nCols > 1;
+  let xBreaks;
+
+  if (hasStripAlign) {
+    const candidates = collectStootvoegBreaks(zone.width, material, verband, stoot);
+    const rawBreaks = chooseBreaks(0, zone.width, candidates, targetW, targetW);
+    xBreaks = rawBreaks.map(x => round2(zoneX1 + x));
+    if (xBreaks[0] !== zoneX1) xBreaks.unshift(zoneX1);
+    if (xBreaks[xBreaks.length - 1] !== zoneX2) xBreaks.push(zoneX2);
+    xBreaks = [...new Set(xBreaks)].sort((a, b) => a - b);
+  } else {
+    const xSet = new Set([zoneX1, zoneX2]);
+    for (let i = 1; i < nCols; i++) {
+      xSet.add(round2(zoneX1 + (i * zone.width) / nCols));
+    }
+    xBreaks = [...xSet].sort((a, b) => a - b);
   }
-  const xBreaks = [...xSet].sort((a, b) => a - b);
 
   let xBreaksOdd = null;
   if (basePanel.verspringen && nCols > 1) {
-    const panelW = zone.width / nCols;
-    const halfW = panelW / 2;
-    const oddSet = new Set([zoneX1, zoneX2]);
-    oddSet.add(round2(zoneX1 + halfW));
-    for (let i = 1; i < nCols; i++) {
-      const x = round2(zoneX1 + halfW + i * panelW);
-      if (x > zoneX1 + 0.001 && x < zoneX2 - 0.001) oddSet.add(x);
+    if (hasStripAlign) {
+      const candidates = collectStootvoegBreaks(zone.width, material, verband, stoot);
+      const halfShift = targetW / 2;
+      const shiftedCandidates = candidates.map(x => round2(x + halfShift)).filter(x => x > 0.001 && x < zone.width - 0.001);
+      const allCandidates = [...new Set([...candidates, ...shiftedCandidates])].sort((a, b) => a - b);
+      const rawBreaks = chooseBreaks(0, zone.width, allCandidates, targetW, targetW);
+      xBreaksOdd = rawBreaks.map(x => round2(zoneX1 + x));
+      if (xBreaksOdd[0] !== zoneX1) xBreaksOdd.unshift(zoneX1);
+      if (xBreaksOdd[xBreaksOdd.length - 1] !== zoneX2) xBreaksOdd.push(zoneX2);
+      xBreaksOdd = [...new Set(xBreaksOdd)].sort((a, b) => a - b);
+    } else {
+      const panelW = zone.width / nCols;
+      const halfW = panelW / 2;
+      const oddSet = new Set([zoneX1, zoneX2]);
+      oddSet.add(round2(zoneX1 + halfW));
+      for (let i = 1; i < nCols; i++) {
+        const x = round2(zoneX1 + halfW + i * panelW);
+        if (x > zoneX1 + 0.001 && x < zoneX2 - 0.001) oddSet.add(x);
+      }
+      xBreaksOdd = [...oddSet].sort((a, b) => a - b);
     }
-    xBreaksOdd = [...oddSet].sort((a, b) => a - b);
   }
 
   const fitsLandscape = zone.width <= bpW && zone.height <= bpH;
   const orientation = fitsLandscape ? 'liggend' : 'staand';
   const panels = buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation, xBreaksOdd);
-  if (!panels.length) return { ok: false, panels: [] };
-  return { ok: true, orientation, panelCount: panels.length, panels };
+
+  if (hasStripAlign && panels.length > 0) {
+    for (const panel of panels) {
+      const xb = panel.staggered && xBreaksOdd ? xBreaksOdd : xBreaks;
+      const colIdx = xb.findIndex(x => Math.abs(x - panel.x) < 0.01);
+      const isFirst = colIdx <= 0;
+      const isLast = colIdx >= 0 && colIdx >= xb.length - 2;
+      if (!isFirst) {
+        panel.x = round2(panel.x + PANEL_GAP);
+        panel.width = round2(panel.width - PANEL_GAP);
+      }
+      if (!isLast) {
+        panel.width = round2(panel.width);
+      }
+      panel.area = round2(panel.width * panel.height);
+    }
+  }
+
+  const validPanels = panels.filter(p => p.width > 0.001 && p.height > 0.001);
+  if (!validPanels.length) return { ok: false, panels: [] };
+  return { ok: true, orientation, panelCount: validPanels.length, panels: validPanels };
+}
+
+export function detectKoppelstrippen(panels, facadeRows, mat, verband) {
+  const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+  const koppel = [];
+  for (const row of facadeRows) {
+    for (const piece of row.pieces) {
+      const sx = round2(piece.start);
+      const ex = round2(piece.start + piece.length);
+      const spanning = [];
+      for (const panel of panels) {
+        const px1 = round2(panel.x);
+        const px2 = round2(panel.x + panel.width);
+        const py1 = round2(panel.y);
+        const py2 = round2(panel.y + panel.height);
+        if (row.y + stripH <= py1 + 0.5 || row.y >= py2 - 0.5) continue;
+        if (ex <= px1 + 0.5 || sx >= px2 - 0.5) continue;
+        spanning.push(panel);
+      }
+      if (spanning.length >= 2) {
+        koppel.push({
+          x: sx, y: row.y, width: round2(ex - sx), height: stripH,
+          label: piece.label,
+          panelIds: spanning.map(p => p.id),
+        });
+      }
+    }
+  }
+  return koppel;
 }
 
 export function panelizeFacade(facadeWidth, facadeHeight, openings, battenYs, basePanel) {

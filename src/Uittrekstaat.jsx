@@ -69,7 +69,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
     }).filter(Boolean);
     const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
     for (const zone of zones) {
-      const result = panelizeZone(zone, battenYs, basePanel);
+      const result = panelizeZone(zone, battenYs, basePanel, null, mat, verband);
       if (result.ok) panelList.push(...result.panels);
     }
   }

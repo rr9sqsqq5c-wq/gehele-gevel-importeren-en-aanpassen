@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { buildFullGroupFacadePattern, buildFacePattern, buildMirroredFacePattern } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG, clipPanelToFacadePolys } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG, clipPanelToFacadePolys, detectKoppelstrippen, PANEL_GAP } from './lib/panelization.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
 
@@ -132,7 +132,7 @@ function DimV({ x, y1, y2, label, color = '#1e3a5f', side = 'left' }) {
   );
 }
 
-function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, startLijn) {
+function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, startLijn, verband) {
   if (!facadeData || !latten?.enabled) return [];
   const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
   const richting = latten.richting ?? 'horizontaal';
@@ -153,7 +153,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, star
     }).filter(Boolean);
     const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
     for (const zone of zones) {
-      const res = panelizeZone(zone, battenYs, basePanel);
+      const res = panelizeZone(zone, battenYs, basePanel, null, mat, verband ?? 'halfsteens');
       if (res.ok) allPanels.push(...res.panels);
     }
   }
@@ -294,7 +294,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
     const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
     let panels = [];
     for (const zone of zones) {
-      const res = panelizeZone(zone, battenYs, basePanel, allRowYsSorted.length ? snapToRowY : null);
+      const res = panelizeZone(zone, battenYs, basePanel, allRowYsSorted.length ? snapToRowY : null, mat, verband);
       if (res.ok) panels.push(...res.panels);
     }
     if (groupOpenings.length > 0) {
@@ -357,7 +357,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   }, [facadeData, panelen, mat, groupSettings, latten, zetwerk, verband]);
 
   const penanten = groupSettings?.penanten ?? [];
-  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings?.startLijn ?? null), [facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings]);
+  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings?.startLijn ?? null, verband), [facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings, verband]);
 
   const wallGroupPolysRaw = useMemo(() => {
     if (!walls?.length) return [];
@@ -380,6 +380,11 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
     if (!wallGroupPolysRaw.length) return null;
     return allPanels.map(p => clipPanelToFacadePolys(p, wallGroupPolysRaw)).filter(Boolean);
   }, [allPanels, wallGroupPolysRaw]);
+
+  const koppelstrippen = useMemo(() => {
+    if (!facadeData || !allPanels.length) return [];
+    return detectKoppelstrippen(allPanels, facadeData.rows ?? [], mat, verband);
+  }, [facadeData, allPanels, mat, verband]);
 
   if (!facadeData) {
     return (
@@ -416,6 +421,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const zoneLatten = allLatten.filter((l) =>
     l.x + l.width > viewXStart + 1 && l.x < viewXEnd - 1 &&
     l.y + l.height > viewYStart + 1 && l.y < viewYEnd - 1
+  );
+  const zoneKoppelstrippen = koppelstrippen.filter((k) =>
+    k.x + k.width > viewXStart + 1 && k.x < viewXEnd - 1 &&
+    k.y + k.height > viewYStart + 1 && k.y < viewYEnd - 1
   );
   const zoneOpenings = groupOpenings.filter((op) => {
     const x1 = op.polyPts?.length >= 3 ? Math.min(...op.polyPts.map((p) => p.l)) : op.x;
@@ -1479,6 +1488,16 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             );
           })}
 
+          {drawingType === 'plaatsing' && zoneKoppelstrippen.map((k, i) => (
+            <rect
+              key={`koppel-${i}`}
+              x={sx(k.x)} y={sy(k.y + k.height)}
+              width={k.width * scale} height={k.height * scale}
+              fill="#ff6b00" stroke="#cc5500" strokeWidth={0.6} fillOpacity={0.5}
+              strokeDasharray="2,1"
+            />
+          ))}
+
           <g clipPath="url(#wt-openings-clip)">
             {drawingType === 'achterconstructie' && zoneLatten.map((l) => (
               <rect
@@ -1612,6 +1631,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             {drawingType === 'plaatsing' && <>
               <rect x={0} y={0} width={12} height={8} fill={panelColor} stroke={dimColor} strokeWidth={0.5} />
               <text x={15} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Paneel</text>
+              {zoneKoppelstrippen.length > 0 && <>
+                <rect x={55} y={0} width={12} height={8} fill="#ff6b00" fillOpacity={0.5} stroke="#cc5500" strokeWidth={0.5} strokeDasharray="2,1" />
+                <text x={70} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Koppelstrip ({zoneKoppelstrippen.length})</text>
+              </>}
             </>}
             {drawingType === 'achterconstructie' && <>
               <rect x={0} y={0} width={12} height={8} fill={latColor} stroke="#92400e" strokeWidth={0.5} />
@@ -1663,7 +1686,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 <rect x={bx} y={0} width={pw} height={bh} fill="#fff" stroke="#000" strokeWidth={1} />
                 <text x={bx + SUMMARY_PAD} y={SUMMARY_PAD + SUMMARY_LINE_H - 2}
                   fontSize={9} fontWeight="bold" fill="#000" fontFamily="Arial, sans-serif">
-                  Panelen{selectedZone ? ` ${selectedZone.label}` : ''} — totaal {zonePanels.length} st.
+                  Panelen{selectedZone ? ` ${selectedZone.label}` : ''} — totaal {zonePanels.length} st.{zoneKoppelstrippen.length > 0 ? ` · ${zoneKoppelstrippen.length} koppelstrip${zoneKoppelstrippen.length !== 1 ? 'pen' : ''} · ${PANEL_GAP} mm paneelruimte` : ` · ${PANEL_GAP} mm paneelruimte`}
                 </text>
                 <line x1={bx} y1={SUMMARY_PAD + SUMMARY_LINE_H + 2} x2={bx + pw} y2={SUMMARY_PAD + SUMMARY_LINE_H + 2} stroke="#000" strokeWidth={0.5} />
                 {lines.map(([key, cnt], i) => (

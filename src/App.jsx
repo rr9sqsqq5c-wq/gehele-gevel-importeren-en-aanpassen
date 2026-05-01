@@ -2527,7 +2527,7 @@ export default function App() {
 
       let panels = [];
       for (const zone of zones) {
-        const res = panelizeZone(zone, battenYs, basePanel);
+        const res = panelizeZone(zone, battenYs, basePanel, null, mat, verband);
         if (res.ok) panels.push(...res.panels);
       }
       if (s.maxHoogte != null && s.maxHoogte > 0) {
@@ -2677,7 +2677,7 @@ export default function App() {
           });
           const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
           for (const zone of zones) {
-            const res = panelizeZone(zone, battenYs, basePanel, allRowYsExport.length ? snapToRowYExport : null);
+            const res = panelizeZone(zone, battenYs, basePanel, allRowYsExport.length ? snapToRowYExport : null, mat, s.verband ?? DEFAULT_VERBAND);
             if (res.ok) panels.push(...res.panels);
           }
           if (groupOpenings.length > 0) {

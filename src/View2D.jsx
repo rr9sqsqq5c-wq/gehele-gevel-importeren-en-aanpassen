@@ -71,7 +71,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
     let panels = [];
     for (const zone of zones) {
-      const result = panelizeZone(zone, battenYs, basePanel, allRowYsSorted.length ? snapToRowY : null);
+      const result = panelizeZone(zone, battenYs, basePanel, allRowYsSorted.length ? snapToRowY : null, mat, verband);
       if (result.ok) panels.push(...result.panels);
     }
     if (groupOpenings.length > 0) {
