@@ -2518,11 +2518,13 @@ export default function App() {
       const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, s.material ?? mat);
 
       const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
+      const PENANT_PANEL_INSET = 20;
       const penantOpenings = (s.penanten ?? []).map((pen, pi) => {
-        const px = pen.x ?? 0;
-        const pw = Math.max(1, pen.breedte ?? 400);
+        const px = (pen.x ?? 0) + PENANT_PANEL_INSET;
+        const pw = Math.max(1, (pen.breedte ?? 400) - 2 * PENANT_PANEL_INSET);
+        if (pw <= 0) return null;
         return { id: `pen_${pi}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null };
-      });
+      }).filter(Boolean);
       const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
 
       let panels = [];
@@ -2670,11 +2672,13 @@ export default function App() {
         if (s.panelen?.enabled && vis.panelen !== false) {
           const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, s.material ?? mat);
           const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
+          const PENANT_PANEL_INSET_EX = 20;
           const penantOpenings = (s.penanten ?? []).map((pen, pi) => {
-            const px = pen.x ?? 0;
-            const pw = Math.max(1, pen.breedte ?? 400);
+            const px = (pen.x ?? 0) + PENANT_PANEL_INSET_EX;
+            const pw = Math.max(1, (pen.breedte ?? 400) - 2 * PENANT_PANEL_INSET_EX);
+            if (pw <= 0) return null;
             return { id: `pen_${pi}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null };
-          });
+          }).filter(Boolean);
           const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
           for (const zone of zones) {
             const res = panelizeZone(zone, battenYs, basePanel, allRowYsExport.length ? snapToRowYExport : null, mat, s.verband ?? DEFAULT_VERBAND);

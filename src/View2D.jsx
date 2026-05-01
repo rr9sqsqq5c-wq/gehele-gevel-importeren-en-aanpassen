@@ -43,7 +43,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     return result;
   }, [walls, mat, verband, maxHoogte, startLijn, zetwerk]);
 
-  const PENANT_PANEL_INSET = 0;
+  const PENANT_PANEL_INSET = 20;
 
   const allPanels = useMemo(() => {
     if (!facadeData || !panelen?.enabled) return [];

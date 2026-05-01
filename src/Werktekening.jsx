@@ -39,6 +39,10 @@ function computeZoneBounds(penanten, groupWidth) {
 
 function getPanelStripsAnnotated(panel, facadeRows, verband, mat) {
   const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+  const steenL = mat.steenL ?? 210;
+  const stoot = mat.stoot ?? 10;
+  const kop = Math.round((steenL - stoot) / 2);
+  const driekwart = Math.round((steenL + stoot) * 0.75 - stoot);
   const strips = [];
   const counts = {};
   for (const row of facadeRows) {
@@ -51,7 +55,11 @@ function getPanelStripsAnnotated(panel, facadeRows, verband, mat) {
       const clipY2 = Math.min(row.y + stripH, panel.y + panel.height) - panel.y;
       if (clipX2 - clipX > 0.5 && clipY2 - clipY > 0.5) {
         const len = Math.round(clipX2 - clipX);
-        const label = piece.label;
+        let label;
+        if (Math.abs(len - steenL) < 1) label = 'Vol';
+        else if (Math.abs(len - kop) < 1) label = 'Kop';
+        else if (Math.abs(len - driekwart) < 1) label = 'Driekwart';
+        else label = 'Rest';
         strips.push({ x: clipX, y: clipY, width: clipX2 - clipX, height: clipY2 - clipY, label });
         const key = `${label}:${len}`;
         counts[key] = (counts[key] ?? { label, len, n: 0 });
