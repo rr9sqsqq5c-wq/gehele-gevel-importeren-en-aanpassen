@@ -109,6 +109,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         return { ...panel, x, width };
       }).filter(Boolean);
     }
+    panels = panels.filter((panel) => panel.height >= 200 && panel.width >= 10);
     const rowH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
     panels = panels.filter((panel) => {
       for (const row of (rows ?? [])) {
@@ -373,12 +374,11 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
 
     // Draw facade background using actual wall shapes
     ctx.fillStyle = hexToRgba(color, 0.15);
+    ctx.fillRect(faceSx, faceSy, faceW, faceH);
     if (hasWallPolys) {
       ctx.beginPath();
       traceFacadePath();
       ctx.fill();
-    } else {
-      ctx.fillRect(faceSx, faceSy, faceW, faceH);
     }
 
     const applyOpeningExclusionClip = () => {

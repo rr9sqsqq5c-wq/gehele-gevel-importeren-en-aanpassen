@@ -2728,6 +2728,7 @@ export default function App() {
               return { ...panel, x, width };
             }).filter(Boolean);
           }
+          panels = panels.filter((panel) => panel.height >= 200 && panel.width >= 10);
           const facRowH = (s.verband ?? 'halfsteens') === 'staand_tegelverband' ? mat.steenL : mat.steenH;
           panels = panels.filter((panel) => {
             for (const row of (facRows ?? [])) {
