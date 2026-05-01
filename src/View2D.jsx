@@ -84,7 +84,8 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     }
     const rowH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
     panels = panels.filter((panel) => {
-      for (const row of rows) {
+      for (const row of (rows ?? [])) {
+        if (!row?.pieces?.length) continue;
         if (row.y + rowH <= panel.y || row.y >= panel.y + panel.height) continue;
         for (const piece of row.pieces) {
           const s = Math.max(piece.start, panel.x);
