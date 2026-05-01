@@ -50,7 +50,15 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
     const basePanel = computeEffectiveBasePanel(panelen, mat.brickWeightM2 ?? 40, mat);
     const maxInterval = Math.max(50, latten?.maxInterval ?? 400);
-    const battenYs = generateBattenPositions(groupHeight, mat, maxInterval, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 });
+    const zwExpV = zetwerk?.enabled ? Math.max(0, zetwerk.offsetV ?? 0) + Math.max(1, zetwerk.breedte ?? 50) : 0;
+    const clampToGroup = (y) => Math.min(groupHeight, Math.max(0, y));
+    const openingLathYs = groupOpenings
+      .map((op) => Math.round(clampToGroup(op.y + op.height + zwExpV)))
+      .filter((y) => y > 0 && y < groupHeight);
+    const baseBattenYs = generateBattenPositions(groupHeight, mat, maxInterval, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 });
+    const battenYs = openingLathYs.length
+      ? [...new Set([...baseBattenYs, ...openingLathYs])].sort((a, b) => a - b)
+      : baseBattenYs;
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
     const penantOpenings = (groupSettings?.penanten ?? []).map((p, i) => {
       const px = (p.x ?? 0) + PENANT_PANEL_INSET;

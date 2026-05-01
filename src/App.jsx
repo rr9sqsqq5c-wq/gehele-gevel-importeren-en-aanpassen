@@ -2652,9 +2652,17 @@ export default function App() {
         const { rows: facRows, groupWidth, groupHeight, groupOpenings } = facadeData;
 
         const battenMaxInterval = Math.max(50, s.latten?.maxInterval ?? 400);
-        const battenYs = (s.latten?.enabled || s.panelen?.enabled)
+        const baseBattenYs = (s.latten?.enabled || s.panelen?.enabled)
           ? generateBattenPositions(groupHeight, mat, battenMaxInterval, { minHOH: s.latten?.minHOH, maxHOH: s.latten?.maxHOH, targetPanelH: s.panelen?.hoogte, minPanelH: 800 })
           : [];
+        const zwExpVExport = s.zetwerk?.enabled ? Math.max(0, s.zetwerk.offsetV ?? 0) + Math.max(1, s.zetwerk.breedte ?? 50) : 0;
+        const clampToGroupH = (y) => Math.min(groupHeight, Math.max(0, y));
+        const openingLathYsExport = groupOpenings
+          .map((op) => Math.round(clampToGroupH(op.y + op.height + zwExpVExport)))
+          .filter((y) => y > 0 && y < groupHeight);
+        const battenYs = openingLathYsExport.length
+          ? [...new Set([...baseBattenYs, ...openingLathYsExport])].sort((a, b) => a - b)
+          : baseBattenYs;
 
         if (s.panelen?.enabled && vis.panelen !== false) {
           const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, s.material ?? mat);

@@ -363,7 +363,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const zwV = zwEnabled ? Math.max(0, zetwerk.offsetV ?? 0) : 0;
   const zwS = zwEnabled ? Math.max(0, zetwerk.stripOffset ?? 5) : 0;
   const zwExpandX = zwEnabled ? (zwH + zwB + zwS) : 0;
-  const zwExpandY = zwEnabled ? (zwV + zwB + zwS) : 0;
+  const zwExpandY = zwEnabled ? (zwV + zwB) : 0;
 
   const rawOpenings = [];
   for (const w of withOrigin) {
