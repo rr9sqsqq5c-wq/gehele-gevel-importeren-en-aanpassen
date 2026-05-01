@@ -43,7 +43,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     return result;
   }, [walls, mat, verband, maxHoogte, startLijn, zetwerk]);
 
-  const PENANT_PANEL_INSET = 20;
+  const PENANT_PANEL_INSET = 0;
 
   const allPanels = useMemo(() => {
     if (!facadeData || !panelen?.enabled) return [];
@@ -59,11 +59,41 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       return { id: `pen_${i}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null };
     }).filter(Boolean);
     const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
-    const panels = [];
+    let panels = [];
     for (const zone of zones) {
       const result = panelizeZone(zone, battenYs, basePanel);
       if (result.ok) panels.push(...result.panels);
     }
+    if (zetwerk?.enabled && groupOpenings.length > 0) {
+      const CLEARANCE = 10;
+      const sideExpand = (zetwerk.offsetH ?? 0) + (zetwerk.breedte ?? 50) + CLEARANCE;
+      panels = panels.map((panel) => {
+        let { x, width } = panel;
+        for (const op of groupOpenings) {
+          if (panel.y + panel.height <= op.y || panel.y >= op.y + op.height) continue;
+          if (x < op.x && x + width > op.x - sideExpand) width = Math.max(0, op.x - sideExpand - x);
+          if (x >= op.x + op.width && x < op.x + op.width + sideExpand) {
+            const newX = op.x + op.width + sideExpand;
+            width = Math.max(0, x + width - newX);
+            x = newX;
+          }
+        }
+        if (width <= 0) return null;
+        return { ...panel, x, width };
+      }).filter(Boolean);
+    }
+    const rowH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+    panels = panels.filter((panel) => {
+      for (const row of rows) {
+        if (row.y + rowH <= panel.y || row.y >= panel.y + panel.height) continue;
+        for (const piece of row.pieces) {
+          const s = Math.max(piece.start, panel.x);
+          const e = Math.min(piece.start + piece.length, panel.x + panel.width);
+          if (e - s > 1) return true;
+        }
+      }
+      return false;
+    });
     if (startLijn != null && startLijn < 0 && panels.length > 0) {
       const minY = Math.min(...panels.map((p) => p.y));
       if (minY === 0) {
@@ -71,7 +101,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       }
     }
     return panels;
-  }, [facadeData, panelen, latten, mat, groupSettings, startLijn]);
+  }, [facadeData, panelen, latten, mat, groupSettings, startLijn, zetwerk]);
 
   const allLatten = useMemo(() => {
     if (!facadeData || !latten?.enabled) return [];

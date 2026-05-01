@@ -2701,6 +2701,18 @@ export default function App() {
               return { ...panel, x, width };
             }).filter(Boolean);
           }
+          const facRowH = (s.verband ?? 'halfsteens') === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+          panels = panels.filter((panel) => {
+            for (const row of facRows) {
+              if (row.y + facRowH <= panel.y || row.y >= panel.y + panel.height) continue;
+              for (const piece of row.pieces) {
+                const px2 = Math.max(piece.start, panel.x);
+                const px3 = Math.min(piece.start + piece.length, panel.x + panel.width);
+                if (px3 - px2 > 1) return true;
+              }
+            }
+            return false;
+          });
         }
 
         if (s.latten?.enabled && vis.latten !== false) {
