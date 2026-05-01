@@ -47,6 +47,7 @@ function labelForLen(len, steenL, kop, driekwart) {
 function fixRowEdgePieces(rowStrips, kop, stoot, steenL) {
   if (rowStrips.length < 2) return;
   const sorted = [...rowStrips].sort((a, b) => a.x - b.x);
+  const driekwart = Math.round((steenL + stoot) * 0.75 - stoot);
   const first = sorted[0];
   if (first.width < kop - 0.5 && first.width > 0.5) {
     for (let i = 1; i < sorted.length; i++) {
@@ -54,11 +55,12 @@ function fixRowEdgePieces(rowStrips, kop, stoot, steenL) {
         const deficit = kop - first.width;
         const newVolLen = steenL - deficit;
         if (newVolLen >= kop) {
-          sorted[i].width = newVolLen;
-          sorted[i].label = labelForLen(Math.round(newVolLen), steenL, kop, Math.round((steenL + stoot) * 0.75 - stoot));
-          for (let j = 1; j <= i; j++) sorted[j].x = sorted[j].x - deficit;
           first.width = kop;
           first.label = 'Kop';
+          for (let j = 1; j < i; j++) sorted[j].x = sorted[j].x + deficit;
+          sorted[i].x = sorted[i].x + deficit;
+          sorted[i].width = newVolLen;
+          sorted[i].label = labelForLen(Math.round(newVolLen), steenL, kop, driekwart);
         }
         break;
       }
@@ -71,12 +73,10 @@ function fixRowEdgePieces(rowStrips, kop, stoot, steenL) {
         const deficit = kop - last.width;
         const newVolLen = steenL - deficit;
         if (newVolLen >= kop) {
-          const volEnd = sorted[i].x + sorted[i].width;
           sorted[i].width = newVolLen;
-          sorted[i].x = volEnd - newVolLen;
-          sorted[i].label = labelForLen(Math.round(newVolLen), steenL, kop, Math.round((steenL + stoot) * 0.75 - stoot));
-          for (let j = i + 1; j < sorted.length - 1; j++) sorted[j].x = sorted[j].x + deficit;
-          last.x = last.x + last.width - kop;
+          sorted[i].label = labelForLen(Math.round(newVolLen), steenL, kop, driekwart);
+          for (let j = i + 1; j < sorted.length - 1; j++) sorted[j].x = sorted[j].x - deficit;
+          last.x = last.x - deficit;
           last.width = kop;
           last.label = 'Kop';
         }
