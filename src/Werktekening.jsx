@@ -270,10 +270,19 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
   const allPanels = useMemo(() => {
     if (!facadeData || !panelen?.enabled) return [];
-    const { groupWidth, groupHeight, groupOpenings } = facadeData;
+    const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
     const basePanel = computeEffectiveBasePanel(panelen, mat.brickWeightM2 ?? 40, mat);
-    const maxInterval = latten?.maxInterval ?? 400;
-    const battenYs = generateBattenPositions(groupHeight, mat, maxInterval, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 });
+    const maxInterval = Math.max(50, latten?.maxInterval ?? 400);
+    const lintHalf = (mat.lint ?? 12) / 2;
+    const clampToGroup = (y) => Math.min(groupHeight, Math.max(0, y));
+    const allRowYsSorted = (rows ?? []).map((r) => r.y).sort((a, b) => a - b);
+    const snapToRowY = (y) => {
+      if (!allRowYsSorted.length) return y;
+      const target = y + lintHalf;
+      return allRowYsSorted.reduce((best, ry) => Math.abs(ry - target) < Math.abs(best - target) ? ry : best);
+    };
+    const baseBattenYs = generateBattenPositions(groupHeight, mat, maxInterval, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 });
+    const battenYs = baseBattenYs.map(snapToRowY);
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
     const INSET = 20;
     const penantOpenings = (groupSettings?.penanten ?? []).map((p, i) => {
@@ -283,13 +292,69 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
       return { id: `pen_${i}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null };
     }).filter(Boolean);
     const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
-    const panels = [];
+    let panels = [];
     for (const zone of zones) {
-      const res = panelizeZone(zone, battenYs, basePanel);
+      const res = panelizeZone(zone, battenYs, basePanel, allRowYsSorted.length ? snapToRowY : null);
       if (res.ok) panels.push(...res.panels);
     }
+    if (groupOpenings.length > 0) {
+      panels = panels.map((panel) => {
+        for (const op of groupOpenings) {
+          const opTop = op.y + op.height;
+          if (panel.y >= opTop) {
+            const latBottom = Math.round(clampToGroup(opTop));
+            const firstAbove = allRowYsSorted.find((ry) => ry >= latBottom - 0.5);
+            if (firstAbove != null && panel.y < firstAbove) {
+              const newH = panel.y + panel.height - firstAbove;
+              if (newH <= 0) return null;
+              return { ...panel, y: firstAbove, height: newH };
+            }
+          }
+        }
+        return panel;
+      }).filter(Boolean);
+    }
+    if (zetwerk?.enabled && groupOpenings.length > 0) {
+      const CLEARANCE = 10;
+      const sideExpand = (zetwerk.offsetH ?? 0) + (zetwerk.breedte ?? 50) + CLEARANCE;
+      panels = panels.map((panel) => {
+        let { x, width } = panel;
+        for (const op of groupOpenings) {
+          if (panel.y + panel.height <= op.y || panel.y >= op.y + op.height) continue;
+          if (x < op.x && x + width > op.x - sideExpand) width = Math.max(0, op.x - sideExpand - x);
+          if (x >= op.x + op.width && x < op.x + op.width + sideExpand) {
+            const newX = op.x + op.width + sideExpand;
+            width = Math.max(0, x + width - newX);
+            x = newX;
+          }
+        }
+        if (width <= 0) return null;
+        return { ...panel, x, width };
+      }).filter(Boolean);
+    }
+    panels = panels.filter((panel) => panel.height >= 200 && panel.width >= 10);
+    const rowH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+    panels = panels.filter((panel) => {
+      for (const row of (rows ?? [])) {
+        if (!row?.pieces?.length) continue;
+        if (row.y + rowH <= panel.y || row.y >= panel.y + panel.height) continue;
+        for (const piece of row.pieces) {
+          const s = Math.max(piece.start, panel.x);
+          const e = Math.min(piece.start + piece.length, panel.x + panel.width);
+          if (e - s > 1) return true;
+        }
+      }
+      return false;
+    });
+    const startLijn = groupSettings?.startLijn;
+    if (startLijn != null && startLijn < 0 && panels.length > 0) {
+      const minY = Math.min(...panels.map((p) => p.y));
+      if (minY === 0) {
+        return panels.map((p) => p.y === 0 ? { ...p, y: startLijn, height: p.height - startLijn } : p);
+      }
+    }
     return panels;
-  }, [facadeData, panelen, mat, groupSettings, latten]);
+  }, [facadeData, panelen, mat, groupSettings, latten, zetwerk, verband]);
 
   const penanten = groupSettings?.penanten ?? [];
   const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings?.startLijn ?? null), [facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings]);
