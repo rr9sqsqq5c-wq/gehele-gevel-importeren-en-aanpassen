@@ -367,6 +367,22 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
 
     const vis = layerVisibility ?? {};
 
+    if (allLatten.length && vis.latten !== false) {
+      ctx.save();
+      applyOpeningExclusionClip();
+      for (const lat of allLatten) {
+        const [lSx, lSy] = toScreen(lat.x, lat.y + lat.height);
+        const lSw = lat.width * scale * 0.001;
+        const lSh = lat.height * scale * 0.001;
+        ctx.fillStyle = lat.forced ? 'rgba(180,120,50,0.55)' : 'rgba(180,120,50,0.35)';
+        ctx.fillRect(lSx, lSy, lSw, Math.max(lSh, 1));
+        ctx.strokeStyle = lat.forced ? '#92400e' : '#b45309';
+        ctx.lineWidth = lat.forced ? 1 : 0.5;
+        ctx.strokeRect(lSx, lSy, lSw, Math.max(lSh, 1));
+      }
+      ctx.restore();
+    }
+
     if (allPanels.length && vis.panelen !== false) {
       ctx.save();
       applyOpeningExclusionClip();
@@ -388,22 +404,6 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
           ctx.fillText(`${Math.round(panel.width)}×${Math.round(panel.height)}`, pSx + pSw / 2, pSy + pSh / 2);
         }
       });
-      ctx.restore();
-    }
-
-    if (allLatten.length && vis.latten !== false) {
-      ctx.save();
-      applyOpeningExclusionClip();
-      for (const lat of allLatten) {
-        const [lSx, lSy] = toScreen(lat.x, lat.y + lat.height);
-        const lSw = lat.width * scale * 0.001;
-        const lSh = lat.height * scale * 0.001;
-        ctx.fillStyle = lat.forced ? 'rgba(180,120,50,0.55)' : 'rgba(180,120,50,0.35)';
-        ctx.fillRect(lSx, lSy, lSw, Math.max(lSh, 1));
-        ctx.strokeStyle = lat.forced ? '#92400e' : '#b45309';
-        ctx.lineWidth = lat.forced ? 1 : 0.5;
-        ctx.strokeRect(lSx, lSy, lSw, Math.max(lSh, 1));
-      }
       ctx.restore();
     }
 
