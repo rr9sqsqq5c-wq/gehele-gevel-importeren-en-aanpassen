@@ -37,6 +37,55 @@ function computeZoneBounds(penanten, groupWidth) {
   return zones;
 }
 
+function labelForLen(len, steenL, kop, driekwart) {
+  if (Math.abs(len - steenL) < 1) return 'Vol';
+  if (Math.abs(len - kop) < 1) return 'Kop';
+  if (Math.abs(len - driekwart) < 1) return 'Driekwart';
+  return 'Rest';
+}
+
+function fixRowEdgePieces(rowStrips, kop, stoot, steenL) {
+  if (rowStrips.length < 2) return;
+  const sorted = [...rowStrips].sort((a, b) => a.x - b.x);
+  const first = sorted[0];
+  if (first.width < kop - 0.5 && first.width > 0.5) {
+    for (let i = 1; i < sorted.length; i++) {
+      if (Math.abs(sorted[i].width - steenL) < 1) {
+        const deficit = kop - first.width;
+        const newVolLen = steenL - deficit;
+        if (newVolLen >= kop) {
+          sorted[i].width = newVolLen;
+          sorted[i].label = labelForLen(Math.round(newVolLen), steenL, kop, Math.round((steenL + stoot) * 0.75 - stoot));
+          for (let j = 1; j <= i; j++) sorted[j].x = sorted[j].x - deficit;
+          first.width = kop;
+          first.label = 'Kop';
+        }
+        break;
+      }
+    }
+  }
+  const last = sorted[sorted.length - 1];
+  if (last.width < kop - 0.5 && last.width > 0.5) {
+    for (let i = sorted.length - 2; i >= 0; i--) {
+      if (Math.abs(sorted[i].width - steenL) < 1) {
+        const deficit = kop - last.width;
+        const newVolLen = steenL - deficit;
+        if (newVolLen >= kop) {
+          const volEnd = sorted[i].x + sorted[i].width;
+          sorted[i].width = newVolLen;
+          sorted[i].x = volEnd - newVolLen;
+          sorted[i].label = labelForLen(Math.round(newVolLen), steenL, kop, Math.round((steenL + stoot) * 0.75 - stoot));
+          for (let j = i + 1; j < sorted.length - 1; j++) sorted[j].x = sorted[j].x + deficit;
+          last.x = last.x + last.width - kop;
+          last.width = kop;
+          last.label = 'Kop';
+        }
+        break;
+      }
+    }
+  }
+}
+
 function getPanelStripsAnnotated(panel, facadeRows, verband, mat) {
   const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
   const steenL = mat.steenL ?? 210;
@@ -44,9 +93,9 @@ function getPanelStripsAnnotated(panel, facadeRows, verband, mat) {
   const kop = Math.round((steenL - stoot) / 2);
   const driekwart = Math.round((steenL + stoot) * 0.75 - stoot);
   const strips = [];
-  const counts = {};
   for (const row of facadeRows) {
     if (row.y + stripH <= panel.y + 0.5 || row.y >= panel.y + panel.height - 0.5) continue;
+    const rowStrips = [];
     for (const piece of row.pieces) {
       if (piece.start + piece.length <= panel.x + 0.5 || piece.start >= panel.x + panel.width - 0.5) continue;
       const clipX  = Math.max(piece.start, panel.x) - panel.x;
@@ -55,17 +104,20 @@ function getPanelStripsAnnotated(panel, facadeRows, verband, mat) {
       const clipY2 = Math.min(row.y + stripH, panel.y + panel.height) - panel.y;
       if (clipX2 - clipX > 0.5 && clipY2 - clipY > 0.5) {
         const len = Math.round(clipX2 - clipX);
-        let label;
-        if (Math.abs(len - steenL) < 1) label = 'Vol';
-        else if (Math.abs(len - kop) < 1) label = 'Kop';
-        else if (Math.abs(len - driekwart) < 1) label = 'Driekwart';
-        else label = 'Rest';
-        strips.push({ x: clipX, y: clipY, width: clipX2 - clipX, height: clipY2 - clipY, label });
-        const key = `${label}:${len}`;
-        counts[key] = (counts[key] ?? { label, len, n: 0 });
-        counts[key].n++;
+        rowStrips.push({ x: clipX, y: clipY, width: clipX2 - clipX, height: clipY2 - clipY, label: labelForLen(len, steenL, kop, driekwart) });
       }
     }
+    if (verband !== 'staand_tegelverband') {
+      fixRowEdgePieces(rowStrips, kop, stoot, steenL);
+    }
+    for (const s of rowStrips) strips.push(s);
+  }
+  const counts = {};
+  for (const s of strips) {
+    const len = Math.round(s.width);
+    const key = `${s.label}:${len}`;
+    counts[key] = (counts[key] ?? { label: s.label, len, n: 0 });
+    counts[key].n++;
   }
   return { strips, counts: Object.values(counts).sort((a, b) => b.n - a.n || a.len - b.len) };
 }
