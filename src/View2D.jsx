@@ -71,7 +71,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
     let panels = [];
     for (const zone of zones) {
-      const result = panelizeZone(zone, battenYs, basePanel);
+      const result = panelizeZone(zone, battenYs, basePanel, allRowYsSorted.length ? snapToRowY : null);
       if (result.ok) panels.push(...result.panels);
     }
     if (groupOpenings.length > 0) {
@@ -447,11 +447,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       const hasZones = stripZones.length > 0;
       ctx.save();
       ctx.beginPath();
-      if (hasWallPolys) {
-        traceFacadePath();
-      } else {
-        ctx.rect(faceSx - 1, faceSy - 1, faceW + 2, faceH + 2);
-      }
+      ctx.rect(faceSx - 1, faceSy - 1, faceW + 2, faceH + 2);
       if (startLijn != null && startLijn < 0) {
         const [bx, byPeil] = toScreen(0, 0);
         const [, byStart] = toScreen(0, startLijn);

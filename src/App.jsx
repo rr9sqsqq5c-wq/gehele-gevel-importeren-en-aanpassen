@@ -2590,6 +2590,7 @@ export default function App() {
   }
 
   function handleExport() {
+    try {
     const exportGroups = groups.filter((group) => !hiddenGroupIds.has(group.id)).map((group) => {
       const s = getSettings(group.id);
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
@@ -2676,7 +2677,7 @@ export default function App() {
           });
           const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
           for (const zone of zones) {
-            const res = panelizeZone(zone, battenYs, basePanel);
+            const res = panelizeZone(zone, battenYs, basePanel, allRowYsExport.length ? snapToRowYExport : null);
             if (res.ok) panels.push(...res.panels);
           }
           if (groupOpenings.length > 0) {
@@ -2955,6 +2956,10 @@ export default function App() {
     });
     const settingsMap = Object.fromEntries(groups.map((g) => [g.id, getSettings(g.id)]));
     exportGroupsToIfc(exportGroups, settingsMap, ifcFileName ?? 'export');
+    } catch (err) {
+      alert('IFC export mislukt:\n' + (err?.message ?? String(err)));
+      console.error('IFC export error:', err);
+    }
   }
 
   const ungrouped = effectiveWalls.filter((w) => !wallGroupMap[w.expressID]);

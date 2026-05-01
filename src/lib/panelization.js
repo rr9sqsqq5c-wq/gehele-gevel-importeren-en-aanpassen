@@ -336,7 +336,7 @@ function buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation, xBreaksOdd) 
   return panels;
 }
 
-export function panelizeZone(zone, battenYs, basePanel) {
+export function panelizeZone(zone, battenYs, basePanel, snapFn = null) {
   const bpW = basePanel.width;
   const bpH = basePanel.height;
   const minPanelH = basePanel.minHeight ?? 800;
@@ -360,7 +360,10 @@ export function panelizeZone(zone, battenYs, basePanel) {
       const span = yBreaks[i + 1] - yBreaks[i];
       if (span > bpH + 0.001) {
         const nSteps = Math.max(1, Math.round(span / bpH));
-        for (let s = 1; s < nSteps; s++) extraY.push(round2(yBreaks[i] + s * (span / nSteps)));
+        for (let s = 1; s < nSteps; s++) {
+          const raw = round2(yBreaks[i] + s * (span / nSteps));
+          extraY.push(snapFn ? round2(snapFn(raw)) : raw);
+        }
       }
     }
     if (extraY.length) {
