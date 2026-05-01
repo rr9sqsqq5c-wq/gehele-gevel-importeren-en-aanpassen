@@ -7,7 +7,7 @@ import { detectAdjacencies, detectAdjacenciesAsync, buildConnectedComponents, so
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateMoldPrintHTML, getMoldTemplates } from './lib/panelization.js';
-import { openingXRangesAtY } from './lib/geometry.js';
+import { openingXRangesAtY, polyXRangesAtY } from './lib/geometry.js';
 const Viewer3D = lazy(() => import('./Viewer3D.jsx').then((m) => ({ default: m.Viewer3D })));
 const View2D = lazy(() => import('./View2D.jsx').then((m) => ({ default: m.View2D })));
 const Werktekening = lazy(() => import('./Werktekening.jsx').then((m) => ({ default: m.Werktekening })));
@@ -2787,11 +2787,26 @@ export default function App() {
                 if (cursor < groupWidth) lattenData.push({ richting: 'horizontaal', x: cursor, y: latY, width: groupWidth - cursor, height: latBreedte, ...latV18Data });
               }
             }
+            const getOpXWExp = (op, y) => {
+              if (op.polyPts?.length >= 3) {
+                const ranges = polyXRangesAtY(op.polyPts, y);
+                if (ranges.length) return { x: ranges[0][0], width: ranges[ranges.length - 1][1] - ranges[0][0] };
+              }
+              return { x: op.x, width: op.width };
+            };
             for (const op of groupOpenings) {
               const belowLatY = Math.round(clampY(op.y - zwExpV)) - latBreedte;
-              const aboveLatY = Math.round(clampY(op.y + op.height + zwExpV));
-              if (belowLatY >= 0) lattenData.push({ richting: 'horizontaal', x: op.x, y: belowLatY, width: op.width, height: latBreedte, ...latV18Data });
-              if (aboveLatY + latBreedte <= gH) lattenData.push({ richting: 'horizontaal', x: op.x, y: aboveLatY, width: op.width, height: latBreedte, ...latV18Data });
+              const rawAboveExp = Math.round(clampY(op.y + op.height + zwExpV));
+              const firstAboveExp = allRowYsExport.find(ry => ry >= rawAboveExp - 0.5) ?? rawAboveExp;
+              const aboveLatY = firstAboveExp;
+              if (belowLatY >= 0) {
+                const { x: bx, width: bw } = getOpXWExp(op, belowLatY + latBreedte / 2);
+                lattenData.push({ richting: 'horizontaal', x: bx, y: belowLatY, width: bw, height: latBreedte, ...latV18Data });
+              }
+              if (aboveLatY + latBreedte <= gH) {
+                const { x: ax, width: aw } = getOpXWExp(op, aboveLatY + latBreedte / 2);
+                lattenData.push({ richting: 'horizontaal', x: ax, y: aboveLatY, width: aw, height: latBreedte, ...latV18Data });
+              }
             }
           } else {
             const xPositions = new Set([0, groupWidth]);

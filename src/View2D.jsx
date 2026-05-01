@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { buildFullGroupFacadePattern, getOpeningPoly } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel } from './lib/panelization.js';
-import { brickColor, isTooSmall } from './lib/geometry.js';
+import { brickColor, isTooSmall, polyXRangesAtY } from './lib/geometry.js';
 
 function hexToRgba(hex, alpha = 1) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -148,8 +148,10 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         for (const row of facadeData.rows) brickTopsSet2d.add(Math.round(row.y + mat.steenH));
       }
       const minH = Math.max(0, Math.round(startLijn ?? 0));
+      const startLijnN = Math.round(startLijn ?? 0);
       const zwExpV = (zetwerk?.enabled) ? Math.max(0, (zetwerk.offsetV ?? 0)) + Math.max(1, zetwerk.breedte ?? 50) : 0;
       const clampY = (y) => Math.min(gH, Math.max(0, y));
+      const allRowYsSorted = (facadeData?.rows ?? []).map(r => r.y).sort((a, b) => a - b);
 
       const allYs = new Set([minH, gH, ...battenYs2d.map(y => clampY(Math.round(y)))]);
 
@@ -163,11 +165,29 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         else latY = Math.round(yr - lintHalf - latBreedte / 2);
         result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: 0, y: latY, width: groupWidth, height: latBreedte, forced: yr === minH || yr === gH });
       }
+      if (startLijnN < 0) {
+        result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: 0, y: startLijnN, width: groupWidth, height: latBreedte, forced: true });
+      }
+      const getOpXW = (op, y) => {
+        if (op.polyPts?.length >= 3) {
+          const ranges = polyXRangesAtY(op.polyPts, y);
+          if (ranges.length) return { x: ranges[0][0], width: ranges[ranges.length - 1][1] - ranges[0][0] };
+        }
+        return { x: op.x, width: op.width };
+      };
       for (const op of groupOpenings) {
         const belowLatY = Math.round(clampY(op.y - zwExpV)) - latBreedte;
-        const aboveLatY = Math.round(clampY(op.y + op.height + zwExpV));
-        if (belowLatY >= 0) result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: op.x, y: belowLatY, width: op.width, height: latBreedte, forced: true, openingForced: true });
-        if (aboveLatY + latBreedte <= gH) result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: op.x, y: aboveLatY, width: op.width, height: latBreedte, forced: true, openingForced: true });
+        const rawAbove = Math.round(clampY(op.y + op.height + zwExpV));
+        const firstAbove = allRowYsSorted.find(ry => ry >= rawAbove - 0.5) ?? rawAbove;
+        const aboveLatY = firstAbove;
+        if (belowLatY >= 0) {
+          const { x: bx, width: bw } = getOpXW(op, belowLatY + latBreedte / 2);
+          result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: bx, y: belowLatY, width: bw, height: latBreedte, forced: true, openingForced: true });
+        }
+        if (aboveLatY + latBreedte <= gH) {
+          const { x: ax, width: aw } = getOpXW(op, aboveLatY + latBreedte / 2);
+          result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: ax, y: aboveLatY, width: aw, height: latBreedte, forced: true, openingForced: true });
+        }
       }
 
       if (zetwerk?.enabled && groupOpenings.length > 0) {

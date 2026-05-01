@@ -519,20 +519,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     }
 
     if (effectiveMinH > 0 && rowY < effectiveMinH) {
-      if (groupOpenings.length === 0) {
-        clipped.length = 0;
-      } else {
-        const adjusted = [];
-        for (const piece of clipped) {
-          for (const op of groupOpenings) {
-            const s = Math.max(piece.start, op.x);
-            const e = Math.min(piece.start + piece.length, op.x + op.width);
-            if (e - s > 0.5) adjusted.push({ ...piece, start: round2(s), length: round2(e - s) });
-          }
-        }
-        clipped.length = 0;
-        for (const p of adjusted) clipped.push(p);
-      }
+      clipped.length = 0;
     }
 
     if (clipped.length) rows.push({ y: rowY, pieces: clipped });
