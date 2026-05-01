@@ -1181,7 +1181,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const rightRefId = E(`IFCDIRECTION((${r(-thickDir.x)},${r(-thickDir.y)},${r(-thickDir.z)}))`);
         const _haVec = rwo.heightAxis === 'z' ? [0,0,1] : rwo.heightAxis === 'y' ? [0,1,0] : [1,0,0];
         const sideAxisId = E(`IFCDIRECTION((${_haVec.join(',')}))`);
-        const sideDepthOffset = latDikte + penShift - pD;
+        const sideDepthOffset = latDikte + penShift - panelDikte;
 
         for (const row of (penFaceData.leftRows ?? [])) {
           for (const piece of row.pieces) {
