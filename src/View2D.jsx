@@ -50,19 +50,17 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
     const basePanel = computeEffectiveBasePanel(panelen, mat.brickWeightM2 ?? 40, mat);
     const maxInterval = Math.max(50, latten?.maxInterval ?? 400);
+    const lintHalf = (mat.lint ?? 12) / 2;
     const zwExpV = zetwerk?.enabled ? Math.max(0, zetwerk.offsetV ?? 0) + Math.max(1, zetwerk.breedte ?? 50) : 0;
     const clampToGroup = (y) => Math.min(groupHeight, Math.max(0, y));
-    const openingLathYs = groupOpenings
-      .map((op) => {
-        const latBottom = Math.round(clampToGroup(op.y + op.height + zwExpV));
-        const firstRow = (rows ?? []).filter((row) => row.y >= latBottom - 0.5).sort((a, b) => a.y - b.y)[0];
-        return firstRow ? firstRow.y : latBottom;
-      })
-      .filter((y) => y > 0 && y < groupHeight);
+    const allRowYsSorted = (rows ?? []).map((r) => r.y).sort((a, b) => a - b);
+    const snapToRowY = (y) => {
+      if (!allRowYsSorted.length) return y;
+      const target = y + lintHalf;
+      return allRowYsSorted.reduce((best, ry) => Math.abs(ry - target) < Math.abs(best - target) ? ry : best);
+    };
     const baseBattenYs = generateBattenPositions(groupHeight, mat, maxInterval, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 });
-    const battenYs = openingLathYs.length
-      ? [...new Set([...baseBattenYs, ...openingLathYs])].sort((a, b) => a - b)
-      : baseBattenYs;
+    const battenYs = baseBattenYs.map(snapToRowY);
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
     const penantOpenings = (groupSettings?.penanten ?? []).map((p, i) => {
       const px = (p.x ?? 0) + PENANT_PANEL_INSET;
@@ -75,6 +73,23 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     for (const zone of zones) {
       const result = panelizeZone(zone, battenYs, basePanel);
       if (result.ok) panels.push(...result.panels);
+    }
+    if (groupOpenings.length > 0) {
+      panels = panels.map((panel) => {
+        for (const op of groupOpenings) {
+          const opTop = op.y + op.height;
+          if (panel.y >= opTop) {
+            const latBottom = Math.round(clampToGroup(opTop + zwExpV));
+            const firstAbove = allRowYsSorted.find((ry) => ry >= latBottom - 0.5);
+            if (firstAbove != null && panel.y < firstAbove) {
+              const newH = panel.y + panel.height - firstAbove;
+              if (newH <= 0) return null;
+              return { ...panel, y: firstAbove, height: newH };
+            }
+          }
+        }
+        return panel;
+      }).filter(Boolean);
     }
     if (zetwerk?.enabled && groupOpenings.length > 0) {
       const CLEARANCE = 10;

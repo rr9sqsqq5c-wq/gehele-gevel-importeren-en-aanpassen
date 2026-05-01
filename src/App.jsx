@@ -2652,21 +2652,19 @@ export default function App() {
         const { rows: facRows, groupWidth, groupHeight, groupOpenings } = facadeData;
 
         const battenMaxInterval = Math.max(50, s.latten?.maxInterval ?? 400);
+        const lintHalfExport = (mat.lint ?? 12) / 2;
+        const zwExpVExport = s.zetwerk?.enabled ? Math.max(0, s.zetwerk.offsetV ?? 0) + Math.max(1, s.zetwerk.breedte ?? 50) : 0;
+        const clampToGroupH = (y) => Math.min(groupHeight, Math.max(0, y));
+        const allRowYsExport = (facRows ?? []).map((r) => r.y).sort((a, b) => a - b);
+        const snapToRowYExport = (y) => {
+          if (!allRowYsExport.length) return y;
+          const target = y + lintHalfExport;
+          return allRowYsExport.reduce((best, ry) => Math.abs(ry - target) < Math.abs(best - target) ? ry : best);
+        };
         const baseBattenYs = (s.latten?.enabled || s.panelen?.enabled)
           ? generateBattenPositions(groupHeight, mat, battenMaxInterval, { minHOH: s.latten?.minHOH, maxHOH: s.latten?.maxHOH, targetPanelH: s.panelen?.hoogte, minPanelH: 800 })
           : [];
-        const zwExpVExport = s.zetwerk?.enabled ? Math.max(0, s.zetwerk.offsetV ?? 0) + Math.max(1, s.zetwerk.breedte ?? 50) : 0;
-        const clampToGroupH = (y) => Math.min(groupHeight, Math.max(0, y));
-        const openingLathYsExport = groupOpenings
-          .map((op) => {
-            const latBottom = Math.round(clampToGroupH(op.y + op.height + zwExpVExport));
-            const firstRow = (facRows ?? []).filter((row) => row.y >= latBottom - 0.5).sort((a, b) => a.y - b.y)[0];
-            return firstRow ? firstRow.y : latBottom;
-          })
-          .filter((y) => y > 0 && y < groupHeight);
-        const battenYs = openingLathYsExport.length
-          ? [...new Set([...baseBattenYs, ...openingLathYsExport])].sort((a, b) => a - b)
-          : baseBattenYs;
+        const battenYs = baseBattenYs.map(snapToRowYExport);
 
         if (s.panelen?.enabled && vis.panelen !== false) {
           const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, s.material ?? mat);
@@ -2680,6 +2678,23 @@ export default function App() {
           for (const zone of zones) {
             const res = panelizeZone(zone, battenYs, basePanel);
             if (res.ok) panels.push(...res.panels);
+          }
+          if (groupOpenings.length > 0) {
+            panels = panels.map((panel) => {
+              for (const op of groupOpenings) {
+                const opTop = op.y + op.height;
+                if (panel.y >= opTop) {
+                  const latBottom = Math.round(clampToGroupH(opTop + zwExpVExport));
+                  const firstAbove = allRowYsExport.find((ry) => ry >= latBottom - 0.5);
+                  if (firstAbove != null && panel.y < firstAbove) {
+                    const newH = panel.y + panel.height - firstAbove;
+                    if (newH <= 0) return null;
+                    return { ...panel, y: firstAbove, height: newH };
+                  }
+                }
+              }
+              return panel;
+            }).filter(Boolean);
           }
           if (s.maxHoogte != null && s.maxHoogte > 0) {
             panels = panels.map((panel) => {
