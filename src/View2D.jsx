@@ -369,9 +369,9 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       const offH = (w.wallOrigin?.heightStart ?? 0) - groupMinH;
       return w.facadePoly.map(pt => ({ l: pt.l + offL, h: pt.h + offH }));
     }).filter(Boolean);
-    const wallGroupPolys = rawWallPolys.length > 1
+    const wallGroupPolys = rawWallPolys.length
       ? [[ { l: 0, h: 0 }, { l: groupWidth, h: 0 }, { l: groupWidth, h: groupHeight }, { l: 0, h: groupHeight } ]]
-      : rawWallPolys;
+      : [];
     const hasWallPolys = wallGroupPolys.length > 0;
 
     // Helper: trace facade outline path (union of wall polygons, or full rect as fallback)

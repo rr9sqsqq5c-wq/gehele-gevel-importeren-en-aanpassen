@@ -304,7 +304,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
       const offH = (w.wallOrigin?.heightStart ?? 0) - minH0;
       return w.facadePoly.map(pt => ({ l: pt.l + offL, h: pt.h + offH }));
     }).filter(Boolean);
-    if (perWall.length > 1 && facadeData) {
+    if (perWall.length && facadeData) {
       const { groupWidth: gw, groupHeight: gh } = facadeData;
       return [[ { l: 0, h: 0 }, { l: gw, h: 0 }, { l: gw, h: gh }, { l: 0, h: gh } ]];
     }
