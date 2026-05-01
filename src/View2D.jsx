@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { buildFullGroupFacadePattern, getOpeningPoly } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel } from './lib/panelization.js';
-import { polyXRangesAtY, openingXRangesAtY, brickColor, isTooSmall } from './lib/geometry.js';
+import { brickColor, isTooSmall } from './lib/geometry.js';
 
 function hexToRgba(hex, alpha = 1) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -223,7 +223,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
           forced: false,
         }));
     }
-  }, [facadeData, latten, allPanels, mat, zetwerk]);
+  }, [facadeData, latten, allPanels, mat, zetwerk, startLijn, panelen]);
 
   const zonePatterns = useMemo(() => {
     if (!walls?.length || !facadeData) return [];
@@ -272,7 +272,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       ty: H / 2 + cy * scale * 0.001,
     };
     setRedrawTick((n) => n + 1);
-  }, [bounds]);
+  }, [bounds, size]);
 
   useEffect(() => {
     const obs = new ResizeObserver((entries) => {
@@ -581,7 +581,6 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       for (const op of groupOpenings) {
         const zbPx = zwB * scale * 0.001;
         const zohPx = zwH * scale * 0.001;
-        const zovPx = zwV * scale * 0.001;
 
         const expandPx = zohPx + zbPx;
         const poly = getOpeningPoly(op);
@@ -998,7 +997,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
-  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, startLijn, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, gridLines, showCenterLines, stripZones, drawingRect, selectedZoneId]);
+  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, startLijn, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, layerVisibility, gridLines, showCenterLines, stripZones, drawingRect, selectedZoneId]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
