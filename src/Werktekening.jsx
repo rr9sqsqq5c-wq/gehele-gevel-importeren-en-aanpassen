@@ -265,8 +265,8 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
-    return buildFullGroupFacadePattern(walls, mat, verband, maxH, zetwerk, minH);
-  }, [walls, mat, verband, maxH, minH, zetwerk]);
+    return buildFullGroupFacadePattern(walls, mat, verband, maxH, zetwerk, null, groupSettings?.startLijn);
+  }, [walls, mat, verband, maxH, zetwerk, groupSettings?.startLijn]);
 
   const allPanels = useMemo(() => {
     if (!facadeData || !panelen?.enabled) return [];
