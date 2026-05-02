@@ -414,10 +414,12 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
     }).filter(Boolean);
     if (perWall.length && facadeData) {
       const { groupWidth: gw, groupHeight: gh } = facadeData;
-      return [[ { l: 0, h: 0 }, { l: gw, h: 0 }, { l: gw, h: gh }, { l: 0, h: gh } ]];
+      const sl = groupSettings?.startLijn ?? 0;
+      const minH = sl < 0 ? sl : 0;
+      return [[ { l: 0, h: minH }, { l: gw, h: minH }, { l: gw, h: gh }, { l: 0, h: gh } ]];
     }
     return perWall;
-  }, [walls, facadeData]);
+  }, [walls, facadeData, groupSettings]);
 
   const clippedPanels = useMemo(() => {
     if (!wallGroupPolysRaw.length) return null;
