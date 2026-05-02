@@ -20,7 +20,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [], stripZones = [], onStripZonesChange }) {
+export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [], stripZones = [], onStripZonesChange, outsideDirFlip = false }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -336,6 +336,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     }
 
     const { rows, groupWidth, groupHeight, groupOpenings, zetwerkParams, patternStartH = 0 } = facadeData;
+    const mx = outsideDirFlip ? (x, w = 0) => groupWidth - x - w : (x) => x;
     const steenH = mat.steenH;
     const kopMM = Math.round((mat.steenL - mat.stoot) / 2);
 
@@ -390,7 +391,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       }
       for (const op of groupOpenings) {
         const poly = getOpeningPoly(op);
-        const pts = poly.map((p) => toScreen(p.l, p.h));
+        const pts = poly.map((p) => toScreen(mx(p.l), p.h));
         ctx.moveTo(pts[0][0], pts[0][1]);
         for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
         ctx.closePath();
@@ -404,7 +405,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       ctx.save();
       applyOpeningExclusionClip();
       for (const lat of allLatten) {
-        const [lSx, lSy] = toScreen(lat.x, lat.y + lat.height);
+        const [lSx, lSy] = toScreen(mx(lat.x, lat.width), lat.y + lat.height);
         const lSw = lat.width * scale * 0.001;
         const lSh = lat.height * scale * 0.001;
         ctx.fillStyle = lat.forced ? 'rgba(180,120,50,0.55)' : 'rgba(180,120,50,0.35)';
@@ -421,7 +422,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       applyOpeningExclusionClip();
       const panelColors = ['rgba(203,213,225,0.45)', 'rgba(186,230,253,0.45)'];
       allPanels.forEach((panel, i) => {
-        const [pSx, pSy] = toScreen(panel.x, panel.y + panel.height);
+        const [pSx, pSy] = toScreen(mx(panel.x, panel.width), panel.y + panel.height);
         const pSw = panel.width * scale * 0.001;
         const pSh = panel.height * scale * 0.001;
         ctx.fillStyle = panelColors[i % 2];
@@ -456,7 +457,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       if (hasZones) {
         ctx.beginPath();
         for (const sz of stripZones) {
-          const [szSx, szSy] = toScreen(sz.x, sz.y + sz.height);
+          const [szSx, szSy] = toScreen(mx(sz.x, sz.width), sz.y + sz.height);
           const szSw = sz.width * scale * 0.001;
           const szSh = sz.height * scale * 0.001;
           ctx.rect(szSx, szSy, szSw, szSh);
@@ -472,7 +473,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         const [, rowSy] = toScreen(0, clippedTop);
         const rowSh = actualH * scale * 0.001;
         for (const piece of row.pieces) {
-          const [pSx] = toScreen(piece.start, 0);
+          const [pSx] = toScreen(mx(piece.start, piece.length), 0);
           const pSw = piece.length * scale * 0.001;
           ctx.fillStyle = brickColor(piece.label, color, piece.length, kopMM);
           ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
@@ -497,9 +498,8 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       for (const zp of zonePatterns) {
         if (!zp) continue;
         const { patternData: zPat, zoneX1, zoneX2, color: zColor, zoneMat: zMat, zoneVerband: zVerband } = zp;
-        const [sx1z] = toScreen(zoneX1, 0);
-        const [sx2z] = toScreen(zoneX2, 0);
-        const zW = sx2z - sx1z;
+        const [sx1z] = toScreen(outsideDirFlip ? groupWidth - zoneX2 : zoneX1, 0);
+        const zW = (zoneX2 - zoneX1) * scale * 0.001;
         if (zW <= 0) continue;
         const isTZ = zVerband === 'staand_tegelverband';
         const zStripH = isTZ ? zMat.steenL : zMat.steenH;
@@ -519,9 +519,10 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
           for (const piece of row.pieces) {
             const pEnd = piece.start + piece.length;
             if (pEnd <= zoneX1 || piece.start >= zoneX2) continue;
-            const [pSx] = toScreen(Math.max(piece.start, zoneX1), 0);
-            const [pEx] = toScreen(Math.min(pEnd, zoneX2), 0);
-            const pSw = pEx - pSx;
+            const clipL = Math.max(piece.start, zoneX1);
+            const clipR = Math.min(pEnd, zoneX2);
+            const [pSx] = toScreen(mx(clipL, clipR - clipL), 0);
+            const pSw = (clipR - clipL) * scale * 0.001;
             ctx.fillStyle = brickColor(piece.label, zColor, piece.length, zKop);
             ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
             if (isTooSmall(piece.label, piece.length, zKop)) {
@@ -535,12 +536,12 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     }
 
     for (const op of groupOpenings) {
-      const [opSx, opSy] = toScreen(op.x, op.y + op.height);
+      const [opSx, opSy] = toScreen(mx(op.x, op.width), op.y + op.height);
       const opSw = op.width * scale * 0.001;
       const opSh = op.height * scale * 0.001;
 
       const poly = getOpeningPoly(op);
-      const pts = poly.map((p) => toScreen(p.l, p.h));
+      const pts = poly.map((p) => toScreen(mx(p.l), p.h));
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
@@ -579,7 +580,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
 
         const expandPx = zohPx + zbPx;
         const poly = getOpeningPoly(op);
-        const pts = poly.map((p) => toScreen(p.l, p.h));
+        const pts = poly.map((p) => toScreen(mx(p.l), p.h));
 
         ctx.save();
         ctx.beginPath();
@@ -612,8 +613,8 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         const pDR = Math.max(1, penDR ?? p.diepteRechts ?? p.diepte ?? 150);
         const baseVY = 0;
 
-        const [sx, baseY] = toScreen(pX, baseVY + pH);
-        const [ex] = toScreen(pX + pB, 0);
+        const [sx, baseY] = toScreen(outsideDirFlip ? groupWidth - pX - pB : pX, baseVY + pH);
+        const [ex] = toScreen(outsideDirFlip ? groupWidth - pX : pX + pB, 0);
         const [, bottomY] = toScreen(0, baseVY);
         const pW = ex - sx;
         const pHpx = bottomY - baseY;
@@ -715,7 +716,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
           const [, rowTop] = toScreen(0, baseVY + row.y + steenH);
           const rowH = steenH * scale * 0.001;
           for (const piece of row.pieces) {
-            const [px2] = toScreen(pX + piece.start, 0);
+            const [px2] = toScreen(mx(pX + piece.start, piece.length), 0);
             const pw2 = piece.length * scale * 0.001;
             ctx.fillStyle = brickColor(piece.label, col, piece.length, kopMM);
             ctx.fillRect(px2 + 0.5, rowTop + 0.5, Math.max(pw2 - 1, 1), Math.max(rowH - 1, 1));
@@ -841,9 +842,8 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
 
       for (let i = 0; i < flatZones.length; i++) {
         const { x1: zoneX1, x2: zoneX2 } = flatZones[i];
-        const [sx1z] = toScreen(zoneX1, 0);
-        const [sx2z] = toScreen(zoneX2, 0);
-        const zW = sx2z - sx1z;
+        const [sx1z] = toScreen(outsideDirFlip ? groupWidth - zoneX2 : zoneX1, 0);
+        const zW = (zoneX2 - zoneX1) * scale * 0.001;
         ctx.save();
         ctx.fillStyle = 'rgba(234,179,8,0.12)';
         ctx.fillRect(sx1z, faceSy, zW, faceH);
@@ -871,7 +871,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
 
     // Strip zone overlays
     for (const sz of stripZones) {
-      const [szSx, szSy] = toScreen(sz.x, sz.y + sz.height);
+      const [szSx, szSy] = toScreen(mx(sz.x, sz.width), sz.y + sz.height);
       const szSw = sz.width * scale * 0.001;
       const szSh = sz.height * scale * 0.001;
       const isSelected = sz.id === selectedZoneId;
@@ -895,7 +895,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
 
     // In-progress drawing rect preview
     if (drawingRect && drawingRect.width > 0 && drawingRect.height > 0) {
-      const [drSx, drSy] = toScreen(drawingRect.x, drawingRect.y + drawingRect.height);
+      const [drSx, drSy] = toScreen(mx(drawingRect.x, drawingRect.width), drawingRect.y + drawingRect.height);
       const drSw = drawingRect.width * scale * 0.001;
       const drSh = drawingRect.height * scale * 0.001;
       ctx.save();
@@ -934,7 +934,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       ctx.font = '10px monospace';
       ctx.textAlign = 'center';
       for (const relCenter of gapCenters) {
-        const [sx] = toScreen(relCenter, 0);
+        const [sx] = toScreen(mx(relCenter), 0);
         ctx.beginPath();
         ctx.moveTo(sx, faceSy);
         ctx.lineTo(sx, faceSy + faceH);
@@ -964,7 +964,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
           if (worldMM == null) continue;
           const relX = worldMM - groupMinX;
           if (relX < -500 || relX > groupWidth + 500) continue;
-          const [sx] = toScreen(relX, 0);
+          const [sx] = toScreen(mx(relX), 0);
           ctx.strokeStyle = 'rgba(234,88,12,0.8)';
           ctx.beginPath();
           ctx.moveTo(sx, 0);
@@ -992,7 +992,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
-  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, startLijn, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, layerVisibility, gridLines, showCenterLines, stripZones, drawingRect, selectedZoneId]);
+  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, startLijn, penantFaceData, groupColor, mat, color, zetwerk, panelen, latten, layerVisibility, gridLines, showCenterLines, stripZones, drawingRect, selectedZoneId, outsideDirFlip]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
