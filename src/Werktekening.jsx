@@ -361,7 +361,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
       panels = panels.map((panel) => {
         for (const op of groupOpenings) {
           const opTop = op.y + op.height;
-          if (panel.y >= opTop) {
+          if (panel.y >= opTop && panel.x < op.x + op.width && panel.x + panel.width > op.x) {
             const latBottom = Math.round(clampToGroup(opTop));
             const firstAbove = allRowYsSorted.find((ry) => ry >= latBottom - 0.5);
             if (firstAbove != null && panel.y < firstAbove) {
