@@ -281,7 +281,7 @@ const GROUP_COLORS = [
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', stripColor: null, verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, startLijn: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
+  const defaults = (id) => ({ name: id, color: '#a64033', stripColor: null, verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, startLijn: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true }, ifcLayerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -1277,6 +1277,30 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                   <input type="checkbox"
                     checked={vis[key] !== false}
                     onChange={(e) => updVis({ [key]: e.target.checked })} />
+                  {label}
+                  <InfoIcon tip={tip} />
+                </label>
+              ))}
+            </div>
+          </CollapsibleSection>
+        );
+      })()}
+      {(() => {
+        const ifcVis = settings.ifcLayerVisibility ?? {};
+        const updIfcVis = (patch) => onUpdate({ ifcLayerVisibility: { ...(settings.ifcLayerVisibility ?? {}), ...patch } });
+        return (
+          <CollapsibleSection title="Laagzichtbaarheid IFC-export" tip={"Schakel lagen aan of uit voor de IFC-export.\nDeze instelling bepaalt welke lagen in het geëxporteerde IFC-bestand worden opgenomen.\nDe berekeningen en het 2D-aanzicht worden hierdoor niet beïnvloed.\n\n· Steenstrips = de brickslip-stenen op de gevel\n· Zetwerk = het randprofiel rondom sparingen\n· Panelen = de draagpanelen achter de strips\n· Latten = de houten achterconstructie-latten"} isOpen={isOpen('ifclagen')} onToggle={() => toggle('ifclagen')}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {[
+                ['strips', 'Steenstrips', 'De brickslip-steenstrips in de IFC-export opnemen.'],
+                ['zetwerk', 'Zetwerk', 'Het zetwerk in de IFC-export opnemen. Uitzetten laat het zetwerk weg uit de IFC, maar de regels rondom sparingen blijven intact.'],
+                ['panelen', 'Panelen', 'De draagpanelen in de IFC-export opnemen.'],
+                ['latten', 'Latten', 'De achterconstructie-latten in de IFC-export opnemen.'],
+              ].map(([key, label, tip]) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', color: '#334155' }}>
+                  <input type="checkbox"
+                    checked={ifcVis[key] !== false}
+                    onChange={(e) => updIfcVis({ [key]: e.target.checked })} />
                   {label}
                   <InfoIcon tip={tip} />
                 </label>
@@ -2600,7 +2624,7 @@ export default function App() {
       const rows = buildGroupPattern(walls, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND, 'all');
 
       const mat = s.material ?? DEFAULT_MATERIAL;
-      const vis = s.layerVisibility ?? {};
+      const vis = s.ifcLayerVisibility ?? s.layerVisibility ?? {};
       const withOrigin = walls.filter((w) => w.wallOrigin);
 
       const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn);
