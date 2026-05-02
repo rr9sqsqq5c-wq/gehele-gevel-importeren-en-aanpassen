@@ -394,6 +394,24 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material 
   const effectiveMinH = Math.min(minPanelH, zone.height);
   yBreaks = mergeSmallSegments(yBreaks, effectiveMinH);
 
+  if (bpH > 0 && yBreaks.length > 2) {
+    const totalSpan = yBreaks[yBreaks.length - 1] - yBreaks[0];
+    const idealSteps = Math.max(1, Math.ceil(totalSpan / bpH));
+    const currentSteps = yBreaks.length - 1;
+    if (idealSteps < currentSteps) {
+      const stepH = totalSpan / idealSteps;
+      if (stepH >= effectiveMinH) {
+        const newBreaks = [yBreaks[0]];
+        for (let s = 1; s < idealSteps; s++) {
+          const raw = round2(yBreaks[0] + s * stepH);
+          newBreaks.push(snapFn ? round2(snapFn(raw)) : raw);
+        }
+        newBreaks.push(yBreaks[yBreaks.length - 1]);
+        yBreaks = [...new Set(newBreaks)].sort((a, b) => a - b);
+      }
+    }
+  }
+
   const nCols = Math.max(1, Math.round(zone.width / targetW));
 
   const stoot = material?.stoot ?? 10;
