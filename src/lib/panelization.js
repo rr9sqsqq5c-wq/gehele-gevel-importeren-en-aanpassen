@@ -394,9 +394,10 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material 
   const effectiveMinH = Math.min(minPanelH, zone.height);
   yBreaks = mergeSmallSegments(yBreaks, effectiveMinH);
 
-  if (bpH > 0 && yBreaks.length > 2) {
+  const maxH = basePanel.maxHeight ?? bpH;
+  if (maxH > 0 && yBreaks.length > 2) {
     const totalSpan = yBreaks[yBreaks.length - 1] - yBreaks[0];
-    const idealSteps = Math.max(1, Math.ceil(totalSpan / bpH));
+    const idealSteps = Math.max(1, Math.ceil(totalSpan / maxH));
     const currentSteps = yBreaks.length - 1;
     if (idealSteps < currentSteps) {
       const stepH = totalSpan / idealSteps;
@@ -594,6 +595,7 @@ export function computeEffectiveBasePanel(panelen, brickWeightM2, material) {
   return {
     width: w,
     height: effectiveH,
+    maxHeight: h,
     minHeight: 800,
     targetWidth:  Math.min(w, brickTargetW),
     targetHeight: Math.min(effectiveH, brickTargetH),
