@@ -108,9 +108,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     });
     if (startLijn != null && startLijn < 0 && panels.length > 0) {
       const minY = Math.min(...panels.map((p) => p.y));
-      if (minY < 1) {
-        return panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: startLijn, height: p.height + p.y - startLijn } : p);
-      }
+      return panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: startLijn, height: p.height + p.y - startLijn } : p);
     }
     return panels;
   }, [facadeData, panelen, latten, mat, groupSettings, startLijn, zetwerk]);

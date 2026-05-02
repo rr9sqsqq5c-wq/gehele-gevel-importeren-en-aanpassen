@@ -2624,7 +2624,12 @@ export default function App() {
       const rows = buildGroupPattern(walls, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND, 'all');
 
       const mat = s.material ?? DEFAULT_MATERIAL;
-      const vis = s.ifcLayerVisibility ?? s.layerVisibility ?? {};
+      const vis = Object.fromEntries(
+        ['strips', 'zetwerk', 'panelen', 'latten'].map(k => [
+          k,
+          (s.layerVisibility?.[k] ?? true) && (s.ifcLayerVisibility?.[k] ?? true)
+        ])
+      );
       const withOrigin = walls.filter((w) => w.wallOrigin);
 
       const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn);
@@ -2725,9 +2730,7 @@ export default function App() {
           }
           if (s.startLijn != null && s.startLijn < 0 && panels.length > 0) {
             const minY = Math.min(...panels.map((p) => p.y));
-            if (minY < 1) {
-              panels = panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: s.startLijn, height: p.height + p.y - s.startLijn } : p);
-            }
+            panels = panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: s.startLijn, height: p.height + p.y - s.startLijn } : p);
           }
           if (s.zetwerk?.enabled && groupOpenings.length > 0) {
             const CLEARANCE = 10;

@@ -392,9 +392,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
     const startLijn = groupSettings?.startLijn;
     if (startLijn != null && startLijn < 0 && panels.length > 0) {
       const minY = Math.min(...panels.map((p) => p.y));
-      if (minY < 1) {
-        return panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: startLijn, height: p.height + p.y - startLijn } : p);
-      }
+      return panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: startLijn, height: p.height + p.y - startLijn } : p);
     }
     return panels;
   }, [facadeData, panelen, mat, groupSettings, latten, zetwerk, verband]);
