@@ -377,7 +377,8 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material 
     for (let i = 0; i < yBreaks.length - 1; i++) {
       const span = yBreaks[i + 1] - yBreaks[i];
       if (span > bpH + 0.001) {
-        const nSteps = Math.max(1, Math.round(span / bpH));
+        let nSteps = Math.max(1, Math.round(span / bpH));
+        while (nSteps > 1 && span / nSteps < minPanelH) nSteps--;
         for (let s = 1; s < nSteps; s++) {
           const raw = round2(yBreaks[i] + s * (span / nSteps));
           extraY.push(snapFn ? round2(snapFn(raw)) : raw);
