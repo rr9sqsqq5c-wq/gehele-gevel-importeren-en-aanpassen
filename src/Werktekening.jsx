@@ -357,23 +357,6 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
       const res = panelizeZone(zone, battenYs, basePanel, allRowYsSorted.length ? snapToRowY : null, mat, verband);
       if (res.ok) panels.push(...res.panels);
     }
-    if (groupOpenings.length > 0) {
-      panels = panels.map((panel) => {
-        for (const op of groupOpenings) {
-          const opTop = op.y + op.height;
-          if (panel.y >= opTop && panel.x < op.x + op.width && panel.x + panel.width > op.x) {
-            const latBottom = Math.round(clampToGroup(opTop));
-            const firstAbove = allRowYsSorted.find((ry) => ry >= latBottom - 0.5);
-            if (firstAbove != null && panel.y < firstAbove) {
-              const newH = panel.y + panel.height - firstAbove;
-              if (newH <= 0) return null;
-              return { ...panel, y: firstAbove, height: newH };
-            }
-          }
-        }
-        return panel;
-      }).filter(Boolean);
-    }
     if (zetwerk?.enabled && groupOpenings.length > 0) {
       const CLEARANCE = 10;
       const sideExpand = (zetwerk.offsetH ?? 0) + (zetwerk.breedte ?? 50) + CLEARANCE;
