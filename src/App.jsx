@@ -2723,6 +2723,12 @@ export default function App() {
               return panel;
             }).filter(Boolean);
           }
+          if (s.startLijn != null && s.startLijn < 0 && panels.length > 0) {
+            const minY = Math.min(...panels.map((p) => p.y));
+            if (minY < 1) {
+              panels = panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: s.startLijn, height: p.height + p.y - s.startLijn } : p);
+            }
+          }
           if (s.zetwerk?.enabled && groupOpenings.length > 0) {
             const CLEARANCE = 10;
             const sideExpand = (s.zetwerk.offsetH ?? 0) + (s.zetwerk.breedte ?? 50) + CLEARANCE;
