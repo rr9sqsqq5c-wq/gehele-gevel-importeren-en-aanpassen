@@ -300,7 +300,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, star
   }
 }
 
-export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen, latten, groupMinH, penantFaceData, zoneSettings, epcSettings }) {
+export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen, latten, groupMinH, penantFaceData, zoneSettings, epcSettings, outsideDirFlip }) {
   const svgRef = useRef(null);
   const summarySvgRef = useRef(null);
   const productiePrintRef = useRef(null);
@@ -488,7 +488,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const OX = PAD_LEFT + (drawW - W) / 2;
   const OY = PAD_TOP;
 
-  const sx = (x) => OX + (x - viewXStart) * scale;
+  const sx = (x, w = 0) => outsideDirFlip
+    ? OX + W - (x - viewXStart + w) * scale
+    : OX + (x - viewXStart) * scale;
   const sy = (y) => OY + H - (y - viewYStart) * scale;
 
   const dimColor    = '#1e3a5f';
@@ -1515,7 +1517,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   ))
                 ) : (
                   <rect
-                    x={sx(p.x)} y={sy(p.y + p.height)}
+                    x={sx(p.x, p.width)} y={sy(p.y + p.height)}
                     width={pxW} height={pxH}
                     fill={panelColor} stroke={dimColor} strokeWidth={0.8} fillOpacity={0.8}
                   />
@@ -1534,7 +1536,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           {drawingType === 'plaatsing' && zoneKoppelstrippen.map((k, i) => (
             <rect
               key={`koppel-${i}`}
-              x={sx(k.x)} y={sy(k.y + k.height)}
+              x={sx(k.x, k.width)} y={sy(k.y + k.height)}
               width={k.width * scale} height={k.height * scale}
               fill="#ff6b00" stroke="#cc5500" strokeWidth={0.6} fillOpacity={0.5}
               strokeDasharray="2,1"
@@ -1545,7 +1547,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             {drawingType === 'achterconstructie' && zoneLatten.map((l) => (
               <rect
                 key={l.id}
-                x={sx(l.x)} y={sy(l.y + l.height)}
+                x={sx(l.x, l.width)} y={sy(l.y + l.height)}
                 width={l.width * scale} height={l.height * scale}
                 fill={latColor} stroke="#92400e" strokeWidth={0.5} fillOpacity={0.85}
               />
@@ -1566,7 +1568,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             }
             return (
               <g key={i}>
-                <rect x={sx(op.x)} y={sy(op.y + op.height)} width={op.width * scale} height={op.height * scale}
+                <rect x={sx(op.x, op.width)} y={sy(op.y + op.height)} width={op.width * scale} height={op.height * scale}
                   fill={openColor} fillOpacity={0.5} stroke="#dc2626" strokeWidth={0.8} strokeDasharray="3,2" />
                 <line x1={sx(op.x)} y1={sy(op.y)} x2={sx(op.x + op.width)} y2={sy(op.y + op.height)} stroke="#dc2626" strokeWidth={0.4} />
                 <line x1={sx(op.x + op.width)} y1={sy(op.y)} x2={sx(op.x)} y2={sy(op.y + op.height)} stroke="#dc2626" strokeWidth={0.4} />

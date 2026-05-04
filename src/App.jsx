@@ -3825,6 +3825,7 @@ export default function App() {
                     penantFaceData={penantFaceData}
                     zoneSettings={s.zoneSettings ?? []}
                     epcSettings={{ projectNummer: s.epcProjectNummer ?? '00000', level: s.epcLevel ?? 0 }}
+                    outsideDirFlip={!!s.outsideDirFlip}
                   />
                   </Suspense>
                 );
