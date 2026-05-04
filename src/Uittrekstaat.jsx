@@ -499,13 +499,23 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
                     <TD right mono>{m2(to.netFacadeAreaMM2)}</TD>
                     <TD right>m² &nbsp;·&nbsp; {totalStripsTo.toLocaleString('nl-NL')} st</TD>
                   </tr>
-                  {panelCountTo > 0 && (
-                    <tr>
-                      <TD>&nbsp;&nbsp;— Panelen</TD>
-                      <TD right mono>{m2(to.panelAreaMM2)}</TD>
-                      <TD right>m² &nbsp;·&nbsp; {panelCountTo} st</TD>
-                    </tr>
-                  )}
+                  {panelCountTo > 0 && (() => {
+                    const diff = to.panelAreaMM2 - to.netFacadeAreaMM2;
+                    const pct = to.netFacadeAreaMM2 > 0 ? Math.abs(diff) / to.netFacadeAreaMM2 * 100 : 0;
+                    const ok = pct < 2;
+                    return <>
+                      <tr>
+                        <TD>&nbsp;&nbsp;— Panelen</TD>
+                        <TD right mono>{m2(to.panelAreaMM2)}</TD>
+                        <TD right>m² &nbsp;·&nbsp; {panelCountTo} st</TD>
+                      </tr>
+                      <tr style={{ background: ok ? '#f0fdf4' : '#fff7ed' }}>
+                        <TD style={{ paddingLeft: 20, fontSize: 10, color: ok ? '#166534' : '#9a3412' }}>&nbsp;&nbsp;&nbsp;&nbsp;{ok ? '✓' : '⚠'} paneel vs. strips</TD>
+                        <TD right mono style={{ fontSize: 10, color: ok ? '#166534' : '#9a3412' }}>{diff >= 0 ? '+' : ''}{m2(diff)}</TD>
+                        <TD right style={{ fontSize: 10, color: ok ? '#166534' : '#9a3412' }}>{ok ? `m² akkoord (${pct.toFixed(1)}%)` : `m² afwijking ${pct.toFixed(1)}%`}</TD>
+                      </tr>
+                    </>;
+                  })()}
                   {lattenCountTo > 0 && (
                     <tr>
                       <TD>&nbsp;&nbsp;— Houten latten</TD>
@@ -571,16 +581,26 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
                   <tr><TD>Zetwerk oppervlak rondom sparingen</TD><TD right mono>{m2(to.zetWerkAreaMM2)}</TD><TD right>m²</TD></tr>
                 </>}
 
-                {panelEntries.length > 0 && <>
-                  <SectionHeader title="Panelen" />
-                  {panelEntries.map(([key, pg]) => (
-                    <tr key={key}>
-                      <TD>Paneel {mm2(pg.width)} × {mm2(pg.height)} mm</TD>
-                      <TD right mono bold>{pg.count}</TD>
-                      <TD right>st ({m2(pg.areaMM2)} m² · {pg.weightKg.toFixed(1)} kg)</TD>
+                {panelEntries.length > 0 && (() => {
+                  const diff = to.panelAreaMM2 - to.netFacadeAreaMM2;
+                  const pct = to.netFacadeAreaMM2 > 0 ? Math.abs(diff) / to.netFacadeAreaMM2 * 100 : 0;
+                  const ok = pct < 2;
+                  return <>
+                    <SectionHeader title="Panelen" />
+                    {panelEntries.map(([key, pg]) => (
+                      <tr key={key}>
+                        <TD>Paneel {mm2(pg.width)} × {mm2(pg.height)} mm</TD>
+                        <TD right mono bold>{pg.count}</TD>
+                        <TD right>st ({m2(pg.areaMM2)} m² · {pg.weightKg.toFixed(1)} kg)</TD>
+                      </tr>
+                    ))}
+                    <tr style={{ background: ok ? '#f0fdf4' : '#fff7ed' }}>
+                      <TD><span style={{ marginRight: 4 }}>{ok ? '✓' : '⚠'}</span>Controle paneeloppervlak vs. steenstrips</TD>
+                      <TD right mono style={{ color: ok ? '#166534' : '#9a3412' }}>{diff >= 0 ? '+' : ''}{m2(diff)}</TD>
+                      <TD right style={{ color: ok ? '#166534' : '#9a3412' }}>{ok ? `m² — akkoord (${pct.toFixed(1)}%)` : `m² — afwijking ${pct.toFixed(1)}%`}</TD>
                     </tr>
-                  ))}
-                </>}
+                  </>;
+                })()}
 
                 {lattenEntries.length > 0 && <>
                   <SectionHeader title="Houten latten" />
