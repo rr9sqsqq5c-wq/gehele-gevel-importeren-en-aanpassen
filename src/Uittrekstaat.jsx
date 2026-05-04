@@ -481,6 +481,28 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
               <tr><TD>Aantal latten totaal</TD><TD right mono bold>{totals.lattenCount}</TD><TD right>st</TD></tr>
               <tr><TD>Totale latlengte</TD><TD right mono>{(totals.lattenLengthMM / 1000).toFixed(1)}</TD><TD right>m</TD></tr>
             </> : <tr><TD span={3} color="#94a3b8">Geen latten geconfigureerd</TD></tr>}
+
+            <SectionHeader title="Steenstrips per groep" />
+            {takeoffs.map((to) => {
+              const totalStripsTo = Object.values(to.stripCount).reduce((s, n) => s + n, 0);
+              return (
+                <tr key={to.groupId}>
+                  <TD><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: to.color, marginRight: 6, verticalAlign: 'middle' }} />{to.name}</TD>
+                  <TD right mono>{m2(to.netFacadeAreaMM2)}</TD>
+                  <TD right>m² &nbsp;·&nbsp; {totalStripsTo.toLocaleString('nl-NL')} st</TD>
+                </tr>
+              );
+            })}
+            {takeoffs.length > 1 && (() => {
+              const grandTotal = takeoffs.reduce((s, to) => s + Object.values(to.stripCount).reduce((a, n) => a + n, 0), 0);
+              return (
+                <tr style={{ background: '#f0fdf4' }}>
+                  <TD bold>Totaal steenstrips</TD>
+                  <TD right mono bold>{m2(totals.netFacadeAreaMM2)}</TD>
+                  <TD right>m² &nbsp;·&nbsp; {grandTotal.toLocaleString('nl-NL')} st</TD>
+                </tr>
+              );
+            })()}
           </tbody>
         </table>
 
@@ -513,6 +535,7 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
                 {to.penantAreaMM2 > 0 && <tr><TD>Penant oppervlak</TD><TD right mono>{m2(to.penantAreaMM2)}</TD><TD right>m²</TD></tr>}
 
                 <SectionHeader title="Steenstrips" />
+                <tr><TD>Netto geveloppervlak</TD><TD right mono>{m2(to.netFacadeAreaMM2)}</TD><TD right>m²</TD></tr>
                 <tr><TD>Totaal strips</TD><TD right mono bold>{totalStrips}</TD><TD right>st</TD></tr>
                 {to.stripCount.Vol > 0 && <tr><TD>— Streksteen ({to.mat.steenL}×{to.mat.steenH} mm)</TD><TD right mono>{to.stripCount.Vol}</TD><TD right>st</TD></tr>}
                 {to.stripCount.Kop > 0 && <tr><TD>— Kopsteen</TD><TD right mono>{to.stripCount.Kop}</TD><TD right>st</TD></tr>}
