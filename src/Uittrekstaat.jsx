@@ -482,24 +482,47 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
               <tr><TD>Totale latlengte</TD><TD right mono>{(totals.lattenLengthMM / 1000).toFixed(1)}</TD><TD right>m</TD></tr>
             </> : <tr><TD span={3} color="#94a3b8">Geen latten geconfigureerd</TD></tr>}
 
-            <SectionHeader title="Steenstrips per groep" />
+            <SectionHeader title="Materialen per groep" />
             {takeoffs.map((to) => {
               const totalStripsTo = Object.values(to.stripCount).reduce((s, n) => s + n, 0);
+              const panelCountTo = Object.values(to.panelGroups).reduce((s, pg) => s + pg.count, 0);
+              const lattenCountTo = Object.values(to.lattenSummary).reduce((s, n) => s + n, 0);
               return (
-                <tr key={to.groupId}>
-                  <TD><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: to.color, marginRight: 6, verticalAlign: 'middle' }} />{to.name}</TD>
-                  <TD right mono>{m2(to.netFacadeAreaMM2)}</TD>
-                  <TD right>m² &nbsp;·&nbsp; {totalStripsTo.toLocaleString('nl-NL')} st</TD>
-                </tr>
+                <React.Fragment key={to.groupId}>
+                  <tr style={{ background: '#f8fafc' }}>
+                    <td colSpan={99} style={{ padding: '5px 10px', fontSize: 11, fontWeight: 700, color: '#1e293b', borderBottom: '1px solid #e2e8f0' }}>
+                      <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: to.color, marginRight: 6, verticalAlign: 'middle' }} />{to.name}
+                    </td>
+                  </tr>
+                  <tr>
+                    <TD style={{ paddingLeft: 24 }}>&nbsp;&nbsp;— Steenstrips</TD>
+                    <TD right mono>{m2(to.netFacadeAreaMM2)}</TD>
+                    <TD right>m² &nbsp;·&nbsp; {totalStripsTo.toLocaleString('nl-NL')} st</TD>
+                  </tr>
+                  {panelCountTo > 0 && (
+                    <tr>
+                      <TD>&nbsp;&nbsp;— Panelen</TD>
+                      <TD right mono>{m2(to.panelAreaMM2)}</TD>
+                      <TD right>m² &nbsp;·&nbsp; {panelCountTo} st</TD>
+                    </tr>
+                  )}
+                  {lattenCountTo > 0 && (
+                    <tr>
+                      <TD>&nbsp;&nbsp;— Houten latten</TD>
+                      <TD right mono>{(to.totalLattenLengthMM / 1000).toFixed(1)}</TD>
+                      <TD right>m¹ &nbsp;·&nbsp; {lattenCountTo} st</TD>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
             {takeoffs.length > 1 && (() => {
-              const grandTotal = takeoffs.reduce((s, to) => s + Object.values(to.stripCount).reduce((a, n) => a + n, 0), 0);
+              const grandTotalStrips = takeoffs.reduce((s, to) => s + Object.values(to.stripCount).reduce((a, n) => a + n, 0), 0);
               return (
                 <tr style={{ background: '#f0fdf4' }}>
                   <TD bold>Totaal steenstrips</TD>
                   <TD right mono bold>{m2(totals.netFacadeAreaMM2)}</TD>
-                  <TD right>m² &nbsp;·&nbsp; {grandTotal.toLocaleString('nl-NL')} st</TD>
+                  <TD right>m² &nbsp;·&nbsp; {grandTotalStrips.toLocaleString('nl-NL')} st</TD>
                 </tr>
               );
             })()}
