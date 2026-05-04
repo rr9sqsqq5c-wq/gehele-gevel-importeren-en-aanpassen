@@ -481,7 +481,20 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material 
   }
 
   const validPanels = panels.filter(p => p.width > 0.001 && p.height > 0.001);
-  if (!validPanels.length) return { ok: false, panels: [] };
+  if (!validPanels.length) {
+    const fallback = {
+      id: `${zone.id}-P1`,
+      zoneId: zone.id,
+      row: 1, col: 1,
+      x: zoneX1, y: zoneY1,
+      width: round2(zone.width), height: round2(zone.height),
+      area: round2(zone.width * zone.height),
+      orientation: 'staand',
+      staggered: false,
+      isFallback: true,
+    };
+    return { ok: true, orientation: 'staand', panelCount: 1, panels: [fallback] };
+  }
   return { ok: true, orientation, panelCount: validPanels.length, panels: validPanels };
 }
 
