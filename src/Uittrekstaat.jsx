@@ -55,6 +55,8 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
   }
 
   let panelList = [];
+  let noPanelZonesAreaMM2 = 0;
+  let noPanelZonesCount = 0;
   if (s.panelen?.enabled) {
     const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, mat);
     const maxInterval = s.latten?.maxInterval ?? 400;
@@ -70,7 +72,12 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
     const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
     for (const zone of zones) {
       const result = panelizeZone(zone, battenYs, basePanel, null, mat, verband);
-      if (result.ok) panelList.push(...result.panels);
+      if (result.ok) {
+        panelList.push(...result.panels);
+      } else {
+        noPanelZonesAreaMM2 += zone.width * zone.height;
+        noPanelZonesCount++;
+      }
     }
   }
 
@@ -188,6 +195,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
     stripCount, stripAreaMM2,
     panelGroups,
     panelAreaMM2: Object.values(panelGroups).reduce((sum, pg) => sum + pg.areaMM2, 0),
+    noPanelZonesAreaMM2, noPanelZonesCount,
     lattenSummary,
     totalLattenLengthMM,
     lattenArtikelen: s.lattenArtikelen ?? [],
@@ -514,6 +522,13 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
                         <TD right mono style={{ fontSize: 10, color: ok ? '#166534' : '#9a3412' }}>{diff >= 0 ? '+' : ''}{m2(diff)}</TD>
                         <TD right style={{ fontSize: 10, color: ok ? '#166534' : '#9a3412' }}>{ok ? `m² akkoord (${pct.toFixed(1)}%)` : `m² afwijking ${pct.toFixed(1)}%`}</TD>
                       </tr>
+                      {to.noPanelZonesCount > 0 && (
+                        <tr style={{ background: ok ? '#f0fdf4' : '#fff7ed' }}>
+                          <TD style={{ paddingLeft: 20, fontSize: 10, color: '#64748b' }}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↳ {to.noPanelZonesCount} zone{to.noPanelZonesCount > 1 ? 's' : ''} te smal/laag</TD>
+                          <TD right mono style={{ fontSize: 10, color: '#64748b' }}>{m2(to.noPanelZonesAreaMM2)}</TD>
+                          <TD right style={{ fontSize: 10, color: '#64748b' }}>m²</TD>
+                        </tr>
+                      )}
                     </>;
                   })()}
                   {lattenCountTo > 0 && (
@@ -585,6 +600,7 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
                   const diff = to.panelAreaMM2 - to.netFacadeAreaMM2;
                   const pct = to.netFacadeAreaMM2 > 0 ? Math.abs(diff) / to.netFacadeAreaMM2 * 100 : 0;
                   const ok = pct < 2;
+                  const gapRest = Math.abs(diff) - to.noPanelZonesAreaMM2;
                   return <>
                     <SectionHeader title="Panelen" />
                     {panelEntries.map(([key, pg]) => (
@@ -599,6 +615,13 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose 
                       <TD right mono style={{ color: ok ? '#166534' : '#9a3412' }}>{diff >= 0 ? '+' : ''}{m2(diff)}</TD>
                       <TD right style={{ color: ok ? '#166534' : '#9a3412' }}>{ok ? `m² — akkoord (${pct.toFixed(1)}%)` : `m² — afwijking ${pct.toFixed(1)}%`}</TD>
                     </tr>
+                    {to.noPanelZonesCount > 0 && (
+                      <tr style={{ background: ok ? '#f0fdf4' : '#fff7ed' }}>
+                        <TD style={{ color: '#64748b', fontSize: 10 }}>&nbsp;&nbsp;&nbsp;↳ {to.noPanelZonesCount} zone{to.noPanelZonesCount > 1 ? 's' : ''} zonder panelen (te smal/laag)</TD>
+                        <TD right mono style={{ color: '#64748b', fontSize: 10 }}>{m2(to.noPanelZonesAreaMM2)}</TD>
+                        <TD right style={{ color: '#64748b', fontSize: 10 }}>m²{gapRest > 1 ? ` · overige gap/afr.: ${m2(gapRest)} m²` : ''}</TD>
+                      </tr>
+                    )}
                   </>;
                 })()}
 
