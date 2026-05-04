@@ -301,6 +301,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       vX * scale * 0.001 + tx,
       ty - vY * scale * 0.001,
     ];
+    const annotSz = (physMM, min = 7, max = 28) => Math.max(min, Math.min(max, physMM * scale * 0.001));
 
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#1e293b';
@@ -429,7 +430,8 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         ctx.lineWidth = 1;
         ctx.strokeRect(pSx, pSy, pSw, pSh);
         if (pSw > 24 && pSh > 14) {
-          ctx.font = '8px system-ui, sans-serif';
+          const pLabelSz = annotSz(80, 6, 14);
+          ctx.font = `${pLabelSz}px system-ui, sans-serif`;
           ctx.fillStyle = '#64748b';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
@@ -560,7 +562,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
 
       if (opSw > 20) {
         const labelY = opSy - 2;
-        ctx.font = '9px system-ui, sans-serif';
+        ctx.font = `${annotSz(80, 7, 14)}px system-ui, sans-serif`;
         ctx.fillStyle = '#7dd3fc';
         ctx.textBaseline = 'bottom';
         ctx.textAlign = 'left';
@@ -730,10 +732,10 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         ctx.strokeRect(sx, baseY, pW, pHpx);
 
         ctx.fillStyle = '#4338ca';
-        ctx.font = 'bold 11px system-ui, sans-serif';
+        ctx.font = `bold ${annotSz(100, 8, 18)}px system-ui, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('P', sx + pW / 2, baseY + Math.min(pHpx / 2, 14));
+        ctx.fillText('P', sx + pW / 2, baseY + Math.min(pHpx / 2, annotSz(100, 8, 18)));
       }
     }
 
@@ -751,7 +753,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = '#f97316';
-      ctx.font = '10px system-ui, sans-serif';
+      ctx.font = `${annotSz(90, 8, 16)}px system-ui, sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'bottom';
       ctx.fillText(`▲ max ${maxHoogte} mm`, Math.max(4, sx1), sy - 2);
@@ -772,7 +774,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = '#a855f7';
-      ctx.font = '10px system-ui, sans-serif';
+      ctx.font = `${annotSz(90, 8, 16)}px system-ui, sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillText(`▼ startlijn ${startLijn} mm`, Math.max(4, sx1), sy + 2);
@@ -793,7 +795,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = '#22d3ee';
-      ctx.font = '10px system-ui, sans-serif';
+      ctx.font = `${annotSz(90, 8, 16)}px system-ui, sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillText(`▼ vanaf ${patternStartH} mm`, Math.max(4, sx1), sy + 2);
@@ -814,7 +816,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = '#facc15';
-      ctx.font = '10px system-ui, sans-serif';
+      ctx.font = `${annotSz(90, 8, 16)}px system-ui, sans-serif`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'bottom';
       ctx.fillText('± 0 peilmaat', Math.max(4, sx1), sy - 2);
@@ -850,13 +852,14 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         ctx.setLineDash([6, 4]);
         ctx.strokeRect(sx1z, faceSy, zW, faceH);
         ctx.setLineDash([]);
+        const zLabelSz = annotSz(100, 8, 18);
         ctx.fillStyle = 'rgba(234,179,8,0.9)';
-        ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.font = `bold ${zLabelSz}px system-ui, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         const zLabel = `Zone ${i + 1}  (${Math.round(zoneX2 - zoneX1)} mm)`;
         const zlw = ctx.measureText(zLabel).width + 8;
-        ctx.fillRect(sx1z + zW / 2 - zlw / 2, faceSy + 4, zlw, 16);
+        ctx.fillRect(sx1z + zW / 2 - zlw / 2, faceSy + 4, zlw, zLabelSz + 4);
         ctx.fillStyle = '#000';
         ctx.fillText(zLabel, sx1z + zW / 2, faceSy + 6);
         ctx.restore();
@@ -882,7 +885,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       ctx.fillRect(szSx, szSy, szSw, szSh);
       ctx.setLineDash([]);
       if (szSw > 40 && szSh > 14) {
-        ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.font = `bold ${annotSz(90, 7, 16)}px system-ui, sans-serif`;
         ctx.fillStyle = isSelected ? '#f59e0b' : '#22d3ee';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
@@ -904,7 +907,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       ctx.fillStyle = 'rgba(34,211,238,0.12)';
       ctx.fillRect(drSx, drSy, drSw, drSh);
       ctx.setLineDash([]);
-      ctx.font = '10px system-ui, sans-serif';
+      ctx.font = `${annotSz(80, 7, 14)}px system-ui, sans-serif`;
       ctx.fillStyle = '#22d3ee';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -927,9 +930,10 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       ctx.save();
       ctx.setLineDash([4, 4]);
       ctx.lineWidth = 1;
+      const gapLabelSz = annotSz(80, 7, 14);
       ctx.strokeStyle = 'rgba(6,182,212,0.75)';
       ctx.fillStyle = 'rgba(6,182,212,0.9)';
-      ctx.font = '10px monospace';
+      ctx.font = `${gapLabelSz}px monospace`;
       ctx.textAlign = 'center';
       for (const relCenter of gapCenters) {
         const [sx] = toScreen(mx(relCenter), 0);
@@ -939,7 +943,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         ctx.stroke();
         const xLabel = `${Math.round(relCenter)}`;
         const tw = ctx.measureText(xLabel).width + 6;
-        ctx.fillRect(sx - tw / 2, faceSy + faceH + 2, tw, 14);
+        ctx.fillRect(sx - tw / 2, faceSy + faceH + 2, tw, gapLabelSz + 2);
         ctx.fillStyle = '#fff';
         ctx.textBaseline = 'top';
         ctx.fillText(xLabel, sx, faceSy + faceH + 3);
@@ -969,13 +973,14 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
           ctx.lineTo(sx, H);
           ctx.stroke();
           ctx.setLineDash([]);
+          const glLabelSz = annotSz(100, 8, 18);
           ctx.fillStyle = 'rgba(234,88,12,0.9)';
-          ctx.font = 'bold 11px system-ui, sans-serif';
+          ctx.font = `bold ${glLabelSz}px system-ui, sans-serif`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'top';
           const label = gl.tag ?? '';
           const tw = ctx.measureText(label).width + 8;
-          ctx.fillRect(sx - tw / 2, 2, tw, 16);
+          ctx.fillRect(sx - tw / 2, 2, tw, glLabelSz + 4);
           ctx.fillStyle = '#fff';
           ctx.fillText(label, sx, 4);
           ctx.setLineDash([6, 4]);
