@@ -1105,8 +1105,8 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const pH  = Math.max(1, (maxHoogte != null && maxHoogte > 0) ? Math.min(pen.hoogte ?? 2000, maxHoogte) : (pen.hoogte ?? 2000));
         const penStoot = material.stoot ?? 10;
         const penFrontW = Math.max(1, pB - 2 * brickD);
-        const penSideDL = Math.max(1, pDL + brickD);
-        const penSideDR = Math.max(1, pDR + brickD);
+        const penSideDL = Math.max(1, pDL + brickD + penStoot + panelDikte);
+        const penSideDR = Math.max(1, pDR + brickD + penStoot + panelDikte);
         const penPanelT = panelDikte;
         const penShift = panelDikte + brickD + penStoot + Math.max(pDL, pDR);
 
@@ -1187,7 +1187,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
           for (const piece of row.pieces) {
             const lp = { x: 0, y: 0, z: 0 };
             lp[rwo.lengthAxis]    = groupMinX + pX + brickD / 2;
-            lp[rwo.thicknessAxis] = grpOutPos + grpOutDir * (sideDepthOffset + piece.start + piece.length / 2);
+            lp[rwo.thicknessAxis] = grpOutPos + grpOutDir * (sideDepthOffset - piece.start - piece.length / 2);
             lp[rwo.heightAxis]    = groupMinH + row.y;
             const [lpx, lpy, lpz] = [lp.x, lp.y, lp.z];
             const lPlacePt = PT(lpx, lpy, lpz);
@@ -1209,7 +1209,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
           for (const piece of row.pieces) {
             const rp = { x: 0, y: 0, z: 0 };
             rp[rwo.lengthAxis]    = groupMinX + pX + pB - brickD / 2;
-            rp[rwo.thicknessAxis] = grpOutPos + grpOutDir * (sideDepthOffset + piece.start + piece.length / 2);
+            rp[rwo.thicknessAxis] = grpOutPos + grpOutDir * (sideDepthOffset - piece.start - piece.length / 2);
             rp[rwo.heightAxis]    = groupMinH + row.y;
             const [rpx, rpy, rpz] = [rp.x, rp.y, rp.z];
             const rPlacePt = PT(rpx, rpy, rpz);
