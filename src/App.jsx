@@ -1618,6 +1618,7 @@ export default function App() {
           groupMinH: gMinH,
           refWallOrigin: rwo,
           outsideDirFlip: !!(s.outsideDirFlip),
+          latDikteEff: latDikte3d,
         };
         continue;
       }
@@ -1747,6 +1748,7 @@ export default function App() {
         groupMinH: facadeData.groupMinH,
         refWallOrigin: facadeData.refWallOrigin ?? withOrigin[0].wallOrigin,
         outsideDirFlip: !!(s.outsideDirFlip),
+        latDikteEff: latDikte3d,
       };
     }
     return result;

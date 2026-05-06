@@ -925,7 +925,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           const axisWalls = groupWalls.filter((w) => w.wallOrigin.lengthAxis === rwo.lengthAxis);
           const groupMinX = Math.min(...axisWalls.map((w) => w.wallOrigin.lengthStart));
           const groupMinH = Math.min(...axisWalls.map((w) => w.wallOrigin.heightStart));
-          const penLatDikte = settings?.latten?.dikte ?? 28;
+          const penLatDikte = groupPatterns?.[group.id]?.latDikteEff ?? settings?.latten?.dikte ?? 28;
           const penBrickD   = settings?.brickDepth ?? 20;
           const penPanelDikte = settings?.panelen?.dikte ?? 8;
           const penStoot = settings?.material?.stoot ?? 10;
