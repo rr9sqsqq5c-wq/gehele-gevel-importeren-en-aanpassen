@@ -539,6 +539,11 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                   onChange={(e) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, diepteRechts: Number(e.target.value) } : q) })}
                   style={{ ...inp, width: '100%' }} />
               </Field>
+              <Field label="Stootvoeg mm" tip={`Stootvoegbreedte voor dit penant (mm). Bepaalt de vrije ruimte tussen de strip en het zijpaneel. Standaard: materiaal stootvoeg (${settings.material?.stoot ?? 10} mm).`}>
+                <input type="number" min={0} step={1} value={p.stoot ?? (settings.material?.stoot ?? 10)}
+                  onChange={(e) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, stoot: Number(e.target.value) } : q) })}
+                  style={{ ...inp, width: '100%' }} />
+              </Field>
             </div>
 
             {(() => {
@@ -581,7 +586,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               const stripGewichtM2P = mat.brickWeightM2 ?? 40;
               const gewichtM2 = panelGewichtM2P + stripGewichtM2P;
               const brickDepthP = settings.brickDepth ?? 20;
-              const stootP = settings.material?.stoot ?? 10;
+              const stootP = p.stoot ?? settings.material?.stoot ?? 10;
               const sidePanelDepthL = Math.max(1, pDL - brickDepthP - stootP);
               const sidePanelDepthR = Math.max(1, pDR - brickDepthP - stootP);
               const omtrekM2perMM = (pB + sidePanelDepthL + sidePanelDepthR) / 1e6;
@@ -1714,7 +1719,7 @@ export default function App() {
         const pH  = Math.max(1, (maxH != null && maxH > 0) ? Math.min(pen.hoogte ?? 2000, maxH) : (pen.hoogte ?? 2000));
         const panelDikte = panelDikte3d;
         const latD = latDikte3d;
-        const penStoot = mat.stoot ?? 10;
+        const penStoot = pen.stoot ?? mat.stoot ?? 10;
         const penShift = panelDikte + brickD3d + penStoot + pDmax3;
         const depthFromFace = latD + penShift + brickD3d / 2;
         const faceRows = buildCenteredFacePattern(pB, pH, mat, groupVerband3d);
@@ -2899,7 +2904,7 @@ export default function App() {
         const pH = Math.max(1, p.hoogte ?? 2000);
         const brickDepth = s.brickDepth ?? 20;
         const panelDikteP = s.panelen?.dikte ?? 8;
-        const stoot = mat.stoot ?? 10;
+        const stoot = p.stoot ?? mat.stoot ?? 10;
         const sideDepthL = Math.max(1, pDL2 - 6);
         const sideDepthR = Math.max(1, pDR2 - 6);
         const clipOff = Math.max(stoot, panelDikteP);
@@ -3033,7 +3038,7 @@ export default function App() {
 
       const brickDepth = s.brickDepth ?? 20;
       const panelDikte = s.panelen?.dikte ?? 8;
-      const stoot = mat.stoot ?? 10;
+      const stoot = p.stoot ?? mat.stoot ?? 10;
       const panelDepthL = Math.max(1, pDL - brickDepth - stoot);
       const panelDepthR = Math.max(1, pDR - brickDepth - stoot);
       const sideClipOffset = Math.max(stoot, panelDikte);

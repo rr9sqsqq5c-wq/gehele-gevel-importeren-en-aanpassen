@@ -174,7 +174,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies) {
       const gewichtM2 = panelGewichtM2U + stripGewichtM2U;
       const maxKg = p.maxKg ?? 50;
       const brickDepthU = s.brickDepth ?? 20;
-      const stootU = (s.material?.stoot ?? 10);
+      const stootU = p.stoot ?? s.material?.stoot ?? 10;
       const sidePanelDepthUL = Math.max(1, pDLU - brickDepthU - stootU);
       const sidePanelDepthUR = Math.max(1, pDRU - brickDepthU - stootU);
       const omtrekM2perMM = (pB + sidePanelDepthUL + sidePanelDepthUR) / 1e6;

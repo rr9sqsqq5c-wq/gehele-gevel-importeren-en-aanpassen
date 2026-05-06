@@ -1103,7 +1103,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const pDL = Math.max(1, pen.diepteLinks  ?? pen.diepte ?? 150);
         const pDR = Math.max(1, pen.diepteRechts ?? pen.diepte ?? 150);
         const pH  = Math.max(1, (maxHoogte != null && maxHoogte > 0) ? Math.min(pen.hoogte ?? 2000, maxHoogte) : (pen.hoogte ?? 2000));
-        const penStoot = material.stoot ?? 10;
+        const penStoot = pen.stoot ?? material.stoot ?? 10;
         const penFrontW = Math.max(1, pB - 2 * brickD);
         const penSideDL = Math.max(1, pDL + brickD + penStoot + panelDikte);
         const penSideDR = Math.max(1, pDR + brickD + penStoot + panelDikte);

@@ -764,7 +764,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             const gewichtBron = selStrip
               ? `paneel ${panelGewichtM2} kg/m²  +  strip ${stripGewichtM2} kg/m² (${selStrip.naam} ${selStrip.formatCode})  =  ${gewichtM2} kg/m²`
               : `paneel ${panelGewichtM2} kg/m²  +  strip ${stripGewichtM2} kg/m² (uit materiaalinstellingen)  =  ${gewichtM2} kg/m²`;
-            const stootWT = mat.stoot ?? 10;
+            const stootWT = p.stoot ?? mat.stoot ?? 10;
             const panelDikteWT = groupSettings?.panelen?.dikte ?? 8;
             const sidePanelDepthL = Math.max(1, pDL - brickDepth - stootWT);
             const sidePanelDepthR = Math.max(1, pDR - brickDepth - stootWT);
