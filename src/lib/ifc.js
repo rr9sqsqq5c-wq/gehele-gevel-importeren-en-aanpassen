@@ -362,10 +362,18 @@ function _resolveOutsideDirections(walls) {
     const resolved = _resolveOneWallOutside(wall.wallOrigin, allOrigins, globalBBox);
     wall.wallOrigin.resolvedOutside = resolved;
     const openingCheck = _validateOutsideWithOpenings(wall.wallOrigin, wall.openings ?? []);
-    if (openingCheck.matches === true && resolved.confidence < 0.99) {
+    if (openingCheck.inconsistent && openingCheck.biasedSide !== null && resolved.confidence < 0.90) {
+      const wo = wall.wallOrigin;
+      resolved.outsideDir = -resolved.outsideDir;
+      resolved.outsidePos = resolved.outsideDir < 0 ? wo.thicknessStart : (wo.thicknessEnd ?? wo.thicknessStart + 200);
+      resolved.source += '+window_bias_override';
+      resolved.reason += ` [window-bias override: outsideDir geflipped naar ${resolved.outsideDir}]`;
+      resolved.confidence = 0.58;
+      resolved.ambiguous = false;
+    } else if (openingCheck.matches === true && resolved.confidence < 0.99) {
       resolved.confidence = Math.min(0.99, Math.round((resolved.confidence + openingCheck.confidenceBoost) * 100) / 100);
     }
-    if (openingCheck.inconsistent) {
+    if (openingCheck.inconsistent && resolved.source && !resolved.source.includes('window_bias_override')) {
       console.warn('[outside-resolver] OPENING_CONSISTENCY_FAIL wand', wall.wallOrigin.globalId ?? '?',
         '—', openingCheck.note);
     }
