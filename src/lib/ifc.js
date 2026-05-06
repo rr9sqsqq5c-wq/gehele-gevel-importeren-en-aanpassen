@@ -1181,13 +1181,13 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
         const rightRefId = E(`IFCDIRECTION((${r(-thickDir.x)},${r(-thickDir.y)},${r(-thickDir.z)}))`);
         const _haVec = rwo.heightAxis === 'z' ? [0,0,1] : rwo.heightAxis === 'y' ? [0,1,0] : [1,0,0];
         const sideAxisId = E(`IFCDIRECTION((${_haVec.join(',')}))`);
-        const sideDepthOffset = latDikte + penShift - panelDikte;
+        const sideDepthOffset = latDikte + penStoot;
 
         for (const row of (penFaceData.leftRows ?? [])) {
           for (const piece of row.pieces) {
             const lp = { x: 0, y: 0, z: 0 };
             lp[rwo.lengthAxis]    = groupMinX + pX + brickD / 2;
-            lp[rwo.thicknessAxis] = grpOutPos + grpOutDir * (sideDepthOffset - piece.start - piece.length / 2);
+            lp[rwo.thicknessAxis] = grpOutPos + grpOutDir * (sideDepthOffset + piece.start + piece.length / 2);
             lp[rwo.heightAxis]    = groupMinH + row.y;
             const [lpx, lpy, lpz] = [lp.x, lp.y, lp.z];
             const lPlacePt = PT(lpx, lpy, lpz);
@@ -1209,7 +1209,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
           for (const piece of row.pieces) {
             const rp = { x: 0, y: 0, z: 0 };
             rp[rwo.lengthAxis]    = groupMinX + pX + pB - brickD / 2;
-            rp[rwo.thicknessAxis] = grpOutPos + grpOutDir * (sideDepthOffset - piece.start - piece.length / 2);
+            rp[rwo.thicknessAxis] = grpOutPos + grpOutDir * (sideDepthOffset + piece.start + piece.length / 2);
             rp[rwo.heightAxis]    = groupMinH + row.y;
             const [rpx, rpy, rpz] = [rp.x, rp.y, rp.z];
             const rPlacePt = PT(rpx, rpy, rpz);

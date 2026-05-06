@@ -1732,17 +1732,21 @@ export default function App() {
 
         const sideClipOff = Math.max(penStoot, panelDikte);
         const sideDepthOffset = latD + penStoot;
-        const clipSide = (rawRows) => rawRows.map((row) => ({
-          ...row,
-          pieces: row.pieces.flatMap((pc) => {
-            if (pc.start + pc.length <= sideClipOff) return [];
-            if (pc.start >= sideClipOff) return [pc];
-            const ns = Math.round(sideClipOff * 100) / 100;
-            return [{ ...pc, start: ns, length: Math.round((pc.start + pc.length - ns) * 100) / 100 }];
-          }),
-        })).filter((row) => row.pieces.length > 0);
-        const leftRows = clipSide(buildFacePattern(Math.max(1, pDL3 - 6), pH, mat, groupVerband3d));
-        const rightRows = clipSide(buildMirroredFacePattern(Math.max(1, pDR3 - 6), pH, mat, groupVerband3d));
+        const clipSideFront = (rawRows, armDepth) => {
+          const clipEnd = armDepth - sideClipOff;
+          return rawRows.map((row) => ({
+            ...row,
+            pieces: row.pieces.flatMap((pc) => {
+              if (pc.start >= clipEnd) return [];
+              if (pc.start + pc.length <= clipEnd) return [pc];
+              return [{ ...pc, length: Math.round((clipEnd - pc.start) * 100) / 100 }];
+            }),
+          })).filter((row) => row.pieces.length > 0);
+        };
+        const leftArmDepth = Math.max(1, pDL3 - 6);
+        const rightArmDepth = Math.max(1, pDR3 - 6);
+        const leftRows = clipSideFront(buildFacePattern(leftArmDepth, pH, mat, groupVerband3d), leftArmDepth);
+        const rightRows = clipSideFront(buildMirroredFacePattern(rightArmDepth, pH, mat, groupVerband3d), rightArmDepth);
         if (leftRows.length) batches.push({ rows: leftRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, sideType: 'left', penantX: pX, penantB: pB, sideDepthOffset });
         if (rightRows.length) batches.push({ rows: rightRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, sideType: 'right', penantX: pX, penantB: pB, sideDepthOffset });
       }
@@ -2911,17 +2915,19 @@ export default function App() {
         const frontRows = buildCenteredFacePattern(pB, pH, mat, s.verband ?? DEFAULT_VERBAND);
         const rawLeft = buildFacePattern(sideDepthL, pH, mat, s.verband ?? DEFAULT_VERBAND);
         const rawRight = buildMirroredFacePattern(sideDepthR, pH, mat, s.verband ?? DEFAULT_VERBAND);
-        const clipSide = (rawRows) => rawRows.map((row) => ({
-          ...row,
-          pieces: row.pieces.flatMap((pc) => {
-            if (pc.start + pc.length <= clipOff) return [];
-            if (pc.start >= clipOff) return [pc];
-            const ns = Math.round(clipOff * 100) / 100;
-            return [{ ...pc, start: ns, length: Math.round((pc.start + pc.length - ns) * 100) / 100 }];
-          }),
-        })).filter((row) => row.pieces.length > 0);
-        const leftRows = clipSide(rawLeft);
-        const rightRows = clipSide(rawRight);
+        const clipSideFront = (rawRows, armDepth) => {
+          const clipEnd = armDepth - clipOff;
+          return rawRows.map((row) => ({
+            ...row,
+            pieces: row.pieces.flatMap((pc) => {
+              if (pc.start >= clipEnd) return [];
+              if (pc.start + pc.length <= clipEnd) return [pc];
+              return [{ ...pc, length: Math.round((clipEnd - pc.start) * 100) / 100 }];
+            }),
+          })).filter((row) => row.pieces.length > 0);
+        };
+        const leftRows = clipSideFront(rawLeft, sideDepthL);
+        const rightRows = clipSideFront(rawRight, sideDepthR);
         return { frontRows, leftRows, rightRows, sideDepthL, sideDepthR, pDL: pDL2, pDR: pDR2 };
       });
 
