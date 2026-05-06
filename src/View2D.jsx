@@ -611,7 +611,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         const pB = Math.max(1, p.breedte ?? 400);
         const pDL = Math.max(1, penDL ?? p.diepteLinks ?? p.diepte ?? 150);
         const pDR = Math.max(1, penDR ?? p.diepteRechts ?? p.diepte ?? 150);
-        const baseVY = 0;
+        const baseVY = (startLijn != null && startLijn < 0) ? startLijn : 0;
 
         const [sx, baseY] = toScreen(outsideDirFlip ? groupWidth - pX - pB : pX, baseVY + pH);
         const [ex] = toScreen(outsideDirFlip ? groupWidth - pX : pX + pB, 0);
