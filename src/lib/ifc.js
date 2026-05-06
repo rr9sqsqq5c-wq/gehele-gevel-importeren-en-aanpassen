@@ -112,8 +112,71 @@ function _isOutsideBBox(pt, bbox) {
          pt.z < bbox.minZ || pt.z > bbox.maxZ;
 }
 
+function _classifyWallExterior(wo, globalBBox, openings) {
+  if (!wo) return { isExterior: true, confidence: 0.40, reason: 'geen wallOrigin → assume exterior' };
+
+  if (wo.spaceBoundaryType === 'EXTERNAL') {
+    return { isExterior: true, confidence: 0.98, reason: 'IfcRelSpaceBoundary=EXTERNAL' };
+  }
+  if (wo.spaceBoundaryType === 'INTERNAL') {
+    return { isExterior: false, confidence: 0.95, reason: 'IfcRelSpaceBoundary=INTERNAL' };
+  }
+
+  if (wo.wallLengthDir && globalBBox) {
+    const upAxis = wo.heightAxis ?? 'y';
+    const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
+    const ld = wo.wallLengthDir;
+    const cx = ld.y * gu.z - ld.z * gu.y;
+    const cy = ld.z * gu.x - ld.x * gu.z;
+    const cz = ld.x * gu.y - ld.y * gu.x;
+    const clen = Math.sqrt(cx * cx + cy * cy + cz * cz);
+    if (clen > 0.01) {
+      const cA = { x: cx / clen, y: cy / clen, z: cz / clen };
+      const cB = { x: -cx / clen, y: -cy / clen, z: -cz / clen };
+      const wc = { x: 0, y: 0, z: 0 };
+      wc[wo.lengthAxis]    = ((wo.lengthStart ?? 0) + (wo.lengthEnd ?? wo.lengthStart ?? 0)) / 2;
+      wc[wo.heightAxis]    = ((wo.heightStart ?? 0) + (wo.heightEnd ?? wo.heightStart ?? 0)) / 2;
+      wc[wo.thicknessAxis] = (wo.thicknessStart + (wo.thicknessEnd ?? wo.thicknessStart + 200)) / 2;
+      const D = 5000;
+      const tA = { x: wc.x + cA.x * D, y: wc.y + cA.y * D, z: wc.z + cA.z * D };
+      const tB = { x: wc.x + cB.x * D, y: wc.y + cB.y * D, z: wc.z + cB.z * D };
+      const aOut = _isOutsideBBox(tA, globalBBox);
+      const bOut = _isOutsideBBox(tB, globalBBox);
+
+      if (aOut !== bOut) {
+        const hasWindow = (openings ?? []).some(op => op.type === 'raam' && (op.breedte ?? 0) >= _OPENING_MIN_WIDTH);
+        return { isExterior: true, confidence: hasWindow ? 0.97 : 0.90, reason: `bbox_exit: aOut=${aOut} bOut=${bOut}${hasWindow ? ' +raam' : ''}` };
+      }
+      if (!aOut && !bOut) {
+        const windowCount = (openings ?? []).filter(op => op.type === 'raam' && (op.breedte ?? 0) >= _OPENING_MIN_WIDTH).length;
+        if (windowCount >= 1) {
+          return { isExterior: true, confidence: 0.70, reason: `bbox_exit_enclosed: beide zijden binnen, maar ${windowCount} raam/ramen → treat as exterior` };
+        }
+        return { isExterior: false, confidence: 0.75, reason: 'bbox_exit: beide testpunten binnen globalBBox → interior/enclosed' };
+      }
+      return { isExterior: true, confidence: 0.55, reason: 'bbox_exit: beide zijden buiten (geïsoleerde wand?)' };
+    }
+  }
+
+  const hasWindow = (openings ?? []).some(op => op.type === 'raam' && (op.breedte ?? 0) >= _OPENING_MIN_WIDTH);
+  if (hasWindow) return { isExterior: true, confidence: 0.65, reason: 'opening_hint: raam gevonden, geen bbox data' };
+  return { isExterior: true, confidence: 0.40, reason: 'unknown: geen geometrie of boundary data → assume exterior' };
+}
+
 function _resolveOneWallOutside(wo, allOrigins, globalBBox) {
   if (!wo) return { outsideDir: 1, outsidePos: 0, source: 'none', confidence: 0, ambiguous: true, reason: 'no wallOrigin' };
+
+  if (wo.isExterior === false && (wo.exteriorConfidence ?? 0) >= 0.65) {
+    return {
+      outsideDir: null,
+      outsidePos: null,
+      source: 'INTERIOR_WALL',
+      confidence: wo.exteriorConfidence,
+      ambiguous: false,
+      reason: wo.exteriorReason ?? 'classified as interior wall',
+      _debug: null,
+    };
+  }
 
   const tStart = wo.thicknessStart;
   const tEnd = wo.thicknessEnd ?? wo.thicknessStart + 200;
@@ -292,6 +355,10 @@ function _resolveOutsideDirections(walls) {
   const globalBBox = _computeGlobalBBox(allOrigins);
   for (const wall of walls) {
     if (!wall.wallOrigin) continue;
+    const cls = _classifyWallExterior(wall.wallOrigin, globalBBox, wall.openings ?? []);
+    wall.wallOrigin.isExterior = cls.isExterior;
+    wall.wallOrigin.exteriorConfidence = cls.confidence;
+    wall.wallOrigin.exteriorReason = cls.reason;
     const resolved = _resolveOneWallOutside(wall.wallOrigin, allOrigins, globalBBox);
     wall.wallOrigin.resolvedOutside = resolved;
     const openingCheck = _validateOutsideWithOpenings(wall.wallOrigin, wall.openings ?? []);
@@ -866,6 +933,24 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
       }
     } catch { }
 
+    const spaceBoundaryTypeByWall = {};
+    try {
+      const sbVec = api.GetLineIDsWithType(modelID, IFC.IFCRELSPACEBOUNDARY);
+      for (let i = 0; i < sbVec.size(); i++) {
+        try {
+          const rel = api.GetLine(modelID, sbVec.get(i), false);
+          const elemID = rel?.RelatedBuildingElement?.value;
+          if (!elemID) continue;
+          const sense = rel?.InternalOrExternalBoundary?.value ?? null;
+          if (!sense) continue;
+          const isExt = sense !== 'INTERNAL' && sense !== 'NOTDEFINED' && sense !== 'UNDEFINED';
+          if (!spaceBoundaryTypeByWall[elemID] || isExt) {
+            spaceBoundaryTypeByWall[elemID] = isExt ? 'EXTERNAL' : 'INTERNAL';
+          }
+        } catch { }
+      }
+    } catch { }
+
     const walls = [];
     const wallTypesList2 = [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL];
 
@@ -948,6 +1033,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
             matLayerSense: matData?.directSense ?? null,
             matLayerSetDir: matData?.layerSetDir ?? null,
             matOffsetMm: matData?.offset_mm ?? 0,
+            spaceBoundaryType: spaceBoundaryTypeByWall[wID] ?? null,
           };
 
           const openings = [];
@@ -1288,25 +1374,39 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     const grpOutPos = rawFace.outsidePos;
     const grpOutDir = dirFlip ? -rawFace.outsideDir : rawFace.outsideDir;
 
-    if ([1, 5, 7].includes(_groupIdx) && rawFace._debug) {
-      const d = rawFace._debug;
-      console.log(
-        `[calcOutsideFace] groep ${_groupIdx} (${group.name ?? group.id})`,
-        '\n  source:', d.source, '| confidence:', d.confidence, '| reason:', d.reason,
-        '\n  wallLengthDir:', JSON.stringify(rwo.wallLengthDir),
-        '\n  thicknessAxis:', rwo.thicknessAxis,
-        '\n  wallCenter:', JSON.stringify(d.wallCenter),
-        '\n  candidateA:', JSON.stringify(d.candidateA),
-        '\n  candidateB:', JSON.stringify(d.candidateB),
-        '\n  testA:', JSON.stringify(d.testA), '→ outside bbox:', d.aOut,
-        '\n  testB:', JSON.stringify(d.testB), '→ outside bbox:', d.bOut,
-        '\n  globalBBox:', JSON.stringify(d.globalBBox),
-        '\n  chosenOutsideDir:', rawFace.outsideDir,
-        '\n  outsidePos:', grpOutPos, 'mm',
-        '\n  dirFlip:', dirFlip,
-        '\n  grpOutDir (final):', grpOutDir,
-      );
+    if ([1, 5, 7].includes(_groupIdx)) {
+      if (rawFace.outsideDir == null) {
+        console.warn(
+          `[exportGroupsToIfc] INTERIOR_WALL_NO_OUTSIDE_APPLIED groep ${_groupIdx} (${group.name ?? group.id})`,
+          '\n  isExterior:', rwo?.isExterior,
+          '\n  exteriorConfidence:', rwo?.exteriorConfidence,
+          '\n  exteriorReason:', rwo?.exteriorReason,
+          '\n  source:', rawFace._debug?.source ?? 'INTERIOR_WALL',
+          '\n  → groep overgeslagen',
+        );
+      } else if (rawFace._debug) {
+        const d = rawFace._debug;
+        console.log(
+          `[calcOutsideFace] groep ${_groupIdx} (${group.name ?? group.id})`,
+          '\n  isExterior:', rwo?.isExterior, '| exteriorConfidence:', rwo?.exteriorConfidence, '| exteriorReason:', rwo?.exteriorReason,
+          '\n  source:', d.source, '| confidence:', d.confidence, '| reason:', d.reason,
+          '\n  wallLengthDir:', JSON.stringify(rwo?.wallLengthDir),
+          '\n  thicknessAxis:', rwo?.thicknessAxis,
+          '\n  wallCenter:', JSON.stringify(d.wallCenter),
+          '\n  candidateA:', JSON.stringify(d.candidateA),
+          '\n  candidateB:', JSON.stringify(d.candidateB),
+          '\n  testA:', JSON.stringify(d.testA), '→ outside bbox:', d.aOut,
+          '\n  testB:', JSON.stringify(d.testB), '→ outside bbox:', d.bOut,
+          '\n  globalBBox:', JSON.stringify(d.globalBBox),
+          '\n  chosenOutsideDir:', rawFace.outsideDir,
+          '\n  outsidePos:', grpOutPos, 'mm',
+          '\n  dirFlip:', dirFlip,
+          '\n  grpOutDir (final):', grpOutDir,
+        );
+      }
     }
+
+    if (grpOutDir == null) continue;
 
     const groupToWorld = (gx, outDepth, gz) => {
       if (!rwo) return [gx, outDepth, gz];
@@ -1850,6 +1950,24 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
       }
     } catch { }
 
+    const spaceBoundaryTypeByElem = {};
+    try {
+      const sbVecZ = api.GetLineIDsWithType(modelID, IFC.IFCRELSPACEBOUNDARY);
+      for (let i = 0; i < sbVecZ.size(); i++) {
+        try {
+          const rel = api.GetLine(modelID, sbVecZ.get(i), false);
+          const elemID = rel?.RelatedBuildingElement?.value;
+          if (!elemID) continue;
+          const sense = rel?.InternalOrExternalBoundary?.value ?? null;
+          if (!sense) continue;
+          const isExt = sense !== 'INTERNAL' && sense !== 'NOTDEFINED' && sense !== 'UNDEFINED';
+          if (!spaceBoundaryTypeByElem[elemID] || isExt) {
+            spaceBoundaryTypeByElem[elemID] = isExt ? 'EXTERNAL' : 'INTERNAL';
+          }
+        } catch { }
+      }
+    } catch { }
+
     const elements = [];
     let processed = 0;
     let lastYield = Date.now();
@@ -1911,6 +2029,7 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
           matLayerSense: matDataEl?.directSense ?? null,
           matLayerSetDir: matDataEl?.layerSetDir ?? null,
           matOffsetMm: matDataEl?.offset_mm ?? 0,
+          spaceBoundaryType: spaceBoundaryTypeByElem[eID] ?? null,
         };
 
         const facadePoly = getFacadePolygon(api, modelID, eID, lengthAxis, heightAxis, bb);
@@ -1963,6 +2082,10 @@ export function generateOutsideResolutionReport(walls) {
       insideDir: ro?.outsideDir != null ? -ro.outsideDir : null,
       ambiguous: ro?.ambiguous ?? true,
       reason: ro?.reason ?? 'resolvedOutside niet gevuld — her-importeer het IFC-bestand',
+      isExterior: wo?.isExterior ?? null,
+      exteriorConfidence: wo?.exteriorConfidence ?? null,
+      exteriorReason: wo?.exteriorReason ?? null,
+      spaceBoundaryType: wo?.spaceBoundaryType ?? null,
       matLayerSense: wo?.matLayerSense ?? null,
       matLayerSetDir: wo?.matLayerSetDir ?? null,
       thicknessAxis: wo?.thicknessAxis ?? null,
