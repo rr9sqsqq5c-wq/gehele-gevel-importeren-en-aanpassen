@@ -899,6 +899,37 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
       return [p.x, p.y, p.z];
     };
 
+    {
+      const wallsOnSameAxis = allWallOrigins.filter((wo) => wo?.thicknessAxis === rwo?.thicknessAxis);
+      const bldMin = wallsOnSameAxis.length ? Math.min(...wallsOnSameAxis.map((wo) => wo.thicknessStart)) : null;
+      const bldMax = wallsOnSameAxis.length ? Math.max(...wallsOnSameAxis.map((wo) => wo.thicknessEnd ?? wo.thicknessStart + 200)) : null;
+      const stripBatchesDiag = group.stripBatches ?? (group.facadeData?.rows ? [{ rows: group.facadeData.rows }] : null);
+      const firstBatch = stripBatchesDiag?.[0];
+      const firstRow = firstBatch?.rows?.[0];
+      const firstPiece = firstRow?.pieces?.[0];
+      const sampleWorld = firstPiece && rwo ? groupToWorld(firstPiece.start + firstPiece.length / 2, 30, firstRow.y) : null;
+      console.log('[IFC-DIAG] Groep:', group.name ?? group.id, {
+        lengthAxis: rwo?.lengthAxis,
+        heightAxis: rwo?.heightAxis,
+        thicknessAxis: rwo?.thicknessAxis,
+        thicknessStart: rwo?.thicknessStart,
+        thicknessEnd: rwo?.thicknessEnd,
+        wallInsideThickDir: rwo?.wallInsideThickDir,
+        rawOutsidePos: rawFace.outsidePos,
+        rawOutsideDir: rawFace.outsideDir,
+        dirFlip,
+        grpOutPos,
+        grpOutDir,
+        groupMinX,
+        groupMinH,
+        bldThickMin: bldMin,
+        bldThickMax: bldMax,
+        wallsOnSameThickAxis: wallsOnSameAxis.length,
+        firstPiece: firstPiece ? { start: firstPiece.start, length: firstPiece.length } : null,
+        sampleWorldPos: sampleWorld,
+      });
+    }
+
     if (vis.strips !== false) {
       const stripBatches = group.stripBatches ?? (group.facadeData?.rows ? [{ rows: group.facadeData.rows, material, color: brickColor }] : null);
       if (stripBatches?.length && rwo) {
