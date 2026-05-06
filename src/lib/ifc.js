@@ -86,124 +86,154 @@ function _computeNewOutsideDir(wo, allWallOrigins) {
   return (candidateA_t * toOutside_t >= 0) ? (Math.sign(candidateA_t) || 1) : -(Math.sign(candidateA_t) || 1);
 }
 
-function _buildingCenterForAxis(wo, allOrigins) {
-  const axis = wo.thicknessAxis;
-  const tStart = wo.thicknessStart;
-  const tEnd = wo.thicknessEnd ?? wo.thicknessStart + 200;
-  const wallsOnAxis = allOrigins.filter(w => w?.thicknessAxis === axis);
-  const bMin = wallsOnAxis.length ? Math.min(...wallsOnAxis.map(w => w.thicknessStart)) : tStart;
-  const bMax = wallsOnAxis.length ? Math.max(...wallsOnAxis.map(w => w.thicknessEnd ?? w.thicknessStart + 200)) : tEnd;
-  return { buildingCenter_t: (bMin + bMax) / 2, buildingSpan: bMax - bMin };
+function _computeGlobalBBox(allOrigins) {
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  let minZ = Infinity, maxZ = -Infinity;
+  for (const wo of allOrigins) {
+    if (!wo) continue;
+    const axes = [
+      [wo.lengthAxis,    wo.lengthStart,    wo.lengthEnd    ?? wo.lengthStart],
+      [wo.heightAxis,    wo.heightStart,    wo.heightEnd    ?? wo.heightStart],
+      [wo.thicknessAxis, wo.thicknessStart, wo.thicknessEnd ?? wo.thicknessStart + 200],
+    ];
+    for (const [axis, lo, hi] of axes) {
+      if (axis === 'x') { minX = Math.min(minX, lo); maxX = Math.max(maxX, hi); }
+      if (axis === 'y') { minY = Math.min(minY, lo); maxY = Math.max(maxY, hi); }
+      if (axis === 'z') { minZ = Math.min(minZ, lo); maxZ = Math.max(maxZ, hi); }
+    }
+  }
+  return { minX, maxX, minY, maxY, minZ, maxZ };
 }
 
-function _crossProductCandidateT(wo) {
-  if (!wo.wallLengthDir) return null;
-  const axis = wo.thicknessAxis;
-  const upAxis = wo.heightAxis ?? 'y';
-  const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
-  const ld = wo.wallLengthDir;
-  const cx = ld.y * gu.z - ld.z * gu.y;
-  const cy = ld.z * gu.x - ld.x * gu.z;
-  const cz = ld.x * gu.y - ld.y * gu.x;
-  const clen = Math.sqrt(cx * cx + cy * cy + cz * cz);
-  if (clen < 0.01) return null;
-  return (axis === 'x' ? cx : axis === 'y' ? cy : cz) / clen;
+function _isOutsideBBox(pt, bbox) {
+  return pt.x < bbox.minX || pt.x > bbox.maxX ||
+         pt.y < bbox.minY || pt.y > bbox.maxY ||
+         pt.z < bbox.minZ || pt.z > bbox.maxZ;
 }
 
-function _resolveOneWallOutside(wo, allOrigins) {
+function _resolveOneWallOutside(wo, allOrigins, globalBBox) {
   if (!wo) return { outsideDir: 1, outsidePos: 0, source: 'none', confidence: 0, ambiguous: true, reason: 'no wallOrigin' };
 
   const tStart = wo.thicknessStart;
   const tEnd = wo.thicknessEnd ?? wo.thicknessStart + 200;
-  const wallCenter_t = (tStart + tEnd) / 2;
-  const { buildingCenter_t, buildingSpan } = _buildingCenterForAxis(wo, allOrigins);
-  const toOutside_t = wallCenter_t - buildingCenter_t;
-  const geoConfidenceFactor = buildingSpan > 0 ? Math.min(1, Math.abs(toOutside_t) / (buildingSpan / 4)) : 0;
+  const axis = wo.thicknessAxis;
+  const localYT = wo.wallInsideThickDir;
 
-  const crossT = _crossProductCandidateT(wo);
+  const wallCenter = { x: 0, y: 0, z: 0 };
+  wallCenter[wo.lengthAxis]    = ((wo.lengthStart ?? 0) + (wo.lengthEnd ?? wo.lengthStart ?? 0)) / 2;
+  wallCenter[wo.heightAxis]    = ((wo.heightStart ?? 0) + (wo.heightEnd ?? wo.heightStart ?? 0)) / 2;
+  wallCenter[wo.thicknessAxis] = (tStart + tEnd) / 2;
 
+  let candidateA = null;
+  let candidateB = null;
+  if (wo.wallLengthDir) {
+    const upAxis = wo.heightAxis ?? 'y';
+    const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
+    const ld = wo.wallLengthDir;
+    const cx = ld.y * gu.z - ld.z * gu.y;
+    const cy = ld.z * gu.x - ld.x * gu.z;
+    const cz = ld.x * gu.y - ld.y * gu.x;
+    const clen = Math.sqrt(cx * cx + cy * cy + cz * cz);
+    if (clen > 0.01) {
+      candidateA = { x: cx / clen, y: cy / clen, z: cz / clen };
+      candidateB = { x: -cx / clen, y: -cy / clen, z: -cz / clen };
+    }
+  }
+
+  const TEST_DIST = 5000;
   let outsideDir = null;
   let source = null;
   let confidence = 0;
   let reason = '';
+  let ambiguous = false;
+  let testA = null, testB = null, aOut = false, bOut = false;
 
-  const matSense = wo.matLayerSense;
-  const matAxis = wo.matLayerSetDir;
-  const localYT = wo.wallInsideThickDir;
+  if (candidateA && globalBBox) {
+    testA = {
+      x: wallCenter.x + candidateA.x * TEST_DIST,
+      y: wallCenter.y + candidateA.y * TEST_DIST,
+      z: wallCenter.z + candidateA.z * TEST_DIST,
+    };
+    testB = {
+      x: wallCenter.x + candidateB.x * TEST_DIST,
+      y: wallCenter.y + candidateB.y * TEST_DIST,
+      z: wallCenter.z + candidateB.z * TEST_DIST,
+    };
+    aOut = _isOutsideBBox(testA, globalBBox);
+    bOut = _isOutsideBBox(testB, globalBBox);
 
-  if (matSense && matSense !== 'NOTDEFINED' && (matAxis === 'AXIS2' || matAxis == null) && localYT && localYT !== 0) {
-    const senseSign = matSense === 'NEGATIVE' ? -1 : 1;
-    const matOutsideDir = senseSign * localYT;
-    const matOutsideT = matOutsideDir;
-
-    if (crossT !== null) {
-      const geoOutsideDir = (crossT * toOutside_t >= 0) ? (Math.sign(crossT) || 1) : -(Math.sign(crossT) || 1);
-      if (matOutsideDir === geoOutsideDir) {
-        outsideDir = matOutsideDir;
-        source = 'material_layer_set+cross_product';
-        confidence = 0.9 + geoConfidenceFactor * 0.1;
-        reason = `DirectionSense=${matSense}, crossProduct agrees`;
-      } else {
-        const matAgreesBldg = (matOutsideT * toOutside_t >= 0);
-        if (matAgreesBldg) {
-          outsideDir = matOutsideDir;
-          source = 'material_layer_set';
-          confidence = 0.7;
-          reason = `DirectionSense=${matSense} agrees with building center, crossProduct disagrees`;
-          console.warn('[outside-resolver] Wand', wo.globalId ?? '?', ': material en cross-product niet eens — material gekozen, bldg-center klopt');
-        } else {
-          outsideDir = geoOutsideDir;
-          source = 'cross_product_geometric';
-          confidence = 0.6 * geoConfidenceFactor;
-          reason = `DirectionSense=${matSense} disagrees with building center; cross-product used`;
-          console.warn('[outside-resolver] VALIDATION_ERROR_OUTSIDE_AMBIGUOUS wand', wo.globalId ?? '?',
-            '— matOutsideDir:', matOutsideDir, 'geoOutsideDir:', geoOutsideDir, 'toOutside_t:', toOutside_t.toFixed(0));
-        }
-      }
+    if (aOut && !bOut) {
+      outsideDir = Math.sign(candidateA[axis]) || 1;
+      source = 'bbox_exit_cross_product';
+      confidence = 0.95;
+      reason = 'cross(wallLengthDir,globalUp): testA exits globalBBox, testB inside';
+    } else if (bOut && !aOut) {
+      outsideDir = Math.sign(candidateB[axis]) || 1;
+      source = 'bbox_exit_cross_product';
+      confidence = 0.95;
+      reason = 'cross(wallLengthDir,globalUp): testB exits globalBBox, testA inside';
     } else {
-      outsideDir = matOutsideDir;
+      ambiguous = true;
+    }
+  }
+
+  if (outsideDir == null) {
+    const matSense = wo.matLayerSense;
+    const matAxis = wo.matLayerSetDir;
+    if (matSense && matSense !== 'NOTDEFINED' && (matAxis === 'AXIS2' || matAxis == null) && localYT && localYT !== 0) {
+      const senseSign = matSense === 'NEGATIVE' ? -1 : 1;
+      outsideDir = senseSign * localYT;
       source = 'material_layer_set';
-      confidence = 0.75;
-      reason = `DirectionSense=${matSense}, geen crossProduct beschikbaar`;
+      confidence = ambiguous ? 0.6 : 0.75;
+      reason = `DirectionSense=${matSense}${ambiguous ? ' (bbox-test ambiguous)' : ''}`;
     }
-  } else if (crossT !== null) {
-    const candidateA_t = crossT;
-    outsideDir = (candidateA_t * toOutside_t >= 0) ? (Math.sign(candidateA_t) || 1) : -(Math.sign(candidateA_t) || 1);
-    source = 'cross_product_geometric';
-    confidence = 0.65 * geoConfidenceFactor + 0.2;
-    reason = `cross(wallLengthDir, globalUp) vs buildingCenter`;
-    if (geoConfidenceFactor < 0.2) {
-      console.warn('[outside-resolver] VALIDATION_ERROR_OUTSIDE_AMBIGUOUS wand', wo.globalId ?? '?',
-        '— lage geometrische confidence (wand dicht bij gebouwcentrum?), toOutside_t:', toOutside_t.toFixed(0));
-    }
-  } else if (localYT && localYT !== 0) {
+  }
+
+  if (outsideDir == null && localYT && localYT !== 0) {
     outsideDir = -localYT;
     source = 'deprecated_localY_heuristic';
     confidence = 0.35;
     reason = 'deprecated: -wallInsideThickDir (geen matLayerSense, geen wallLengthDir)';
+    ambiguous = true;
     console.warn('[outside-resolver] VALIDATION_ERROR_OUTSIDE_AMBIGUOUS wand', wo.globalId ?? '?',
-      '— deprecated heuristic gebruikt, globalId:', wo.globalId, 'candidate outsideDir:', outsideDir);
-  } else {
-    outsideDir = toOutside_t >= 0 ? 1 : -1;
+      '— deprecated heuristic gebruikt, candidate outsideDir:', outsideDir);
+  }
+
+  if (outsideDir == null) {
+    const wallsOnAxis = (allOrigins ?? []).filter(w => w?.thicknessAxis === axis);
+    const bMin = wallsOnAxis.length ? Math.min(...wallsOnAxis.map(w => w.thicknessStart)) : tStart;
+    const bMax = wallsOnAxis.length ? Math.max(...wallsOnAxis.map(w => w.thicknessEnd ?? w.thicknessStart + 200)) : tEnd;
+    const buildingCenter_t = (bMin + bMax) / 2;
+    outsideDir = wallCenter[axis] - buildingCenter_t >= 0 ? 1 : -1;
     source = 'deprecated_bbox_heuristic';
-    confidence = 0.2 * geoConfidenceFactor;
+    confidence = 0.2;
     reason = 'deprecated: bbox-afstand heuristic (geen geometrie beschikbaar)';
+    ambiguous = true;
     console.warn('[outside-resolver] VALIDATION_ERROR_OUTSIDE_AMBIGUOUS wand', wo.globalId ?? '?',
       '— volledig fallback heuristic, candidate outsideDir:', outsideDir);
   }
 
   if (!outsideDir) outsideDir = 1;
   const outsidePos = outsideDir < 0 ? tStart : tEnd;
-  const ambiguous = confidence < 0.5;
 
-  return { outsideDir, outsidePos, source, confidence: Math.round(confidence * 100) / 100, ambiguous, reason };
+  return {
+    outsideDir,
+    outsidePos,
+    source,
+    confidence: Math.round(confidence * 100) / 100,
+    ambiguous: ambiguous || confidence < 0.5,
+    reason,
+    _debug: { wallCenter, candidateA, candidateB, globalBBox, testA, testB, aOut, bOut },
+  };
 }
 
 function _resolveOutsideDirections(walls) {
   const allOrigins = walls.map(w => w.wallOrigin).filter(Boolean);
+  const globalBBox = _computeGlobalBBox(allOrigins);
   for (const wall of walls) {
     if (!wall.wallOrigin) continue;
-    wall.wallOrigin.resolvedOutside = _resolveOneWallOutside(wall.wallOrigin, allOrigins);
+    wall.wallOrigin.resolvedOutside = _resolveOneWallOutside(wall.wallOrigin, allOrigins, globalBBox);
   }
 }
 
@@ -836,7 +866,9 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
           const wallOrigin = {
             globalId,
             lengthStart:    Math.round(wallBB[`min${lengthAxis.toUpperCase()}`]    * 1000),
+            lengthEnd:      Math.round(wallBB[`max${lengthAxis.toUpperCase()}`]    * 1000),
             heightStart:    Math.round(wallBB[`min${heightAxis.toUpperCase()}`]    * 1000),
+            heightEnd:      Math.round(wallBB[`max${heightAxis.toUpperCase()}`]    * 1000),
             thicknessStart: Math.round(wallBB[`min${thicknessAxis.toUpperCase()}`] * 1000),
             thicknessEnd:   Math.round(wallBB[`max${thicknessAxis.toUpperCase()}`] * 1000),
             lengthAxis,
@@ -1032,7 +1064,9 @@ function calcOutsideFace(rwo, allWallOrigins) {
     return {
       outsidePos: rwo.resolvedOutside.outsidePos,
       outsideDir: rwo.resolvedOutside.outsideDir,
-      _debug: { source: rwo.resolvedOutside.source, confidence: rwo.resolvedOutside.confidence, reason: rwo.resolvedOutside.reason },
+      _debug: rwo.resolvedOutside._debug
+        ? { ...rwo.resolvedOutside._debug, source: rwo.resolvedOutside.source, confidence: rwo.resolvedOutside.confidence, reason: rwo.resolvedOutside.reason }
+        : { source: rwo.resolvedOutside.source, confidence: rwo.resolvedOutside.confidence, reason: rwo.resolvedOutside.reason },
     };
   }
 
@@ -1178,25 +1212,21 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     const grpOutPos = rawFace.outsidePos;
     const grpOutDir = dirFlip ? -rawFace.outsideDir : rawFace.outsideDir;
 
-    if ([1, 4, 5].includes(_groupIdx) && rawFace._debug) {
+    if ([1, 5, 7].includes(_groupIdx) && rawFace._debug) {
       const d = rawFace._debug;
-      const oldFacePos = d.oldOutsideDir < 0 ? rwo.thicknessStart : (rwo.thicknessEnd ?? rwo.thicknessStart + 200);
-      const deltaMm = grpOutPos - oldFacePos;
       console.log(
         `[calcOutsideFace] groep ${_groupIdx} (${group.name ?? group.id})`,
+        '\n  source:', d.source, '| confidence:', d.confidence, '| reason:', d.reason,
         '\n  wallLengthDir:', JSON.stringify(rwo.wallLengthDir),
+        '\n  thicknessAxis:', rwo.thicknessAxis,
+        '\n  wallCenter:', JSON.stringify(d.wallCenter),
         '\n  candidateA:', JSON.stringify(d.candidateA),
         '\n  candidateB:', JSON.stringify(d.candidateB),
-        '\n  buildingCenter_t:', d.buildingCenter_t,
-        '\n  wallCenter_t:', d.wallCenter_t,
-        '\n  toOutside_t:', d.toOutside_t,
-        '\n  chosenOutsideDir (new):', rawFace.outsideDir,
-        '\n  oldOutsideDir:', d.oldOutsideDir,
-        '\n  thicknessAxis:', rwo.thicknessAxis,
-        '\n  thicknessSign (new):', rawFace.outsideDir,
-        '\n  outsidePos (new):', grpOutPos, 'mm',
-        '\n  outsidePos (old):', oldFacePos, 'mm',
-        '\n  delta mm:', deltaMm,
+        '\n  testA:', JSON.stringify(d.testA), '→ outside bbox:', d.aOut,
+        '\n  testB:', JSON.stringify(d.testB), '→ outside bbox:', d.bOut,
+        '\n  globalBBox:', JSON.stringify(d.globalBBox),
+        '\n  chosenOutsideDir:', rawFace.outsideDir,
+        '\n  outsidePos:', grpOutPos, 'mm',
         '\n  dirFlip:', dirFlip,
         '\n  grpOutDir (final):', grpOutDir,
       );
@@ -1792,7 +1822,9 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
         const wallOrigin = {
           globalId: globalIdEl,
           lengthStart:    Math.round(bb[`min${lengthAxis.toUpperCase()}`] * 1000),
+          lengthEnd:      Math.round(bb[`max${lengthAxis.toUpperCase()}`] * 1000),
           heightStart:    Math.round(bb[`min${heightAxis.toUpperCase()}`] * 1000),
+          heightEnd:      Math.round(bb[`max${heightAxis.toUpperCase()}`] * 1000),
           thicknessStart: Math.round(bb[`min${thicknessAxis.toUpperCase()}`] * 1000),
           thicknessEnd:   Math.round(bb[`max${thicknessAxis.toUpperCase()}`] * 1000),
           lengthAxis,
