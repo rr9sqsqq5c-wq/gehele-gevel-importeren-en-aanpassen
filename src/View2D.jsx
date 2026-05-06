@@ -605,7 +605,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       }
     }
 
-    if (penantFaceData?.length) {
+    if (penantFaceData?.length && vis.penanten !== false) {
       for (const { penant: p, front, left: leftSideRows = [], right: rightSideRows = [], height: pH, panelDepthL: penPanelDepthL, panelDepthR: penPanelDepthR, pDL: penDL, pDR: penDR } of penantFaceData) {
         const pX = p.x ?? 0;
         const pB = Math.max(1, p.breedte ?? 400);
@@ -823,7 +823,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       ctx.restore();
     }
 
-    if (penantFaceData?.length >= 1) {
+    if (penantFaceData?.length >= 1 && vis.penanten !== false) {
       const sorted = [...penantFaceData].sort((a, b) => (a.penant.x ?? 0) - (b.penant.x ?? 0));
       const flatZones = [];
       const p0 = sorted[0].penant;
