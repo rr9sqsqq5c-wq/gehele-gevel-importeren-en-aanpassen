@@ -451,9 +451,21 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       if (startLijn != null && startLijn < 0) {
         const [bx, byPeil] = toScreen(0, 0);
         const [, byStart] = toScreen(0, startLijn);
-        ctx.rect(bx - 1, byPeil, faceW + 2, byStart - byPeil + 1);
+        ctx.rect(bx - 1, byPeil + 1, faceW + 2, byStart - byPeil);
       }
-      ctx.clip();
+      if (penantFaceData?.length) {
+        const baseVY = (startLijn != null && startLijn < 0) ? startLijn : 0;
+        for (const { penant: p, height: pH } of penantFaceData) {
+          const pX = p.x ?? 0;
+          const pB = Math.max(1, p.breedte ?? 400);
+          const [penSx] = toScreen(outsideDirFlip ? groupWidth - pX - pB : pX, 0);
+          const penSw = pB * scale * 0.001;
+          const [, penSy] = toScreen(0, baseVY + pH);
+          const penSh = pH * scale * 0.001;
+          ctx.rect(penSx, penSy, penSw, penSh);
+        }
+      }
+      ctx.clip('evenodd');
       if (hasZones) {
         ctx.beginPath();
         for (const sz of stripZones) {
