@@ -350,7 +350,7 @@ function _validateOutsideWithOpenings(wo, openings) {
   return { openingsCount: openings.length, scoredCount: scored, sideAScore: Math.round(sideAScore * 10) / 10, sideBScore: Math.round(sideBScore * 10) / 10, biasedSide, matches, inconsistent, confidenceBoost, note };
 }
 
-function _resolveOutsideDirections(walls) {
+export function resolveOutsideDirections(walls) {
   const allOrigins = walls.map(w => w.wallOrigin).filter(Boolean);
   const globalBBox = _computeGlobalBBox(allOrigins);
   for (const wall of walls) {
@@ -1137,7 +1137,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
         }
       }
 
-    _resolveOutsideDirections(walls);
+    resolveOutsideDirections(walls);
     return walls;
   } finally {
     if (ownModel) {
@@ -2064,7 +2064,7 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
       }
     }
 
-    _resolveOutsideDirections(elements);
+    resolveOutsideDirections(elements);
     return elements;
   } finally {
     if (ownModel) {

@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Fragment } from 'react';
-import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation } from './lib/ifc.js';
+import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import handleidingMd from '../HANDLEIDING.md?raw';
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState } from './lib/storage.js';
@@ -2267,6 +2267,7 @@ export default function App() {
         setSettingsMap(sm);
         if (state.wallDimOverrides && typeof state.wallDimOverrides === 'object') setWallDimOverrides(state.wallDimOverrides);
         if (Array.isArray(state.allWalls) && state.allWalls.length > 0) {
+          resolveOutsideDirections(state.allWalls);
           setAllWalls(state.allWalls);
           setAdjacencies(await detectAdjacenciesAsync(state.allWalls));
           if (state.ifcFileName) setIfcFileName(state.ifcFileName);
@@ -2493,6 +2494,7 @@ export default function App() {
         syncGidRef(loadedGroups, loadedSm);
         const loadedWalls = Array.isArray(data.walls) ? data.walls : [];
         if (loadedWalls.length > 0) {
+          resolveOutsideDirections(loadedWalls);
           setAllWalls(loadedWalls);
           setAdjacencies(await detectAdjacenciesAsync(loadedWalls));
           setLoadStatus('loaded');
