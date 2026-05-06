@@ -3,6 +3,89 @@ let _api = null;
 let _loading = null;
 let _cachedModel = null;
 
+function _extractWallMatrix(api, modelID, expressID) {
+  try {
+    const mesh = api.GetFlatMesh(modelID, expressID);
+    if (!mesh || mesh.geometries.size() === 0) return null;
+    return mesh.geometries.get(0).flatTransformation;
+  } catch {
+    return null;
+  }
+}
+
+function _extractWallAxisCurve(api, modelID, expressID, m) {
+  const transformPt = (lx, ly) => ({
+    x: Math.round((m[0] * lx + m[4] * ly + m[12]) * 1000),
+    y: Math.round((m[1] * lx + m[5] * ly + m[13]) * 1000),
+    z: Math.round((m[2] * lx + m[6] * ly + m[14]) * 1000),
+  });
+  try {
+    const wallLine = api.GetLine(modelID, expressID, false);
+    const repRef = wallLine?.Representation?.value;
+    if (!repRef) return null;
+    const repShape = api.GetLine(modelID, repRef, false);
+    const repsList = repShape?.Representations;
+    if (!repsList) return null;
+    for (const rRef of repsList) {
+      const rep = api.GetLine(modelID, rRef.value, false);
+      if (rep?.RepresentationIdentifier?.value !== 'Axis') continue;
+      const items = rep?.Items;
+      if (!items?.length) continue;
+      const item = api.GetLine(modelID, items[0].value, false);
+      const pts = item?.Points;
+      if (!pts || pts.length < 2) continue;
+      const p0 = api.GetLine(modelID, pts[0].value, false);
+      const pN = api.GetLine(modelID, pts[pts.length - 1].value, false);
+      const coord = (pt, i) => {
+        const c = pt?.Coordinates?.[i];
+        return typeof c === 'number' ? c : (c?.value ?? 0);
+      };
+      const lx0 = coord(p0, 0), ly0 = coord(p0, 1);
+      const lx1 = coord(pN, 0), ly1 = coord(pN, 1);
+      return { start: transformPt(lx0, ly0), end: transformPt(lx1, ly1) };
+    }
+  } catch { }
+  return null;
+}
+
+function _computeOldOutsideDir(wo, allWallOrigins) {
+  if (!wo) return 1;
+  const axis = wo.thicknessAxis;
+  const tStart = wo.thicknessStart;
+  const tEnd = wo.thicknessEnd ?? wo.thicknessStart + 200;
+  if (wo.wallInsideThickDir && wo.wallInsideThickDir !== 0) {
+    return -wo.wallInsideThickDir;
+  }
+  const wallsOnAxis = (allWallOrigins ?? []).filter(w => w?.thicknessAxis === axis);
+  const buildingMin = wallsOnAxis.length ? Math.min(...wallsOnAxis.map(w => w.thicknessStart)) : tStart;
+  const buildingMax = wallsOnAxis.length ? Math.max(...wallsOnAxis.map(w => w.thicknessEnd ?? w.thicknessStart + 200)) : tEnd;
+  return (tStart - buildingMin) <= (buildingMax - tEnd) ? -1 : 1;
+}
+
+function _computeNewOutsideDir(wo, allWallOrigins) {
+  if (!wo) return 1;
+  const axis = wo.thicknessAxis;
+  const tStart = wo.thicknessStart;
+  const tEnd = wo.thicknessEnd ?? wo.thicknessStart + 200;
+  const wallsOnAxis = (allWallOrigins ?? []).filter(w => w?.thicknessAxis === axis);
+  const buildingMin = wallsOnAxis.length ? Math.min(...wallsOnAxis.map(w => w.thicknessStart)) : tStart;
+  const buildingMax = wallsOnAxis.length ? Math.max(...wallsOnAxis.map(w => w.thicknessEnd ?? w.thicknessStart + 200)) : tEnd;
+  const buildingCenter_t = (buildingMin + buildingMax) / 2;
+  const wallCenter_t = (tStart + tEnd) / 2;
+  const toOutside_t = wallCenter_t - buildingCenter_t;
+  if (!wo.wallLengthDir) return _computeOldOutsideDir(wo, allWallOrigins);
+  const upAxis = wo.heightAxis ?? 'y';
+  const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
+  const ld = wo.wallLengthDir;
+  const cx = ld.y * gu.z - ld.z * gu.y;
+  const cy = ld.z * gu.x - ld.x * gu.z;
+  const cz = ld.x * gu.y - ld.y * gu.x;
+  const clen = Math.sqrt(cx * cx + cy * cy + cz * cz);
+  if (clen < 0.01) return _computeOldOutsideDir(wo, allWallOrigins);
+  const candidateA_t = (axis === 'x' ? cx : axis === 'y' ? cy : cz) / clen;
+  return (candidateA_t * toOutside_t >= 0) ? (Math.sign(candidateA_t) || 1) : -(Math.sign(candidateA_t) || 1);
+}
+
 function addScript(src) {
   return new Promise((resolve, reject) => {
     const s = document.createElement("script");
@@ -1557,5 +1640,199 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
       try { api.CloseModel(modelID); } catch {}
       _cachedModel = null;
     }
+  }
+}
+
+export async function validateWallAlignment(file, parsedWalls, onProgress = null) {
+  const { IFC, api } = await getApi();
+
+  let modelID, ownModel = false;
+  if (_cachedModel && _cachedModel.name === file.name && _cachedModel.size === file.size) {
+    modelID = _cachedModel.modelID;
+  } else {
+    if (_cachedModel) { try { api.CloseModel(_cachedModel.modelID); } catch {} _cachedModel = null; }
+    const buffer = await file.arrayBuffer();
+    modelID = api.OpenModel(new Uint8Array(buffer), {});
+    ownModel = true;
+  }
+
+  try {
+    const matUsageByWall = {};
+    try {
+      const relMatVec = api.GetLineIDsWithType(modelID, IFC.IFCRELASSOCIATESMATERIAL);
+      for (let i = 0; i < relMatVec.size(); i++) {
+        try {
+          const rel = api.GetLine(modelID, relMatVec.get(i), false);
+          const matRef = rel?.RelatingMaterial?.value;
+          if (!matRef) continue;
+          const raw = api.GetRawLineData(modelID, matRef);
+          const typeName = api.GetNameFromTypeCode(raw.type).toUpperCase();
+          if (!typeName.includes('MATERIALLAYERSETUSAGE')) continue;
+          const matUsage = api.GetLine(modelID, matRef, false);
+          const directSense = matUsage?.DirectionSense?.value ?? null;
+          const offsetRaw = matUsage?.OffsetFromReferenceLine;
+          const offset = typeof offsetRaw === 'number' ? offsetRaw : (offsetRaw?.value ?? 0);
+          const relObj = rel?.RelatedObjects;
+          if (!relObj) continue;
+          for (const r of relObj) {
+            const wid = r?.value;
+            if (wid != null) matUsageByWall[wid] = { directSense, offset_mm: Math.round(offset * 1000) };
+          }
+        } catch { }
+      }
+    } catch { }
+
+    const allWallOrigins = parsedWalls.map(w => w.wallOrigin).filter(Boolean);
+    const results = [];
+    const total = parsedWalls.length;
+    let processed = 0, lastYield = Date.now();
+
+    for (const wall of parsedWalls) {
+      const eID = wall.expressID;
+      const wo = wall.wallOrigin;
+      const record = {
+        expressID: eID,
+        name: wall.name,
+        globalId: null,
+        lengthAxis: wo?.lengthAxis,
+        heightAxis: wo?.heightAxis,
+        thicknessAxis: wo?.thicknessAxis,
+        checks: {},
+        issues: [],
+        verdict: 'ok',
+      };
+
+      try {
+        const wallLine = api.GetLine(modelID, eID, false);
+        record.globalId = wallLine?.GlobalId?.value ?? null;
+
+        const m = _extractWallMatrix(api, modelID, eID);
+
+        if (m && wo) {
+          const norm = (v) => {
+            const l = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+            return l > 0.001 ? { x: v.x / l, y: v.y / l, z: v.z / l } : null;
+          };
+          const dot3 = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
+          const round3 = (v) => ({ x: Math.round(v.x * 1000) / 1000, y: Math.round(v.y * 1000) / 1000, z: Math.round(v.z * 1000) / 1000 });
+
+          const ifcLocalX = norm({ x: m[0], y: m[1], z: m[2] });
+          const ifcLocalY = norm({ x: m[4], y: m[5], z: m[6] });
+          const ifcOrigin_mm = { x: Math.round(m[12] * 1000), y: Math.round(m[13] * 1000), z: Math.round(m[14] * 1000) };
+
+          if (ifcLocalX && wo.wallLengthDir) {
+            const d = dot3(ifcLocalX, wo.wallLengthDir);
+            const flipped = d < -0.5;
+            const ok = Math.abs(d) > 0.999;
+            record.checks.lengthDir = {
+              ifcLocalX: round3(ifcLocalX),
+              parsedWallLengthDir: round3(wo.wallLengthDir),
+              dot: Math.round(d * 1000) / 1000,
+              flipped,
+              ok,
+            };
+            if (flipped) { record.issues.push('wallLengthDir REVERSED vs IFC localX'); record.verdict = 'error'; }
+            else if (!ok) { record.issues.push('wallLengthDir not aligned with IFC localX'); record.verdict = 'warning'; }
+          } else if (!wo.wallLengthDir) {
+            record.checks.lengthDir = { note: 'wallLengthDir not set — fallback used' };
+            record.issues.push('wallLengthDir missing: outside calc falls back to heuristic');
+            if (record.verdict === 'ok') record.verdict = 'warning';
+          }
+
+          if (ifcLocalY) {
+            const localY_t = ifcLocalY[wo.thicknessAxis] ?? 0;
+            const impliedInsideDir = Math.sign(localY_t) || 0;
+            const impliedOutsideFromY = -impliedInsideDir;
+            const oldDir = _computeOldOutsideDir(wo, allWallOrigins);
+            const newDir = _computeNewOutsideDir(wo, allWallOrigins);
+            const oldPos = oldDir < 0 ? wo.thicknessStart : (wo.thicknessEnd ?? wo.thicknessStart + 200);
+            const newPos = newDir < 0 ? wo.thicknessStart : (wo.thicknessEnd ?? wo.thicknessStart + 200);
+            record.checks.outsideDir = {
+              ifcLocalY: round3(ifcLocalY),
+              localY_t_component: Math.round(localY_t * 1000) / 1000,
+              impliedInsideDir_fromY: impliedInsideDir,
+              impliedOutsideDir_fromY: impliedOutsideFromY,
+              oldOutsideDir: oldDir,
+              oldOutsidePos_mm: oldPos,
+              newOutsideDir: newDir,
+              newOutsidePos_mm: newPos,
+              outsideDirChanged: oldDir !== newDir,
+              delta_mm: newPos - oldPos,
+            };
+            if (oldDir !== newDir) {
+              record.issues.push(`outsideDir changed old=${oldDir} → new=${newDir} (delta ${newPos - oldPos} mm)`);
+              if (record.verdict === 'ok') record.verdict = 'info';
+            }
+            if (impliedOutsideFromY !== 0 && impliedOutsideFromY !== newDir) {
+              record.issues.push(`new outsideDir ${newDir} differs from IFC localY-implied ${impliedOutsideFromY}`);
+              if (record.verdict === 'ok') record.verdict = 'warning';
+            }
+          }
+
+          const matUsage = matUsageByWall[eID];
+          if (matUsage) {
+            record.checks.materialLayerSetUsage = {
+              directSense: matUsage.directSense,
+              offsetFromReferenceLine_mm: matUsage.offset_mm,
+              note: 'POSITIVE=layers in local+Y from ref-line; NEGATIVE=layers in local-Y',
+            };
+          }
+
+          record.checks.placement = {
+            ifcOrigin_mm,
+            thicknessStart_mm: wo.thicknessStart,
+            thicknessEnd_mm: wo.thicknessEnd,
+            ifcOrigin_t: ifcOrigin_mm[wo.thicknessAxis],
+            distToThicknessStart_mm: Math.abs(ifcOrigin_mm[wo.thicknessAxis] - wo.thicknessStart),
+            distToThicknessEnd_mm: Math.abs(ifcOrigin_mm[wo.thicknessAxis] - (wo.thicknessEnd ?? wo.thicknessStart + 200)),
+          };
+
+          const axisCurve = _extractWallAxisCurve(api, modelID, eID, m);
+          if (axisCurve) {
+            const dx = axisCurve.end.x - axisCurve.start.x;
+            const dy = axisCurve.end.y - axisCurve.start.y;
+            const dz = axisCurve.end.z - axisCurve.start.z;
+            const axisLen = Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz));
+            const axisNorm = axisLen > 0 ? { x: dx / axisLen, y: dy / axisLen, z: dz / axisLen } : null;
+            const dotWithParsed = (axisNorm && wo.wallLengthDir) ? dot3(axisNorm, wo.wallLengthDir) : null;
+            const lengthDelta = axisLen - wall.length;
+            record.checks.axisCurve = {
+              ifcAxisStart_mm: axisCurve.start,
+              ifcAxisEnd_mm: axisCurve.end,
+              ifcAxisLength_mm: axisLen,
+              parsedLength_mm: wall.length,
+              lengthDelta_mm: lengthDelta,
+              axisDir: axisNorm ? { x: Math.round(axisNorm.x * 1000) / 1000, y: Math.round(axisNorm.y * 1000) / 1000, z: Math.round(axisNorm.z * 1000) / 1000 } : null,
+              dotAxisDirWithWallLengthDir: dotWithParsed !== null ? Math.round(dotWithParsed * 1000) / 1000 : null,
+              axisReversedVsWallLengthDir: dotWithParsed !== null ? dotWithParsed < -0.5 : null,
+              unitAssumption: 'axis pts read from GetLine; coords assumed WebIFC-normalized (meters); *1000=mm via transform',
+            };
+            if (dotWithParsed !== null && dotWithParsed < -0.5) {
+              record.issues.push('IFC axis direction REVERSED vs wallLengthDir');
+              record.verdict = 'error';
+            }
+            if (Math.abs(lengthDelta) > 50) {
+              record.issues.push(`axis length mismatch: IFC=${axisLen}mm parsed=${wall.length}mm delta=${lengthDelta}mm (may indicate unit issue in axis extraction)`);
+              if (record.verdict === 'ok') record.verdict = 'warning';
+            }
+          } else {
+            record.checks.axisCurve = { note: 'no Axis representation found' };
+          }
+        }
+      } catch (err) {
+        record.issues.push(`extraction error: ${err?.message ?? err}`);
+        record.verdict = 'error';
+      }
+
+      results.push(record);
+      processed++;
+      onProgress?.({ current: processed, total });
+      const now = Date.now();
+      if (now - lastYield > 50) { lastYield = now; await new Promise(r => setTimeout(r, 0)); }
+    }
+
+    return results;
+  } finally {
+    if (ownModel) { try { api.CloseModel(modelID); } catch {} }
   }
 }
