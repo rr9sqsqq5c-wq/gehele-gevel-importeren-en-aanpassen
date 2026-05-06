@@ -737,7 +737,19 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
           const svgs = [];
 
+          const penGroups = new Map();
           pens.forEach((p, idx) => {
+            const key = `${Math.max(1, p.breedte ?? 400)}-${Math.max(1, p.diepteLinks ?? p.diepte ?? 150)}-${Math.max(1, p.diepteRechts ?? p.diepte ?? 150)}-${Math.max(1, p.hoogte ?? 2000)}`;
+            if (!penGroups.has(key)) penGroups.set(key, { firstIdx: idx, count: 0 });
+            penGroups.get(key).count++;
+          });
+
+          pens.forEach((p, idx) => {
+            const penKey = `${Math.max(1, p.breedte ?? 400)}-${Math.max(1, p.diepteLinks ?? p.diepte ?? 150)}-${Math.max(1, p.diepteRechts ?? p.diepte ?? 150)}-${Math.max(1, p.hoogte ?? 2000)}`;
+            const penGroup = penGroups.get(penKey);
+            if (penGroup.firstIdx !== idx) return;
+            const penCount = penGroup.count;
+            const aantalLabel = penCount > 1 ? ` · ${penCount}× te maken` : '';
             const pB = Math.max(1, p.breedte ?? 400);
             const pDL = Math.max(1, p.diepteLinks  ?? p.diepte ?? 150);
             const pDR = Math.max(1, p.diepteRechts ?? p.diepte ?? 150);
@@ -874,7 +886,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   xmlns="http://www.w3.org/2000/svg">
 
                   <text x={cx} y={16} textAnchor="middle" fontSize={9.5} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">
-                    {`Penant ${idx + 1} — dwarsdoorsnede U-vorm (bovenaanzicht)`}
+                    {`Penant ${idx + 1} — dwarsdoorsnede U-vorm (bovenaanzicht)${aantalLabel}`}
                   </text>
                   <text x={cx} y={27} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
                     {`Voorzijde strips = ${mm(pB)} mm  ·  Voorzijde paneel = ${mm(frontPanelW_cs)} mm  ·  Links: ${mm(panelDepthL_cs)} mm (${mm(pDL)}+strip+sv+pd)  ·  Rechts: ${mm(panelDepthR_cs)} mm (${mm(pDR)}+strip+sv+pd)  ·  Strip: ${mm(brickDepth)} mm`}
@@ -968,7 +980,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 xmlns="http://www.w3.org/2000/svg">
 
                 <text x={ox} y={18} fontSize={10} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">
-                  Penant {idx + 1} — uitgeslagen constructie · X={mm(p.x ?? 0)} mm
+                  {`Penant ${idx + 1} — uitgeslagen constructie · X=${mm(p.x ?? 0)} mm${aantalLabel}`}
                 </text>
                 <text x={ox} y={30} fontSize={7.5} fill="#64748b" fontFamily="Arial, sans-serif">
                   Uitgeslagen breedte: {mm(totalUnfoldW)} mm · Hoogte: {mm(pH)} mm · {aantalSecties} U-sectie{aantalSecties !== 1 ? 's' : ''} · ≈{mm(sectieH)} mm/sectie
@@ -1128,7 +1140,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   xmlns="http://www.w3.org/2000/svg">
 
                   <text x={pOx} y={18} fontSize={10} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">
-                    Penant {idx + 1} — paneel afmetingen (uitgeslagen)
+                    {`Penant ${idx + 1} — paneel afmetingen (uitgeslagen)${aantalLabel}`}
                   </text>
                   <text x={pOx} y={30} fontSize={7.5} fill="#64748b" fontFamily="Arial, sans-serif">
                     {`Links: ${mm(physDepthL)} mm  ·  Voorzijde: ${mm(frontPanelW_panel)} mm  ·  Rechts: ${mm(physDepthR)} mm  ·  Totaal: ${mm(panelTotalW)} mm  ·  Hoogte: ${mm(pH)} mm`}
@@ -1208,7 +1220,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', flexShrink: 0 }}
                     xmlns="http://www.w3.org/2000/svg">
                     <text x={sox} y={18} fontSize={10} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">
-                      Penant {idx + 1} — U{si + 1} · {mm(secH)} mm hoog
+                      {`Penant ${idx + 1} — U${si + 1} · ${mm(secH)} mm hoog${aantalLabel}`}
                     </text>
                     <text x={sox} y={30} fontSize={7.5} fill="#64748b" fontFamily="Arial, sans-serif">
                       {mm(secBottom)}–{mm(secTop)} mm · {mm(totalUnfoldW)} mm breed · {verband}
@@ -1222,7 +1234,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     <line x1={sux(frontX)} y1={suy(secTop)} x2={sux(frontX)} y2={suy(secBottom)} stroke="#475569" strokeWidth={0.7} strokeDasharray="3,2" />
                     <line x1={sux(rightX)} y1={suy(secTop)} x2={sux(rightX)} y2={suy(secBottom)} stroke="#475569" strokeWidth={0.7} strokeDasharray="3,2" />
                     <DimH x1={sux(leftX)} x2={sux(frontX)} y={suy(secBottom) + 28} label={`${mm(physDepthL)} mm`} />
-                    <DimH x1={sux(frontX)} x2={sux(rightX)} y={suy(secBottom) + 28} label={`${mm(pB)} mm`} />
+                    <DimH x1={sux(frontX + brickDepth)} x2={sux(rightX - brickDepth)} y={suy(secBottom) + 28} label={`${mm(Math.max(0, pB - 2 * brickDepth))} mm`} />
                     <DimH x1={sux(rightX)} x2={sux(rightX + physDepthR)} y={suy(secBottom) + 28} label={`${mm(physDepthR)} mm`} />
                     <DimV x={sox - 20} y1={suy(secTop)} y2={suy(secBottom)} label={`${mm(secH)} mm`} side="left" />
                   </svg>
