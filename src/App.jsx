@@ -1583,6 +1583,14 @@ export default function App() {
       const withOrigin = walls.filter((w) => w.wallOrigin);
       if (!withOrigin.length) continue;
       const mat = s.material ?? DEFAULT_MATERIAL;
+      const _artId3d = (s.lattenArtikelen ?? [])[0] ?? null;
+      const _art3d = _artId3d ? BATTEN_CATALOG.find((a) => a.id === _artId3d) : null;
+      const latDikte3d = _art3d ? _art3d.dikteMM : (s.latten?.dikte ?? 28);
+      const hasVertLat3d = s.latten?.richting === 'verticaal';
+      const effectiveLatDepth3d = hasVertLat3d ? 2 * latDikte3d : latDikte3d;
+      const panelDikte3d = s.panelen?.dikte ?? 8;
+      const brickD3dEarly = s.brickDepth ?? 20;
+      const depthFromFaceGeneral = effectiveLatDepth3d + panelDikte3d + brickD3dEarly / 2;
       const facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn);
       if (!facadeData) {
         const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
@@ -1605,7 +1613,7 @@ export default function App() {
         }
         if (!allRows.length) continue;
         result[group.id] = {
-          batches: [{ rows: allRows, color: s.color ?? '#a64033', brickH: brickH3d }],
+          batches: [{ rows: allRows, color: s.color ?? '#a64033', brickH: brickH3d, depthFromFace: depthFromFaceGeneral }],
           groupMinX: gMinX,
           groupMinH: gMinH,
           refWallOrigin: rwo,
@@ -1691,8 +1699,8 @@ export default function App() {
       const groupVerband3d = s.verband ?? DEFAULT_VERBAND;
       const groupBrickH3d = groupVerband3d === 'staand_tegelverband' ? mat.steenL : mat.steenH;
       const batches = [
-        { rows: generalRows, color: s.color ?? '#a64033', brickH: groupBrickH3d },
-        ...enabledZones.map((ez) => ({ rows: ez.rows, color: ez.color, brickH: ez.brickH })),
+        { rows: generalRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, depthFromFace: depthFromFaceGeneral },
+        ...enabledZones.map((ez) => ({ rows: ez.rows, color: ez.color, brickH: ez.brickH, depthFromFace: depthFromFaceGeneral })),
       ];
 
       for (const pen of (s.penanten ?? [])) {
@@ -1703,8 +1711,8 @@ export default function App() {
         const pDmax3 = Math.max(pDL3, pDR3);
         const maxH = s.maxHoogte ?? 0;
         const pH  = Math.max(1, (maxH != null && maxH > 0) ? Math.min(pen.hoogte ?? 2000, maxH) : (pen.hoogte ?? 2000));
-        const panelDikte = s.panelen?.dikte ?? 8;
-        const latD = s.latten?.dikte ?? 28;
+        const panelDikte = panelDikte3d;
+        const latD = latDikte3d;
         const penStoot = mat.stoot ?? 10;
         const penShift = panelDikte + brickD3d + penStoot + pDmax3;
         const depthFromFace = latD + penShift + brickD3d / 2;

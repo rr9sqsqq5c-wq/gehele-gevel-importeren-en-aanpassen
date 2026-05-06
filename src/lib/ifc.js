@@ -1055,7 +1055,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
       const zwH = Math.max(0, zw.offsetH ?? 0);
       const zwV = Math.max(0, zw.offsetV ?? 0);
       const { axisStr, refStr } = makeGroupAxes();
-      const depth = brickD / 2;
+      const depth = effectiveLatDepth + panelDikte + brickD / 2;
       for (const op of (group.facadeData.groupOpenings ?? [])) {
         const opPoly = getOpeningPoly(op);
         const opLs = opPoly.map(p => p.l), opHs = opPoly.map(p => p.h);
