@@ -87,11 +87,6 @@ function getOutsideFaceInfo(rwo, allWalls) {
   const tStart = rwo.thicknessStart;
   const tEnd = rwo.thicknessEnd ?? rwo.thicknessStart + 200;
 
-  if (rwo.wallInsideThickDir && rwo.wallInsideThickDir !== 0) {
-    const outsideDir = -rwo.wallInsideThickDir;
-    return { outsidePos: outsideDir < 0 ? tStart : tEnd, outsideDir };
-  }
-
   const wallsOnAxis = (allWalls ?? []).filter((w) => w.wallOrigin?.thicknessAxis === axis);
   const buildingMin = wallsOnAxis.length
     ? Math.min(...wallsOnAxis.map((w) => w.wallOrigin.thicknessStart))
@@ -99,12 +94,37 @@ function getOutsideFaceInfo(rwo, allWalls) {
   const buildingMax = wallsOnAxis.length
     ? Math.max(...wallsOnAxis.map((w) => w.wallOrigin.thicknessEnd ?? w.wallOrigin.thicknessStart + 200))
     : tEnd;
+  const buildingCenter_t = (buildingMin + buildingMax) / 2;
+  const wallCenter_t = (tStart + tEnd) / 2;
+
+  if (rwo.wallLengthDir) {
+    const upAxis = rwo.heightAxis ?? 'y';
+    const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
+    const ld = rwo.wallLengthDir;
+    const cx = ld.y * gu.z - ld.z * gu.y;
+    const cy = ld.z * gu.x - ld.x * gu.z;
+    const cz = ld.x * gu.y - ld.y * gu.x;
+    const clen = Math.sqrt(cx * cx + cy * cy + cz * cz);
+    if (clen > 0.01) {
+      const candidateA_t = (axis === 'x' ? cx : axis === 'y' ? cy : cz) / clen;
+      const toOutside_t = wallCenter_t - buildingCenter_t;
+      const outsideDir = (candidateA_t * toOutside_t >= 0)
+        ? (Math.sign(candidateA_t) || 1)
+        : -(Math.sign(candidateA_t) || 1);
+      return { outsidePos: outsideDir < 0 ? tStart : tEnd, outsideDir };
+    }
+  }
+
+  if (rwo.wallInsideThickDir && rwo.wallInsideThickDir !== 0) {
+    const outsideDir = -rwo.wallInsideThickDir;
+    return { outsidePos: outsideDir < 0 ? tStart : tEnd, outsideDir };
+  }
+
   const distToMin = tStart - buildingMin;
   const distToMax = buildingMax - tEnd;
-  if (distToMin <= distToMax) {
-    return { outsidePos: tStart, outsideDir: -1 };
-  }
-  return { outsidePos: tEnd, outsideDir: +1 };
+  return distToMin <= distToMax
+    ? { outsidePos: tStart, outsideDir: -1 }
+    : { outsidePos: tEnd, outsideDir: +1 };
 }
 
 function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth = 20, panelDikte = 8, penantShift = 0, outsideDirFlip = false, materialStoot = 10) {
