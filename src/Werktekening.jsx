@@ -812,8 +812,8 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               const hpD_cs = (p.hoekprofiel?.enabled !== false) ? (p.hoekprofiel?.dikte ?? 2) : 0;
               const panelDikte_cs = groupSettings?.panelen?.dikte ?? 8;
               const sideClipOffset = Math.max(stoot, panelDikte_cs);
-              const panelDepthL_cs = Math.max(1, pDL + brickDepth);
-              const panelDepthR_cs = Math.max(1, pDR + brickDepth);
+              const panelDepthL_cs = Math.max(1, pDL + brickDepth + stoot + panelDikte_cs);
+              const panelDepthR_cs = Math.max(1, pDR + brickDepth + stoot + panelDikte_cs);
               const pDmax_cs = Math.max(pDL, pDR);
               const zijPaneelMax = Math.max(panelDepthL_cs, panelDepthR_cs) + stoot;
               const frontPanelW_cs = Math.max(0, pB - 2 * brickDepth);
@@ -825,7 +825,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               const drawH = CSH - pad.t - pad.b;
 
               const totalCSW = pB;
-              const totalCSH = pDmax_cs + brickDepth + stoot + panelDikte_cs + 14;
+              const totalCSH = brickDepth + panelDikte_cs + zijPaneelMax + stoot + 14;
               const scH = drawH / totalCSH;
               const scW = drawW / totalCSW;
               const sc2 = Math.min(scH, scW);
@@ -871,7 +871,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     {`Penant ${idx + 1} — dwarsdoorsnede U-vorm (bovenaanzicht)`}
                   </text>
                   <text x={cx} y={27} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
-                    {`Voorzijde strips = ${mm(pB)} mm  ·  Voorzijde paneel = ${mm(frontPanelW_cs)} mm  ·  Links: ${mm(panelDepthL_cs)} mm (${mm(pDL)}+strip)  ·  Rechts: ${mm(panelDepthR_cs)} mm (${mm(pDR)}+strip)  ·  Strip: ${mm(brickDepth)} mm`}
+                    {`Voorzijde strips = ${mm(pB)} mm  ·  Voorzijde paneel = ${mm(frontPanelW_cs)} mm  ·  Links: ${mm(panelDepthL_cs)} mm (${mm(pDL)}+strip+sv+pd)  ·  Rechts: ${mm(panelDepthR_cs)} mm (${mm(pDR)}+strip+sv+pd)  ·  Strip: ${mm(brickDepth)} mm`}
                   </text>
                   <text x={cx} y={37} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
                     {`Paneeldikte = ${mm(panelDikte_cs)} mm  ·  Clip offset = max(sv, pD) = max(${mm(stoot)}, ${mm(panelDikte_cs)}) = ${mm(sideClipOffset)} mm`}
@@ -950,7 +950,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     <rect x={280} y={0} width={10} height={7} fill="#fff7ed" stroke="#f59e0b" strokeWidth={0.8} strokeDasharray="2,2" /><text x={293} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`Stootvoeg ext. (${mm(stoot)} mm)`}</text>
                     <rect x={420} y={0} width={10} height={7} fill="#fca5a5" fillOpacity={0.4} stroke="#dc2626" strokeWidth={0.4} strokeDasharray="2,2" /><text x={433} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`Geen strip zone (${mm(sideClipOffset)} mm)`}</text>
                     {hpD_cs > 0 && <><rect x={560} y={0} width={10} height={7} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} /><text x={573} y={6} fontSize={6} fill="#334155" fontFamily="Arial, sans-serif">{`L-profiel (${mm(hpD_cs)} mm)`}</text></>}
-                    <text x={0} y={18} fontSize={6.5} fill="#475569" fontFamily="Arial, sans-serif">{`Voorzijde strips = ${mm(pB)} mm  ·  Voorzijde paneel = strips − 2×strip diepte = ${mm(pB)} − 2×${mm(brickDepth)} = ${mm(frontPanelW_cs)} mm  ·  Clip offset = max(sv,pd) = ${mm(sideClipOffset)} mm`}</text>
+                    <text x={0} y={18} fontSize={6.5} fill="#475569" fontFamily="Arial, sans-serif">{`Voorzijde strips = ${mm(pB)} mm  ·  Voorzijde paneel = ${mm(frontPanelW_cs)} mm  ·  Zijvlak diepte = uitgroep + strip(${mm(brickDepth)}) + sv(${mm(stoot)}) + pd(${mm(panelDikte_cs)})  ·  Clip offset = ${mm(sideClipOffset)} mm`}</text>
                   </g>
                 </svg>
               );
