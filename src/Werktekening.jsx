@@ -812,6 +812,8 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               const hpD_cs = (p.hoekprofiel?.enabled !== false) ? (p.hoekprofiel?.dikte ?? 2) : 0;
               const panelDikte_cs = groupSettings?.panelen?.dikte ?? 8;
               const sideClipOffset = Math.max(stoot, panelDikte_cs);
+              const stripDepthL_cs = Math.max(1, pDL + brickDepth);
+              const stripDepthR_cs = Math.max(1, pDR + brickDepth);
               const panelDepthL_cs = Math.max(1, pDL + brickDepth + stoot + panelDikte_cs);
               const panelDepthR_cs = Math.max(1, pDR + brickDepth + stoot + panelDikte_cs);
               const pDmax_cs = Math.max(pDL, pDR);
@@ -835,6 +837,8 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               const pT   = panelDikte_cs * sc2;
               const pB2  = pB * sc2;
               const fpW2 = innerClearW_cs * sc2;
+              const sDL2 = stripDepthL_cs * sc2;
+              const sDR2 = stripDepthR_cs * sc2;
               const pDL2 = panelDepthL_cs * sc2;
               const pDR2 = panelDepthR_cs * sc2;
               const zij2 = zijPaneelMax * sc2;
@@ -881,10 +885,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   <text x={cx} y={gevelY + 16} textAnchor="middle" fontSize={7} fill="#94a3b8" fontFamily="Arial, sans-serif">▼ GEVEL</text>
 
                   {/* Linkerzijde strip - start ONDER voorzijdestrip + stootvoeg gap */}
-                  <rect x={lStripL} y={fpTopY + sv2} width={bd2} height={pT + pDL2 - sv2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
+                  <rect x={lStripL} y={fpTopY + sv2} width={bd2} height={pT + sDL2 - sv2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
 
                   {/* Rechterzijde strip - start ONDER voorzijdestrip + stootvoeg gap */}
-                  <rect x={rPanelR} y={fpTopY + sv2} width={bd2} height={pT + pDR2 - sv2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
+                  <rect x={rPanelR} y={fpTopY + sv2} width={bd2} height={pT + sDR2 - sv2} fill="#fef3c7" stroke="#d97706" strokeWidth={0.8} />
 
                   {/* Stootvoeg hoek L: witte gap tussen voorzijdestrip en zijstrip */}
                   <rect x={lStripL} y={fpTopY} width={bd2} height={sv2} fill="#fff" stroke="#d97706" strokeWidth={0.5} strokeDasharray="2,2" />
