@@ -454,12 +454,16 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         ctx.rect(bx - 1, byPeil + 1, faceW + 2, byStart - byPeil);
       }
       if (penantFaceData?.length) {
+        const STRIP_LAT_GAP = 5;
         const baseVY = (startLijn != null && startLijn < 0) ? startLijn : 0;
         for (const { penant: p, height: pH } of penantFaceData) {
           const pX = p.x ?? 0;
           const pB = Math.max(1, p.breedte ?? 400);
-          const [penSx] = toScreen(outsideDirFlip ? groupWidth - pX - pB : pX, 0);
-          const penSw = pB * scale * 0.001;
+          const clipX = pX + STRIP_LAT_GAP;
+          const clipW = Math.max(0, pB - 2 * STRIP_LAT_GAP);
+          if (clipW <= 0) continue;
+          const [penSx] = toScreen(outsideDirFlip ? groupWidth - clipX - clipW : clipX, 0);
+          const penSw = clipW * scale * 0.001;
           const [, penSy] = toScreen(0, baseVY + pH);
           const penSh = pH * scale * 0.001;
           ctx.rect(penSx, penSy, penSw, penSh);
