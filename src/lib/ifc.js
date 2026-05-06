@@ -353,6 +353,7 @@ function _validateOutsideWithOpenings(wo, openings) {
 export function resolveOutsideDirections(walls) {
   const allOrigins = walls.map(w => w.wallOrigin).filter(Boolean);
   const globalBBox = _computeGlobalBBox(allOrigins);
+  let overrideCount = 0, noThicknessCount = 0;
   for (const wall of walls) {
     if (!wall.wallOrigin) continue;
     const cls = _classifyWallExterior(wall.wallOrigin, globalBBox, wall.openings ?? []);
@@ -370,8 +371,11 @@ export function resolveOutsideDirections(walls) {
       resolved.reason += ` [window-bias override: outsideDir geflipped naar ${resolved.outsideDir}]`;
       resolved.confidence = 0.58;
       resolved.ambiguous = false;
+      overrideCount++;
     } else if (openingCheck.matches === true && resolved.confidence < 0.99) {
       resolved.confidence = Math.min(0.99, Math.round((resolved.confidence + openingCheck.confidenceBoost) * 100) / 100);
+    } else if (openingCheck.inconsistent && openingCheck.biasedSide === null) {
+      noThicknessCount++;
     }
     if (openingCheck.inconsistent && resolved.source && !resolved.source.includes('window_bias_override')) {
       console.warn('[outside-resolver] OPENING_CONSISTENCY_FAIL wand', wall.wallOrigin.globalId ?? '?',
@@ -379,6 +383,7 @@ export function resolveOutsideDirections(walls) {
     }
     resolved.openingCheck = openingCheck;
   }
+  console.log(`[resolveOutsideDirections] ${walls.length} wanden verwerkt: ${overrideCount} window-bias overrides toegepast, ${noThicknessCount} wanden zonder thicknessCenter (override kon niet vuren)`);
 }
 
 function addScript(src) {
