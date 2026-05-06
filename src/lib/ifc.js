@@ -793,12 +793,6 @@ function calcOutsideFace(rwo, allWallOrigins) {
   const tStart = rwo.thicknessStart;
   const tEnd = rwo.thicknessEnd ?? rwo.thicknessStart + 200;
 
-  if (rwo.wallInsideThickDir && rwo.wallInsideThickDir !== 0) {
-    const outsideDir = -rwo.wallInsideThickDir;
-    const outsidePos = outsideDir < 0 ? tStart : tEnd;
-    return { outsidePos, outsideDir };
-  }
-
   const wallsOnAxis = (allWallOrigins ?? []).filter((wo) => wo?.thicknessAxis === axis);
   const buildingMin = wallsOnAxis.length
     ? Math.min(...wallsOnAxis.map((wo) => wo.thicknessStart))
@@ -806,11 +800,44 @@ function calcOutsideFace(rwo, allWallOrigins) {
   const buildingMax = wallsOnAxis.length
     ? Math.max(...wallsOnAxis.map((wo) => wo.thicknessEnd ?? wo.thicknessStart + 200))
     : tEnd;
-  const distToMin = tStart - buildingMin;
-  const distToMax = buildingMax - tEnd;
-  return distToMin <= distToMax
-    ? { outsidePos: tStart, outsideDir: -1 }
-    : { outsidePos: tEnd, outsideDir: 1 };
+  const buildingCenter_t = (buildingMin + buildingMax) / 2;
+  const wallCenter_t = (tStart + tEnd) / 2;
+
+  let outsideDir = null;
+  let debugInfo = null;
+
+  if (rwo.wallLengthDir) {
+    const upAxis = rwo.heightAxis ?? 'y';
+    const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
+    const ld = rwo.wallLengthDir;
+    const cx = ld.y * gu.z - ld.z * gu.y;
+    const cy = ld.z * gu.x - ld.x * gu.z;
+    const cz = ld.x * gu.y - ld.y * gu.x;
+    const clen = Math.sqrt(cx * cx + cy * cy + cz * cz);
+    if (clen > 0.01) {
+      const candidateA = { x: cx / clen, y: cy / clen, z: cz / clen };
+      const candidateB = { x: -cx / clen, y: -cy / clen, z: -cz / clen };
+      const toOutside_t = wallCenter_t - buildingCenter_t;
+      const candidateA_t = candidateA[axis] ?? 0;
+      const sign = candidateA_t * toOutside_t >= 0 ? (Math.sign(candidateA_t) || 1) : -(Math.sign(candidateA_t) || 1);
+      outsideDir = sign;
+      debugInfo = { candidateA, candidateB, buildingCenter_t, wallCenter_t, toOutside_t, candidateA_t };
+    }
+  }
+
+  let oldOutsideDir;
+  if (rwo.wallInsideThickDir && rwo.wallInsideThickDir !== 0) {
+    oldOutsideDir = -rwo.wallInsideThickDir;
+  } else {
+    const distToMin = tStart - buildingMin;
+    const distToMax = buildingMax - tEnd;
+    oldOutsideDir = distToMin <= distToMax ? -1 : 1;
+  }
+
+  if (outsideDir == null) outsideDir = oldOutsideDir;
+
+  const outsidePos = outsideDir < 0 ? tStart : tEnd;
+  return { outsidePos, outsideDir, _debug: debugInfo ? { ...debugInfo, oldOutsideDir } : null };
 }
 
 export function exportGroupsToIfc(groups, wallSettings, fileName) {
@@ -871,7 +898,9 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
 
   const allProxyIds = [];
 
+  let _groupIdx = 0;
   for (const group of groups) {
+    _groupIdx++;
     const settings = wallSettings[group.id] ?? {};
     const brickColor = settings.stripColor ?? settings.color ?? '#a64033';
     const brickD = settings.brickDepth ?? 20;
@@ -901,6 +930,30 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
     const dirFlip = !!(settings.outsideDirFlip);
     const grpOutPos = rawFace.outsidePos;
     const grpOutDir = dirFlip ? -rawFace.outsideDir : rawFace.outsideDir;
+
+    if ([1, 4, 5].includes(_groupIdx) && rawFace._debug) {
+      const d = rawFace._debug;
+      const oldFacePos = d.oldOutsideDir < 0 ? rwo.thicknessStart : (rwo.thicknessEnd ?? rwo.thicknessStart + 200);
+      const deltaMm = grpOutPos - oldFacePos;
+      console.log(
+        `[calcOutsideFace] groep ${_groupIdx} (${group.name ?? group.id})`,
+        '\n  wallLengthDir:', JSON.stringify(rwo.wallLengthDir),
+        '\n  candidateA:', JSON.stringify(d.candidateA),
+        '\n  candidateB:', JSON.stringify(d.candidateB),
+        '\n  buildingCenter_t:', d.buildingCenter_t,
+        '\n  wallCenter_t:', d.wallCenter_t,
+        '\n  toOutside_t:', d.toOutside_t,
+        '\n  chosenOutsideDir (new):', rawFace.outsideDir,
+        '\n  oldOutsideDir:', d.oldOutsideDir,
+        '\n  thicknessAxis:', rwo.thicknessAxis,
+        '\n  thicknessSign (new):', rawFace.outsideDir,
+        '\n  outsidePos (new):', grpOutPos, 'mm',
+        '\n  outsidePos (old):', oldFacePos, 'mm',
+        '\n  delta mm:', deltaMm,
+        '\n  dirFlip:', dirFlip,
+        '\n  grpOutDir (final):', grpOutDir,
+      );
+    }
 
     const groupToWorld = (gx, outDepth, gz) => {
       if (!rwo) return [gx, outDepth, gz];
