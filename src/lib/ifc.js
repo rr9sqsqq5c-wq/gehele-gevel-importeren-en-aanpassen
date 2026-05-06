@@ -46,6 +46,7 @@ function getBBox(api, modelID, expressID) {
   let minY = Infinity, maxY = -Infinity;
   let minZ = Infinity, maxZ = -Infinity;
   let ok = false;
+  let localXDir = null;
   let localYDir = null;
 
   for (let gi = 0; gi < mesh.geometries.size(); gi++) {
@@ -56,6 +57,9 @@ function getBBox(api, modelID, expressID) {
       const verts = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
       const m = placed.flatTransformation;
 
+      if (!localXDir) {
+        localXDir = { x: m[0], y: m[1], z: m[2] };
+      }
       if (!localYDir) {
         localYDir = { x: m[4], y: m[5], z: m[6] };
       }
@@ -75,7 +79,7 @@ function getBBox(api, modelID, expressID) {
     }
   }
 
-  return ok ? { minX, maxX, minY, maxY, minZ, maxZ, localYDir } : null;
+  return ok ? { minX, maxX, minY, maxY, minZ, maxZ, localXDir, localYDir } : null;
 }
 
 function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
@@ -589,6 +593,13 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
             if (Math.abs(comp) > 0.5) wallInsideThickDir = comp > 0 ? 1 : -1;
           }
 
+          let wallLengthDir = null;
+          if (wallBB.localXDir) {
+            const { x, y, z } = wallBB.localXDir;
+            const len = Math.sqrt(x * x + y * y + z * z);
+            if (len > 0.01) wallLengthDir = { x: x / len, y: y / len, z: z / len };
+          }
+
           const wallOrigin = {
             lengthStart:    Math.round(wallBB[`min${lengthAxis.toUpperCase()}`]    * 1000),
             heightStart:    Math.round(wallBB[`min${heightAxis.toUpperCase()}`]    * 1000),
@@ -598,6 +609,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
             heightAxis,
             thicknessAxis,
             wallInsideThickDir,
+            wallLengthDir,
           };
 
           const openings = [];
@@ -1441,6 +1453,13 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
           if (Math.abs(comp) > 0.5) wallInsideThickDirEl = comp > 0 ? 1 : -1;
         }
 
+        let wallLengthDirEl = null;
+        if (bb.localXDir) {
+          const { x, y, z } = bb.localXDir;
+          const len = Math.sqrt(x * x + y * y + z * z);
+          if (len > 0.01) wallLengthDirEl = { x: x / len, y: y / len, z: z / len };
+        }
+
         const wallOrigin = {
           lengthStart:    Math.round(bb[`min${lengthAxis.toUpperCase()}`] * 1000),
           heightStart:    Math.round(bb[`min${heightAxis.toUpperCase()}`] * 1000),
@@ -1450,6 +1469,7 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
           heightAxis,
           thicknessAxis,
           wallInsideThickDir: wallInsideThickDirEl,
+          wallLengthDir: wallLengthDirEl,
         };
 
         const facadePoly = getFacadePolygon(api, modelID, eID, lengthAxis, heightAxis, bb);
