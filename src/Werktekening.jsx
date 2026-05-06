@@ -1106,6 +1106,89 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               </svg>
             );
 
+            (() => {
+              const frontPanelW_panel = Math.max(0, pB - 2 * brickDepth);
+              const panelTotalW = physDepthL + frontPanelW_panel + physDepthR;
+              const scP = Math.min((MAX_UNFOLD_W - PAD_L - PAD_R) / panelTotalW, (MAX_UNFOLD_H - PAD_T - PAD_B) / pH);
+              const pdW = Math.round(panelTotalW * scP);
+              const pdH = Math.round(pH * scP);
+              const psvgW = Math.max(pdW + PAD_L + PAD_R, 820);
+              const psvgH = pdH + PAD_T + PAD_B;
+              const pOx = PAD_L;
+              const px = (x) => pOx + x * scP;
+              const py = (y) => PAD_T + pdH - y * scP;
+              const pLeftX = 0;
+              const pFrontX = physDepthL;
+              const pRightX = physDepthL + frontPanelW_panel;
+              const pEndX = panelTotalW;
+
+              svgs.push(
+                <svg key={`panel-${p.id ?? idx}`} width={psvgW} height={psvgH} viewBox={`0 0 ${psvgW} ${psvgH}`}
+                  style={{ background: '#fff', border: '1px solid #93c5fd', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', display: 'block' }}
+                  xmlns="http://www.w3.org/2000/svg">
+
+                  <text x={pOx} y={18} fontSize={10} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">
+                    Penant {idx + 1} — paneel afmetingen (uitgeslagen)
+                  </text>
+                  <text x={pOx} y={30} fontSize={7.5} fill="#64748b" fontFamily="Arial, sans-serif">
+                    {`Links: ${mm(physDepthL)} mm  ·  Voorzijde: ${mm(frontPanelW_panel)} mm  ·  Rechts: ${mm(physDepthR)} mm  ·  Totaal: ${mm(panelTotalW)} mm  ·  Hoogte: ${mm(pH)} mm`}
+                  </text>
+
+                  <rect x={px(pLeftX)} y={py(pH)} width={physDepthL * scP} height={pdH} fill="#dbeafe" stroke="#1e3a5f" strokeWidth={1.2} />
+                  <text x={px(pLeftX + physDepthL / 2)} y={py(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif" transform={`rotate(-90,${px(pLeftX + physDepthL / 2)},${py(pH / 2)})`}>LINKERPANEEL</text>
+
+                  <rect x={px(pFrontX)} y={py(pH)} width={frontPanelW_panel * scP} height={pdH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1.2} />
+                  <text x={px(pFrontX + frontPanelW_panel / 2)} y={py(pH) - 6} textAnchor="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">VOORPANEEL</text>
+
+                  <rect x={px(pRightX)} y={py(pH)} width={physDepthR * scP} height={pdH} fill="#dbeafe" stroke="#1e3a5f" strokeWidth={1.2} />
+                  <text x={px(pRightX + physDepthR / 2)} y={py(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif" transform={`rotate(-90,${px(pRightX + physDepthR / 2)},${py(pH / 2)})`}>RECHTERPANEEL</text>
+
+                  <line x1={px(pFrontX)} y1={py(pH)} x2={px(pFrontX)} y2={py(0)} stroke="#64748b" strokeWidth={1} strokeDasharray="5,3" />
+                  <line x1={px(pRightX)} y1={py(pH)} x2={px(pRightX)} y2={py(0)} stroke="#64748b" strokeWidth={1} strokeDasharray="5,3" />
+
+                  {sectionYs.slice(1, -1).map((sy_val, si) => (
+                    <g key={si}>
+                      <line x1={px(pLeftX)} y1={py(sy_val)} x2={px(pEndX)} y2={py(sy_val)} stroke="#dc2626" strokeWidth={1} strokeDasharray="6,3" />
+                      <text x={px(pEndX) + 4} y={py(sy_val) + 3} fontSize={7} fill="#dc2626" fontFamily="Arial, sans-serif">U{si + 1}|U{si + 2}</text>
+                    </g>
+                  ))}
+
+                  {sectionYs.slice(0, -1).map((sy_val, si) => (
+                    <text key={si} x={px(pFrontX + frontPanelW_panel / 2)} y={py((sy_val + sectionYs[si + 1]) / 2)} textAnchor="middle" dominantBaseline="middle"
+                      fontSize={9} fontWeight="bold" fill="#334155" fontFamily="Arial, sans-serif">U{si + 1}</text>
+                  ))}
+
+                  {hpEnabled && <>
+                    <rect x={px(pFrontX)} y={py(pH)} width={hpD * scP} height={pdH} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
+                    <rect x={px(pRightX - hpD)} y={py(pH)} width={hpD * scP} height={pdH} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} />
+                  </>}
+
+                  <DimH x1={px(pLeftX)} x2={px(pFrontX)} y={py(0) + 22} label={`${mm(physDepthL)} mm`} />
+                  <DimH x1={px(pFrontX)} x2={px(pRightX)} y={py(0) + 22} label={`${mm(frontPanelW_panel)} mm`} />
+                  <DimH x1={px(pRightX)} x2={px(pEndX)} y={py(0) + 22} label={`${mm(physDepthR)} mm`} />
+                  <DimH x1={px(pLeftX)} x2={px(pEndX)} y={py(0) + 40} label={`${mm(panelTotalW)} mm`} />
+                  <DimV x={pOx - 20} y1={py(pH)} y2={py(0)} label={`${mm(pH)} mm`} side="left" />
+
+                  {sectionYs.slice(1, -1).map((sy_val, si) => (
+                    <DimV key={si} x={pOx - 50} y1={py(sectionYs[si])} y2={py(sy_val)} label={`${mm(sy_val - sectionYs[si])} mm`} side="left" />
+                  ))}
+                  {aantalSecties > 0 && (
+                    <DimV x={pOx - 50} y1={py(sectionYs[aantalSecties - 1])} y2={py(pH)} label={`${mm(pH - sectionYs[aantalSecties - 1])} mm`} side="left" />
+                  )}
+
+                  <g transform={`translate(${pOx},${psvgH - 20})`}>
+                    <rect x={0} y={0} width={10} height={7} fill="#dbeafe" stroke="#1e3a5f" strokeWidth={0.8} /><text x={13} y={6.5} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">Zijpaneel</text>
+                    <rect x={65} y={0} width={10} height={7} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.8} /><text x={78} y={6.5} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">Voorpaneel</text>
+                    {hpEnabled && <><rect x={150} y={0} width={10} height={7} fill="#818cf8" fillOpacity={0.7} stroke="#4338ca" strokeWidth={0.5} /><text x={163} y={6.5} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">{`Alu. L-profiel ${mm(hpD)} mm`}</text></>}
+                    <line x1={hpEnabled ? 280 : 150} y1={3.5} x2={hpEnabled ? 300 : 170} y2={3.5} stroke="#64748b" strokeWidth={1} strokeDasharray="4,2" />
+                    <text x={hpEnabled ? 303 : 173} y={6.5} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">Vouwlijn</text>
+                    <line x1={hpEnabled ? 360 : 230} y1={3.5} x2={hpEnabled ? 380 : 250} y2={3.5} stroke="#dc2626" strokeWidth={1} strokeDasharray="4,2" />
+                    <text x={hpEnabled ? 383 : 253} y={6.5} fontSize={6.5} fill="#334155" fontFamily="Arial, sans-serif">U-sectie grens</text>
+                  </g>
+                </svg>
+              );
+            })();
+
             if (faceData) {
               const secSvgs = [];
               sectionYs.slice(0, -1).forEach((secBottom, si) => {
