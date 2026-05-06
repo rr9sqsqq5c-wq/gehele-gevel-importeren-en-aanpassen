@@ -86,6 +86,127 @@ function _computeNewOutsideDir(wo, allWallOrigins) {
   return (candidateA_t * toOutside_t >= 0) ? (Math.sign(candidateA_t) || 1) : -(Math.sign(candidateA_t) || 1);
 }
 
+function _buildingCenterForAxis(wo, allOrigins) {
+  const axis = wo.thicknessAxis;
+  const tStart = wo.thicknessStart;
+  const tEnd = wo.thicknessEnd ?? wo.thicknessStart + 200;
+  const wallsOnAxis = allOrigins.filter(w => w?.thicknessAxis === axis);
+  const bMin = wallsOnAxis.length ? Math.min(...wallsOnAxis.map(w => w.thicknessStart)) : tStart;
+  const bMax = wallsOnAxis.length ? Math.max(...wallsOnAxis.map(w => w.thicknessEnd ?? w.thicknessStart + 200)) : tEnd;
+  return { buildingCenter_t: (bMin + bMax) / 2, buildingSpan: bMax - bMin };
+}
+
+function _crossProductCandidateT(wo) {
+  if (!wo.wallLengthDir) return null;
+  const axis = wo.thicknessAxis;
+  const upAxis = wo.heightAxis ?? 'y';
+  const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
+  const ld = wo.wallLengthDir;
+  const cx = ld.y * gu.z - ld.z * gu.y;
+  const cy = ld.z * gu.x - ld.x * gu.z;
+  const cz = ld.x * gu.y - ld.y * gu.x;
+  const clen = Math.sqrt(cx * cx + cy * cy + cz * cz);
+  if (clen < 0.01) return null;
+  return (axis === 'x' ? cx : axis === 'y' ? cy : cz) / clen;
+}
+
+function _resolveOneWallOutside(wo, allOrigins) {
+  if (!wo) return { outsideDir: 1, outsidePos: 0, source: 'none', confidence: 0, ambiguous: true, reason: 'no wallOrigin' };
+
+  const tStart = wo.thicknessStart;
+  const tEnd = wo.thicknessEnd ?? wo.thicknessStart + 200;
+  const wallCenter_t = (tStart + tEnd) / 2;
+  const { buildingCenter_t, buildingSpan } = _buildingCenterForAxis(wo, allOrigins);
+  const toOutside_t = wallCenter_t - buildingCenter_t;
+  const geoConfidenceFactor = buildingSpan > 0 ? Math.min(1, Math.abs(toOutside_t) / (buildingSpan / 4)) : 0;
+
+  const crossT = _crossProductCandidateT(wo);
+
+  let outsideDir = null;
+  let source = null;
+  let confidence = 0;
+  let reason = '';
+
+  const matSense = wo.matLayerSense;
+  const matAxis = wo.matLayerSetDir;
+  const localYT = wo.wallInsideThickDir;
+
+  if (matSense && matSense !== 'NOTDEFINED' && (matAxis === 'AXIS2' || matAxis == null) && localYT && localYT !== 0) {
+    const senseSign = matSense === 'NEGATIVE' ? -1 : 1;
+    const matOutsideDir = senseSign * localYT;
+    const matOutsideT = matOutsideDir;
+
+    if (crossT !== null) {
+      const geoOutsideDir = (crossT * toOutside_t >= 0) ? (Math.sign(crossT) || 1) : -(Math.sign(crossT) || 1);
+      if (matOutsideDir === geoOutsideDir) {
+        outsideDir = matOutsideDir;
+        source = 'material_layer_set+cross_product';
+        confidence = 0.9 + geoConfidenceFactor * 0.1;
+        reason = `DirectionSense=${matSense}, crossProduct agrees`;
+      } else {
+        const matAgreesBldg = (matOutsideT * toOutside_t >= 0);
+        if (matAgreesBldg) {
+          outsideDir = matOutsideDir;
+          source = 'material_layer_set';
+          confidence = 0.7;
+          reason = `DirectionSense=${matSense} agrees with building center, crossProduct disagrees`;
+          console.warn('[outside-resolver] Wand', wo.globalId ?? '?', ': material en cross-product niet eens — material gekozen, bldg-center klopt');
+        } else {
+          outsideDir = geoOutsideDir;
+          source = 'cross_product_geometric';
+          confidence = 0.6 * geoConfidenceFactor;
+          reason = `DirectionSense=${matSense} disagrees with building center; cross-product used`;
+          console.warn('[outside-resolver] VALIDATION_ERROR_OUTSIDE_AMBIGUOUS wand', wo.globalId ?? '?',
+            '— matOutsideDir:', matOutsideDir, 'geoOutsideDir:', geoOutsideDir, 'toOutside_t:', toOutside_t.toFixed(0));
+        }
+      }
+    } else {
+      outsideDir = matOutsideDir;
+      source = 'material_layer_set';
+      confidence = 0.75;
+      reason = `DirectionSense=${matSense}, geen crossProduct beschikbaar`;
+    }
+  } else if (crossT !== null) {
+    const candidateA_t = crossT;
+    outsideDir = (candidateA_t * toOutside_t >= 0) ? (Math.sign(candidateA_t) || 1) : -(Math.sign(candidateA_t) || 1);
+    source = 'cross_product_geometric';
+    confidence = 0.65 * geoConfidenceFactor + 0.2;
+    reason = `cross(wallLengthDir, globalUp) vs buildingCenter`;
+    if (geoConfidenceFactor < 0.2) {
+      console.warn('[outside-resolver] VALIDATION_ERROR_OUTSIDE_AMBIGUOUS wand', wo.globalId ?? '?',
+        '— lage geometrische confidence (wand dicht bij gebouwcentrum?), toOutside_t:', toOutside_t.toFixed(0));
+    }
+  } else if (localYT && localYT !== 0) {
+    outsideDir = -localYT;
+    source = 'deprecated_localY_heuristic';
+    confidence = 0.35;
+    reason = 'deprecated: -wallInsideThickDir (geen matLayerSense, geen wallLengthDir)';
+    console.warn('[outside-resolver] VALIDATION_ERROR_OUTSIDE_AMBIGUOUS wand', wo.globalId ?? '?',
+      '— deprecated heuristic gebruikt, globalId:', wo.globalId, 'candidate outsideDir:', outsideDir);
+  } else {
+    outsideDir = toOutside_t >= 0 ? 1 : -1;
+    source = 'deprecated_bbox_heuristic';
+    confidence = 0.2 * geoConfidenceFactor;
+    reason = 'deprecated: bbox-afstand heuristic (geen geometrie beschikbaar)';
+    console.warn('[outside-resolver] VALIDATION_ERROR_OUTSIDE_AMBIGUOUS wand', wo.globalId ?? '?',
+      '— volledig fallback heuristic, candidate outsideDir:', outsideDir);
+  }
+
+  if (!outsideDir) outsideDir = 1;
+  const outsidePos = outsideDir < 0 ? tStart : tEnd;
+  const ambiguous = confidence < 0.5;
+
+  return { outsideDir, outsidePos, source, confidence: Math.round(confidence * 100) / 100, ambiguous, reason };
+}
+
+function _resolveOutsideDirections(walls) {
+  const allOrigins = walls.map(w => w.wallOrigin).filter(Boolean);
+  for (const wall of walls) {
+    if (!wall.wallOrigin) continue;
+    wall.wallOrigin.resolvedOutside = _resolveOneWallOutside(wall.wallOrigin, allOrigins);
+  }
+}
+
 function addScript(src) {
   return new Promise((resolve, reject) => {
     const s = document.createElement("script");
@@ -620,6 +741,32 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
       } catch { }
     }
 
+    const matLayerByWall = {};
+    try {
+      const relMatVec = api.GetLineIDsWithType(modelID, IFC.IFCRELASSOCIATESMATERIAL);
+      for (let i = 0; i < relMatVec.size(); i++) {
+        try {
+          const rel = api.GetLine(modelID, relMatVec.get(i), false);
+          const matRef = rel?.RelatingMaterial?.value;
+          if (!matRef) continue;
+          const rawMat = api.GetRawLineData(modelID, matRef);
+          const typeName = api.GetNameFromTypeCode(rawMat.type).toUpperCase();
+          if (!typeName.includes('MATERIALLAYERSETUSAGE')) continue;
+          const matUsage = api.GetLine(modelID, matRef, false);
+          const directSense = matUsage?.DirectionSense?.value ?? null;
+          const layerSetDir = matUsage?.LayerSetDirection?.value ?? null;
+          const offsetRaw = matUsage?.OffsetFromReferenceLine;
+          const offset_mm = typeof offsetRaw === 'number' ? Math.round(offsetRaw * 1000) : (typeof offsetRaw?.value === 'number' ? Math.round(offsetRaw.value * 1000) : 0);
+          const relObj = rel?.RelatedObjects;
+          if (!relObj) continue;
+          for (const r of relObj) {
+            const wid = r?.value;
+            if (wid != null) matLayerByWall[wid] = { directSense, layerSetDir, offset_mm };
+          }
+        } catch { }
+      }
+    } catch { }
+
     const walls = [];
     const wallTypesList2 = [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL];
 
@@ -669,6 +816,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
 
           const wallLine = api.GetLine(modelID, wID, false);
           const name = wallLine?.Name?.value ?? `Wand #${wID}`;
+          const globalId = wallLine?.GlobalId?.value ?? null;
 
           let wallInsideThickDir = 0;
           if (wallBB.localYDir) {
@@ -683,7 +831,10 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
             if (len > 0.01) wallLengthDir = { x: x / len, y: y / len, z: z / len };
           }
 
+          const matData = matLayerByWall[wID];
+
           const wallOrigin = {
+            globalId,
             lengthStart:    Math.round(wallBB[`min${lengthAxis.toUpperCase()}`]    * 1000),
             heightStart:    Math.round(wallBB[`min${heightAxis.toUpperCase()}`]    * 1000),
             thicknessStart: Math.round(wallBB[`min${thicknessAxis.toUpperCase()}`] * 1000),
@@ -693,6 +844,9 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
             thicknessAxis,
             wallInsideThickDir,
             wallLengthDir,
+            matLayerSense: matData?.directSense ?? null,
+            matLayerSetDir: matData?.layerSetDir ?? null,
+            matOffsetMm: matData?.offset_mm ?? 0,
           };
 
           const openings = [];
@@ -781,6 +935,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
         }
       }
 
+    _resolveOutsideDirections(walls);
     return walls;
   } finally {
     if (ownModel) {
@@ -872,6 +1027,15 @@ function r(v) {
 
 function calcOutsideFace(rwo, allWallOrigins) {
   if (!rwo) return { outsidePos: 0, outsideDir: 1 };
+
+  if (rwo.resolvedOutside) {
+    return {
+      outsidePos: rwo.resolvedOutside.outsidePos,
+      outsideDir: rwo.resolvedOutside.outsideDir,
+      _debug: { source: rwo.resolvedOutside.source, confidence: rwo.resolvedOutside.confidence, reason: rwo.resolvedOutside.reason },
+    };
+  }
+
   const axis = rwo.thicknessAxis;
   const tStart = rwo.thicknessStart;
   const tEnd = rwo.thicknessEnd ?? rwo.thicknessStart + 200;
@@ -1554,6 +1718,32 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
     onProgress?.({ phase: 'init', log: `${allElemIDs.length} zone-elementen gevonden` });
     onProgress?.({ phase: 'wanden', current: 0, total: allElemIDs.length });
 
+    const matLayerByWallZone = {};
+    try {
+      const relMatVec = api.GetLineIDsWithType(modelID, IFC.IFCRELASSOCIATESMATERIAL);
+      for (let i = 0; i < relMatVec.size(); i++) {
+        try {
+          const rel = api.GetLine(modelID, relMatVec.get(i), false);
+          const matRef = rel?.RelatingMaterial?.value;
+          if (!matRef) continue;
+          const rawMat = api.GetRawLineData(modelID, matRef);
+          const typeName = api.GetNameFromTypeCode(rawMat.type).toUpperCase();
+          if (!typeName.includes('MATERIALLAYERSETUSAGE')) continue;
+          const matUsage = api.GetLine(modelID, matRef, false);
+          const directSense = matUsage?.DirectionSense?.value ?? null;
+          const layerSetDir = matUsage?.LayerSetDirection?.value ?? null;
+          const offsetRaw = matUsage?.OffsetFromReferenceLine;
+          const offset_mm = typeof offsetRaw === 'number' ? Math.round(offsetRaw * 1000) : (typeof offsetRaw?.value === 'number' ? Math.round(offsetRaw.value * 1000) : 0);
+          const relObj = rel?.RelatedObjects;
+          if (!relObj) continue;
+          for (const r of relObj) {
+            const wid = r?.value;
+            if (wid != null) matLayerByWallZone[wid] = { directSense, layerSetDir, offset_mm };
+          }
+        } catch { }
+      }
+    } catch { }
+
     const elements = [];
     let processed = 0;
     let lastYield = Date.now();
@@ -1582,6 +1772,7 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
 
         const line = api.GetLine(modelID, eID, false);
         const name = line?.Name?.value ?? `Element #${eID}`;
+        const globalIdEl = line?.GlobalId?.value ?? null;
 
         let wallInsideThickDirEl = 0;
         if (bb.localYDir) {
@@ -1596,7 +1787,10 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
           if (len > 0.01) wallLengthDirEl = { x: x / len, y: y / len, z: z / len };
         }
 
+        const matDataEl = matLayerByWallZone[eID];
+
         const wallOrigin = {
+          globalId: globalIdEl,
           lengthStart:    Math.round(bb[`min${lengthAxis.toUpperCase()}`] * 1000),
           heightStart:    Math.round(bb[`min${heightAxis.toUpperCase()}`] * 1000),
           thicknessStart: Math.round(bb[`min${thicknessAxis.toUpperCase()}`] * 1000),
@@ -1606,6 +1800,9 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
           thicknessAxis,
           wallInsideThickDir: wallInsideThickDirEl,
           wallLengthDir: wallLengthDirEl,
+          matLayerSense: matDataEl?.directSense ?? null,
+          matLayerSetDir: matDataEl?.layerSetDir ?? null,
+          matOffsetMm: matDataEl?.offset_mm ?? 0,
         };
 
         const facadePoly = getFacadePolygon(api, modelID, eID, lengthAxis, heightAxis, bb);
@@ -1632,6 +1829,7 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
       }
     }
 
+    _resolveOutsideDirections(elements);
     return elements;
   } finally {
     if (ownModel) {
@@ -1641,6 +1839,29 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
       _cachedModel = null;
     }
   }
+}
+
+export function generateOutsideResolutionReport(walls) {
+  return walls.map((wall) => {
+    const wo = wall.wallOrigin;
+    const ro = wo?.resolvedOutside;
+    return {
+      expressID: wall.expressID,
+      globalId: wo?.globalId ?? null,
+      name: wall.name ?? null,
+      sourceUsed: ro?.source ?? 'unresolved',
+      confidence: ro?.confidence ?? 0,
+      outsideDir: ro?.outsideDir ?? null,
+      insideDir: ro?.outsideDir != null ? -ro.outsideDir : null,
+      ambiguous: ro?.ambiguous ?? true,
+      reason: ro?.reason ?? 'resolvedOutside niet gevuld — her-importeer het IFC-bestand',
+      matLayerSense: wo?.matLayerSense ?? null,
+      matLayerSetDir: wo?.matLayerSetDir ?? null,
+      thicknessAxis: wo?.thicknessAxis ?? null,
+      thicknessStart: wo?.thicknessStart ?? null,
+      thicknessEnd: wo?.thicknessEnd ?? null,
+    };
+  });
 }
 
 export async function validateWallAlignment(file, parsedWalls, onProgress = null) {

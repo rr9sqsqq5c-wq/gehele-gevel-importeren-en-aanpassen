@@ -83,9 +83,14 @@ function getBrickPos(wall, pieceStart, pieceLen, rowY, steenH, brickD, upAxis = 
 }
 
 function getOutsideFaceInfo(rwo, allWalls) {
-  const axis = rwo.thicknessAxis;
   const tStart = rwo.thicknessStart;
   const tEnd = rwo.thicknessEnd ?? rwo.thicknessStart + 200;
+
+  if (rwo.resolvedOutside) {
+    return { outsidePos: rwo.resolvedOutside.outsidePos, outsideDir: rwo.resolvedOutside.outsideDir };
+  }
+
+  const axis = rwo.thicknessAxis;
 
   const wallsOnAxis = (allWalls ?? []).filter((w) => w.wallOrigin?.thicknessAxis === axis);
   const buildingMin = wallsOnAxis.length
