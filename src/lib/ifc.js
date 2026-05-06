@@ -228,12 +228,81 @@ function _resolveOneWallOutside(wo, allOrigins, globalBBox) {
   };
 }
 
+const _OPENING_MIN_WIDTH  = 200;
+const _OPENING_WEIGHT_RAAM   = 2.0;
+const _OPENING_WEIGHT_DEUR   = 1.5;
+const _OPENING_BIAS_THRESHOLD = 0.70;
+
+function _validateOutsideWithOpenings(wo, openings) {
+  if (!wo || !Array.isArray(openings) || openings.length === 0) {
+    return { openingsCount: 0, scoredCount: 0, sideAScore: 0, sideBScore: 0, biasedSide: null, matches: null, inconsistent: false, confidenceBoost: 0, note: 'geen openingen' };
+  }
+
+  const wallMid = (wo.thicknessStart + (wo.thicknessEnd ?? wo.thicknessStart + 200)) / 2;
+  let sideAScore = 0, sideBScore = 0, scored = 0;
+  const typeCounts = { raam: 0, deur: 0 };
+
+  for (const op of openings) {
+    if ((op.breedte ?? 0) < _OPENING_MIN_WIDTH) continue;
+    if (op.thicknessCenter == null) continue;
+    if (op.type === 'sparing') continue;
+
+    const weight = op.type === 'raam' ? _OPENING_WEIGHT_RAAM : op.type === 'deur' ? _OPENING_WEIGHT_DEUR : 0;
+    if (weight === 0) continue;
+
+    if (op.thicknessCenter < wallMid) {
+      sideAScore += weight;
+    } else if (op.thicknessCenter > wallMid) {
+      sideBScore += weight;
+    }
+    typeCounts[op.type] = (typeCounts[op.type] ?? 0) + 1;
+    scored++;
+  }
+
+  if (scored === 0) {
+    return { openingsCount: openings.length, scoredCount: 0, sideAScore: 0, sideBScore: 0, biasedSide: null, matches: null, inconsistent: false, confidenceBoost: 0, note: 'geen scoreerbare openingen (alles sparing of te klein)' };
+  }
+
+  const total = sideAScore + sideBScore;
+  const biasedSide = total === 0 ? null
+    : sideAScore / total >= _OPENING_BIAS_THRESHOLD ? 'A'
+    : sideBScore / total >= _OPENING_BIAS_THRESHOLD ? 'B'
+    : null;
+
+  const resolvedOutsideDir = wo.resolvedOutside?.outsideDir ?? null;
+  const expectedSide = resolvedOutsideDir == null ? null : resolvedOutsideDir < 0 ? 'A' : 'B';
+
+  let matches = null, inconsistent = false, confidenceBoost = 0;
+  if (biasedSide !== null && expectedSide !== null) {
+    matches = biasedSide === expectedSide;
+    inconsistent = !matches;
+    confidenceBoost = matches ? 0.04 : 0;
+  }
+
+  const typeStr = Object.entries(typeCounts).filter(([,v])=>v>0).map(([k,v])=>`${k}:${v}`).join(' ');
+  const biasStr = biasedSide ? `sideBias=${biasedSide}(${(biasedSide==='A'?sideAScore:sideBScore).toFixed(1)}/${total.toFixed(1)})` : 'geen duidelijke bias';
+  const matchStr = matches == null ? '' : matches ? `→ CONSISTENT met outsideDir=${resolvedOutsideDir} ✓` : `→ INCONSISTENT met outsideDir=${resolvedOutsideDir} ⚠`;
+  const note = `${typeStr} | ${biasStr} ${matchStr}`.trim();
+
+  return { openingsCount: openings.length, scoredCount: scored, sideAScore: Math.round(sideAScore * 10) / 10, sideBScore: Math.round(sideBScore * 10) / 10, biasedSide, matches, inconsistent, confidenceBoost, note };
+}
+
 function _resolveOutsideDirections(walls) {
   const allOrigins = walls.map(w => w.wallOrigin).filter(Boolean);
   const globalBBox = _computeGlobalBBox(allOrigins);
   for (const wall of walls) {
     if (!wall.wallOrigin) continue;
-    wall.wallOrigin.resolvedOutside = _resolveOneWallOutside(wall.wallOrigin, allOrigins, globalBBox);
+    const resolved = _resolveOneWallOutside(wall.wallOrigin, allOrigins, globalBBox);
+    wall.wallOrigin.resolvedOutside = resolved;
+    const openingCheck = _validateOutsideWithOpenings(wall.wallOrigin, wall.openings ?? []);
+    if (openingCheck.matches === true && resolved.confidence < 0.99) {
+      resolved.confidence = Math.min(0.99, Math.round((resolved.confidence + openingCheck.confidenceBoost) * 100) / 100);
+    }
+    if (openingCheck.inconsistent) {
+      console.warn('[outside-resolver] OPENING_CONSISTENCY_FAIL wand', wall.wallOrigin.globalId ?? '?',
+        '—', openingCheck.note);
+    }
+    resolved.openingCheck = openingCheck;
   }
 }
 
@@ -933,6 +1002,12 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
                 { l: finalX + oWidth,  h: finalY + oHeight },
                 { l: finalX,           h: finalY + oHeight },
               ];
+              let oThicknessCenter = null;
+              if (oBB) {
+                const oTMin = oBB[`min${thicknessAxis.toUpperCase()}`] * 1000;
+                const oTMax = oBB[`max${thicknessAxis.toUpperCase()}`] * 1000;
+                oThicknessCenter = Math.round((oTMin + oTMax) / 2);
+              }
               openings.push({
                 id: oID,
                 type: openingType[oID] ?? "sparing",
@@ -941,6 +1016,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
                 breedte: oWidth,
                 hoogte: oHeight,
                 polyPts: finalPolyPts,
+                thicknessCenter: oThicknessCenter,
               });
             } catch { }
           }
