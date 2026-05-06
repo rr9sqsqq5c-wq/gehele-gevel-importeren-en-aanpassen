@@ -769,7 +769,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             const hpEnabled = hp.enabled !== false;
             const hpD = hp.dikte ?? 2;
 
-            const totalUnfoldW = pDL + pB + pDR;
+            const physDepthL = pDL + brickDepth + stootWT + panelDikteWT;
+            const physDepthR = pDR + brickDepth + stootWT + panelDikteWT;
+            const totalUnfoldW = physDepthL + pB + physDepthR;
             const sc = Math.min((MAX_UNFOLD_W - PAD_L - PAD_R) / totalUnfoldW, (MAX_UNFOLD_H - PAD_T - PAD_B) / pH);
             const dW = Math.round(totalUnfoldW * sc);
             const dH = Math.round(pH * sc);
@@ -779,7 +781,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
             const ux = (x) => ox + x * sc;
             const uy = (y) => oy + dH - y * sc;
-            const leftX = 0; const frontX = pDL; const rightX = pDL + pB;
+            const leftX = 0; const frontX = physDepthL; const rightX = physDepthL + pB;
 
             const sectionYs = [];
             for (let s = 0; s <= aantalSecties; s++) sectionYs.push(Math.round(Math.min(s * sectieH, pH)));
@@ -972,7 +974,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   Uitgeslagen breedte: {mm(totalUnfoldW)} mm · Hoogte: {mm(pH)} mm · {aantalSecties} U-sectie{aantalSecties !== 1 ? 's' : ''} · ≈{mm(sectieH)} mm/sectie
                 </text>
 
-                <rect x={ux(leftX)} y={uy(pH)} width={pDL * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                <rect x={ux(leftX)} y={uy(pH)} width={physDepthL * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
                 {localLeftRows.length > 0 && (() => {
                   const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
                   return localLeftRows.flatMap((row, ri) => {
@@ -985,7 +987,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     }).filter(Boolean);
                   });
                 })()}
-                <text x={ux(leftX + pDL / 2)} y={uy(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={7} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${ux(leftX + pDL / 2)},${uy(pH / 2)})`}>LINKERZIJDE</text>
+                <text x={ux(leftX + physDepthL / 2)} y={uy(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={7} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${ux(leftX + physDepthL / 2)},${uy(pH / 2)})`}>LINKERZIJDE</text>
 
                 <rect x={ux(frontX + brickDepth)} y={uy(pH)} width={Math.max(0, pB - 2 * brickDepth) * sc} height={dH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1.2} />
                 {faceData?.front && (() => {
@@ -1014,7 +1016,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 })()}
                 <text x={ux(frontX + pB / 2)} y={uy(pH) - 6} textAnchor="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">VOORZIJDE</text>
 
-                <rect x={ux(rightX)} y={uy(pH)} width={pDR * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
+                <rect x={ux(rightX)} y={uy(pH)} width={physDepthR * sc} height={dH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={1} />
                 {localRightRows.length > 0 && (() => {
                   const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
                   return localRightRows.flatMap((row, ri) => {
@@ -1027,15 +1029,15 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     }).filter(Boolean);
                   });
                 })()}
-                <text x={ux(rightX + pDR / 2)} y={uy(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={7} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${ux(rightX + pDR / 2)},${uy(pH / 2)})`}>RECHTERZIJDE</text>
+                <text x={ux(rightX + physDepthR / 2)} y={uy(pH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={7} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${ux(rightX + physDepthR / 2)},${uy(pH / 2)})`}>RECHTERZIJDE</text>
 
                 <line x1={ux(frontX)} y1={uy(pH)} x2={ux(frontX)} y2={uy(0)} stroke="#475569" strokeWidth={0.8} strokeDasharray="4,3" />
                 <line x1={ux(rightX)} y1={uy(pH)} x2={ux(rightX)} y2={uy(0)} stroke="#475569" strokeWidth={0.8} strokeDasharray="4,3" />
 
                 {sectionYs.slice(1, -1).map((sy_val, si) => (
                   <g key={si}>
-                    <line x1={ux(leftX)} y1={uy(sy_val)} x2={ux(rightX + pDR)} y2={uy(sy_val)} stroke="#dc2626" strokeWidth={1} strokeDasharray="6,3" />
-                    <text x={ux(rightX + pDR) + 4} y={uy(sy_val) + 3} fontSize={7} fill="#dc2626" fontFamily="Arial, sans-serif">U{si + 1}|U{si + 2}</text>
+                    <line x1={ux(leftX)} y1={uy(sy_val)} x2={ux(rightX + physDepthR)} y2={uy(sy_val)} stroke="#dc2626" strokeWidth={1} strokeDasharray="6,3" />
+                    <text x={ux(rightX + physDepthR) + 4} y={uy(sy_val) + 3} fontSize={7} fill="#dc2626" fontFamily="Arial, sans-serif">U{si + 1}|U{si + 2}</text>
                   </g>
                 ))}
 
@@ -1047,7 +1049,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                   );
                 })}
 
-                {vlEnabled && [{ fx: leftX, depth: pDL }, { fx: rightX, depth: pDR }].map(({ fx, depth }, fi) => (
+                {vlEnabled && [{ fx: leftX, depth: physDepthL }, { fx: rightX, depth: physDepthR }].map(({ fx, depth }, fi) => (
                   <g key={fi}>
                     <rect x={fi === 0 ? ux(fx + depth - vlD) : ux(fx)} y={uy(pH)} width={vlD * sc} height={dH} fill="#92400e" fillOpacity={0.3} stroke="#92400e" strokeWidth={0.5} />
                     <text x={fi === 0 ? ux(fx + depth - vlD / 2) : ux(fx + vlD / 2)} y={uy(pH) - 4} textAnchor="middle" fontSize={6} fill="#92400e" fontFamily="Arial, sans-serif">{mm(vlD)}</text>
@@ -1063,9 +1065,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                 ))}
 
                 <DimH x1={ux(frontX)} x2={ux(rightX)} y={uy(0) + 22} label={`strips ${mm(pB)} mm`} />
-                <DimH x1={ux(leftX)} x2={ux(frontX)} y={uy(0) + 38} label={`${mm(pDL)} mm`} flip />
-                <DimH x1={ux(rightX)} x2={ux(rightX + pDR)} y={uy(0) + 38} label={`${mm(pDR)} mm`} flip />
-                <DimH x1={ux(leftX)} x2={ux(rightX + pDR)} y={uy(0) + 56} label={`${mm(totalUnfoldW)} mm`} />
+                <DimH x1={ux(leftX)} x2={ux(frontX)} y={uy(0) + 38} label={`${mm(physDepthL)} mm`} flip />
+                <DimH x1={ux(rightX)} x2={ux(rightX + physDepthR)} y={uy(0) + 38} label={`${mm(physDepthR)} mm`} flip />
+                <DimH x1={ux(leftX)} x2={ux(rightX + physDepthR)} y={uy(0) + 56} label={`${mm(totalUnfoldW)} mm`} />
                 <DimV x={ox - 20} y1={uy(pH)} y2={uy(0)} label={`${mm(pH)} mm`} side="left" />
 
                 {sectionYs.slice(1, -1).map((sy_val, si) => (
@@ -1128,17 +1130,17 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
                     <text x={sox} y={30} fontSize={7.5} fill="#64748b" fontFamily="Arial, sans-serif">
                       {mm(secBottom)}–{mm(secTop)} mm · {mm(totalUnfoldW)} mm breed · {verband}
                     </text>
-                    <rect x={sux(leftX)} y={suy(secTop)} width={pDL * secSc} height={sdH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.7} fillOpacity={0.3} />
-                    <text x={sux(leftX + pDL / 2)} y={suy(secTop + secH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={6.5} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${sux(leftX + pDL / 2)},${suy(secTop + secH / 2)})`}>LINKS</text>
+                    <rect x={sux(leftX)} y={suy(secTop)} width={physDepthL * secSc} height={sdH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.7} fillOpacity={0.3} />
+                    <text x={sux(leftX + physDepthL / 2)} y={suy(secTop + secH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={6.5} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${sux(leftX + physDepthL / 2)},${suy(secTop + secH / 2)})`}>LINKS</text>
                     <rect x={sux(frontX + brickDepth)} y={suy(secTop)} width={Math.max(0, pB - 2 * brickDepth) * secSc} height={sdH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1} fillOpacity={0.4} />
                     <text x={sux(frontX + pB / 2)} y={suy(secTop) - 6} textAnchor="middle" fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">VOORZIJDE</text>
-                    <rect x={sux(rightX)} y={suy(secTop)} width={pDR * secSc} height={sdH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.7} fillOpacity={0.3} />
-                    <text x={sux(rightX + pDR / 2)} y={suy(secTop + secH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={6.5} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${sux(rightX + pDR / 2)},${suy(secTop + secH / 2)})`}>RECHTS</text>
+                    <rect x={sux(rightX)} y={suy(secTop)} width={physDepthR * secSc} height={sdH} fill="#e0f2fe" stroke="#1e3a5f" strokeWidth={0.7} fillOpacity={0.3} />
+                    <text x={sux(rightX + physDepthR / 2)} y={suy(secTop + secH / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={6.5} fill="#0369a1" fontFamily="Arial, sans-serif" transform={`rotate(-90,${sux(rightX + physDepthR / 2)},${suy(secTop + secH / 2)})`}>RECHTS</text>
                     <line x1={sux(frontX)} y1={suy(secTop)} x2={sux(frontX)} y2={suy(secBottom)} stroke="#475569" strokeWidth={0.7} strokeDasharray="3,2" />
                     <line x1={sux(rightX)} y1={suy(secTop)} x2={sux(rightX)} y2={suy(secBottom)} stroke="#475569" strokeWidth={0.7} strokeDasharray="3,2" />
-                    <DimH x1={sux(leftX)} x2={sux(frontX)} y={suy(secBottom) + 28} label={`${mm(pDL)} mm`} />
+                    <DimH x1={sux(leftX)} x2={sux(frontX)} y={suy(secBottom) + 28} label={`${mm(physDepthL)} mm`} />
                     <DimH x1={sux(frontX)} x2={sux(rightX)} y={suy(secBottom) + 28} label={`${mm(pB)} mm`} />
-                    <DimH x1={sux(rightX)} x2={sux(rightX + pDR)} y={suy(secBottom) + 28} label={`${mm(pDR)} mm`} />
+                    <DimH x1={sux(rightX)} x2={sux(rightX + physDepthR)} y={suy(secBottom) + 28} label={`${mm(physDepthR)} mm`} />
                     <DimV x={sox - 20} y1={suy(secTop)} y2={suy(secBottom)} label={`${mm(secH)} mm`} side="left" />
                   </svg>
                 );
