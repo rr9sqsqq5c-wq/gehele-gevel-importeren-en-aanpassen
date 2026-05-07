@@ -3566,6 +3566,17 @@ export default function App() {
                     ⬇ Gevelbekleding IFC{groups.some((g) => hiddenGroupIds.has(g.id)) ? ` (${groups.filter((g) => !hiddenGroupIds.has(g.id)).length}/${groups.length})` : ''}
                   </button>
                 </Tooltip>
+                {(() => {
+                  const exportedGroups = groups.filter((g) => !hiddenGroupIds.has(g.id));
+                  const names = exportedGroups.map((g) => getSettings(g.id).name ?? g.id);
+                  const shown = names.slice(0, 4).join(', ');
+                  const overflow = names.length > 4 ? ` +${names.length - 4}` : '';
+                  return (
+                    <span style={{ fontSize: 10, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }} title={names.join(', ')}>
+                      {shown}{overflow}
+                    </span>
+                  );
+                })()}
               </>
             )}
             {groups.some((g) => getSettings(g.id).panelen?.enabled) && (
