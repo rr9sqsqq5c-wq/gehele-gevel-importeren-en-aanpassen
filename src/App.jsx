@@ -1561,6 +1561,7 @@ export default function App() {
   const [savedHandle, setSavedHandle] = useState(null);
   const [ifcFileName, setIfcFileName] = useState(null);
   const [exportFileName, setExportFileName] = useState('');
+  const [exportDirHandle, setExportDirHandle] = useState(null);
   const [showPattern, setShowPattern] = useState(true);
   const [viewMode, setViewMode] = useState('3d');
   const [pendingFile, setPendingFile] = useState(null);
@@ -3068,7 +3069,7 @@ export default function App() {
       .map((g) => (getSettings(g.id).name ?? g.id).replace(/[^a-zA-Z0-9\-]/g, '_'))
       .join('_');
     const autoName = groupSuffix ? `${defaultName}_${groupSuffix}` : defaultName;
-    exportGroupsToIfc(exportGroups, settingsMap, exportFileName.trim() || autoName);
+    exportGroupsToIfc(exportGroups, settingsMap, exportFileName.trim() || autoName, exportDirHandle);
     } catch (err) {
       alert('IFC export mislukt:\n' + (err?.message ?? String(err)));
       console.error('IFC export error:', err);
@@ -3556,6 +3557,21 @@ export default function App() {
         {(groups.length > 0 || groups.some((g) => getSettings(g.id).panelen?.enabled)) && (
           <div style={{ padding: '4px 14px', display: 'flex', alignItems: 'center', gap: 6, background: '#172033', borderBottom: '1px solid #263148', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, color: '#475569', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 4 }}>Export</span>
+            <button
+              onClick={async () => {
+                try {
+                  const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                  setExportDirHandle(handle);
+                } catch {}
+              }}
+              style={{ fontSize: 10, padding: '2px 7px', border: `1px solid ${exportDirHandle ? '#10b981' : '#334155'}`, borderRadius: 4, background: exportDirHandle ? '#064e3b' : '#0f172a', color: exportDirHandle ? '#6ee7b7' : '#94a3b8', cursor: 'pointer', whiteSpace: 'nowrap' }}
+              title="Kies de map waar IFC-exports automatisch worden opgeslagen"
+            >
+              📁 {exportDirHandle ? exportDirHandle.name : 'Exportmap kiezen'}
+            </button>
+            {exportDirHandle && (
+              <button onClick={() => setExportDirHandle(null)} style={{ fontSize: 10, background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: '0 2px' }} title="Exportmap vergeten">✕</button>
+            )}
             {groups.length > 0 && (
               <>
                 <input

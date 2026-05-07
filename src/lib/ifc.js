@@ -1296,7 +1296,7 @@ function calcOutsideFace(rwo, allWallOrigins) {
   return { outsidePos, outsideDir, _debug: debugInfo ? { ...debugInfo, oldOutsideDir } : null };
 }
 
-export function exportGroupsToIfc(groups, wallSettings, fileName) {
+export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
   const allWallOrigins = groups.flatMap((g) =>
     (g.wallsWithRows ?? []).map((wd) => wd.wall?.wallOrigin).filter(Boolean)
   );
@@ -1775,14 +1775,38 @@ export function exportGroupsToIfc(groups, wallSettings, fileName) {
   ].join('\n');
 
   const content = header + '\n' + dataLines.join('\n') + '\nENDSEC;\nEND-ISO-10303-21;';
+  const downloadName = `${fileName ?? 'export'}_gevelbekleding.ifc`;
 
-  const blob = new Blob([content], { type: 'application/x-step' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${fileName ?? 'export'}_gevelbekleding.ifc`;
-  a.click();
-  URL.revokeObjectURL(url);
+  if (dirHandle) {
+    (async () => {
+      try {
+        const perm = await dirHandle.requestPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') throw new Error('Geen schrijftoegang tot de map.');
+        const fileHandle = await dirHandle.getFileHandle(downloadName, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(content);
+        await writable.close();
+        console.log(`[export] Opgeslagen in map: ${dirHandle.name}/${downloadName}`);
+      } catch (err) {
+        console.error('[export] Opslaan naar map mislukt, terugvallen op download:', err);
+        const blob = new Blob([content], { type: 'application/x-step' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = downloadName;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    })();
+  } else {
+    const blob = new Blob([content], { type: 'application/x-step' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = downloadName;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 }
 
 // Scans an IFC file for all common building element types (walls, slabs, proxies, coverings, etc.)
