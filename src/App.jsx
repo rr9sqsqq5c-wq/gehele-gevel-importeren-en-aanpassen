@@ -3062,7 +3062,7 @@ export default function App() {
       };
     });
     const settingsMap = Object.fromEntries(groups.map((g) => [g.id, getSettings(g.id)]));
-    const defaultName = (ifcFileName ?? 'export').replace(/-moo/gi, '-ksa');
+    const defaultName = (ifcFileName ?? 'export').replace(/-moo/gi, '-KSA');
     exportGroupsToIfc(exportGroups, settingsMap, exportFileName.trim() || defaultName);
     } catch (err) {
       alert('IFC export mislukt:\n' + (err?.message ?? String(err)));
@@ -3557,7 +3557,7 @@ export default function App() {
                   type="text"
                   value={exportFileName}
                   onChange={(e) => setExportFileName(e.target.value)}
-                  placeholder={`${(ifcFileName ?? 'export').replace(/-moo/gi, '-ksa')}_gevelbekleding`}
+                  placeholder={`${(ifcFileName ?? 'export').replace(/-moo/gi, '-KSA')}_gevelbekleding`}
                   style={{ fontSize: 11, padding: '2px 6px', border: '1px solid #334155', borderRadius: 4, background: '#0f172a', color: '#e2e8f0', width: 180, outline: 'none' }}
                   title="Bestandsnaam voor de IFC-export (zonder .ifc extensie)"
                 />
