@@ -3063,7 +3063,12 @@ export default function App() {
     });
     const settingsMap = Object.fromEntries(groups.map((g) => [g.id, getSettings(g.id)]));
     const defaultName = (ifcFileName ?? 'export').replace(/-moo/gi, '-KSA');
-    exportGroupsToIfc(exportGroups, settingsMap, exportFileName.trim() || defaultName);
+    const groupSuffix = groups
+      .filter((g) => !hiddenGroupIds.has(g.id))
+      .map((g) => (getSettings(g.id).name ?? g.id).replace(/[^a-zA-Z0-9\-]/g, '_'))
+      .join('_');
+    const autoName = groupSuffix ? `${defaultName}_${groupSuffix}` : defaultName;
+    exportGroupsToIfc(exportGroups, settingsMap, exportFileName.trim() || autoName);
     } catch (err) {
       alert('IFC export mislukt:\n' + (err?.message ?? String(err)));
       console.error('IFC export error:', err);
