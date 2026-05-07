@@ -1792,7 +1792,7 @@ export default function App() {
         const leftArmDepth = Math.max(1, pDL3 - 6);
         const rightArmDepth = Math.max(1, pDR3 - 6);
         const leftRows = clipSideFront(buildFacePattern(leftArmDepth, pH, mat, groupVerband3d), leftArmDepth);
-        const rightRows = clipSideFront(buildMirroredFacePattern(rightArmDepth, pH, mat, groupVerband3d), rightArmDepth);
+        const rightRows = clipSideFront(buildFacePattern(rightArmDepth, pH, mat, groupVerband3d), rightArmDepth);
         if (leftRows.length) batches.push({ rows: leftRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, sideType: 'left', penantX: pX, penantB: pB, sideDepthOffset });
         if (rightRows.length) batches.push({ rows: rightRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, sideType: 'right', penantX: pX, penantB: pB, sideDepthOffset });
       }
@@ -2964,7 +2964,7 @@ export default function App() {
         const clipOff = Math.max(stoot, panelDikteP);
         const frontRows = buildCenteredFacePattern(pB, pH, mat, s.verband ?? DEFAULT_VERBAND);
         const rawLeft = buildFacePattern(sideDepthL, pH, mat, s.verband ?? DEFAULT_VERBAND);
-        const rawRight = buildMirroredFacePattern(sideDepthR, pH, mat, s.verband ?? DEFAULT_VERBAND);
+        const rawRight = buildFacePattern(sideDepthR, pH, mat, s.verband ?? DEFAULT_VERBAND);
         const clipSideFront = (rawRows, armDepth) => {
           const clipEnd = armDepth - clipOff;
           return rawRows.map((row) => ({
@@ -3123,7 +3123,7 @@ export default function App() {
         }),
       })).filter((row) => row.pieces.length > 0);
       const leftRows = clipLeft(buildFacePattern(panelDepthL, pH, mat, verband), panelDepthL);
-      const rightRows = clipRight(buildMirroredFacePattern(panelDepthR, pH, mat, verband));
+      const rightRows = clipRight(buildFacePattern(panelDepthR, pH, mat, verband));
       return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: pH, groupMinH, sideClipOffset, panelDepthL, panelDepthR, pDL, pDR };
     });
   }, [activeGroup, getSettings, wallMap, adjacencies]);

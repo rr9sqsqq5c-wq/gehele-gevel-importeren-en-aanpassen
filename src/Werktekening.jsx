@@ -819,7 +819,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               }),
             })).filter((row) => row.pieces.length > 0);
             const localLeftRows = clipSideLeft(buildFacePattern(sidePanelDepthL, pH, mat, verband), sidePanelDepthL);
-            const localRightRows = clipSideRight(buildMirroredFacePattern(sidePanelDepthR, pH, mat, verband));
+            const localRightRows = clipSideRight(buildFacePattern(sidePanelDepthR, pH, mat, verband));
 
             (() => {
               const stoot = mat.stoot ?? 10;
