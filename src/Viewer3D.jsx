@@ -482,9 +482,10 @@ function OpeningMesh({ wall, opening, upAxis }) {
 
   const meshObj = useMemo(() => {
     const isRaam = opening.type === 'raam';
-    const color = isRaam ? '#93c5fd' : '#fde68a';
-    const lineMat = new THREE.LineBasicMaterial({ color, depthTest: false });
-    const fillMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.18, depthTest: false, side: THREE.DoubleSide });
+    const lineColor = isRaam ? '#1d4ed8' : '#c2410c';
+    const fillColor = isRaam ? '#3b82f6' : '#f97316';
+    const lineMat = new THREE.LineBasicMaterial({ color: lineColor, depthTest: false });
+    const fillMat = new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: 0.35, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
 
     const rectPts = [
       { l: ox, h: oy }, { l: ox + ow, h: oy },
