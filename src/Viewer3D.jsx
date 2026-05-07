@@ -522,9 +522,10 @@ function OpeningMesh({ wall, opening, upAxis }) {
     };
 
     const group = new THREE.Group();
-    group.add(makePolyLine(frontFace));
-    group.add(makePolyLine(backFace));
-    group.add(makePolyFill(frontFace + 1));
+    const setOrder = (obj) => { obj.renderOrder = 999; return obj; };
+    group.add(setOrder(makePolyLine(frontFace)));
+    group.add(setOrder(makePolyLine(backFace)));
+    group.add(setOrder(makePolyFill(frontFace + 1)));
     return group;
   }, [wo, ox, oy, ow, oh, frontFace, backFace, upAxis, opening.type, polyPts]);
 
