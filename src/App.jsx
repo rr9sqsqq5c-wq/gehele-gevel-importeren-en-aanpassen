@@ -1560,6 +1560,7 @@ export default function App() {
   const [savedFileInfo, setSavedFileInfo] = useState(null);
   const [savedHandle, setSavedHandle] = useState(null);
   const [ifcFileName, setIfcFileName] = useState(null);
+  const [exportFileName, setExportFileName] = useState('');
   const [showPattern, setShowPattern] = useState(true);
   const [viewMode, setViewMode] = useState('3d');
   const [pendingFile, setPendingFile] = useState(null);
@@ -3061,7 +3062,7 @@ export default function App() {
       };
     });
     const settingsMap = Object.fromEntries(groups.map((g) => [g.id, getSettings(g.id)]));
-    exportGroupsToIfc(exportGroups, settingsMap, ifcFileName ?? 'export');
+    exportGroupsToIfc(exportGroups, settingsMap, exportFileName.trim() || ifcFileName || 'export');
     } catch (err) {
       alert('IFC export mislukt:\n' + (err?.message ?? String(err)));
       console.error('IFC export error:', err);
@@ -3550,11 +3551,21 @@ export default function App() {
           <div style={{ padding: '4px 14px', display: 'flex', alignItems: 'center', gap: 6, background: '#172033', borderBottom: '1px solid #263148', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, color: '#475569', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 4 }}>Export</span>
             {groups.length > 0 && (
-              <Tooltip text={"Exporteert zichtbare groepen als een nieuw IFC-bestand.\nVerborgen groepen (👁 Zichtbaarheid in de 3D-viewer) worden overgeslagen.\nDit bestand bevat ALLEEN de gevelbekleding — GEEN originele wandelementen.\nImporteer dit bestand naast het originele IFC in je BIM-software.\nWelke lagen worden geëxporteerd is per groep te regelen via 'Laagzichtbaarheid 2D'."}>
-                <button onClick={handleExport} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                  ⬇ Gevelbekleding IFC{groups.some((g) => hiddenGroupIds.has(g.id)) ? ` (${groups.filter((g) => !hiddenGroupIds.has(g.id)).length}/${groups.length})` : ''}
-                </button>
-              </Tooltip>
+              <>
+                <input
+                  type="text"
+                  value={exportFileName}
+                  onChange={(e) => setExportFileName(e.target.value)}
+                  placeholder={`${ifcFileName || 'export'}_gevelbekleding`}
+                  style={{ fontSize: 11, padding: '2px 6px', border: '1px solid #334155', borderRadius: 4, background: '#0f172a', color: '#e2e8f0', width: 180, outline: 'none' }}
+                  title="Bestandsnaam voor de IFC-export (zonder .ifc extensie)"
+                />
+                <Tooltip text={"Exporteert zichtbare groepen als een nieuw IFC-bestand.\nVerborgen groepen (👁 Zichtbaarheid in de 3D-viewer) worden overgeslagen.\nDit bestand bevat ALLEEN de gevelbekleding — GEEN originele wandelementen.\nImporteer dit bestand naast het originele IFC in je BIM-software.\nWelke lagen worden geëxporteerd is per groep te regelen via 'Laagzichtbaarheid 2D'."}>
+                  <button onClick={handleExport} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    ⬇ Gevelbekleding IFC{groups.some((g) => hiddenGroupIds.has(g.id)) ? ` (${groups.filter((g) => !hiddenGroupIds.has(g.id)).length}/${groups.length})` : ''}
+                  </button>
+                </Tooltip>
+              </>
             )}
             {groups.some((g) => getSettings(g.id).panelen?.enabled) && (
               <>
