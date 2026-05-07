@@ -279,6 +279,25 @@ const GROUP_COLORS = [
   '#16a085', '#d35400', '#2471a3', '#1e8449', '#6c3483',
 ];
 
+function applyManualOutsideOverrides(wallsArr, groupsArr, sm) {
+  for (const group of groupsArr) {
+    const dir = sm?.[group.id]?.manualOutsideDir;
+    if (dir !== 1 && dir !== -1) continue;
+    for (const wallId of group.wallIds) {
+      const wall = wallsArr.find(w => w.expressID === wallId);
+      if (!wall?.wallOrigin) continue;
+      const wo = wall.wallOrigin;
+      if (!wo.resolvedOutside) wo.resolvedOutside = {};
+      wo.resolvedOutside.outsideDir = dir;
+      wo.resolvedOutside.outsidePos = dir < 0 ? wo.thicknessStart : (wo.thicknessEnd ?? wo.thicknessStart + 200);
+      wo.resolvedOutside.source = 'manual';
+      wo.resolvedOutside.reason = 'handmatig ingesteld';
+      wo.resolvedOutside.confidence = 1.0;
+      wo.resolvedOutside.ambiguous = false;
+    }
+  }
+}
+
 function useGroupSettings() {
   const [map, setMap] = useState({});
   const defaults = (id) => ({ name: id, color: '#a64033', stripColor: null, verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, startLijn: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true, penanten: true }, ifcLayerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true } });
@@ -321,7 +340,7 @@ function evalPenantX(expr, gapCenters) {
   }
 }
 
-function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked, gapCenters, groupWidth, doorBottomYs = [] }) {
+function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked, gapCenters, groupWidth, doorBottomYs = [], resolvedOutsideInfo = null, onManualOutsideDir }) {
   const mat = settings.material ?? { ...DEFAULT_MATERIAL };
   const [openSections, setOpenSections] = useState({});
   const toggle = (k) => setOpenSections((p) => ({ ...p, [k]: !(p[k] ?? false) }));
@@ -439,6 +458,31 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
           <label htmlFor="outside-flip" style={{ fontSize: 11, color: settings.outsideDirFlip ? '#92400e' : '#475569', cursor: 'pointer' }}>
             Buitenzijde omdraaien (richting corrigeren)
           </label>
+        </div>
+        <div style={{ marginTop: 6 }}>
+          <div style={{ fontSize: 10, color: '#64748b', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span>Buitenzijde selecteren</span>
+            {resolvedOutsideInfo && settings.manualOutsideDir == null && (
+              <span style={{ color: '#94a3b8', fontSize: 9 }}>
+                (auto: {Math.round((resolvedOutsideInfo.confidence ?? 0) * 100)}%{resolvedOutsideInfo.ambiguous ? ' – onzeker' : ''})
+              </span>
+            )}
+            {settings.manualOutsideDir != null && (
+              <span style={{ color: '#2563eb', fontSize: 9, fontWeight: 600 }}>handmatig</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {[{ label: '← Positie 1', value: -1 }, { label: 'Automatisch', value: null }, { label: 'Positie 2 →', value: 1 }].map(({ label, value }) => {
+              const isActive = value === null ? (settings.manualOutsideDir == null) : (settings.manualOutsideDir === value);
+              return (
+                <button key={String(value)}
+                  onClick={() => { onUpdate({ manualOutsideDir: value }); onManualOutsideDir?.(value); }}
+                  style={{ flex: 1, fontSize: 10, padding: '3px 4px', cursor: 'pointer', background: isActive ? '#3b82f6' : '#f1f5f9', color: isActive ? '#fff' : '#475569', border: `1px solid ${isActive ? '#2563eb' : '#e2e8f0'}`, borderRadius: 3 }}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </CollapsibleSection>
 
@@ -2268,6 +2312,7 @@ export default function App() {
         if (state.wallDimOverrides && typeof state.wallDimOverrides === 'object') setWallDimOverrides(state.wallDimOverrides);
         if (Array.isArray(state.allWalls) && state.allWalls.length > 0) {
           resolveOutsideDirections(state.allWalls);
+          applyManualOutsideOverrides(state.allWalls, state.groups, sm);
           setAllWalls(state.allWalls);
           setAdjacencies(await detectAdjacenciesAsync(state.allWalls));
           if (state.ifcFileName) setIfcFileName(state.ifcFileName);
@@ -2495,6 +2540,7 @@ export default function App() {
         const loadedWalls = Array.isArray(data.walls) ? data.walls : [];
         if (loadedWalls.length > 0) {
           resolveOutsideDirections(loadedWalls);
+          applyManualOutsideOverrides(loadedWalls, loadedGroups, loadedSm);
           setAllWalls(loadedWalls);
           setAdjacencies(await detectAdjacenciesAsync(loadedWalls));
           setLoadStatus('loaded');
@@ -3930,6 +3976,29 @@ export default function App() {
                   }
                   return [...ys].sort((a, b) => a - b);
                 })()}
+                resolvedOutsideInfo={activeGroup.wallIds.map(id => wallMap[id]).find(w => w?.wallOrigin?.resolvedOutside)?.wallOrigin?.resolvedOutside ?? null}
+                onManualOutsideDir={(dir) => {
+                  updateSettings(activeGroup.id, { manualOutsideDir: dir });
+                  if (dir === null) {
+                    resolveOutsideDirections(allWalls);
+                    const newSm = { ...settingsMap, [activeGroup.id]: { ...settingsMap[activeGroup.id], manualOutsideDir: null } };
+                    applyManualOutsideOverrides(allWalls, groups, newSm);
+                  } else {
+                    const groupWallSet = new Set(activeGroup.wallIds);
+                    for (const wall of allWalls) {
+                      if (!groupWallSet.has(wall.expressID) || !wall.wallOrigin) continue;
+                      const wo = wall.wallOrigin;
+                      if (!wo.resolvedOutside) wo.resolvedOutside = {};
+                      wo.resolvedOutside.outsideDir = dir;
+                      wo.resolvedOutside.outsidePos = dir < 0 ? wo.thicknessStart : (wo.thicknessEnd ?? wo.thicknessStart + 200);
+                      wo.resolvedOutside.source = 'manual';
+                      wo.resolvedOutside.reason = 'handmatig ingesteld';
+                      wo.resolvedOutside.confidence = 1.0;
+                      wo.resolvedOutside.ambiguous = false;
+                    }
+                  }
+                  setAllWalls([...allWalls]);
+                }}
               />
             </div>
             {viewMode === '2d' && (() => {
