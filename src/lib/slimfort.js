@@ -248,14 +248,23 @@ export function generateSlimFortFaces({ groupWidth, groupHeight, wallThickness, 
   if (leftSideEnabled || rightSideEnabled) {
     const cornerOffset = frontEnabled ? sfTotal : 0;
     const sideRawWidth = Math.max(0, (wallThickness ?? 0) - cornerOffset);
-    if (sideRawWidth >= MIN_EPS_PIECE_SIZE) {
+    const frontSysThick = frontEnabled ? sfTotal : 0;
+    const backSysThick = cfcs?.cladRightLongFace ? sfTotal : 0;
+    const sideDisplayWidth = frontSysThick + (wallThickness ?? 0) + backSysThick;
+    const gateWidth = cfcs ? sideDisplayWidth : sideRawWidth;
+    const gridWidth = cfcs ? Math.max(sideDisplayWidth, 1) : Math.max(sideRawWidth, 1);
+    if (gateWidth >= MIN_EPS_PIECE_SIZE) {
       if (leftSideEnabled) {
-        const leftGrid = generateSlimFortGrid(sideRawWidth, groupHeight, [], s, maxH, 'side-left');
-        faces.push({ faceId: 'side-left', faceType: 'side-left', width: sideRawWidth, height: groupHeight, grid: leftGrid, cornerOffset });
+        const leftGrid = gridWidth >= MIN_EPS_PIECE_SIZE
+          ? generateSlimFortGrid(gridWidth, groupHeight, [], s, maxH, 'side-left')
+          : { epsElements: [], brackets: [], profiles: [], settings: s };
+        faces.push({ faceId: 'side-left', faceType: 'side-left', width: gridWidth, displayWidth: sideDisplayWidth, displayFrontSys: frontSysThick, displayBackSys: backSysThick, height: groupHeight, grid: leftGrid, cornerOffset });
       }
       if (rightSideEnabled) {
-        const rightGrid = generateSlimFortGrid(sideRawWidth, groupHeight, [], s, maxH, 'side-right');
-        faces.push({ faceId: 'side-right', faceType: 'side-right', width: sideRawWidth, height: groupHeight, grid: rightGrid, cornerOffset });
+        const rightGrid = gridWidth >= MIN_EPS_PIECE_SIZE
+          ? generateSlimFortGrid(gridWidth, groupHeight, [], s, maxH, 'side-right')
+          : { epsElements: [], brackets: [], profiles: [], settings: s };
+        faces.push({ faceId: 'side-right', faceType: 'side-right', width: gridWidth, displayWidth: sideDisplayWidth, displayFrontSys: frontSysThick, displayBackSys: backSysThick, height: groupHeight, grid: rightGrid, cornerOffset });
       }
     }
   }
@@ -563,6 +572,53 @@ export function generateSlimFortFacesAuto({ groupWalls, visibleFaces, settings, 
   }
 
   return faces;
+}
+
+export function buildConcreteUnfoldedDrawingLayout(allSlimFortFaces, cfcs, groupWidth, gap = 300) {
+  const c = { ...CONCRETE_FACE_CLADDING_DEFAULTS, ...cfcs };
+  const leftRanges = c.cladLeftLongFace
+    ? computeFaceLongRanges({ ...c, cladRightLongFace: false }, groupWidth)
+    : null;
+  const rightRanges = c.cladRightLongFace
+    ? computeFaceLongRanges({ ...c, cladLeftLongFace: false }, groupWidth)
+    : null;
+
+  const frontFace = allSlimFortFaces.find((f) => f.faceType === 'front');
+  const backFace = allSlimFortFaces.find((f) => f.faceType === 'back');
+  const leftEndFace = allSlimFortFaces.find((f) => f.faceType === 'side-left');
+  const rightEndFace = allSlimFortFaces.find((f) => f.faceType === 'side-right');
+
+  const panels = [];
+  let curDrawX = 0;
+
+  if (frontFace && leftRanges?.length) {
+    const modelStart = leftRanges[0][0];
+    const modelEnd = leftRanges[leftRanges.length - 1][1];
+    panels.push({ drawingFace: 'leftLongFace', faceType: 'front', face: frontFace, label: 'Linker langszijde', modelStartMm: modelStart, modelEndMm: modelEnd, drawingX: curDrawX, drawingWidth: groupWidth, isFront: true });
+    curDrawX += groupWidth + gap;
+  }
+
+  if (leftEndFace) {
+    const drawingWidth = leftEndFace.displayWidth ?? leftEndFace.width;
+    panels.push({ drawingFace: 'leftEndFace', faceType: 'side-left', face: leftEndFace, label: 'Linker kopse kant', modelStartMm: 0, modelEndMm: drawingWidth, drawingX: curDrawX, drawingWidth, isFront: false });
+    curDrawX += drawingWidth + gap;
+  }
+
+  if (backFace && rightRanges?.length) {
+    const modelStart = rightRanges[0][0];
+    const modelEnd = rightRanges[rightRanges.length - 1][1];
+    panels.push({ drawingFace: 'rightLongFace', faceType: 'back', face: backFace, label: 'Rechter langszijde', modelStartMm: modelStart, modelEndMm: modelEnd, drawingX: curDrawX, drawingWidth: groupWidth, isFront: true });
+    curDrawX += groupWidth + gap;
+  }
+
+  if (rightEndFace) {
+    const drawingWidth = rightEndFace.displayWidth ?? rightEndFace.width;
+    panels.push({ drawingFace: 'rightEndFace', faceType: 'side-right', face: rightEndFace, label: 'Rechter kopse kant', modelStartMm: 0, modelEndMm: drawingWidth, drawingX: curDrawX, drawingWidth, isFront: false });
+    curDrawX += drawingWidth + gap;
+  }
+
+  if (!panels.length) return null;
+  return { panels, totalDrawingWidth: curDrawX - gap };
 }
 
 export function getSlimFortDepths(sfSettings, panelVentGap = 0, panelDikte = 8, brickD = 20) {
