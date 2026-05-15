@@ -33,7 +33,7 @@ export const CONCRETE_FACE_CLADDING_DEFAULTS = {
   cladLeftLongFace: false,
   cladRightLongFace: false,
   leftLongFaceRange: { referenceEnd: 'leftEnd', startOffsetMm: 0, endOffsetMm: null, lengthMm: null },
-  rightLongFaceRange: { referenceEnd: 'rightEnd', startOffsetMm: 0, endOffsetMm: null, lengthMm: null },
+  rightLongFaceRange: { referenceEnd: 'leftEnd', startOffsetMm: 0, endOffsetMm: null, lengthMm: null },
   leftPerpendicularHintMm: null,
   rightPerpendicularHintMm: null,
   clampToWallLength: true,
@@ -162,13 +162,10 @@ export function computeFaceLongRanges(cfcs, wallLength) {
   }
   if (c.cladRightLongFace) {
     const r = c.rightLongFaceRange ?? {};
-    const startFromRight = r.startOffsetMm ?? 0;
-    const len = r.lengthMm ?? (wallLength - startFromRight);
-    const x2 = wallLength - startFromRight;
-    const x1 = x2 - len;
-    const clampedX1 = c.clampToWallLength !== false ? Math.max(x1, 0) : x1;
-    const clampedX2 = c.clampToWallLength !== false ? Math.min(x2, wallLength) : x2;
-    if (clampedX2 > clampedX1) ranges.push([clampedX1, clampedX2]);
+    const start = r.startOffsetMm ?? 0;
+    const end = r.lengthMm != null ? start + r.lengthMm : (r.endOffsetMm ?? wallLength);
+    const clamped = c.clampToWallLength !== false ? Math.min(end, wallLength) : end;
+    if (clamped > start) ranges.push([Math.max(0, start), clamped]);
   }
   if (ranges.length === 0) {
     if (!c.cladLeftLongFace && !c.cladRightLongFace) return null;

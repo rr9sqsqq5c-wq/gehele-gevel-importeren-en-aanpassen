@@ -715,6 +715,12 @@ function SlimFort3D({ groupPattern, settings, brickD, upAxis, allWalls }) {
     const allEpsBoxes = [];
     const allProfBoxes = [];
     const allBrBoxes = [];
+    const allEpsBackBoxes = [];
+    const allProfBackBoxes = [];
+    const allBrBackBoxes = [];
+    const allEpsSideBoxes = [];
+    const allProfSideBoxes = [];
+    const allBrSideBoxes = [];
 
     const facesToRender = slimFortFaces ?? (() => {
       const { groupWidth: gW, groupHeight: gH, groupOpenings } = facadeData;
@@ -738,24 +744,24 @@ function SlimFort3D({ groupPattern, settings, brickD, upAxis, allWalls }) {
         }
       } else if (faceType === 'side-left' || faceType === 'side-right') {
         for (const eps of grid.epsElements) {
-          allEpsBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, allWalls, flip));
+          allEpsSideBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, allWalls, flip));
         }
         for (const p of grid.profiles) {
-          allProfBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, allWalls, flip));
+          allProfSideBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, allWalls, flip));
         }
         for (const b of grid.brackets) {
-          allBrBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, allWalls, flip));
+          allBrSideBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, allWalls, flip));
         }
       } else if (faceType === 'portal-left' || faceType === 'portal-right') {
         const { openingX, openingY, openingWidth } = face;
         for (const eps of grid.epsElements) {
-          allEpsBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, allWalls, flip));
+          allEpsSideBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, allWalls, flip));
         }
         for (const p of grid.profiles) {
-          allProfBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, allWalls, flip));
+          allProfSideBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, allWalls, flip));
         }
         for (const b of grid.brackets) {
-          allBrBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, allWalls, flip));
+          allBrSideBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, allWalls, flip));
         }
       } else if (faceType === 'back') {
         let backOutsidePos = face.outsidePos;
@@ -767,24 +773,28 @@ function SlimFort3D({ groupPattern, settings, brickD, upAxis, allWalls }) {
           backOutsidePos = raw.outsidePos - rawDir * (face.backOffsetFromFront ?? 0);
         }
         for (const eps of grid.epsElements) {
-          allEpsBoxes.push(getSlimFortElemBoxAt(refWallOrigin, groupMinX, groupMinH, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, backOutsideDir, backOutsidePos));
+          allEpsBackBoxes.push(getSlimFortElemBoxAt(refWallOrigin, groupMinX, groupMinH, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, backOutsideDir, backOutsidePos));
         }
         for (const p of grid.profiles) {
-          allProfBoxes.push(getSlimFortElemBoxAt(refWallOrigin, groupMinX, groupMinH, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, backOutsideDir, backOutsidePos));
+          allProfBackBoxes.push(getSlimFortElemBoxAt(refWallOrigin, groupMinX, groupMinH, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, backOutsideDir, backOutsidePos));
         }
         for (const b of grid.brackets) {
-          allBrBoxes.push(getSlimFortElemBoxAt(refWallOrigin, groupMinX, groupMinH, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, backOutsideDir, backOutsidePos));
+          allBrBackBoxes.push(getSlimFortElemBoxAt(refWallOrigin, groupMinX, groupMinH, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, backOutsideDir, backOutsidePos));
         }
       }
     }
 
-    return { epsBoxes: allEpsBoxes, profBoxes: allProfBoxes, brBoxes: allBrBoxes };
+    return {
+      epsBoxes: allEpsBoxes, profBoxes: allProfBoxes, brBoxes: allBrBoxes,
+      epsBackBoxes: allEpsBackBoxes, profBackBoxes: allProfBackBoxes, brBackBoxes: allBrBackBoxes,
+      epsSideBoxes: allEpsSideBoxes, profSideBoxes: allProfSideBoxes, brSideBoxes: allBrSideBoxes,
+    };
   }, [groupPattern, settings, brickD, upAxis, allWalls]);
 
   useEffect(() => { invalidate(); }, [sfData, invalidate]);
 
   if (!sfData) return null;
-  const { epsBoxes, profBoxes, brBoxes } = sfData;
+  const { epsBoxes, profBoxes, brBoxes, epsBackBoxes, profBackBoxes, brBackBoxes, epsSideBoxes, profSideBoxes, brSideBoxes } = sfData;
 
   return (
     <group>
@@ -794,16 +804,52 @@ function SlimFort3D({ groupPattern, settings, brickD, upAxis, allWalls }) {
           <meshStandardMaterial color="#7dd3fc" transparent opacity={0.55} depthWrite={false} polygonOffset polygonOffsetFactor={1} polygonOffsetUnits={1} />
         </mesh>
       ))}
+      {epsBackBoxes.map((box, i) => (
+        <mesh key={`sf-eps-back-${i}`} position={box.pos} renderOrder={1}>
+          <boxGeometry args={box.size} />
+          <meshStandardMaterial color="#fcd34d" transparent opacity={0.55} depthWrite={false} polygonOffset polygonOffsetFactor={1} polygonOffsetUnits={1} />
+        </mesh>
+      ))}
+      {epsSideBoxes.map((box, i) => (
+        <mesh key={`sf-eps-side-${i}`} position={box.pos} renderOrder={1}>
+          <boxGeometry args={box.size} />
+          <meshStandardMaterial color="#c4b5fd" transparent opacity={0.55} depthWrite={false} polygonOffset polygonOffsetFactor={1} polygonOffsetUnits={1} />
+        </mesh>
+      ))}
       {profBoxes.map((box, i) => (
         <mesh key={`sf-prof-${i}`} position={box.pos} renderOrder={2}>
           <boxGeometry args={box.size} />
           <meshStandardMaterial color="#94a3b8" transparent opacity={0.8} polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
         </mesh>
       ))}
+      {profBackBoxes.map((box, i) => (
+        <mesh key={`sf-prof-back-${i}`} position={box.pos} renderOrder={2}>
+          <boxGeometry args={box.size} />
+          <meshStandardMaterial color="#78716c" transparent opacity={0.8} polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
+        </mesh>
+      ))}
+      {profSideBoxes.map((box, i) => (
+        <mesh key={`sf-prof-side-${i}`} position={box.pos} renderOrder={2}>
+          <boxGeometry args={box.size} />
+          <meshStandardMaterial color="#a78bfa" transparent opacity={0.8} polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
+        </mesh>
+      ))}
       {brBoxes.map((box, i) => (
         <mesh key={`sf-br-${i}`} position={box.pos} renderOrder={3}>
           <boxGeometry args={box.size} />
           <meshStandardMaterial color="#475569" transparent opacity={0.9} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
+        </mesh>
+      ))}
+      {brBackBoxes.map((box, i) => (
+        <mesh key={`sf-br-back-${i}`} position={box.pos} renderOrder={3}>
+          <boxGeometry args={box.size} />
+          <meshStandardMaterial color="#57534e" transparent opacity={0.9} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
+        </mesh>
+      ))}
+      {brSideBoxes.map((box, i) => (
+        <mesh key={`sf-br-side-${i}`} position={box.pos} renderOrder={3}>
+          <boxGeometry args={box.size} />
+          <meshStandardMaterial color="#6d28d9" transparent opacity={0.9} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
         </mesh>
       ))}
     </group>

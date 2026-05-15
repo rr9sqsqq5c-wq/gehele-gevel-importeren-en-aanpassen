@@ -1881,11 +1881,10 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                   {cfcs.cladRightLongFace && (() => {
                     const r = cfcs.rightLongFaceRange ?? {};
                     const hint = perpHints.right;
-                    const x2 = wl - (r.startOffsetMm ?? 0);
-                    const x1 = r.lengthMm != null ? x2 - r.lengthMm : 0;
+                    const rangeEnd = r.lengthMm != null ? (r.startOffsetMm ?? 0) + r.lengthMm : null;
                     return (
                       <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 5, padding: '6px 8px' }}>
-                        <div style={{ fontSize: 10, fontWeight: 600, color: '#334155', marginBottom: 3 }}>Rechter langszijde — vanaf rechter kopse kant</div>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: '#334155', marginBottom: 3 }}>Rechter langszijde — vanaf linker kopse kant</div>
                         {hint != null ? (
                           <div style={{ fontSize: 9.5, color: '#64748b', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span>Afstand tot buitenzijde haaks aansluitend vlak: <strong>{hint} mm</strong></span>
@@ -1898,7 +1897,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                           <div style={{ fontSize: 9.5, color: '#94a3b8', marginBottom: 4 }}>Geen haaks aansluitend vlak gevonden</div>
                         )}
                         <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                          <Field label="Start (mm)" tip="Begin bekleding op X mm vanaf rechter kopse kant.">
+                          <Field label="Start (mm)" tip="Begin bekleding op X mm vanaf linker kopse kant.">
                             <input type="number" min={0} step={10} value={r.startOffsetMm ?? 0}
                               onChange={(e) => updRange('right', { startOffsetMm: Math.max(0, Number(e.target.value)) })}
                               style={{ ...inp, width: 65 }} />
@@ -1909,8 +1908,8 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                               placeholder="Volledig" style={{ ...inp, width: 75 }} />
                           </Field>
                         </div>
-                        {wl > 0 && r.lengthMm != null && (
-                          <div style={{ fontSize: 9, color: '#0369a1', marginTop: 3 }}>Bereik: {Math.max(0, x1)}–{x2} mm van {wl} mm</div>
+                        {wl > 0 && rangeEnd != null && (
+                          <div style={{ fontSize: 9, color: '#0369a1', marginTop: 3 }}>Bereik: {r.startOffsetMm ?? 0}–{rangeEnd} mm van {wl} mm</div>
                         )}
                       </div>
                     );
@@ -2151,11 +2150,10 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                   {cfcs.cladRightLongFace && (() => {
                     const r = cfcs.rightLongFaceRange ?? {};
                     const hint = perpHints.right;
-                    const x2 = wl - (r.startOffsetMm ?? 0);
-                    const x1 = r.lengthMm != null ? x2 - r.lengthMm : 0;
+                    const rangeEnd = r.lengthMm != null ? (r.startOffsetMm ?? 0) + r.lengthMm : null;
                     return (
                       <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 5, padding: '6px 8px' }}>
-                        <div style={{ fontSize: 10, fontWeight: 600, color: '#334155', marginBottom: 3 }}>Rechter langszijde — vanaf rechter kopse kant</div>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: '#334155', marginBottom: 3 }}>Rechter langszijde — vanaf linker kopse kant</div>
                         {hint != null ? (
                           <div style={{ fontSize: 9.5, color: '#64748b', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span>📐 Afstand tot buitenzijde haaks aansluitend vlak: <strong>{Math.round(hint)} mm</strong></span>
@@ -2168,7 +2166,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                           <div style={{ fontSize: 9.5, color: '#94a3b8', marginBottom: 4 }}>Geen haaks aansluitend vlak gevonden</div>
                         )}
                         <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                          <Field label="Start (mm)" tip="Begin bekleding op X mm vanaf rechter kopse kant.">
+                          <Field label="Start (mm)" tip="Begin bekleding op X mm vanaf linker kopse kant.">
                             <input type="number" min={0} step={10} value={r.startOffsetMm ?? 0}
                               onChange={(e) => updRange('right', { startOffsetMm: Math.max(0, Number(e.target.value)) })}
                               style={{ ...inp, width: 65 }} />
@@ -2179,8 +2177,8 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                               placeholder="Volledig" style={{ ...inp, width: 75 }} />
                           </Field>
                         </div>
-                        {wl > 0 && r.lengthMm != null && (
-                          <div style={{ fontSize: 9, color: '#0369a1', marginTop: 3 }}>Bereik: {Math.max(0, x1)}–{x2} mm van {wl} mm</div>
+                        {wl > 0 && rangeEnd != null && (
+                          <div style={{ fontSize: 9, color: '#0369a1', marginTop: 3 }}>Bereik: {r.startOffsetMm ?? 0}–{rangeEnd} mm van {wl} mm</div>
                         )}
                       </div>
                     );
@@ -5819,6 +5817,19 @@ export default function App() {
             <>
               {activeGroup ? (() => {
                 const s = getSettings(activeGroup.id);
+                if ((s.backingType ?? 'hout') === 'aluminium_slimfort') {
+                  return (
+                    <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13 }}>Laden…</div>}>
+                      <SlimFortWerktekening
+                        key={activeGroup.id}
+                        slimFortFaces={allPatterns[activeGroup.id]?.slimFortFaces ?? null}
+                        slimFortStitching={allPatterns[activeGroup.id]?.slimFortStitching ?? null}
+                        wallDecomposition={allPatterns[activeGroup.id]?.wallDecomposition ?? null}
+                        groupName={s?.name ?? activeGroup.id}
+                      />
+                    </Suspense>
+                  );
+                }
                 const groupWalls = activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean);
                 const withOrigin = groupWalls.filter((w) => w.wallOrigin);
                 const gMinH = withOrigin.length ? Math.min(...withOrigin.map((w) => w.wallOrigin.heightStart ?? 0)) : 0;

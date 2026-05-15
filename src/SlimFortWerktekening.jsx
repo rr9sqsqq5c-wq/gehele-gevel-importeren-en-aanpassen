@@ -575,11 +575,159 @@ function SheetBeugels({ slimFortFaces, activeFaceIdx, onFaceChange }) {
   );
 }
 
+function SheetKokers({ slimFortFaces, productionData, activeFaceIdx, onFaceChange }) {
+  const primaryFaces = (slimFortFaces ?? []).filter((f) => !PORTAL_FTYPES.has(f.faceType));
+  const face = primaryFaces[activeFaceIdx] ?? primaryFaces[0];
+
+  if (!face) {
+    return <div style={{ padding: 32, color: '#94a3b8', fontSize: 13 }}>Geen vlakken beschikbaar.</div>;
+  }
+
+  const grid = face.grid ?? {};
+  const profiles = grid.profiles ?? [];
+  const faceW = face.width ?? 0;
+  const faceH = face.height ?? 0;
+
+  const DRAW_W = VIEW_W - PAD_L - PAD_R - DIM_GAP * 2;
+  const DRAW_H = 380;
+  const sc = Math.min(faceW > 0 ? DRAW_W / faceW : 1, faceH > 0 ? DRAW_H / faceH : 1);
+  const drawW = faceW * sc;
+  const drawH = faceH * sc;
+  const ox = PAD_L + DIM_GAP;
+  const oy = PAD_T + DIM_GAP;
+
+  const faceSegments = (productionData?.profileSegments ?? []).filter((p) => p.faceId === face.faceId);
+  const hSegments = faceSegments.filter((s) => s.richting === 'horizontaal');
+  const vSegments = faceSegments.filter((s) => s.richting === 'verticaal');
+
+  const profSettings = grid.settings ?? {};
+  const profW = profSettings.profileWidth ?? 44;
+  const profH = profSettings.profileHeight ?? 44;
+  const profD = profSettings.profileDepth ?? 63;
+
+  const ROW_H = 14;
+  const TABLE_COL_W = [70, 55, 60, 60, 60, 55, 55];
+  const TABLE_HDRS = ['Koker-ID', 'Richting', 'X (mm)', 'Y (mm)', 'Lengte (mm)', 'Breedte (mm)', 'Hoogte (mm)'];
+  const TABLE_W = TABLE_COL_W.reduce((a, b) => a + b, 0);
+
+  const allSegs = [...hSegments, ...vSegments];
+  const tableRows = allSegs.map((seg) => [
+    seg.segmentId,
+    seg.richting === 'horizontaal' ? 'H' : 'V',
+    Math.round(seg.x),
+    Math.round(seg.y),
+    Math.round(seg.length),
+    profW,
+    profH,
+  ]);
+
+  const tableTop = oy + drawH + DIM_GAP * 2 + 10;
+  const tableH = (tableRows.length + 1) * ROW_H + 6;
+  const svgH = tableTop + tableH + PAD_B + 60;
+
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 4, padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+        {primaryFaces.map((f, i) => (
+          <button key={f.faceId} onClick={() => onFaceChange(i)}
+            style={{ padding: '3px 10px', fontSize: 11, border: '1px solid #cbd5e1', borderRadius: 3, background: i === activeFaceIdx ? '#1e3a5f' : '#fff', color: i === activeFaceIdx ? '#fff' : '#334155', cursor: 'pointer' }}>
+            {FACE_LABEL[f.faceType] ?? f.faceType}
+          </button>
+        ))}
+      </div>
+      <SvgWrapper height={svgH} title={`Aluminium kokers — ${FACE_LABEL[face.faceType] ?? face.faceType} — ${faceSegments.length} segment${faceSegments.length !== 1 ? 'en' : ''}`} pageLabel="SF-KOKERS">
+
+        <text x={ox} y={oy - 6} fontSize={FONT_LBL} fill="#64748b" fontFamily="Arial, sans-serif">
+          {`Profiel: ${profW}×${profH}mm  |  Diepte: ${profD}mm  |  Horizontaal: ${hSegments.length} st.  |  Verticaal: ${vSegments.length} st.`}
+        </text>
+
+        <rect x={ox} y={oy} width={drawW} height={drawH} fill="#f8fafc" stroke="#334155" strokeWidth={1} />
+
+        {profiles.map((prof, i) => {
+          const isH = prof.richting === 'horizontaal';
+          const px = ox + prof.x * sc;
+          const py = oy + prof.y * sc;
+          const pw = prof.width * sc;
+          const ph = prof.height * sc;
+          const fill = isH ? '#bfdbfe' : '#fee2e2';
+          const stroke = isH ? '#1d4ed8' : '#b91c1c';
+          return (
+            <rect key={i} x={px} y={py} width={Math.max(pw, 1.5)} height={Math.max(ph, 1.5)} fill={fill} fillOpacity={0.8} stroke={stroke} strokeWidth={0.8} />
+          );
+        })}
+
+        {faceSegments.map((seg) => {
+          const isH = seg.richting === 'horizontaal';
+          const px = ox + seg.x * sc;
+          const py = oy + seg.y * sc;
+          const pw = seg.width * sc;
+          const ph = seg.height * sc;
+          const midX = px + pw / 2;
+          const midY = py + ph / 2;
+          return (
+            <g key={seg.segmentId}>
+              {isH ? (
+                <text x={midX} y={midY + 3} textAnchor="middle" fontSize={5.5} fill="#1e3a5f" fontFamily="Arial, sans-serif" fontWeight="bold">{seg.segmentId}</text>
+              ) : (
+                <text x={midX} y={midY} textAnchor="middle" fontSize={5.5} fill="#7f1d1d" fontFamily="Arial, sans-serif" fontWeight="bold" transform={`rotate(-90,${midX},${midY})`}>{seg.segmentId}</text>
+              )}
+            </g>
+          );
+        })}
+
+        <DimH x1={ox} x2={ox + drawW} y={oy - DIM_GAP + 4} label={`${Math.round(faceW)} mm`} />
+        <DimV x={ox - DIM_GAP + 8} y1={oy} y2={oy + drawH} label={`${Math.round(faceH)} mm`} />
+
+        <g transform={`translate(${ox + drawW + 16},${oy})`}>
+          <text x={0} y={10} fontSize={8} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">Legenda</text>
+          <rect x={0} y={16} width={14} height={8} fill="#bfdbfe" stroke="#1d4ed8" strokeWidth={0.8} />
+          <text x={18} y={24} fontSize={FONT_LBL} fill="#1e293b" fontFamily="Arial, sans-serif">Horizontaal {profW}×{profH}mm</text>
+          <rect x={0} y={30} width={14} height={8} fill="#fee2e2" stroke="#b91c1c" strokeWidth={0.8} />
+          <text x={18} y={38} fontSize={FONT_LBL} fill="#1e293b" fontFamily="Arial, sans-serif">Verticaal {profW}×{profH}mm</text>
+        </g>
+
+        <g transform={`translate(${ox},${tableTop})`}>
+          <text x={0} y={-6} fontSize={9} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">Bestelstaat aluminium kokers</text>
+          {TABLE_HDRS.map((h, ci) => {
+            const cx = TABLE_COL_W.slice(0, ci).reduce((a, b) => a + b, 0);
+            return (
+              <g key={ci}>
+                <rect x={cx} y={0} width={TABLE_COL_W[ci]} height={ROW_H} fill="#1e3a5f" />
+                <text x={cx + 3} y={ROW_H - 3} fontSize={FONT_LBL - 0.5} fill="#fff" fontFamily="Arial, sans-serif" fontWeight="bold">{h}</text>
+              </g>
+            );
+          })}
+          {tableRows.map((row, ri) => (
+            <g key={ri}>
+              <rect x={0} y={(ri + 1) * ROW_H} width={TABLE_W} height={ROW_H} fill={ri % 2 === 0 ? '#f8fafc' : '#fff'} stroke="#e2e8f0" strokeWidth={0.4} />
+              {row.map((cell, ci) => {
+                const cx = TABLE_COL_W.slice(0, ci).reduce((a, b) => a + b, 0);
+                const isH = allSegs[ri]?.richting === 'horizontaal';
+                const fill = ci === 1 ? (isH ? '#1d4ed8' : '#b91c1c') : '#1e293b';
+                return (
+                  <text key={ci} x={cx + 3} y={(ri + 1) * ROW_H + ROW_H - 4} fontSize={FONT_LBL - 0.5} fill={fill} fontFamily="Arial, sans-serif">{cell}</text>
+                );
+              })}
+            </g>
+          ))}
+          <rect x={0} y={0} width={TABLE_W} height={(tableRows.length + 1) * ROW_H} fill="none" stroke="#334155" strokeWidth={0.8} />
+
+          <text x={0} y={(tableRows.length + 1) * ROW_H + 18} fontSize={FONT_LBL} fill="#475569" fontFamily="Arial, sans-serif">
+            {`Totaal: ${hSegments.length} horizontale koker${hSegments.length !== 1 ? 's' : ''} + ${vSegments.length} verticale koker${vSegments.length !== 1 ? 's' : ''} = ${faceSegments.length} st.`}
+          </text>
+        </g>
+
+      </SvgWrapper>
+    </>
+  );
+}
+
 const SHEETS = [
   { id: 'overzicht', label: 'SF-OVERZICHT' },
   { id: 'eps', label: 'SF-EPS' },
   { id: 'nesting', label: 'SF-NESTING' },
   { id: 'profielen', label: 'SF-PROFIELEN' },
+  { id: 'kokers', label: 'SF-KOKERS' },
   { id: 'beugels', label: 'SF-BEUGELS' },
 ];
 
@@ -652,6 +800,14 @@ export function SlimFortWerktekening({ slimFortFaces, slimFortStitching, wallDec
         )}
         {activeSheet === 'profielen' && (
           <SheetProfielen
+            slimFortFaces={slimFortFaces}
+            productionData={productionData}
+            activeFaceIdx={activeFaceIdx}
+            onFaceChange={setActiveFaceIdx}
+          />
+        )}
+        {activeSheet === 'kokers' && (
+          <SheetKokers
             slimFortFaces={slimFortFaces}
             productionData={productionData}
             activeFaceIdx={activeFaceIdx}
