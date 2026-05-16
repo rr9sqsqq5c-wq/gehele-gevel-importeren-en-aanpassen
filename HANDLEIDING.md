@@ -338,6 +338,27 @@ Uitstekende verticale lijsten (pilasters, dagkantverlengingen).
 | **Diepte mm** | Uitsteek ten opzichte van het gevelvlak |
 | **Hoogte mm** | Hoogte van het penant |
 
+#### Hoekaansluiting penant
+
+Wanneer een penant op een hoek de aanzichtsgevel vormt, kan deze automatisch worden gepositioneerd op het geometrische hoekpunt met een aansluitende (haakse) gevel. De aansluitende gevel loopt dan door tot de voorzijde van het penant — net zoals een zijkant van het penant aansluit op de voorzijde.
+
+Per penant beschikbaar onderaan de penant-kaart:
+
+| Veld | Beschrijving |
+|---|---|
+| **Hoekaansluiting** | Aan/uit-schakelaar voor de automatische hoekpositionering |
+| **Aansluitende gevel** | Kies de haakse gevelgroep die op deze hoek aansluit |
+| **Linker / Rechter hoek** | Aan welke kant van de aanzichtsgevel zit de hoek |
+| **Berekende penantpositie** | Read-only: `x` wordt automatisch berekend uit het snijpunt van beide gevelvlakken in modelSpace |
+| **Toepassen op aansluitende gevel** | Schrijft een `endExtension` naar de aangrenzende groep gelijk aan `diepte + brickDepth` — strips, latten en panelen lopen door tot de penant-voorzijde |
+
+**Geometrische regels:**
+- Het hoekpunt wordt bepaald uit de **buitenste thickness-face** van de aansluitende wand (`resolvedOutside.outsidePos`), geprojecteerd op de lengte-as van de aanzichtsgevel.
+- Penantpositie volgt de geometrische aansluiting, **niet** de groepsbreedte.
+- Het uiteinde van de aansluitende gevel (`left` / `right`) waarop de `endExtension` wordt geschreven, wordt automatisch gedetecteerd op basis van afstand tot de buitenfacade van de aanzichtsgevel.
+- View2D, Viewer3D en IFC-export pakken de `endExtension` automatisch op via de bestaande end-extension-clip — geen aparte rendercode.
+- Bestaande penanten zonder hoekkoppeling blijven ongewijzigd.
+
 ---
 
 ## Strip-zones handmatig tekenen in 2D

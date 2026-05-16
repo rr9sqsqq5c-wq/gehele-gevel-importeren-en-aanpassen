@@ -1,5 +1,12 @@
 # IFC Brickslip Planner — Changelog
 
+## [Niet gereleased] — 16-05-2026
+
+### Toegevoegd
+- **Penant — hoekaansluiting**: per penant kan nu de optie **Hoekaansluiting** worden ingeschakeld. De penant wordt automatisch op het geometrische hoekpunt geplaatst met een aansluitende (haakse) gevelgroep — positionering volgt het snijpunt van beide gevelvlakken in modelSpace (`resolvedOutside.outsidePos` van de aansluitende wand, geprojecteerd op de lengte-as van de aanzichtsgevel), niet de groepsbreedte. UI biedt: dropdown voor de aansluitende gevel, radio links/rechter hoek, read-only berekende `x`, hoekpunt-coördinaat en het automatisch gedetecteerde uiteinde van de aansluitende gevel. De knop **Toepassen op aansluitende gevel** schrijft een `endExtension` (strips/battens/panels = `diepte + brickDepth`) naar de aangrenzende groep, waardoor strips, latten en panelen doorlopen tot de penant-voorzijde via het bestaande end-extension-mechanisme. Geen rendercode aangepast — View2D, Viewer3D en IFC-export pakken de extension automatisch op. Bestaande penanten zonder `hoekKoppeling` blijven ongewijzigd.
+
+---
+
 ## [Niet gereleased] — 15-05-2026
 
 ### Toegevoegd
