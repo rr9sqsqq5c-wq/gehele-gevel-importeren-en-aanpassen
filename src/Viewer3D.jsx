@@ -29,8 +29,21 @@ function ifcToThree(ifcX, ifcY, ifcZ, upAxis = 'z') {
   return [ifcX / 1000, ifcZ / 1000, ifcY / 1000];
 }
 
-function detectUpAxis(_walls) {
-  return 'z';
+function detectUpAxis(walls) {
+  const count = { x: 0, y: 0, z: 0 };
+  let anyV1 = false;
+  let anyV0 = false;
+  for (const w of walls ?? []) {
+    const wo = w?.wallOrigin;
+    if (!wo) continue;
+    if (wo.orientationVersion === 'v1') anyV1 = true; else anyV0 = true;
+    const ha = wo.heightAxis;
+    if (ha === 'x' || ha === 'y' || ha === 'z') count[ha]++;
+  }
+  if (anyV1 && !anyV0) return 'z';
+  if (count.z >= count.y && count.z >= count.x) return 'z';
+  if (count.y >= count.x) return 'y';
+  return 'x';
 }
 
 function getWallBox(wall, upAxis = 'z') {
@@ -99,7 +112,7 @@ function getOutsideFaceInfo(rwo, allWalls) {
   const wallCenter_t = (tStart + tEnd) / 2;
 
   if (rwo.wallLengthDir) {
-    const upAxis = rwo.heightAxis ?? 'z';
+    const upAxis = rwo.heightAxis ?? 'y';
     const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
     const ld = rwo.wallLengthDir;
     const cx = ld.y * gu.z - ld.z * gu.y;

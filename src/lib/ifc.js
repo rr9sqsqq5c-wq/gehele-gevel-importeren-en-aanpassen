@@ -1,6 +1,17 @@
 import { getOpeningPoly } from './pattern.js';
 import { STEENSTRIP_CATALOG } from './battens.js';
 import { SLIMFORT_DEFAULTS, getSlimFortDepths } from './slimfort.js';
+
+export const ORIENTATION_VERSION_CURRENT = 'v1';
+
+export function getProjectOrientationVersion(wallOrigins) {
+  if (!wallOrigins || !wallOrigins.length) return 'v0';
+  for (const wo of wallOrigins) {
+    if (!wo || wo.orientationVersion !== 'v1') return 'v0';
+  }
+  return 'v1';
+}
+
 let _api = null;
 let _loading = null;
 let _cachedModel = null;
@@ -76,7 +87,7 @@ function _computeNewOutsideDir(wo, allWallOrigins) {
   const wallCenter_t = (tStart + tEnd) / 2;
   const toOutside_t = wallCenter_t - buildingCenter_t;
   if (!wo.wallLengthDir) return _computeOldOutsideDir(wo, allWallOrigins);
-  const upAxis = wo.heightAxis ?? 'z';
+  const upAxis = wo.heightAxis ?? 'y';
   const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
   const ld = wo.wallLengthDir;
   const cx = ld.y * gu.z - ld.z * gu.y;
@@ -125,7 +136,7 @@ function _classifyWallExterior(wo, globalBBox, openings) {
   }
 
   if (wo.wallLengthDir && globalBBox) {
-    const upAxis = wo.heightAxis ?? 'z';
+    const upAxis = wo.heightAxis ?? 'y';
     const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
     const ld = wo.wallLengthDir;
     const cx = ld.y * gu.z - ld.z * gu.y;
@@ -193,7 +204,7 @@ function _resolveOneWallOutside(wo, allOrigins, globalBBox) {
   let candidateA = null;
   let candidateB = null;
   if (wo.wallLengthDir) {
-    const upAxis = wo.heightAxis ?? 'z';
+    const upAxis = wo.heightAxis ?? 'y';
     const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
     const ld = wo.wallLengthDir;
     const cx = ld.y * gu.z - ld.z * gu.y;
@@ -1035,6 +1046,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
             matLayerSetDir: matData?.layerSetDir ?? null,
             matOffsetMm: matData?.offset_mm ?? 0,
             spaceBoundaryType: spaceBoundaryTypeByWall[wID] ?? null,
+            orientationVersion: ORIENTATION_VERSION_CURRENT,
           };
 
           const openings = [];
@@ -1251,7 +1263,7 @@ function calcOutsideFace(rwo, allWallOrigins) {
   let debugInfo = null;
 
   if (rwo.wallLengthDir) {
-    const upAxis = rwo.heightAxis ?? 'z';
+    const upAxis = rwo.heightAxis ?? 'y';
     const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
     const ld = rwo.wallLengthDir;
     const cx = ld.y * gu.z - ld.z * gu.y;
@@ -1302,10 +1314,16 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
   const mmUnit = E(`IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)`);
   const units  = E(`IFCUNITASSIGNMENT((#${mmUnit}))`);
   const allRefWallOrigins = groups.flatMap((g) => g.refWallOrigin ? [g.refWallOrigin] : []);
-  const haCount = { x: 0, y: 0, z: 0 };
-  for (const rwo of allRefWallOrigins) haCount[rwo.heightAxis] = (haCount[rwo.heightAxis] ?? 0) + 1;
-  const dominantHA = haCount.y >= haCount.z && haCount.y >= haCount.x ? 'y' : haCount.x >= haCount.z ? 'x' : 'z';
-  const wcsAxisVec = dominantHA === 'y' ? [0,1,0] : dominantHA === 'x' ? [1,0,0] : [0,0,1];
+  const projectOrientationVersion = getProjectOrientationVersion(allRefWallOrigins);
+  let wcsAxisVec;
+  if (projectOrientationVersion === 'v1') {
+    wcsAxisVec = [0, 0, 1];
+  } else {
+    const haCount = { x: 0, y: 0, z: 0 };
+    for (const rwo of allRefWallOrigins) haCount[rwo.heightAxis] = (haCount[rwo.heightAxis] ?? 0) + 1;
+    const dominantHA = haCount.y >= haCount.z && haCount.y >= haCount.x ? 'y' : haCount.x >= haCount.z ? 'x' : 'z';
+    wcsAxisVec = dominantHA === 'y' ? [0,1,0] : dominantHA === 'x' ? [1,0,0] : [0,0,1];
+  }
   const wpt    = PT(0,0,0);
   const wcsAxisId = E(`IFCDIRECTION((${wcsAxisVec.join(',')}))`);
   const wax    = E(`IFCAXIS2PLACEMENT3D(#${wpt},#${wcsAxisId},$)`);
@@ -1323,7 +1341,8 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
   E(`IFCRELAGGREGATES(${G()},#${owH},$,$,#${bld},(#${storey}))`);
 
   const pt2D   = E(`IFCCARTESIANPOINT((0.,0.))`);
-  const extDir = E(`IFCDIRECTION((${wcsAxisVec.join(',')}))`);
+  const extDirVec = projectOrientationVersion === 'v1' ? [0, 0, 1] : [0, 0, 1];
+  const extDir = E(`IFCDIRECTION((${extDirVec.join(',')}))`);
   const sAx0   = E(`IFCAXIS2PLACEMENT3D(#${PT(0,0,0)},$,$)`);
 
   const colorCache = {};
@@ -2242,6 +2261,7 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
           matLayerSetDir: matDataEl?.layerSetDir ?? null,
           matOffsetMm: matDataEl?.offset_mm ?? 0,
           spaceBoundaryType: spaceBoundaryTypeByElem[eID] ?? null,
+          orientationVersion: ORIENTATION_VERSION_CURRENT,
         };
 
         const facadePoly = getFacadePolygon(api, modelID, eID, lengthAxis, heightAxis, bb);
