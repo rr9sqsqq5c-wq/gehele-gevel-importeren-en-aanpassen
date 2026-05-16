@@ -492,6 +492,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
 
   const effectiveWidth = round2(groupWidth + extendLeft + extendRight);
 
+  const COVERAGE_GAP_TOLERANCE = 1000;
   function rowCoverageIntervals(rowY) {
     const ivs = [];
     for (const r of wallRects) {
@@ -505,7 +506,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     for (let i = 1; i < ivs.length; i++) {
       const cur = ivs[i];
       const last = merged[merged.length - 1];
-      if (cur[0] <= last[1] + 0.5) last[1] = Math.max(last[1], cur[1]);
+      if (cur[0] <= last[1] + COVERAGE_GAP_TOLERANCE) last[1] = Math.max(last[1], cur[1]);
       else merged.push([cur[0], cur[1]]);
     }
     if (extendLeft > 0 && merged.length && merged[0][0] <= 0.5) merged[0][0] = -extendLeft;
