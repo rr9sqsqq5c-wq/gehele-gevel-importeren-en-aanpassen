@@ -3073,7 +3073,8 @@ export default function App() {
           const wrapDepthFromFace = secIsSlimFort3d_sw
             ? secSfDepths3d_sw.brickCenter
             : secEffLat + secPanelD + brickD3dEarly / 2;
-          const wrapRows = allRows.map((row) => ({ y: row.y, pieces: [{ start: wrapPieceStart, length: stripsExtend }] }));
+          const wrapAllYs = [...new Set(allRows.map((row) => row.y))].sort((a, b) => a - b);
+          const wrapRows = wrapAllYs.map((y) => ({ y, pieces: [{ start: wrapPieceStart, length: stripsExtend }] }));
           if (!wrapRows.length) continue;
           simpleCornerWraps.push({
             secRwo, secGroupMinX, secGroupMinH,
@@ -3354,9 +3355,9 @@ export default function App() {
         const wrapDepthFromFace = secIsSlimFort3d_fw
           ? secSfDepths3d_fw.brickCenter
           : secEffLat + secPanelD + brickD3dEarly / 2;
-        const wrapYs = (facadeData.rowYSchedule && facadeData.rowYSchedule.length)
-          ? facadeData.rowYSchedule
-          : generalRows.map((row) => row.y);
+        const wrapYs = facadeData.allRowYs?.length
+          ? facadeData.allRowYs
+          : (facadeData.rowYSchedule?.length ? facadeData.rowYSchedule : generalRows.map((row) => row.y));
         const wrapRows = wrapYs.map((y) => ({ y, pieces: [{ start: wrapPieceStart, length: stripsExtend }] }));
         if (!wrapRows.length) continue;
         cornerWraps.push({
@@ -4932,8 +4933,10 @@ export default function App() {
         } else {
           wrapDepthFromFace = secEffLat + secPanelD + ifcBrickD / 2;
         }
-        const sourceRows = facadeData?.rows ?? [];
-        const wrapRows = sourceRows.map((row) => ({ y: row.y, pieces: [{ start: wrapPieceStart, length: stripsExtend }] }));
+        const exportWrapYs = facadeData?.allRowYs?.length
+          ? facadeData.allRowYs
+          : (facadeData?.rows ?? []).map((row) => row.y);
+        const wrapRows = exportWrapYs.map((y) => ({ y, pieces: [{ start: wrapPieceStart, length: stripsExtend }] }));
         if (!wrapRows.length) continue;
         const mainVerband = s.verband ?? DEFAULT_VERBAND;
         const mainMat = s.material ?? DEFAULT_MATERIAL;

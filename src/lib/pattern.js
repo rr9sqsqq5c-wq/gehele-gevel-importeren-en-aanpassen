@@ -593,14 +593,16 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   }
 
   const rowYSchedule = [];
+  const allRowYs = [];
   for (let r = rStart; r < rEnd; r++) {
     const rowY = round2(patternOffset + r * rowStep);
     if (effectiveMinH > 0 && rowY < effectiveMinH) continue;
+    allRowYs.push(rowY);
     if (!rowHasWallCoverage(rowY)) continue;
     rowYSchedule.push(rowY);
   }
 
-  return { rows, rowYSchedule, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, extendLeft, extendRight, patternStartH: effectiveMinH, groupOpenings, zetwerkParams: zwEnabled ? { breedte: zwB, offsetH: zwH, offsetV: zwV } : null, refWallOrigin: refWall.wallOrigin };
+  return { rows, rowYSchedule, allRowYs, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, extendLeft, extendRight, patternStartH: effectiveMinH, groupOpenings, zetwerkParams: zwEnabled ? { breedte: zwB, offsetH: zwH, offsetV: zwV } : null, refWallOrigin: refWall.wallOrigin };
 }
 
 export function getGroupPatternLogic(walls, material, verband) {
