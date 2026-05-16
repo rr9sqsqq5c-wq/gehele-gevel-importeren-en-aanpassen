@@ -4059,15 +4059,21 @@ export default function App() {
 
   function createGroup() {
     pushHistory(groups);
-    const ids = [...selectedWallIds].filter((id) => !wallGroupMap[id]);
+    const ids = [...selectedWallIds];
     if (!ids.length) return;
     const gid = newGid();
     const color = nextColor();
     const uniqueNames = new Set(groups.map((g) => getSettings(g.id).name));
     const groupName = `Groep ${uniqueNames.size + 1}`;
     forceInit(gid, color, groupName);
+    const idSet = new Set(ids);
     const newGroup = { id: gid, wallIds: sortWallsInComponent(ids, allWalls, adjacencies) };
-    const updatedGroups = [...groups, newGroup];
+    const updatedGroups = [
+      ...groups
+        .map((g) => ({ ...g, wallIds: g.wallIds.filter((wid) => !idSet.has(wid)) }))
+        .filter((g) => g.wallIds.length > 0),
+      newGroup,
+    ];
     setGroups(updatedGroups);
     setSelectedWallIds(new Set());
     setActiveGroupId(gid);
@@ -5578,10 +5584,10 @@ export default function App() {
                     🧭 Auto-groeperen per windrichting (N/O/Z/W)
                   </button>
                 </Tooltip>
-                {selectionHasUngrouped && (
-                  <Tooltip block text={"Maakt een nieuwe groep van de geselecteerde elementen die nog niet in een groep zitten.\nSelecteer eerst elementen in de 3D-viewer door erop te klikken."}>
+                {selectedWallIds.size > 0 && (
+                  <Tooltip block text={"Maakt een nieuwe groep van de geselecteerde elementen.\nElementen die al in een andere groep zitten worden daarnaar toe verplaatst.\nSelecteer elementen in de 3D-viewer door erop te klikken."}>
                     <button onClick={createGroup} style={btn('#0ea5e9')}>
-                      + Nieuwe groep van selectie ({ungroupedSelCount})
+                      + Nieuwe groep van selectie ({selectedWallIds.size})
                     </button>
                   </Tooltip>
                 )}
