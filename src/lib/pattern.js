@@ -299,17 +299,43 @@ export function buildGroupPattern(walls, adjacencies, material, verband, opening
   return result;
 }
 
+function normalizeWallToFacadeAxes(wall, refLengthAxis, refHeightAxis, refThicknessAxis) {
+  const wo = wall.wallOrigin;
+  if (!wo) return wall;
+  if (wo.lengthAxis === refLengthAxis && wo.heightAxis === refHeightAxis) return wall;
+  if (wo.thicknessAxis !== refThicknessAxis) return wall;
+  if (wo.lengthAxis === refHeightAxis && wo.heightAxis === refLengthAxis) {
+    return {
+      ...wall,
+      length: wall.height,
+      height: wall.length,
+      wallOrigin: {
+        ...wo,
+        lengthAxis: refLengthAxis,
+        heightAxis: refHeightAxis,
+        lengthStart: wo.heightStart,
+        lengthEnd: wo.heightEnd,
+        heightStart: wo.lengthStart,
+        heightEnd: wo.lengthEnd,
+      },
+    };
+  }
+  return wall;
+}
+
 export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk, _minHoogte, startLijn, extendLeft = 0, extendRight = 0) {
   const { steenL, steenH, lint, stoot } = material;
   const lagenmaat = getLagenmaat(material, verband);
   const rowH = (verband === 'staand_tegelverband' || verband === 'staand_halfsteens') ? material.steenL : steenH;
 
-  const withOrigin = walls.filter((w) => w.wallOrigin);
-  if (!withOrigin.length || lagenmaat <= 0) return null;
+  const rawWithOrigin = walls.filter((w) => w.wallOrigin);
+  if (!rawWithOrigin.length || lagenmaat <= 0) return null;
 
-  const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
+  const refWall = [...rawWithOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
   const refLengthAxis = refWall.wallOrigin.lengthAxis;
   const refHeightAxis = refWall.wallOrigin.heightAxis;
+  const refThicknessAxis = refWall.wallOrigin.thicknessAxis;
+  const withOrigin = rawWithOrigin.map((w) => normalizeWallToFacadeAxes(w, refLengthAxis, refHeightAxis, refThicknessAxis));
   const axisWalls = withOrigin.filter((w) => w.wallOrigin.lengthAxis === refLengthAxis);
 
   const groupMinX = Math.min(...axisWalls.map((w) => w.wallOrigin.lengthStart ?? 0));
