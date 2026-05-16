@@ -838,9 +838,10 @@ function computePerpendicularHints(groupId, allGroups, wallMap) {
 
 function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked, gapCenters, groupWidth, doorBottomYs = [], resolvedOutsideInfo = null, onManualOutsideDir, cornerConfigs = {}, allGroups = [], getSettings, onAddCorner, onUpdateCorner, onRemoveCorner, adjacentGroupIds = null, adjacentHints = [], wallMap = {}, onUpdateGroupSettings = null }) {
   const mat = settings.material ?? { ...DEFAULT_MATERIAL };
+  const DEFAULT_OPEN = { stripzones: true };
   const [openSections, setOpenSections] = useState({});
-  const toggle = (k) => setOpenSections((p) => ({ ...p, [k]: !(p[k] ?? false) }));
-  const isOpen = (k) => openSections[k] ?? false;
+  const toggle = (k) => setOpenSections((p) => ({ ...p, [k]: !(p[k] ?? (DEFAULT_OPEN[k] ?? false)) }));
+  const isOpen = (k) => openSections[k] ?? (DEFAULT_OPEN[k] ?? false);
   const perpHints = computePerpendicularHints(groupId, allGroups, wallMap);
   const [stripFabrikant, setStripFabrikant] = useState('');
   const [stripFormat, setStripFormat] = useState('');

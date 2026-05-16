@@ -1,5 +1,17 @@
 # IFC Brickslip Planner — Changelog
 
+## [Niet gereleased] — 15-05-2026
+
+### Toegevoegd
+- **Tekenzones — snapping aan gevelbuitenzijdes**: bij het tekenen van een zone in de 2D-view snappen het startpunt en het eindpunt automatisch naar de linker (`x = 0`) en rechter (`x = wandbreedte`) gevelbegrenzing, en naar de onderkant (`y = 0`) en bovenkant (`y = wandhoogte`), zodra de cursor binnen 100 mm van de rand komt. Hierdoor sluit een zone die over de volle breedte of hoogte loopt nauwkeurig aan zonder handmatige bijstelling.
+- **Tekenzones — eigen UI-groep in de zijbalk**: elke tekenzone heeft nu een volwaardige configuratiesectie in het zijpaneel (identiek van opzet als de penant-zones). Per zone zijn instelbaar: label, metselverband, steenstrip-afmetingen (steenL / steenH / lintvoeg / stootvoeg), achterconstructie (hout / aluminium / SlimFort XT®), panelisatie (aan/uit/groep standaard) en maximale striphoogte. Instellingen kunnen naar andere zones worden gekopieerd via het **→ kopieer**-menu. Zones zijn individueel te verwijderen via **✕**.
+- **Tekenzones — zone verwijderen via zijbalk**: de ✕-knop per zone in de **Tekenzones** CollapsibleSection verwijdert de zone direct uit `stripZones`.
+
+### Gewijzigd
+- **Tekenzones — instellingen verplaatst van canvas-overlay naar zijbalk**: het inline-instellingenpaneel dat eerder op het canvas verscheen bij een geselecteerde zone is vervangen door een compacte indicator (`◆ Zone A — Instellingen → zijbalk`). Alle inhoudelijke instellingen staan nu in de zijbalk, consistent met de overige configuratiesecties.
+
+---
+
 ## [Niet gereleased] — 30-04-2026
 
 ### Toegevoegd

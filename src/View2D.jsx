@@ -31,9 +31,17 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
   const transform = useRef({ scale: 1, tx: 0, ty: 0 });
   const dragStart = useRef(null);
   const [drawMode, setDrawMode] = useState(false);
+  const drawModeRef = useRef(false);
   const drawStartRef = useRef(null);
   const [drawingRect, setDrawingRect] = useState(null);
+  const drawingRectRef = useRef(null);
   const [selectedZoneId, setSelectedZoneId] = useState(null);
+  const stripZonesRef = useRef([]);
+  const onStripZonesChangeRef = useRef(null);
+
+  drawModeRef.current = drawMode;
+  stripZonesRef.current = stripZones;
+  onStripZonesChangeRef.current = onStripZonesChange;
 
   const mat = groupSettings?.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
   const verband = groupSettings?.verband ?? 'halfsteens';
@@ -1826,30 +1834,34 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
   }, [facadeData]);
 
   const onMouseDown = useCallback((e) => {
-    if (drawMode) {
+    if (drawModeRef.current) {
       const canvas = canvasRef.current;
       const rect = canvas.getBoundingClientRect();
       const [rawX, rawY] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
       const [wX, wY] = snapToFacadeEdge(rawX, rawY);
       drawStartRef.current = { wX, wY };
+      drawingRectRef.current = { x: wX, y: wY, width: 0, height: 0 };
       setDrawingRect({ x: wX, y: wY, width: 0, height: 0 });
-      const hit = stripZones.find((sz) => rawX >= sz.x && rawX <= sz.x + sz.width && rawY >= sz.y && rawY <= sz.y + sz.height);
+      const curZones = stripZonesRef.current;
+      const hit = curZones.find((sz) => rawX >= sz.x && rawX <= sz.x + sz.width && rawY >= sz.y && rawY <= sz.y + sz.height);
       setSelectedZoneId(hit?.id ?? null);
     } else {
       dragStart.current = { x: e.clientX, y: e.clientY, tx: transform.current.tx, ty: transform.current.ty };
     }
-  }, [drawMode, screenToWorld, stripZones, snapToFacadeEdge]);
+  }, [screenToWorld, snapToFacadeEdge]);
 
   const onMouseMove = useCallback((e) => {
-    if (drawMode && drawStartRef.current) {
+    if (drawModeRef.current && drawStartRef.current) {
       const canvas = canvasRef.current;
       const rect = canvas.getBoundingClientRect();
       const [rawX, rawY] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
       const [wX, wY] = snapToFacadeEdge(rawX, rawY);
       const sX = drawStartRef.current.wX;
       const sY = drawStartRef.current.wY;
-      setDrawingRect({ x: Math.min(sX, wX), y: Math.min(sY, wY), width: Math.abs(wX - sX), height: Math.abs(wY - sY) });
-    } else if (!drawMode && dragStart.current) {
+      const newRect = { x: Math.min(sX, wX), y: Math.min(sY, wY), width: Math.abs(wX - sX), height: Math.abs(wY - sY) };
+      drawingRectRef.current = newRect;
+      setDrawingRect(newRect);
+    } else if (!drawModeRef.current && dragStart.current) {
       transform.current = {
         ...transform.current,
         tx: dragStart.current.tx + (e.clientX - dragStart.current.x),
@@ -1857,28 +1869,37 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       };
       setRedrawTick((n) => n + 1);
     }
-  }, [drawMode, screenToWorld, snapToFacadeEdge]);
+  }, [screenToWorld, snapToFacadeEdge]);
 
   const onMouseUp = useCallback(() => {
-    if (drawMode && drawStartRef.current && drawingRect) {
+    const dr = drawingRectRef.current;
+    if (drawModeRef.current && drawStartRef.current && dr) {
       drawStartRef.current = null;
-      if (drawingRect.width > 20 && drawingRect.height > 20) {
+      if (dr.width > 20 && dr.height > 20) {
+        const curZones = stripZonesRef.current;
         const newZone = {
           id: `sz_${Date.now()}`,
-          x: Math.round(drawingRect.x),
-          y: Math.round(drawingRect.y),
-          width: Math.round(drawingRect.width),
-          height: Math.round(drawingRect.height),
-          label: `Zone ${String.fromCharCode(65 + stripZones.length)}`,
+          x: Math.round(dr.x),
+          y: Math.round(dr.y),
+          width: Math.round(dr.width),
+          height: Math.round(dr.height),
+          label: `Zone ${String.fromCharCode(65 + curZones.length)}`,
           depthOffset: 0,
         };
-        onStripZonesChange?.([...stripZones, newZone]);
+        onStripZonesChangeRef.current?.([...curZones, newZone]);
         setSelectedZoneId(newZone.id);
       }
+      drawingRectRef.current = null;
       setDrawingRect(null);
     }
     dragStart.current = null;
-  }, [drawMode, drawingRect, stripZones, onStripZonesChange]);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => onMouseUp();
+    window.addEventListener('mouseup', handler);
+    return () => window.removeEventListener('mouseup', handler);
+  }, [onMouseUp]);
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', background: '#1e293b' }}>
@@ -1890,14 +1911,12 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         onWheel={onWheel}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
       />
 
       {/* Toolbar top-left */}
       <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
         <button
-          onClick={() => { setDrawMode((m) => !m); setDrawingRect(null); drawStartRef.current = null; }}
+          onClick={() => { setDrawMode((m) => { drawModeRef.current = !m; return !m; }); drawingRectRef.current = null; setDrawingRect(null); drawStartRef.current = null; }}
           style={{
             background: drawMode ? '#0e7490' : 'rgba(30,41,59,0.92)',
             border: `1px solid ${drawMode ? '#22d3ee' : '#334155'}`,

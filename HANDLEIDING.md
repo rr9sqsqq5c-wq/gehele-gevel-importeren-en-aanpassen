@@ -342,7 +342,7 @@ Uitstekende verticale lijsten (pilasters, dagkantverlengingen).
 
 ## Strip-zones handmatig tekenen in 2D
 
-In het **2D Gevelaanzicht** kun je zones tekenen om aan te geven waar strips komen. Elke tekenzone heeft een eigen configuratiegroep in het zijpaneel.
+In het **2D Gevelaanzicht** kun je zones tekenen om aan te geven waar strips komen. Elke tekenzone heeft een eigen configuratiesectie in het zijpaneel, identiek van opzet als de penant-zones.
 
 ### Zone aanmaken
 
@@ -352,15 +352,30 @@ In het **2D Gevelaanzicht** kun je zones tekenen om aan te geven waar strips kom
 4. Laat los — de zone verschijnt als cyaan stippelkader met label en afmetingen.
 5. Herhaal voor meerdere zones.
 
-### Zone aanpassen
+> **Tip — snapping**: het start- en eindpunt snappen automatisch naar de **gevelbuitenzijdes** (links, rechts, boven, onder) zodra je cursor binnen 100 mm van de rand komt. Zo sluit een zone die de volle breedte of hoogte beslaat altijd nauwkeurig aan.
 
-- **Verplaatsen**: sleep de zone naar een andere positie (los van overige elementen).
-- **Breedte/hoogte handmatig invoeren**: gebruik de invoervelden in de zone-configuratiegroep in het zijpaneel.
-- Openingen die **achter** een tekenzone liggen worden automatisch uit die zone verwijderd.
+### Zone configureren (zijbalk)
+
+Zodra er ≥1 tekenzone bestaat, verschijnt de sectie **Tekenzones (n)** automatisch in de zijbalk van de geselecteerde groep. Per zone:
+
+| Instelling | Omschrijving |
+|---|---|
+| **Checkbox** | Zone-instellingen in- of uitschakelen (uitgeschakeld = groep standaard geldt) |
+| **Kleur** | Eigen kleur voor de zone in het 2D-aanzicht |
+| **→ kopieer** | Instellingen kopiëren naar een andere zone of alle zones |
+| **✕** | Zone verwijderen |
+| **Label** | Naam van de zone |
+| **Metselverband** | halfsteens / halfsteens kop / staand tegelverband / wildverband |
+| **Achterconstructie** | hout / aluminium / SlimFort XT® (of groep standaard) |
+| **Panelisatie** | aan / uit (of groep standaard) |
+| **Steenstrip afmetingen** | steenL, steenH, lintvoeg, stootvoeg — per zone overschrijfbaar; worden grijs als een groepsartikel is gekozen |
+| **Max strip hoogte** | Optionele bovengrens voor het strippatroon binnen de zone (mm) |
+
+Klik op een zone in het 2D-canvas om hem te selecteren (oranje kader). Een kleine indicator (`◆ Zone A — Instellingen → zijbalk`) bevestigt de selectie; de inhoudelijke instellingen staan in de zijbalk.
 
 ### Zone-lijst (linksboven in 2D viewer)
 
-- Klik op een zone om hem te selecteren (oranje kader).
+- Klik op een zone-rij om hem te selecteren.
 - Klik **✕** naast een zone om hem te verwijderen.
 - Klik **Alle zones wissen** om opnieuw te beginnen.
 
@@ -368,7 +383,8 @@ In het **2D Gevelaanzicht** kun je zones tekenen om aan te geven waar strips kom
 
 - Zonder zones → strips over het hele gevelvlak.
 - Met zones → strips alleen binnen de getekende kaders.
-- Elke zone heeft een **eigen UI-groep** in het configuratiepaneel rechts.
+- Openingen die **achter** een tekenzone liggen worden automatisch uit die zone verwijderd.
+- Zones met **enabled = uit** tonen geen eigen instellingen maar blijven als kader zichtbaar.
 
 ---
 
