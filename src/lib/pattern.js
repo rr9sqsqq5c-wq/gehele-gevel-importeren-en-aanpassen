@@ -343,10 +343,13 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const groupMinH = Math.min(...axisWalls.map((w) => w.wallOrigin.heightStart ?? 0));
   const groupMaxH = Math.max(...axisWalls.map((w) => (w.wallOrigin.heightStart ?? 0) + (w.height ?? 0)));
 
-  const wallYRanges = axisWalls.map((w) => ({
+  const wallRects = axisWalls.map((w) => ({
+    x: round2((w.wallOrigin.lengthStart ?? 0) - groupMinX),
     y: round2((w.wallOrigin.heightStart ?? 0) - groupMinH),
+    width: w.length ?? 0,
     height: w.height ?? 0,
   }));
+  const wallYRanges = wallRects.map((r) => ({ y: r.y, height: r.height }));
 
   const groupWidth = round2(groupMaxX - groupMinX);
   const groupHeight = round2(groupMaxH - groupMinH);
@@ -490,6 +493,43 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
 
   const effectiveWidth = round2(groupWidth + extendLeft + extendRight);
 
+  const COVERAGE_GAP_TOLERANCE = 1000;
+  function rowCoverageIntervals(rowY) {
+    const ivs = [];
+    for (const r of wallRects) {
+      if (rowY + rowH <= r.y + 0.5) continue;
+      if (rowY >= r.y + r.height - 0.5) continue;
+      ivs.push([r.x, r.x + r.width]);
+    }
+    if (!ivs.length) return [];
+    ivs.sort((a, b) => a[0] - b[0]);
+    const merged = [[ivs[0][0], ivs[0][1]]];
+    for (let i = 1; i < ivs.length; i++) {
+      const cur = ivs[i];
+      const last = merged[merged.length - 1];
+      if (cur[0] <= last[1] + COVERAGE_GAP_TOLERANCE) last[1] = Math.max(last[1], cur[1]);
+      else merged.push([cur[0], cur[1]]);
+    }
+    if (extendLeft > 0 && merged.length && merged[0][0] <= 0.5) merged[0][0] = -extendLeft;
+    if (extendRight > 0 && merged.length && merged[merged.length - 1][1] >= groupWidth - 0.5) merged[merged.length - 1][1] = groupWidth + extendRight;
+    return merged;
+  }
+
+  function clipPiecesToCoverage(pieces, intervals) {
+    if (!intervals.length) return [];
+    const out = [];
+    for (const piece of pieces) {
+      const ps = piece.start;
+      const pe = piece.start + piece.length;
+      for (const [is, ie] of intervals) {
+        const s = Math.max(ps, is);
+        const e = Math.min(pe, ie);
+        if (e - s > 0.5) out.push({ ...piece, start: round2(s), length: round2(e - s) });
+      }
+    }
+    return out;
+  }
+
   function rowHasWallCoverage(rowY) {
     for (const r of wallYRanges) {
       if (rowY + rowH <= r.y + 0.5) continue;
@@ -499,7 +539,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     return false;
   }
 
-  const needsCoverageCheck = wallYRanges.length > 1;
+  const needsCoverageClip = wallRects.length > 1;
 
   const rows = [];
   for (let r = rStart; r < rEnd; r++) {
@@ -542,14 +582,25 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       clipped.length = 0;
     }
 
-    if (needsCoverageCheck && clipped.length && !rowHasWallCoverage(rowY)) {
+    if (needsCoverageClip && clipped.length) {
+      const intervals = rowCoverageIntervals(rowY);
+      const coverageClipped = clipPiecesToCoverage(clipped, intervals);
       clipped.length = 0;
+      for (const p of coverageClipped) clipped.push(p);
     }
 
     if (clipped.length) rows.push({ y: rowY, pieces: clipped });
   }
 
-  return { rows, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, extendLeft, extendRight, patternStartH: effectiveMinH, groupOpenings, zetwerkParams: zwEnabled ? { breedte: zwB, offsetH: zwH, offsetV: zwV } : null, refWallOrigin: refWall.wallOrigin };
+  const rowYSchedule = [];
+  for (let r = rStart; r < rEnd; r++) {
+    const rowY = round2(patternOffset + r * rowStep);
+    if (effectiveMinH > 0 && rowY < effectiveMinH) continue;
+    if (!rowHasWallCoverage(rowY)) continue;
+    rowYSchedule.push(rowY);
+  }
+
+  return { rows, rowYSchedule, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, extendLeft, extendRight, patternStartH: effectiveMinH, groupOpenings, zetwerkParams: zwEnabled ? { breedte: zwB, offsetH: zwH, offsetV: zwV } : null, refWallOrigin: refWall.wallOrigin };
 }
 
 export function getGroupPatternLogic(walls, material, verband) {

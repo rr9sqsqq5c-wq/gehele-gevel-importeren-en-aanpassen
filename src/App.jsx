@@ -3354,7 +3354,10 @@ export default function App() {
         const wrapDepthFromFace = secIsSlimFort3d_fw
           ? secSfDepths3d_fw.brickCenter
           : secEffLat + secPanelD + brickD3dEarly / 2;
-        const wrapRows = generalRows.map((row) => ({ y: row.y, pieces: [{ start: wrapPieceStart, length: stripsExtend }] }));
+        const wrapYs = (facadeData.rowYSchedule && facadeData.rowYSchedule.length)
+          ? facadeData.rowYSchedule
+          : generalRows.map((row) => row.y);
+        const wrapRows = wrapYs.map((y) => ({ y, pieces: [{ start: wrapPieceStart, length: stripsExtend }] }));
         if (!wrapRows.length) continue;
         cornerWraps.push({
           secRwo,
