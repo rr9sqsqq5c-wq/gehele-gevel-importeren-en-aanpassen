@@ -29,14 +29,8 @@ function ifcToThree(ifcX, ifcY, ifcZ, upAxis = 'z') {
   return [ifcX / 1000, ifcZ / 1000, ifcY / 1000];
 }
 
-function detectUpAxis(walls) {
-  let yCount = 0, zCount = 0;
-  for (const w of walls) {
-    const h = w.wallOrigin?.heightAxis;
-    if (h === 'y') yCount++;
-    else if (h === 'z') zCount++;
-  }
-  return yCount > zCount ? 'y' : 'z';
+function detectUpAxis(_walls) {
+  return 'z';
 }
 
 function getWallBox(wall, upAxis = 'z') {
@@ -62,15 +56,16 @@ function getWallBox(wall, upAxis = 'z') {
   };
 }
 
-function getBrickPos(wall, pieceStart, pieceLen, rowY, steenH, brickD, upAxis = 'z') {
+function getBrickPos(wall, pieceStart, pieceLen, rowY, steenH, brickD, upAxis = 'z', allWalls = null) {
   const wo = wall.wallOrigin;
   const ifc = { x: 0, y: 0, z: 0 };
-  const thickness = Math.max(50, Math.abs((wo.thicknessEnd ?? wo.thicknessStart + 200) - wo.thicknessStart));
-  const frontFace = wo.thicknessStart + thickness;
+  const raw = getOutsideFaceInfo(wo, allWalls);
+  const outsidePos = raw.outsidePos;
+  const outsideDir = raw.outsideDir;
 
   ifc[wo.lengthAxis] = wo.lengthStart + pieceStart + pieceLen / 2;
   ifc[wo.heightAxis] = wo.heightStart + rowY + steenH / 2;
-  ifc[wo.thicknessAxis] = frontFace + brickD / 2;
+  ifc[wo.thicknessAxis] = outsidePos + outsideDir * brickD / 2;
 
   const brickDims = { x: 0.01, y: 0.01, z: 0.01 };
   brickDims[wo.lengthAxis] = pieceLen;
@@ -104,7 +99,7 @@ function getOutsideFaceInfo(rwo, allWalls) {
   const wallCenter_t = (tStart + tEnd) / 2;
 
   if (rwo.wallLengthDir) {
-    const upAxis = rwo.heightAxis ?? 'y';
+    const upAxis = rwo.heightAxis ?? 'z';
     const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
     const ld = rwo.wallLengthDir;
     const cx = ld.y * gu.z - ld.z * gu.y;
