@@ -1,9 +1,9 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import { buildFullGroupFacadePattern, getOpeningPoly, buildFacePattern } from './lib/pattern.js';
+import { buildFullGroupFacadePattern, getOpeningPoly } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten } from './lib/panelization.js';
 import { brickColor, isTooSmall, polyXRangesAtY } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { generateSlimFortGrid, generateSlimFortFaces, applyRangesToGrid, buildConcreteUnfoldedDrawingLayout, SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
+import { generateSlimFortGrid, generateSlimFortFaces, SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
 
 function hexToRgba(hex, alpha = 1) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -174,6 +174,14 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     return result;
   }, [facadeData, groupSettings]);
 
+  const allSlimFortData = useMemo(() => {
+    if ((groupSettings?.backingType ?? 'hout') !== 'aluminium_slimfort') return null;
+    if (!facadeData) return null;
+    const { groupWidth, groupHeight, groupOpenings } = facadeData;
+    const sfSettings = { ...SLIMFORT_DEFAULTS, ...(groupSettings?.slimFortSettings ?? {}) };
+    return generateSlimFortGrid(groupWidth, groupHeight, groupOpenings ?? [], sfSettings, groupSettings?.maxHoogte);
+  }, [facadeData, groupSettings]);
+
   const allSlimFortFaces = useMemo(() => {
     if ((groupSettings?.backingType ?? 'hout') !== 'aluminium_slimfort') return null;
     if (!facadeData) return null;
@@ -193,54 +201,20 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     });
   }, [facadeData, groupSettings, walls]);
 
-  const allSlimFortData = useMemo(() => {
-    if ((groupSettings?.backingType ?? 'hout') !== 'aluminium_slimfort') return null;
-    if (!facadeData) return null;
-    const sfSettings = { ...SLIMFORT_DEFAULTS, ...(groupSettings?.slimFortSettings ?? {}) };
-    const cfcs = sfSettings.concreteFaceCladdingSettings?.enabled !== false && sfSettings.concreteFaceCladdingSettings != null
-      ? { ...CONCRETE_FACE_CLADDING_DEFAULTS, ...sfSettings.concreteFaceCladdingSettings }
-      : null;
-    const { groupWidth, groupHeight, groupOpenings } = facadeData;
-    const grid = generateSlimFortGrid(groupWidth, groupHeight, groupOpenings ?? [], sfSettings, groupSettings?.maxHoogte, 'front');
-    if (cfcs) {
-      if (!grid) return null;
-      const ranges = computeFaceLongRanges(cfcs, groupWidth);
-      return ranges ? applyRangesToGrid(grid, ranges) : null;
-    }
-    return grid;
-  }, [facadeData, groupSettings]);
-
   const sfFaceLayout = useMemo(() => {
     if (!allSlimFortFaces) return null;
-    const sfSettings = { ...SLIMFORT_DEFAULTS, ...(groupSettings?.slimFortSettings ?? {}) };
-    const hasCfcs = sfSettings.concreteFaceCladdingSettings?.enabled !== false && sfSettings.concreteFaceCladdingSettings != null;
-    if (hasCfcs) return null;
     const nonFront = allSlimFortFaces.filter((f) => f.faceType !== 'front');
     if (!nonFront.length) return null;
-    const faceOrder = { 'side-left': 0, 'side-right': 1, 'back': 2, 'portal-left': 3, 'portal-right': 4 };
-    const ordered = [...nonFront].sort((a, b) => (faceOrder[a.faceType] ?? 99) - (faceOrder[b.faceType] ?? 99));
     const gW = facadeData?.groupWidth ?? 0;
     const spacing = 300;
     let curX = gW + spacing;
     const panels = [];
-    for (const face of ordered) {
-      const renderW = face.displayWidth ?? face.width;
+    for (const face of nonFront) {
       panels.push({ face, offsetX: curX });
-      curX += renderW + spacing;
+      curX += face.width + spacing;
     }
     return { panels, totalWidth: curX - spacing };
-  }, [allSlimFortFaces, facadeData, groupSettings]);
-
-  const concreteUnfoldedLayout = useMemo(() => {
-    if ((groupSettings?.backingType ?? 'hout') !== 'aluminium_slimfort') return null;
-    if (!allSlimFortFaces || !facadeData) return null;
-    const sfSettings = { ...SLIMFORT_DEFAULTS, ...(groupSettings?.slimFortSettings ?? {}) };
-    const cfcs = sfSettings.concreteFaceCladdingSettings?.enabled !== false && sfSettings.concreteFaceCladdingSettings != null
-      ? { ...CONCRETE_FACE_CLADDING_DEFAULTS, ...sfSettings.concreteFaceCladdingSettings }
-      : null;
-    if (!cfcs) return null;
-    return buildConcreteUnfoldedDrawingLayout(allSlimFortFaces, cfcs, facadeData.groupWidth);
-  }, [allSlimFortFaces, facadeData, groupSettings]);
+  }, [allSlimFortFaces, facadeData]);
 
   const zonePatterns = useMemo(() => {
     if (!walls?.length || !facadeData) return [];
@@ -269,11 +243,9 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
 
   const bounds = useMemo(() => {
     if (!facadeData) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
-    const maxX = concreteUnfoldedLayout
-      ? concreteUnfoldedLayout.totalDrawingWidth
-      : sfFaceLayout ? sfFaceLayout.totalWidth : facadeData.groupWidth;
+    const maxX = sfFaceLayout ? sfFaceLayout.totalWidth : facadeData.groupWidth;
     return { minX: 0, maxX, minY: Math.min(0, startLijn ?? 0), maxY: facadeData.groupHeight };
-  }, [facadeData, startLijn, sfFaceLayout, concreteUnfoldedLayout]);
+  }, [facadeData, startLijn, sfFaceLayout]);
 
   const fitToView = useCallback(() => {
     const canvas = canvasRef.current;
@@ -389,9 +361,6 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       }
     };
 
-    const vis = layerVisibility ?? {};
-
-    if (!concreteUnfoldedLayout) {
     // Draw facade background using actual wall shapes
     ctx.fillStyle = hexToRgba(color, 0.15);
     ctx.fillRect(faceSx, faceSy, faceW, faceH);
@@ -418,6 +387,8 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       }
       ctx.clip('evenodd');
     };
+
+    const vis = layerVisibility ?? {};
 
     if (allLatten.length && vis.latten !== false) {
       ctx.save();
@@ -457,28 +428,17 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       ? { ...CONCRETE_FACE_CLADDING_DEFAULTS, ..._sfDbgSs.concreteFaceCladdingSettings }
       : null;
     const _sfDbgRanges = _sfDbgCfcs && facadeData ? computeFaceLongRanges(_sfDbgCfcs, facadeData.groupWidth) : null;
-    const _sfFrontRanges = (_sfDbgCfcs && (_sfDbgCfcs.cladLeftLongFace || _sfDbgCfcs.cladRightLongFace) && facadeData)
-      ? computeFaceLongRanges(_sfDbgCfcs, facadeData.groupWidth)
-      : null;
 
     if (allSlimFortData && vis.latten !== false) {
       const { epsElements, brackets, profiles, debug, settings: sfS } = allSlimFortData;
 
       ctx.save();
 
-      if (facadeData) {
-        const [bgSx, bgSy] = toScreen(0, facadeData.groupHeight);
-        const bgSw = facadeData.groupWidth * scale * 0.001;
-        const bgSh = facadeData.groupHeight * scale * 0.001;
-        ctx.fillStyle = 'rgba(15,23,42,0.55)';
-        ctx.fillRect(bgSx, bgSy, bgSw, bgSh);
-      }
-
       for (const eps of epsElements) {
         const [eSx, eSy] = toScreen(mx(eps.x, eps.width), eps.y + eps.height);
         const eSw = eps.width * scale * 0.001;
         const eSh = eps.height * scale * 0.001;
-        ctx.fillStyle = eps.clipped ? 'rgba(199,210,254,0.55)' : 'rgba(226,232,240,0.5)';
+        ctx.fillStyle = eps.clipped ? 'rgba(199,210,254,0.45)' : 'rgba(226,232,240,0.35)';
         ctx.fillRect(eSx, eSy, eSw, eSh);
         ctx.strokeStyle = eps.clipped ? '#818cf8' : '#94a3b8';
         ctx.lineWidth = 0.5;
@@ -613,92 +573,27 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
 
       ctx.restore();
 
-      if (sfFaceLayout && facadeData && vis.latten !== false) {
-        const _mainDimSz = annotSz(60, 6, 11);
-        ctx.save();
-        ctx.font = `${_mainDimSz}px system-ui, sans-serif`;
-        ctx.fillStyle = '#94a3b8';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        const [mDimSx] = toScreen(0, 0);
-        const mDimSw = facadeData.groupWidth * scale * 0.001;
-        const [, mDimSy] = toScreen(0, 0);
-        ctx.fillText(`VOORVLAK: ${Math.round(facadeData.groupWidth)}mm`, mDimSx + mDimSw / 2, mDimSy + 4);
-        ctx.restore();
-      }
-
       if (sfFaceLayout && vis.latten !== false) {
-        const faceColors = { 'side-left': '#8b5cf6', 'side-right': '#ec4899', 'portal-left': '#f97316', 'portal-right': '#14b8a6', 'back': '#10b981' };
-        const faceLabels = { 'side-left': 'ZIJKANT L', 'side-right': 'ZIJKANT R', 'portal-left': 'PORTAAL L', 'portal-right': 'PORTAAL R', 'back': 'RECHTER LANGSZIJDE' };
-
-        const foldLineTypes = { 'side-left': '#8b5cf6', 'side-right': '#ec4899', 'back': '#10b981' };
-        let prevRightX = facadeData ? facadeData.groupWidth : 0;
+        const faceColors = { 'side-left': '#8b5cf6', 'side-right': '#ec4899', 'portal-left': '#f97316', 'portal-right': '#14b8a6' };
+        const faceLabels = { 'side-left': 'ZIJKANT L', 'side-right': 'ZIJKANT R', 'portal-left': 'PORTAAL L', 'portal-right': 'PORTAAL R' };
 
         for (const { face, offsetX } of sfFaceLayout.panels) {
-          const { grid, width, displayWidth, displayFrontSys, displayBackSys, height, faceType } = face;
+          const { grid, width, height, faceType } = face;
           if (!grid) continue;
           const { epsElements, brackets, profiles } = grid;
           const fCol = faceColors[faceType] ?? '#64748b';
           const fLabel = faceLabels[faceType] ?? faceType;
-          const renderW = displayWidth ?? width;
 
           const [fSx, fSy] = toScreen(offsetX, height);
-          const fSw = renderW * scale * 0.001;
+          const fSw = width * scale * 0.001;
           const fSh = height * scale * 0.001;
-
-          const [prevRx] = toScreen(prevRightX, 0);
-          const gapMidX = (prevRx + fSx) / 2;
-          const [, foldTop] = toScreen(0, height);
-          const [, foldBot] = toScreen(0, 0);
-          const foldCol = foldLineTypes[faceType] ?? '#64748b';
-          ctx.save();
-          ctx.strokeStyle = foldCol;
-          ctx.lineWidth = 1;
-          ctx.setLineDash([4, 4]);
-          ctx.beginPath();
-          ctx.moveTo(gapMidX, foldTop);
-          ctx.lineTo(gapMidX, foldBot);
-          ctx.stroke();
-          ctx.setLineDash([]);
-          const tickLen = 6;
-          for (let ty = foldTop; ty <= foldBot; ty += 80) {
-            ctx.beginPath();
-            ctx.moveTo(gapMidX - tickLen, ty - tickLen);
-            ctx.lineTo(gapMidX, ty);
-            ctx.lineTo(gapMidX + tickLen, ty - tickLen);
-            ctx.stroke();
-          }
-          const foldLabelSz = annotSz(40, 5, 8);
-          ctx.font = `${foldLabelSz}px system-ui, sans-serif`;
-          ctx.fillStyle = foldCol;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'bottom';
-          ctx.fillText('PLOOI', gapMidX, foldTop - 2);
-          ctx.restore();
-
-          prevRightX = offsetX + renderW;
 
           ctx.save();
           ctx.fillStyle = 'rgba(15,23,42,0.6)';
           ctx.fillRect(fSx, fSy, fSw, fSh);
 
-          if ((displayFrontSys ?? 0) > 0) {
-            const [fsZx] = toScreen(offsetX, 0);
-            const fsZw = (displayFrontSys) * scale * 0.001;
-            ctx.fillStyle = 'rgba(99,102,241,0.2)';
-            ctx.fillRect(fsZx, fSy, fsZw, fSh);
-          }
-          if ((displayBackSys ?? 0) > 0) {
-            const backZoneX = offsetX + renderW - displayBackSys;
-            const [bsZx] = toScreen(backZoneX, 0);
-            const bsZw = displayBackSys * scale * 0.001;
-            ctx.fillStyle = 'rgba(16,185,129,0.2)';
-            ctx.fillRect(bsZx, fSy, bsZw, fSh);
-          }
-
-          const epsOffsetX = offsetX + (displayFrontSys ?? 0);
           for (const eps of epsElements) {
-            const [eSx, eSy] = toScreen(epsOffsetX + eps.x, eps.y + eps.height);
+            const [eSx, eSy] = toScreen(offsetX + eps.x, eps.y + eps.height);
             const eSw = eps.width * scale * 0.001;
             const eSh = eps.height * scale * 0.001;
             ctx.fillStyle = eps.clipped ? 'rgba(199,210,254,0.45)' : 'rgba(226,232,240,0.35)';
@@ -719,7 +614,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
           }
 
           for (const prof of profiles) {
-            const [rSx, rSy] = toScreen(epsOffsetX + prof.x, prof.y + prof.height);
+            const [rSx, rSy] = toScreen(offsetX + prof.x, prof.y + prof.height);
             const rSw = prof.width * scale * 0.001;
             const rSh = prof.height * scale * 0.001;
             ctx.fillStyle = prof.split ? 'rgba(129,140,248,0.75)' : 'rgba(148,163,184,0.7)';
@@ -730,35 +625,11 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
           }
 
           for (const br of brackets) {
-            const [bSx, bSy] = toScreen(epsOffsetX + br.x, br.y + br.height);
+            const [bSx, bSy] = toScreen(offsetX + br.x, br.y + br.height);
             const bSw = br.width * scale * 0.001;
             const bSh = br.height * scale * 0.001;
             ctx.fillStyle = 'rgba(71,85,105,0.8)';
             ctx.fillRect(bSx, bSy, Math.max(bSw, 2), Math.max(bSh, 2));
-          }
-
-          if (vis.strips !== false) {
-            const isFaceTegel = verband === 'staand_tegelverband';
-            const faceStripH = isFaceTegel ? effectiveMat.steenL : effectiveMat.steenH;
-            const faceRows = buildFacePattern(renderW, height, effectiveMat, verband);
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(fSx, fSy, fSw, fSh);
-            ctx.clip();
-            for (const row of faceRows) {
-              const rowTopW = Math.min(row.y + faceStripH, height);
-              const rowH = rowTopW - row.y;
-              if (rowH <= 0) continue;
-              const [, rowScrY] = toScreen(offsetX, rowTopW);
-              const rowScrH = rowH * scale * 0.001;
-              for (const piece of row.pieces) {
-                const [pScrX] = toScreen(offsetX + piece.start, 0);
-                const pScrW = piece.length * scale * 0.001;
-                ctx.fillStyle = brickColor(piece.label, color, piece.length, kopMM);
-                ctx.fillRect(pScrX + 0.5, rowScrY + 0.5, Math.max(pScrW - 1, 1), Math.max(rowScrH - 1, 1));
-              }
-            }
-            ctx.restore();
           }
 
           ctx.strokeStyle = fCol;
@@ -787,11 +658,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
           ctx.fillStyle = '#94a3b8';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'top';
-          const _dimW = displayWidth != null ? displayWidth : width;
-          const _dimBreakdown = (displayFrontSys || displayBackSys)
-            ? ` (${displayFrontSys ?? 0}+${Math.round((displayWidth ?? width) - (displayFrontSys ?? 0) - (displayBackSys ?? 0))}+${displayBackSys ?? 0})`
-            : '';
-          ctx.fillText(`${Math.round(_dimW)}${_dimBreakdown}×${Math.round(height)}mm`, fSx + fSw / 2, fSy + fSh + 4);
+          ctx.fillText(`${Math.round(width)}×${Math.round(height)}mm`, fSx + fSw / 2, fSy + fSh + 4);
 
           ctx.restore();
         }
@@ -1331,15 +1198,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       const hasZones = stripZones.length > 0;
       ctx.save();
       ctx.beginPath();
-      if (_sfFrontRanges) {
-        for (const [r1, r2] of _sfFrontRanges) {
-          const [rx1] = toScreen(outsideDirFlip ? groupWidth - r2 : r1, 0);
-          const rw = (r2 - r1) * scale * 0.001;
-          ctx.rect(rx1, faceSy - 1, rw, faceH + 2);
-        }
-      } else {
-        ctx.rect(faceSx - 1, faceSy - 1, faceW + 2, faceH + 2);
-      }
+      ctx.rect(faceSx - 1, faceSy - 1, faceW + 2, faceH + 2);
       if (startLijn != null && startLijn < 0) {
         const [bx, byPeil] = toScreen(0, 0);
         const [, byStart] = toScreen(0, startLijn);
@@ -1832,220 +1691,6 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       }
       ctx.restore();
     }
-    } // !concreteUnfoldedLayout
-
-    if (concreteUnfoldedLayout) {
-      const panelFaceColors = { leftLongFace: '#3b82f6', leftEndFace: '#8b5cf6', rightLongFace: '#10b981', rightEndFace: '#ec4899' };
-      const gH = groupHeight;
-      for (let pi = 0; pi < concreteUnfoldedLayout.panels.length; pi++) {
-        const panel = concreteUnfoldedLayout.panels[pi];
-        const { drawingFace, isFront, face, label, modelStartMm, modelEndMm, drawingX, drawingWidth } = panel;
-        const pCol = panelFaceColors[drawingFace] ?? '#64748b';
-        const [pSx, pSy] = toScreen(drawingX, gH);
-        const pSw = drawingWidth * scale * 0.001;
-        const pSh = gH * scale * 0.001;
-
-        ctx.fillStyle = 'rgba(15,23,42,0.55)';
-        ctx.fillRect(pSx, pSy, pSw, pSh);
-
-        if (isFront) {
-          const uncladLabelSz = annotSz(70, 6, 12);
-          const renderUnclad = (startMm, endMm) => {
-            if (endMm <= startMm) return;
-            const [uzSx, uzSy] = toScreen(drawingX + startMm, gH);
-            const uzSw = (endMm - startMm) * scale * 0.001;
-            ctx.fillStyle = 'rgba(0,0,0,0.38)';
-            ctx.fillRect(uzSx, uzSy, uzSw, pSh);
-            ctx.save();
-            ctx.strokeStyle = 'rgba(100,116,139,0.5)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([5, 5]);
-            ctx.strokeRect(uzSx, uzSy, uzSw, pSh);
-            ctx.setLineDash([]);
-            if (uzSw > 50) {
-              ctx.font = `${uncladLabelSz}px system-ui, sans-serif`;
-              ctx.fillStyle = 'rgba(148,163,184,0.75)';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillText(`niet bekleed  ${Math.round(endMm - startMm)} mm`, uzSx + uzSw / 2, uzSy + pSh / 2);
-            }
-            ctx.restore();
-          };
-          renderUnclad(0, modelStartMm);
-          renderUnclad(modelEndMm, groupWidth);
-        }
-
-        if (pi > 0) {
-          const prevPanel = concreteUnfoldedLayout.panels[pi - 1];
-          const [prevRightSx] = toScreen(prevPanel.drawingX + prevPanel.drawingWidth, 0);
-          const gapMidX = (prevRightSx + pSx) / 2;
-          const [, foldTop] = toScreen(0, gH);
-          const [, foldBot] = toScreen(0, 0);
-          ctx.save();
-          ctx.strokeStyle = '#64748b';
-          ctx.lineWidth = 1;
-          ctx.setLineDash([4, 4]);
-          ctx.beginPath();
-          ctx.moveTo(gapMidX, foldTop);
-          ctx.lineTo(gapMidX, foldBot);
-          ctx.stroke();
-          ctx.setLineDash([]);
-          const tickLen = 5;
-          for (let ty = foldTop; ty <= foldBot; ty += 80) {
-            ctx.beginPath();
-            ctx.moveTo(gapMidX - tickLen, ty - tickLen);
-            ctx.lineTo(gapMidX, ty);
-            ctx.lineTo(gapMidX + tickLen, ty - tickLen);
-            ctx.stroke();
-          }
-          const foldLabelSz = annotSz(40, 5, 8);
-          ctx.font = `${foldLabelSz}px system-ui, sans-serif`;
-          ctx.fillStyle = '#64748b';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'bottom';
-          ctx.fillText('PLOOI', gapMidX, foldTop - 2);
-          ctx.restore();
-        }
-
-        if (isFront && allSlimFortData) {
-          const { epsElements, brackets, profiles } = allSlimFortData;
-          for (const eps of epsElements) {
-            if (eps.x + eps.width <= modelStartMm || eps.x >= modelEndMm) continue;
-            const clipX = Math.max(eps.x, modelStartMm);
-            const clipRight = Math.min(eps.x + eps.width, modelEndMm);
-            const clipW = clipRight - clipX;
-            const drawElemX = drawingX + clipX;
-            const [eSx, eSy] = toScreen(drawElemX, eps.y + eps.height);
-            const eSw = clipW * scale * 0.001;
-            const eSh = eps.height * scale * 0.001;
-            ctx.fillStyle = eps.clipped ? 'rgba(199,210,254,0.55)' : 'rgba(226,232,240,0.5)';
-            ctx.fillRect(eSx, eSy, eSw, eSh);
-            ctx.strokeStyle = eps.clipped ? '#818cf8' : '#94a3b8';
-            ctx.lineWidth = 0.5;
-            ctx.setLineDash([4, 3]);
-            ctx.strokeRect(eSx, eSy, eSw, eSh);
-            ctx.setLineDash([]);
-          }
-          for (const prof of profiles) {
-            if (prof.x + prof.width <= modelStartMm || prof.x >= modelEndMm) continue;
-            const drawElemX = drawingX + prof.x;
-            const [rSx, rSy] = toScreen(drawElemX, prof.y + prof.height);
-            const rSw = prof.width * scale * 0.001;
-            const rSh = prof.height * scale * 0.001;
-            ctx.fillStyle = prof.split ? 'rgba(129,140,248,0.75)' : 'rgba(148,163,184,0.7)';
-            ctx.fillRect(rSx, rSy, Math.max(rSw, 1), Math.max(rSh, 1));
-            ctx.strokeStyle = prof.split ? '#4f46e5' : '#475569';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(rSx, rSy, Math.max(rSw, 1), Math.max(rSh, 1));
-          }
-          for (const br of brackets) {
-            if (br.x + br.width <= modelStartMm || br.x >= modelEndMm) continue;
-            const drawElemX = drawingX + br.x;
-            const [bSx, bSy] = toScreen(drawElemX, br.y + br.height);
-            const bSw = br.width * scale * 0.001;
-            const bSh = br.height * scale * 0.001;
-            ctx.fillStyle = 'rgba(71,85,105,0.8)';
-            ctx.fillRect(bSx, bSy, Math.max(bSw, 2), Math.max(bSh, 2));
-          }
-        } else if (!isFront && face?.grid) {
-          const { epsElements: sEps, brackets: sBr, profiles: sProf } = face.grid;
-          for (const eps of sEps) {
-            const [eSx, eSy] = toScreen(drawingX + eps.x, eps.y + eps.height);
-            const eSw = eps.width * scale * 0.001;
-            const eSh = eps.height * scale * 0.001;
-            ctx.fillStyle = eps.clipped ? 'rgba(199,210,254,0.45)' : 'rgba(226,232,240,0.4)';
-            ctx.fillRect(eSx, eSy, eSw, eSh);
-            ctx.strokeStyle = eps.clipped ? '#818cf8' : '#94a3b8';
-            ctx.lineWidth = 0.5;
-            ctx.setLineDash([4, 3]);
-            ctx.strokeRect(eSx, eSy, eSw, eSh);
-            ctx.setLineDash([]);
-          }
-          for (const prof of sProf) {
-            const [rSx, rSy] = toScreen(drawingX + prof.x, prof.y + prof.height);
-            const rSw = prof.width * scale * 0.001;
-            const rSh = prof.height * scale * 0.001;
-            ctx.fillStyle = prof.split ? 'rgba(129,140,248,0.75)' : 'rgba(148,163,184,0.7)';
-            ctx.fillRect(rSx, rSy, Math.max(rSw, 1), Math.max(rSh, 1));
-            ctx.strokeStyle = prof.split ? '#4f46e5' : '#475569';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(rSx, rSy, Math.max(rSw, 1), Math.max(rSh, 1));
-          }
-          for (const br of sBr) {
-            const [bSx, bSy] = toScreen(drawingX + br.x, br.y + br.height);
-            const bSw = br.width * scale * 0.001;
-            const bSh = br.height * scale * 0.001;
-            ctx.fillStyle = 'rgba(71,85,105,0.8)';
-            ctx.fillRect(bSx, bSy, Math.max(bSw, 2), Math.max(bSh, 2));
-          }
-        }
-
-        if (vis.strips !== false) {
-          const isTegel = verband === 'staand_tegelverband';
-          const pStripH = isTegel ? effectiveMat.steenL : steenH;
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(pSx, pSy, pSw, pSh);
-          ctx.clip();
-          if (isFront) {
-            for (const row of rows) {
-              const clippedTop = Math.min(row.y + pStripH, groupHeight);
-              const clippedBottom = Math.max(row.y, patternStartH);
-              const actualH = clippedTop - clippedBottom;
-              if (actualH <= 0) continue;
-              const [, rowSy] = toScreen(0, clippedTop);
-              const rowSh = actualH * scale * 0.001;
-              for (const piece of row.pieces) {
-                if (piece.start + piece.length <= modelStartMm || piece.start >= modelEndMm) continue;
-                const clipPieceStart = Math.max(piece.start, modelStartMm);
-                const clipPieceEnd = Math.min(piece.start + piece.length, modelEndMm);
-                const clipPieceLen = clipPieceEnd - clipPieceStart;
-                const drawPieceX = drawingX + clipPieceStart;
-                const [pScrX] = toScreen(drawPieceX, 0);
-                const pScrW = clipPieceLen * scale * 0.001;
-                ctx.fillStyle = brickColor(piece.label, color, piece.length, kopMM);
-                ctx.fillRect(pScrX + 0.5, rowSy + 0.5, Math.max(pScrW - 1, 1), Math.max(rowSh - 1, 1));
-              }
-            }
-          } else {
-            const renderW = face.displayWidth ?? face.width;
-            const faceRows = buildFacePattern(renderW, gH, effectiveMat, verband);
-            for (const row of faceRows) {
-              const rowTopW = Math.min(row.y + pStripH, gH);
-              const rowH = rowTopW - row.y;
-              if (rowH <= 0) continue;
-              const [, rowScrY] = toScreen(drawingX, rowTopW);
-              const rowScrH = rowH * scale * 0.001;
-              for (const piece of row.pieces) {
-                const [pScrX] = toScreen(drawingX + piece.start, 0);
-                const pScrW = piece.length * scale * 0.001;
-                ctx.fillStyle = brickColor(piece.label, color, piece.length, kopMM);
-                ctx.fillRect(pScrX + 0.5, rowScrY + 0.5, Math.max(pScrW - 1, 1), Math.max(rowScrH - 1, 1));
-              }
-            }
-          }
-          ctx.restore();
-        }
-
-        ctx.strokeStyle = pCol;
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([6, 3]);
-        ctx.strokeRect(pSx, pSy, pSw, pSh);
-        ctx.setLineDash([]);
-        const labelSzP = annotSz(60, 7, 13);
-        ctx.font = `bold ${labelSzP}px system-ui, sans-serif`;
-        ctx.fillStyle = pCol;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(label, pSx + 4, pSy + 4);
-        const dimLabelSzP = annotSz(50, 6, 11);
-        ctx.font = `${dimLabelSzP}px system-ui, sans-serif`;
-        ctx.fillStyle = '#94a3b8';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillText(`${Math.round(drawingWidth)}×${Math.round(gH)}mm`, pSx + pSw / 2, pSy + pSh + 4);
-      }
-    }
 
     // In-progress drawing rect preview
     if (drawingRect && drawingRect.width > 0 && drawingRect.height > 0) {
@@ -2148,7 +1793,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
-  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, startLijn, penantFaceData, groupColor, effectiveMat, color, zetwerk, panelen, latten, layerVisibility, gridLines, showCenterLines, stripZones, drawingRect, selectedZoneId, outsideDirFlip, buildingEnvelopeData, envelopeVisibility, slimFortStitching, wallDecomposition, sfFaceLayout, allSlimFortFaces, concreteUnfoldedLayout, allSlimFortData]);
+  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, startLijn, penantFaceData, groupColor, effectiveMat, color, zetwerk, panelen, latten, layerVisibility, gridLines, showCenterLines, stripZones, drawingRect, selectedZoneId, outsideDirFlip, buildingEnvelopeData, envelopeVisibility, slimFortStitching, wallDecomposition, sfFaceLayout, allSlimFortFaces]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
@@ -2171,26 +1816,36 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     return [(sx - tx) / (scale * 0.001), (ty - sy) / (scale * 0.001)];
   }, []);
 
+  const snapToFacadeEdge = useCallback((wX, wY) => {
+    const SNAP_MM = 100;
+    const gW = facadeData?.groupWidth ?? 0;
+    const gH = facadeData?.groupHeight ?? 0;
+    const snX = Math.abs(wX) < SNAP_MM ? 0 : Math.abs(wX - gW) < SNAP_MM ? gW : wX;
+    const snY = Math.abs(wY) < SNAP_MM ? 0 : Math.abs(wY - gH) < SNAP_MM ? gH : wY;
+    return [snX, snY];
+  }, [facadeData]);
+
   const onMouseDown = useCallback((e) => {
     if (drawMode) {
       const canvas = canvasRef.current;
       const rect = canvas.getBoundingClientRect();
-      const [wX, wY] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      const [rawX, rawY] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      const [wX, wY] = snapToFacadeEdge(rawX, rawY);
       drawStartRef.current = { wX, wY };
       setDrawingRect({ x: wX, y: wY, width: 0, height: 0 });
-      // Check if clicking an existing zone to select it
-      const hit = stripZones.find((sz) => wX >= sz.x && wX <= sz.x + sz.width && wY >= sz.y && wY <= sz.y + sz.height);
+      const hit = stripZones.find((sz) => rawX >= sz.x && rawX <= sz.x + sz.width && rawY >= sz.y && rawY <= sz.y + sz.height);
       setSelectedZoneId(hit?.id ?? null);
     } else {
       dragStart.current = { x: e.clientX, y: e.clientY, tx: transform.current.tx, ty: transform.current.ty };
     }
-  }, [drawMode, screenToWorld, stripZones]);
+  }, [drawMode, screenToWorld, stripZones, snapToFacadeEdge]);
 
   const onMouseMove = useCallback((e) => {
     if (drawMode && drawStartRef.current) {
       const canvas = canvasRef.current;
       const rect = canvas.getBoundingClientRect();
-      const [wX, wY] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      const [rawX, rawY] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      const [wX, wY] = snapToFacadeEdge(rawX, rawY);
       const sX = drawStartRef.current.wX;
       const sY = drawStartRef.current.wY;
       setDrawingRect({ x: Math.min(sX, wX), y: Math.min(sY, wY), width: Math.abs(wX - sX), height: Math.abs(wY - sY) });
@@ -2202,7 +1857,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       };
       setRedrawTick((n) => n + 1);
     }
-  }, [drawMode, screenToWorld]);
+  }, [drawMode, screenToWorld, snapToFacadeEdge]);
 
   const onMouseUp = useCallback(() => {
     if (drawMode && drawStartRef.current && drawingRect) {
@@ -2278,6 +1933,76 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
             >Alle zones wissen</button>
           </div>
         )}
+
+        {selectedZoneId && (() => {
+          const sz = stripZones.find((z) => z.id === selectedZoneId);
+          if (!sz) return null;
+          const updZone = (patch) => onStripZonesChange?.(stripZones.map((z) => z.id === selectedZoneId ? { ...z, ...patch } : z));
+          const inp = { width: '100%', background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 3, fontSize: 10, padding: '2px 4px', marginBottom: 3, boxSizing: 'border-box' };
+          return (
+            <div style={{ background: 'rgba(15,23,42,0.95)', border: '1px solid #f59e0b', borderRadius: 4, padding: '6px 8px', minWidth: 200 }}>
+              <div style={{ fontSize: 10, color: '#f59e0b', marginBottom: 5, fontWeight: 700 }}>⚙ {sz.label} — instellingen</div>
+
+              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 1 }}>Label</div>
+              <input
+                value={sz.label ?? ''}
+                onChange={(e) => updZone({ label: e.target.value })}
+                style={inp}
+              />
+
+              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 1 }}>Metselverband</div>
+              <select
+                value={sz.zoneVerband ?? ''}
+                onChange={(e) => updZone({ zoneVerband: e.target.value || null })}
+                style={inp}
+              >
+                <option value="">Groep standaard</option>
+                <option value="halfsteens">Halfsteens</option>
+                <option value="halfsteens_kop">Halfsteens kop</option>
+                <option value="staand_tegelverband">Staand tegelverband</option>
+                <option value="wildverband">Wildverband</option>
+              </select>
+
+              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 1 }}>Steenstrip</div>
+              <select
+                value={sz.zoneStripArtId ?? ''}
+                onChange={(e) => updZone({ zoneStripArtId: e.target.value || null })}
+                style={inp}
+              >
+                <option value="">Groep standaard</option>
+                {STEENSTRIP_CATALOG.map((a) => (
+                  <option key={a.id} value={a.id}>{a.naam ?? a.id}</option>
+                ))}
+              </select>
+
+              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 1 }}>Achterconstructie</div>
+              <select
+                value={sz.zoneBackingType ?? ''}
+                onChange={(e) => updZone({ zoneBackingType: e.target.value || null })}
+                style={inp}
+              >
+                <option value="">Groep standaard</option>
+                <option value="hout">Hout</option>
+                <option value="aluminium">Aluminium</option>
+                <option value="aluminium_slimfort">SlimFort XT®</option>
+              </select>
+
+              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 1 }}>Panelisatie</div>
+              <select
+                value={sz.zonePanelenEnabled === true ? 'aan' : sz.zonePanelenEnabled === false ? 'uit' : ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  updZone({ zonePanelenEnabled: v === 'aan' ? true : v === 'uit' ? false : null });
+                }}
+                style={{ ...inp, marginBottom: 0 }}
+              >
+                <option value="">Groep standaard</option>
+                <option value="aan">Aan</option>
+                <option value="uit">Uit</option>
+              </select>
+            </div>
+          );
+        })()}
       </div>
 
       <button
