@@ -990,18 +990,13 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
           const dy = wallBB.maxY - wallBB.minY;
           const dz = wallBB.maxZ - wallBB.minZ;
 
-          const sortedAxes = [
-            { axis: "x", val: dx },
-            { axis: "y", val: dy },
-            { axis: "z", val: dz },
-          ].sort((a, b) => a.val - b.val);
+          const heightAxis = 'z';
+          const horzAxes = [{ axis: 'x', val: dx }, { axis: 'y', val: dy }].sort((a, b) => b.val - a.val);
+          const lengthAxis    = horzAxes[0].axis;
+          const thicknessAxis = horzAxes[1].axis;
 
-          const lengthAxis    = sortedAxes[2].axis;
-          const heightAxis    = sortedAxes[1].axis;
-          const thicknessAxis = sortedAxes[0].axis;
-
-          const length = Math.round(sortedAxes[2].val * 1000);
-          const height = Math.round(sortedAxes[1].val * 1000);
+          const length = Math.round(Math.max(dx, dy) * 1000);
+          const height = Math.round(dz * 1000);
 
           if (length < 100 || height < 100) continue;
 
@@ -2204,17 +2199,12 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
         const dx = bb.maxX - bb.minX;
         const dy = bb.maxY - bb.minY;
         const dz = bb.maxZ - bb.minZ;
-        const sortedAxes = [
-          { axis: 'x', val: dx },
-          { axis: 'y', val: dy },
-          { axis: 'z', val: dz },
-        ].sort((a, b) => a.val - b.val);
-
-        const lengthAxis    = sortedAxes[2].axis;
-        const heightAxis    = sortedAxes[1].axis;
-        const thicknessAxis = sortedAxes[0].axis;
-        const length = Math.round(sortedAxes[2].val * 1000);
-        const height = Math.round(sortedAxes[1].val * 1000);
+        const heightAxis = 'z';
+        const horzAxesEl = [{ axis: 'x', val: dx }, { axis: 'y', val: dy }].sort((a, b) => b.val - a.val);
+        const lengthAxis    = horzAxesEl[0].axis;
+        const thicknessAxis = horzAxesEl[1].axis;
+        const length = Math.round(Math.max(dx, dy) * 1000);
+        const height = Math.round(dz * 1000);
 
         if (length < 100 || height < 100) continue;
 
