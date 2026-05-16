@@ -4116,6 +4116,21 @@ export default function App() {
     if (activeGroupId === gid) setActiveGroupId(null);
   }
 
+  function mergeGroupInto(sourceGroupId, targetGroupId) {
+    if (sourceGroupId === targetGroupId) return;
+    pushHistory(groups);
+    setGroups((prev) => {
+      const sourceWallIds = prev.find((g) => g.id === sourceGroupId)?.wallIds ?? [];
+      return prev
+        .filter((g) => g.id !== sourceGroupId)
+        .map((g) => g.id !== targetGroupId ? g : {
+          ...g,
+          wallIds: sortWallsInComponent([...new Set([...g.wallIds, ...sourceWallIds])], allWalls, adjacencies),
+        });
+    });
+    if (activeGroupId === sourceGroupId) setActiveGroupId(targetGroupId);
+  }
+
   function toggleSelect(id) {
     setSelectedWallIds((prev) => {
       const next = new Set(prev);
@@ -5679,10 +5694,24 @@ export default function App() {
                                 </div>
                               );
                             })}
-                            <div style={{ padding: '5px 10px', display: 'flex', gap: 6 }}>
+                            <div style={{ padding: '5px 10px', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                               <button onClick={() => deleteGroup(g.id)} style={{ fontSize: 10, background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 3, padding: '2px 6px', cursor: 'pointer' }}>
                                 Groep verwijderen
                               </button>
+                              {groups.filter((og) => og.id !== g.id).length > 0 && (
+                                <select
+                                  defaultValue=""
+                                  onChange={(e) => { const tid = e.target.value; e.target.value = ''; if (tid) mergeGroupInto(g.id, tid); }}
+                                  style={{ fontSize: 10, border: '1px solid #e2e8f0', borderRadius: 3, padding: '2px 4px', color: '#475569', cursor: 'pointer' }}
+                                  title="Voeg alle wanden van deze groep toe aan een andere groep en verwijder deze groep"
+                                >
+                                  <option value="">↗ Samenvoegen naar...</option>
+                                  {groups.filter((og) => og.id !== g.id).map((og) => {
+                                    const os = getSettings(og.id);
+                                    return <option key={og.id} value={og.id}>{os.name}</option>;
+                                  })}
+                                </select>
+                              )}
                             </div>
                           </div>
                         )}
