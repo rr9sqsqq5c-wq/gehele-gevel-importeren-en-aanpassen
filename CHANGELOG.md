@@ -1,5 +1,62 @@
 # IFC Brickslip Planner — Changelog
 
+## [Niet gereleased] — 15-05-2026
+
+### Toegevoegd
+- **Groepen samenvoegen**: nieuw "↗ Samenvoegen naar..." dropdown in het uitklapbare groepsdetailpaneel (links in de groepslijst). Verplaatst alle wanden van de huidige groep naar een andere groep en verwijdert de brongroep. Handig voor de workflow: maak een tijdelijke groep van geselecteerde dakrandpanelen, corrigeer de richting via "Positie 1 / Positie 2", en voeg de wanden daarna toe aan een bestaande groep. De gecorrigeerde orientatie (outsideDir) blijft behouden na het samenvoegen.
+- **SlimFort — Kopse kant breedte volledig**: het SlimFort isolatieraster (EPS-platen, profielen, beugels) op de kopse kant (eindvlak) beslaat nu de volledige displaybreedte: **linker isolatiediepte + betonwanddikte + rechter isolatiediepte**. Voorheen was dit beperkt tot de ruwe betonbreedte minus de hoekafsnede. Steenstrips op de kopse kant beslaan al de volledige displaybreedte (ongewijzigd).
+
+---
+
+## [Niet gereleased] — 14-05-2026
+
+### Toegevoegd
+- **SlimFort — 2D uitgeslagen aanzicht (uitgevouwen gevelopbouw)**: wanneer een groep SlimFort-bekledingsvlakken heeft geconfigureerd (betonwand bekledingsvlakken), toont het 2D gevelaanzicht een volledig uitgeslagen weergave van alle actieve bekledingsvlakken naast elkaar. Per vlak worden getoond:
+  - EPS isolatiepanelen (lichtgrijs, gestippelde rand)
+  - Aluminium profielen (grijsblauw) en beugels (donkergrijs)
+  - Steenstrips (baksteen) in de ingestelde kleur en het verband
+  - Kleurgecodeerde vlakcontouren: blauw (linker langszijde) · paars (linker kopse kant) · groen (rechter langszijde) · roze (rechter kopse kant)
+  - PLOOI-markering met ruittekens op elke vouwlijn tussen vlakken
+  - Vlakklabel en dimensietekst (breedte × hoogte in mm)
+- **SlimFort — Niet-bekleed zones in uitgeslagen aanzicht**: de gedeelten van de lange wanden die buiten het geconfigureerde beklede bereik vallen, worden weergegeven als een grijs transparant vlak met het label "niet bekleed X mm". Zo is direct zichtbaar welk deel van de muur onbekleed blijft.
+- **SlimFort — Betonwand bekledingsvlakken UI**: nieuwe sectie "Betonwand bekledingsvlakken" in het groepsconfiguratiepaneel (actief bij backing-type: Aluminium SlimFort). Stel per bekledingsvlak in welke vlakken actief zijn:
+  - Linker langszijde (voor, buiten)
+  - Rechter langszijde (achter, buiten)
+  - Linker kopse kant (eindvlak links)
+  - Rechter kopse kant (eindvlak rechts)
+  Per actief vlak zijn de bereiken instelbaar (hoekdiepte, startoffset, eindoffset). De instellingen worden meegenomen in de berekening van het SlimFort-raster, de 2D weergave en de IFC-export.
+
+---
+
+## [Niet gereleased] — 12-05-2026
+
+### Toegevoegd
+- **SlimFort DetailBoek**: automatisch gegenereerd detailboek (`DetailBoek`-tabblad) met systeem-aware detailtekeningen per gevelzijde. Bevat:
+  - Verticale coupes: maaiveldaansluiting (onderkant systeem) en bovenregel/dakrand
+  - Horizontale coupes: hoekaansluiting en dagkantdetail
+  - Kanonieke laagsopbouw per systeem (hout / aluminium SlimFort)
+  - Tabfiltering per gevelzijde; SVG-componenten voor het genereren van de tekeningen
+- **SlimFort Werktekeningen (5 sheets)**: de `SlimFortWerktekening` bevat vijf gedetailleerde sheets:
+  - Sheet 1 — Uitgeslagen gevelopbouw per vlak
+  - Sheet 2 — Paneelindeling per vlak met afmetingen
+  - Sheet 3 — Profiel- en beugelpatroon (hartafstanden)
+  - Sheet 4 — EPS isolatieraster
+  - Sheet 5 — Productie-aanwijzingen en materiaaltotalen
+- **Wandsubstraattype detectie** (`wallSubstrateType`): automatische herkenning van het wandmateriaal op basis van de naam en het elementtype uit het IFC (beton / HSB / staal / metselwerk / onbekend). Bij detectie van beton wordt het backing-type automatisch voorgesteld als "Aluminium SlimFort".
+- **3D Viewer — SlimFort vlakken debug-overlay**: visuele debugweergave van de berekende SlimFort-bekledingsvlakken in de 3D-viewer. Toont vlakcontouren, EPS-platen, profielen en beugels per vlak.
+- **View2D — perpendiculaire hint auto-berekening**: de perpendiculaire oriëntatiehint voor SlimFort-vlakken wordt nu automatisch berekend vanuit de geometrie, zonder handmatige invoer.
+
+### Opgelost
+- **IFC export fallback / envelope filter**: correcte geometrie bij ontbrekende of onvolledige wallOrigin-data; envelopefilter werkt nu ook in de fallback-tak.
+- **3D fallback patroon**: correcte weergave van het steenstrippatroon in de 3D viewer bij ontbrekende facadeData.
+- **View2D sfDebug scope**: variabele scope-fout in de 2D SlimFort debug-overlay gecorrigeerd (fout waarbij sfDebug buiten bereik was).
+- **claddingDepthInward semantiek**: de betekenis van `claddingDepthInward` is omgedraaid zodat "inwaarts" overeenkomt met de fysieke interpretatie (diepte van de bekleding gemeten vanaf de muurkant).
+- **Keyplan systeemdetectie**: incorrecte systeemdetectie in de keyplan-weergave gecorrigeerd; het juiste systeem per groep wordt nu herkend.
+- **Continue wand fix in View2D**: sfFaceLayout-rendering was onterecht actief bij cfcs-configuratie; nu correct onderdrukt.
+- **3D Viewer totalThickness auto-sync**: de totalThickness instelling synchroniseert nu automatisch na wijziging in de instellingen, zonder handmatige invalidatie.
+
+---
+
 ## [Niet gereleased] — 30-04-2026
 
 ### Toegevoegd
