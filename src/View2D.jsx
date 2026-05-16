@@ -1937,69 +1937,10 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         {selectedZoneId && (() => {
           const sz = stripZones.find((z) => z.id === selectedZoneId);
           if (!sz) return null;
-          const updZone = (patch) => onStripZonesChange?.(stripZones.map((z) => z.id === selectedZoneId ? { ...z, ...patch } : z));
-          const inp = { width: '100%', background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 3, fontSize: 10, padding: '2px 4px', marginBottom: 3, boxSizing: 'border-box' };
           return (
-            <div style={{ background: 'rgba(15,23,42,0.95)', border: '1px solid #f59e0b', borderRadius: 4, padding: '6px 8px', minWidth: 200 }}>
-              <div style={{ fontSize: 10, color: '#f59e0b', marginBottom: 5, fontWeight: 700 }}>⚙ {sz.label} — instellingen</div>
-
-              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 1 }}>Label</div>
-              <input
-                value={sz.label ?? ''}
-                onChange={(e) => updZone({ label: e.target.value })}
-                style={inp}
-              />
-
-              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 1 }}>Metselverband</div>
-              <select
-                value={sz.zoneVerband ?? ''}
-                onChange={(e) => updZone({ zoneVerband: e.target.value || null })}
-                style={inp}
-              >
-                <option value="">Groep standaard</option>
-                <option value="halfsteens">Halfsteens</option>
-                <option value="halfsteens_kop">Halfsteens kop</option>
-                <option value="staand_tegelverband">Staand tegelverband</option>
-                <option value="wildverband">Wildverband</option>
-              </select>
-
-              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 1 }}>Steenstrip</div>
-              <select
-                value={sz.zoneStripArtId ?? ''}
-                onChange={(e) => updZone({ zoneStripArtId: e.target.value || null })}
-                style={inp}
-              >
-                <option value="">Groep standaard</option>
-                {STEENSTRIP_CATALOG.map((a) => (
-                  <option key={a.id} value={a.id}>{a.naam ?? a.id}</option>
-                ))}
-              </select>
-
-              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 1 }}>Achterconstructie</div>
-              <select
-                value={sz.zoneBackingType ?? ''}
-                onChange={(e) => updZone({ zoneBackingType: e.target.value || null })}
-                style={inp}
-              >
-                <option value="">Groep standaard</option>
-                <option value="hout">Hout</option>
-                <option value="aluminium">Aluminium</option>
-                <option value="aluminium_slimfort">SlimFort XT®</option>
-              </select>
-
-              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 1 }}>Panelisatie</div>
-              <select
-                value={sz.zonePanelenEnabled === true ? 'aan' : sz.zonePanelenEnabled === false ? 'uit' : ''}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  updZone({ zonePanelenEnabled: v === 'aan' ? true : v === 'uit' ? false : null });
-                }}
-                style={{ ...inp, marginBottom: 0 }}
-              >
-                <option value="">Groep standaard</option>
-                <option value="aan">Aan</option>
-                <option value="uit">Uit</option>
-              </select>
+            <div style={{ background: 'rgba(15,23,42,0.92)', border: '1px solid #f59e0b', borderRadius: 4, padding: '5px 8px', minWidth: 180 }}>
+              <div style={{ fontSize: 10, color: '#f59e0b', fontWeight: 700 }}>◆ {sz.label}</div>
+              <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 2 }}>Instellingen → zijbalk</div>
             </div>
           );
         })()}

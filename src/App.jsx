@@ -1324,6 +1324,144 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         );
       })()}
 
+      {(settings.stripZones ?? []).length > 0 && (() => {
+        const szArr = settings.stripZones ?? [];
+        const selZoneStripId = (settings.steenstripsArtikelen ?? [])[0] ?? null;
+        const selZoneStripArt = selZoneStripId ? STEENSTRIP_CATALOG.find((a) => a.id === selZoneStripId) : null;
+        const DEFAULT_ZONE_MAT = { ...DEFAULT_MATERIAL };
+        const resolveZone = (sz) => ({ enabled: false, color: settings.color, verband: settings.verband, material: { ...DEFAULT_ZONE_MAT }, maxHoogte: null, zoneBackingType: null, zonePanelenEnabled: null, ...sz });
+        const updZone = (id, patch) => {
+          onUpdate({ stripZones: szArr.map((z) => z.id === id ? { ...resolveZone(z), ...patch } : z) });
+        };
+        const copyZoneTo = (srcId, targetIds) => {
+          const src = resolveZone(szArr.find((z) => z.id === srcId));
+          onUpdate({ stripZones: szArr.map((z) => targetIds.includes(z.id) ? { ...z, ...src, id: z.id, x: z.x, y: z.y, width: z.width, height: z.height, label: z.label } : z) });
+        };
+        return (
+          <CollapsibleSection
+            title={`Tekenzones (${szArr.length})`}
+            tip={"Tekenzones zijn rechthoekige vlakken die je in de 2D-view tekent.\nPer zone kun je eigen instellingen opgeven voor verband, steenstrip, achterconstructie en panelisatie.\n\nTeken een zone via de knop '▭ Teken zone' in het 2D-aanzicht.\nKlik op een zone om deze te selecteren."}
+            isOpen={isOpen('stripzones')}
+            onToggle={() => toggle('stripzones')}
+            badge={szArr.some((z) => z.enabled) ? 'Actief' : null}
+          >
+            {szArr.map((sz) => {
+              const zs = resolveZone(sz);
+              const zm = zs.material ?? DEFAULT_ZONE_MAT;
+              const otherIds = szArr.filter((z) => z.id !== sz.id).map((z) => z.id);
+              return (
+                <div key={sz.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4, padding: 6, marginBottom: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: zs.enabled ? 6 : 0 }}>
+                    <input type="checkbox" id={`sz-en-${sz.id}`} checked={zs.enabled} onChange={(e) => updZone(sz.id, { enabled: e.target.checked })} />
+                    <label htmlFor={`sz-en-${sz.id}`} style={{ fontSize: 11, fontWeight: 600, color: '#334155', cursor: 'pointer', flex: 1 }}>
+                      {sz.label ?? sz.id}
+                      <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 4 }}>
+                        ({Math.round(sz.width)}×{Math.round(sz.height)} mm)
+                      </span>
+                    </label>
+                    {zs.enabled && (
+                      <input type="color" value={zs.color} onChange={(e) => updZone(sz.id, { color: e.target.value })}
+                        style={{ width: 28, height: 22, border: '1px solid #cbd5e1', borderRadius: 3, padding: 1, cursor: 'pointer' }} />
+                    )}
+                    {szArr.length > 1 && (
+                      <select
+                        value=""
+                        title="Kopieer instellingen van deze zone naar een andere zone"
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === 'all') copyZoneTo(sz.id, otherIds);
+                          else if (val !== '') copyZoneTo(sz.id, [val]);
+                        }}
+                        style={{ ...inp, fontSize: 10, paddingRight: 4, color: '#475569', maxWidth: 72 }}
+                      >
+                        <option value="" disabled>→ kopieer</option>
+                        {szArr.filter((z) => z.id !== sz.id).map((z) => (
+                          <option key={z.id} value={z.id}>→ {z.label ?? z.id}</option>
+                        ))}
+                        <option value="all">→ Alle zones</option>
+                      </select>
+                    )}
+                    <button
+                      onClick={() => onUpdate({ stripZones: szArr.filter((z) => z.id !== sz.id) })}
+                      style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 13, cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
+                      title="Zone verwijderen"
+                    >✕</button>
+                  </div>
+                  {zs.enabled && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <Field label="Label" tip="Naam van deze tekenzone.">
+                        <input type="text" value={sz.label ?? ''} onChange={(e) => updZone(sz.id, { label: e.target.value })} style={{ ...inp, width: '100%' }} />
+                      </Field>
+                      <Field label="Metselverband" tip="Verband voor deze zone.">
+                        <select value={zs.verband} onChange={(e) => updZone(sz.id, { verband: e.target.value })} style={inp}>
+                          <option value="halfsteens">Halfsteens</option>
+                          <option value="halfsteens_kop">Halfsteens kop</option>
+                          <option value="staand_tegelverband">Staand tegelverband</option>
+                          <option value="wildverband">Wildverband</option>
+                        </select>
+                      </Field>
+                      <Field label="Achterconstructie" tip="Type achterconstructie voor deze zone.">
+                        <select value={zs.zoneBackingType ?? ''} onChange={(e) => updZone(sz.id, { zoneBackingType: e.target.value || null })} style={inp}>
+                          <option value="">Groep standaard</option>
+                          <option value="hout">Hout</option>
+                          <option value="aluminium">Aluminium</option>
+                          <option value="aluminium_slimfort">SlimFort XT®</option>
+                        </select>
+                      </Field>
+                      <Field label="Panelisatie" tip="Panelen in- of uitschakelen voor deze zone.">
+                        <select
+                          value={zs.zonePanelenEnabled === true ? 'aan' : zs.zonePanelenEnabled === false ? 'uit' : ''}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            updZone(sz.id, { zonePanelenEnabled: v === 'aan' ? true : v === 'uit' ? false : null });
+                          }}
+                          style={inp}
+                        >
+                          <option value="">Groep standaard</option>
+                          <option value="aan">Aan</option>
+                          <option value="uit">Uit</option>
+                        </select>
+                      </Field>
+                      {selZoneStripArt && (
+                        <div style={{ background: '#fdf4ff', border: '1px solid #d8b4fe', borderRadius: 4, padding: '4px 6px', fontSize: 9.5, marginBottom: 2 }}>
+                          <div style={{ fontSize: 9, color: '#7c3aed' }}>Uit artikelkeuze: <strong>{selZoneStripArt.naam}</strong></div>
+                          <div style={{ color: '#64748b', fontSize: 9 }}>{selZoneStripArt.steenL}×{selZoneStripArt.steenH}×{selZoneStripArt.dikte} mm · voeg {selZoneStripArt.lint}/{selZoneStripArt.stoot} mm</div>
+                        </div>
+                      )}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                        {[['Lengte mm', 'steenL', true], ['Hoogte mm', 'steenH', true], ['Lintvoeg mm', 'lint', false], ['Stootvoeg mm', 'stoot', false]].map(([lbl, key, fromArt]) => {
+                          const locked = !!selZoneStripArt && fromArt;
+                          const val = locked ? (selZoneStripArt[key] ?? DEFAULT_MATERIAL[key]) : (zm[key] ?? DEFAULT_MATERIAL[key]);
+                          return (
+                            <Field key={key} label={lbl}>
+                              <input type="number" min={1} step={1} value={val}
+                                disabled={locked}
+                                onChange={(e) => updZone(sz.id, { material: { ...zm, [key]: Number(e.target.value) } })}
+                                style={{ ...inp, width: '100%', opacity: locked ? 0.6 : 1 }} />
+                            </Field>
+                          );
+                        })}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input type="checkbox" id={`sz-mh-${sz.id}`} checked={zs.maxHoogte !== null}
+                          onChange={(e) => updZone(sz.id, { maxHoogte: e.target.checked ? 1000 : null })} />
+                        <label htmlFor={`sz-mh-${sz.id}`} style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>Max strip hoogte</label>
+                        {zs.maxHoogte !== null && (
+                          <input type="number" min={0} step={10} value={zs.maxHoogte}
+                            onChange={(e) => updZone(sz.id, { maxHoogte: Number(e.target.value) })}
+                            style={{ ...inp, width: 60 }} />
+                        )}
+                        {zs.maxHoogte !== null && <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </CollapsibleSection>
+        );
+      })()}
+
       {(() => {
         const zw = settings.zetwerk ?? {};
         const upd = (patch) => onUpdate({ zetwerk: { ...(settings.zetwerk ?? {}), ...patch } });
