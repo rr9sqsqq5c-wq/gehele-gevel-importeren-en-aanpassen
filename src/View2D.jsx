@@ -1401,22 +1401,6 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
             }
           }
         }
-      } else if (isStaandHalfsteens && facadeData.columns?.length) {
-        const colBrickW = facadeData.colBrickW ?? effectiveMat.steenH;
-        for (const col of facadeData.columns) {
-          const [pSx] = toScreen(mx(col.x, colBrickW), 0);
-          const pSw = colBrickW * scale * 0.001;
-          for (const piece of col.pieces) {
-            const clippedBottom = Math.max(piece.start, patternStartH);
-            const clippedTop = Math.min(piece.start + piece.length, groupHeight);
-            const actualH = clippedTop - clippedBottom;
-            if (actualH <= 0) continue;
-            const [, pSy] = toScreen(0, clippedTop);
-            const pSh = actualH * scale * 0.001;
-            ctx.fillStyle = brickColor(piece.label, color, piece.length, kopMM);
-            ctx.fillRect(pSx + 0.5, pSy + 0.5, Math.max(pSw - 1, 1), Math.max(pSh - 1, 1));
-          }
-        }
       } else {
         for (const row of rows) {
           const clippedTop = Math.min(row.y + stripH, groupHeight);

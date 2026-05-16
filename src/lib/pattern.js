@@ -30,6 +30,20 @@ export function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, 
     return pieces;
   }
 
+  if (verband === 'staand_halfsteens') {
+    const colStep = steenH + stoot;
+    const isOddPhase = rowIndex % 2 !== 0;
+    const phaseOffset = isOddPhase ? colStep : 0;
+    const pieces = [];
+    let x = phaseOffset;
+    while (x + 0.001 < totalWidth) {
+      const len = round2(Math.min(steenH, totalWidth - x));
+      if (len > 0.001) pieces.push({ start: round2(x + startX), length: len, label: len < steenH - 0.001 ? 'Rest' : 'Strek' });
+      x = round2(x + 2 * colStep);
+    }
+    return pieces;
+  }
+
   const kop = round2((steenL - stoot) / 2);
   const driekwart = round2((steenL + stoot) * 0.75 - stoot);
   const useKop = verband === 'halfsteens' && rowIndex % 2 !== 0;
@@ -307,13 +321,14 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const groupHeight = round2(groupMaxH - groupMinH);
   const effectiveHeight = maxHoogte != null && maxHoogte > 0 ? Math.min(groupHeight, maxHoogte) : groupHeight;
   const effectiveMinH = startLijn ?? 0;
+  const rowStep = verband === 'staand_halfsteens' ? round2(lagenmaat / 2) : lagenmaat;
   const patternOffset = startLijn != null
-    ? ((startLijn % lagenmaat) + lagenmaat) % lagenmaat
+    ? ((startLijn % rowStep) + rowStep) % rowStep
     : 0;
   const rStart = startLijn != null
-    ? Math.floor((startLijn - patternOffset) / lagenmaat)
+    ? Math.floor((startLijn - patternOffset) / rowStep)
     : 0;
-  const rEnd = Math.ceil((effectiveHeight - patternOffset) / lagenmaat);
+  const rEnd = Math.ceil((effectiveHeight - patternOffset) / rowStep);
 
   const zwEnabled = zetwerk?.enabled;
   const zwB = zwEnabled ? Math.max(1, zetwerk.breedte ?? 50) : 0;
@@ -444,61 +459,9 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
 
   const effectiveWidth = round2(groupWidth + extendLeft + extendRight);
 
-  if (verband === 'staand_halfsteens') {
-    const colStep = steenH + stoot;
-    const colPeriod = steenL + lint;
-    const halfPeriod = round2(colPeriod / 2);
-    const columns = [];
-    let c = 0;
-    while (true) {
-      const colX_raw = round2(c * colStep);
-      if (colX_raw >= effectiveWidth + 0.001) break;
-      const colX = round2(colX_raw - extendLeft);
-      const cOffset = c % 2 === 0 ? 0 : halfPeriod;
-      const pieces = [];
-      let k = 0;
-      while (true) {
-        const brickY = round2(cOffset + k * colPeriod);
-        if (brickY >= effectiveHeight - 0.001) break;
-        k++;
-        const brickEnd = round2(brickY + steenL);
-        if (brickEnd <= effectiveMinH + 0.001) continue;
-        const clippedStart = round2(Math.max(brickY, effectiveMinH));
-        const clippedEnd = round2(Math.min(brickEnd, effectiveHeight));
-        if (clippedEnd - clippedStart < 0.5) continue;
-        pieces.push({ start: clippedStart, length: round2(clippedEnd - clippedStart), label: 'Strek' });
-      }
-      let finalPieces = pieces;
-      const colX2 = colX + steenH;
-      for (const op of maskOpenings) {
-        const opX1 = op.x ?? 0;
-        const opX2 = opX1 + (op.width ?? 0);
-        if (colX2 <= opX1 + 0.001 || colX >= opX2 - 0.001) continue;
-        const opY1 = op.y ?? 0;
-        const opY2 = opY1 + (op.height ?? 0);
-        finalPieces = finalPieces.flatMap((piece) => {
-          const ps = piece.start, pe = piece.start + piece.length;
-          if (pe <= opY1 + 0.001 || ps >= opY2 - 0.001) return [piece];
-          const out = [];
-          if (ps < opY1 - 0.001) out.push({ ...piece, length: round2(opY1 - ps) });
-          if (pe > opY2 + 0.001) out.push({ ...piece, start: round2(opY2), length: round2(pe - opY2) });
-          return out;
-        });
-      }
-      if (finalPieces.length > 0) columns.push({ x: colX, pieces: finalPieces });
-      c++;
-    }
-    return {
-      rows: [], columns, colBrickW: steenH, colBrickH: steenL,
-      groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight,
-      extendLeft, extendRight, patternStartH: effectiveMinH,
-      groupOpenings, zetwerkParams: null, refWallOrigin: refWall.wallOrigin,
-    };
-  }
-
   const rows = [];
   for (let r = rStart; r < rEnd; r++) {
-    const rowY = round2(patternOffset + r * lagenmaat);
+    const rowY = round2(patternOffset + r * rowStep);
     const builtPieces = buildRowPiecesForWidth(effectiveWidth, material, verband, r, 0);
     const rawPieces = extendLeft > 0
       ? builtPieces.map((p) => ({ ...p, start: round2(p.start - extendLeft) }))
@@ -509,7 +472,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       for (const p of parts) clipped.push(p);
     }
 
-    if (verband !== 'staand_tegelverband' && maskOpenings.length) {
+    if (verband !== 'staand_tegelverband' && verband !== 'staand_halfsteens' && maskOpenings.length) {
       const leftEdges = [];
       const rightEdges = [];
       for (const op of maskOpenings) {
