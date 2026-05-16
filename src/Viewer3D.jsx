@@ -921,13 +921,20 @@ function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls, slimF
         };
       }
       const dfr = batch.depthFromFace ?? null;
+      const colBrickW = batch.colBrickW;
+      const rowBricks = batch.rows.flatMap((row) =>
+        row.pieces.map((piece) =>
+          getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, upAxis, allWalls, !!outsideDirFlip, dfr)
+        )
+      );
+      const colBricks = (batch.columns ?? []).flatMap((col) =>
+        col.pieces.map((piece) =>
+          getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, col.x, colBrickW, piece.start, piece.length, depth, upAxis, allWalls, !!outsideDirFlip, dfr)
+        )
+      );
       return {
         color: batch.color,
-        bricks: batch.rows.flatMap((row) =>
-          row.pieces.map((piece) =>
-            getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, upAxis, allWalls, !!outsideDirFlip, dfr)
-          )
-        ),
+        bricks: [...rowBricks, ...colBricks],
       };
     }).filter((b) => b.bricks.length > 0);
     const wrapBatches = (cornerWraps ?? []).map((wrap, wi) => {

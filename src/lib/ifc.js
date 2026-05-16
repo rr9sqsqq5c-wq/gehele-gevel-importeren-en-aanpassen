@@ -1358,7 +1358,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
     const brickD = _stripArt ? _stripArt.dikte : (settings.brickDepth ?? 20);
     const material = settings.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
     const groupVerband = settings.verband ?? 'halfsteens';
-    const groupBrickExtH = groupVerband === 'staand_tegelverband' ? material.steenL : material.steenH;
+    const groupBrickExtH = (groupVerband === 'staand_tegelverband' || groupVerband === 'staand_halfsteens') ? material.steenL : material.steenH;
     const isSlimFort = (group.backingType ?? 'hout') === 'aluminium_slimfort';
     const _sfS = isSlimFort ? { ...SLIMFORT_DEFAULTS, ...(group.slimFortSettings ?? {}) } : {};
     const sfTotalThick = _sfS.totalThickness ?? 196;
@@ -1447,7 +1447,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
           const batchMat = batch.material ?? material;
           const batchBrickD = brickD;
           const batchVerband = batch.verband ?? 'halfsteens';
-          const brickExtH = batchVerband === 'staand_tegelverband' ? batchMat.steenL : batchMat.steenH;
+          const brickExtH = (batchVerband === 'staand_tegelverband' || batchVerband === 'staand_halfsteens') ? batchMat.steenL : batchMat.steenH;
           for (const row of batch.rows) {
             for (const piece of row.pieces) {
               const [wx, wy, wz] = groupToWorld(piece.start + piece.length / 2, effectiveLatDepth + panelDikte + batchBrickD / 2, row.y);

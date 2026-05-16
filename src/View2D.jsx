@@ -105,7 +105,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
       }).filter(Boolean);
     }
     panels = panels.filter((panel) => panel.height >= 200 && panel.width >= 10);
-    const rowH = verband === 'staand_tegelverband' ? effectiveMat.steenL : effectiveMat.steenH;
+    const rowH = (verband === 'staand_tegelverband' || verband === 'staand_halfsteens') ? effectiveMat.steenL : effectiveMat.steenH;
     panels = panels.filter((panel) => {
       for (const row of (rows ?? [])) {
         if (!row?.pieces?.length) continue;
@@ -1327,7 +1327,8 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
 
     if (vis.strips !== false) {
       const isTegel = verband === 'staand_tegelverband';
-      const stripH = isTegel ? effectiveMat.steenL : steenH;
+      const isStaandHalfsteens = verband === 'staand_halfsteens';
+      const stripH = (isTegel || isStaandHalfsteens) ? effectiveMat.steenL : steenH;
       const hasZones = stripZones.length > 0;
       ctx.save();
       ctx.beginPath();
@@ -1400,6 +1401,22 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
             }
           }
         }
+      } else if (isStaandHalfsteens && facadeData.columns?.length) {
+        const colBrickW = facadeData.colBrickW ?? effectiveMat.steenH;
+        for (const col of facadeData.columns) {
+          const [pSx] = toScreen(mx(col.x, colBrickW), 0);
+          const pSw = colBrickW * scale * 0.001;
+          for (const piece of col.pieces) {
+            const clippedBottom = Math.max(piece.start, patternStartH);
+            const clippedTop = Math.min(piece.start + piece.length, groupHeight);
+            const actualH = clippedTop - clippedBottom;
+            if (actualH <= 0) continue;
+            const [, pSy] = toScreen(0, clippedTop);
+            const pSh = actualH * scale * 0.001;
+            ctx.fillStyle = brickColor(piece.label, color, piece.length, kopMM);
+            ctx.fillRect(pSx + 0.5, pSy + 0.5, Math.max(pSw - 1, 1), Math.max(pSh - 1, 1));
+          }
+        }
       } else {
         for (const row of rows) {
           const clippedTop = Math.min(row.y + stripH, groupHeight);
@@ -1440,7 +1457,7 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
         const [sx1z] = toScreen(outsideDirFlip ? groupWidth - zoneX2 : zoneX1, 0);
         const zW = (zoneX2 - zoneX1) * scale * 0.001;
         if (zW <= 0) continue;
-        const isTZ = zVerband === 'staand_tegelverband';
+        const isTZ = zVerband === 'staand_tegelverband' || zVerband === 'staand_halfsteens';
         const zStripH = isTZ ? zMat.steenL : zMat.steenH;
         ctx.save();
         ctx.beginPath();

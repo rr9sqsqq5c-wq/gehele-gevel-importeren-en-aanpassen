@@ -603,7 +603,7 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material 
 
 export function detectKoppelstrippen(panels, facadeRows, mat, verband) {
   if (verband === 'wildverband') return [];
-  const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+  const stripH = (verband === 'staand_tegelverband' || verband === 'staand_halfsteens') ? mat.steenL : mat.steenH;
   const koppel = [];
   for (const row of facadeRows) {
     for (const piece of (row.pieces ?? [])) {
@@ -650,7 +650,7 @@ export function generateMoldRecipe(panels, mat, verband, panelDikte, moldDims, g
   const steenH = mat.steenH ?? 50;
   const lint   = mat.lint   ?? 12;
   const steenL = mat.steenL ?? 210;
-  const lagenmaat = verband === 'staand_tegelverband' ? steenL + lint : steenH + lint;
+  const lagenmaat = (verband === 'staand_tegelverband' || verband === 'staand_halfsteens') ? steenL + lint : steenH + lint;
   const moldHoogte = moldDims?.hoogte ?? 270;
   const moldLengte = moldDims?.lengte ?? 3400;
   const rowsPerMold = Math.min(3, Math.max(1, Math.floor(moldHoogte / lagenmaat)));
@@ -730,7 +730,7 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   const lint   = mat?.lint   ?? 12;
   const steenL = mat?.steenL ?? 210;
   const stoot  = mat?.stoot  ?? 10;
-  const isStaand = verband === 'staand_tegelverband';
+  const isStaand = verband === 'staand_tegelverband' || verband === 'staand_halfsteens';
   // For staand_tegelverband the brick is rotated 90° CW in the mold so strips can be
   // produced in horizontal rows. Long side (steenL) becomes the slot width; short side
   // (steenH) becomes the slot height. The facade lagenmaat (steenL + lint) is NOT used
@@ -909,7 +909,7 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const g = _moldGeometry(mat, verband, moldDims, moldId);
   const { moldW, moldH, frameH, frameLeft, innerW, innerH, brickH, slotH, tolerantieL, tolerantieH, rows, rowsPerMold, globalRowBase, notchXs, notchWs } = g;
   const extraOffsetX = moldDims?.offsetX ?? 0;
-  const isStaand = verband === 'staand_tegelverband';
+  const isStaand = verband === 'staand_tegelverband' || verband === 'staand_halfsteens';
   // After 90° CW rotation: long side (steenL) is horizontal in mold, short side (steenH) vertical
   const displayBrickW = mat?.steenL ?? 210;
   const displayBrickH = mat?.steenH ?? 50;
@@ -1194,7 +1194,7 @@ export function getMoldTemplates(verband, mat, moldDims) {
   const steenH = mat?.steenH ?? 50;
   const lint   = mat?.lint   ?? 12;
   const stoot  = mat?.stoot  ?? 10;
-  const isStaand = verband === 'staand_tegelverband';
+  const isStaand = verband === 'staand_tegelverband' || verband === 'staand_halfsteens';
 
   // lagenmaat = FACADE row pitch (used for rowsPerPanel planning)
   const lagenmaat = isStaand ? steenL + lint : steenH + lint;
@@ -1277,7 +1277,7 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
   const gB = _moldGeometry(mat, verband, moldDims, moldIds[1] ?? 'Rechts');
 
   const { moldW, moldH, frameH, frameLeft, innerW, innerH, slotH, tolerantieL, tolerantieH, notchXs, notchWs } = gA;
-  const isStaand = verband === 'staand_tegelverband';
+  const isStaand = verband === 'staand_tegelverband' || verband === 'staand_halfsteens';
   // After 90° CW rotation: long side (steenL) is horizontal in mold, short side (steenH) vertical
   const displayBrickW = mat?.steenL ?? 210;
   const displayBrickH = mat?.steenH ?? 50;

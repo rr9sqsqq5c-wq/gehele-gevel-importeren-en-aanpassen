@@ -882,11 +882,12 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
       )}
 
       {!(settings.zones?.length > 0) && (
-        <Field label="Metselverband" tip={"Halfsteens: stenen verspringen een halve steenlengte per laag — meest gebruikelijk.\nTegelverband: stenen lopen horizontaal door zonder verspinging.\nStaand tegelverband: steenstrips staan verticaal (lange kant omhoog), kolommen naast elkaar zonder verspinging."}>
+        <Field label="Metselverband" tip={"Halfsteens: stenen verspringen een halve steenlengte per laag — meest gebruikelijk.\nTegelverband: stenen lopen horizontaal door zonder verspinging.\nStaand tegelverband: steenstrips staan verticaal (lange kant omhoog), kolommen naast elkaar zonder verspinging.\nStaand halfsteensverband: steenstrips staan verticaal, elke tweede kolom verspringt een halve steenlengte."}>
           <select value={settings.verband} onChange={(e) => onUpdate({ verband: e.target.value })} style={inp}>
             <option value="halfsteens">Halfsteens</option>
             <option value="tegelverband">Tegelverband</option>
             <option value="staand_tegelverband">Staand tegelverband</option>
+            <option value="staand_halfsteens">Staand halfsteensverband</option>
             <option value="wildverband">Wildverband</option>
           </select>
         </Field>
@@ -1281,6 +1282,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                           <option value="halfsteens">Halfsteens</option>
                           <option value="tegelverband">Tegelverband</option>
                           <option value="staand_tegelverband">Staand tegelverband</option>
+                          <option value="staand_halfsteens">Staand halfsteensverband</option>
                           <option value="wildverband">Wildverband</option>
                         </select>
                       </Field>
@@ -1381,7 +1383,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               const steenH = mat.steenH ?? 50;
               const steenL = mat.steenL ?? 210;
               const lint = mat.lint ?? 12;
-              const lagenmaat = verband === 'staand_tegelverband' ? steenL + lint : steenH + lint;
+              const lagenmaat = (verband === 'staand_tegelverband' || verband === 'staand_halfsteens') ? steenL + lint : steenH + lint;
               const malLengte = pan.malLengte ?? 3400;
               const malBreedte = pan.malBreedte ?? 270;
               const tolL = pan.tolerantieL ?? 1;
@@ -1390,7 +1392,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               const FRAME_LEFT = 40;
               const malInnerW = malLengte - 2 * FRAME_LEFT;
               const malInnerH = malBreedte - 2 * FRAME_H;
-              const brickH_local = verband === 'staand_tegelverband' ? steenL : steenH;
+              const brickH_local = (verband === 'staand_tegelverband' || verband === 'staand_halfsteens') ? steenL : steenH;
               const slotH_local = brickH_local + 2 * tolH;
               const minRowGap = 10;
               const rowsPerMold = Math.min(3, Math.max(1, Math.floor((malInnerH + minRowGap) / (slotH_local + minRowGap))));
@@ -1407,6 +1409,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 halfsteens: 'Halfsteens',
                 tegelverband: 'Tegelverband',
                 staand_tegelverband: 'Staand tegelverband',
+                staand_halfsteens: 'Staand halfsteensverband',
                 wildverband: 'Wildverband',
               };
 
@@ -2998,7 +3001,7 @@ export default function App() {
         const gMinH = Math.min(...axisW.map((w) => w.wallOrigin.heightStart));
         const gAdj = adjacencies.filter((a) => group.wallIds.includes(a.wallIdA) && group.wallIds.includes(a.wallIdB));
         const wallRowMap = buildGroupPattern(walls, gAdj, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, 'all');
-        const brickH3d = (s.verband ?? DEFAULT_VERBAND) === 'staand_tegelverband' ? effectiveMat3d.steenL : effectiveMat3d.steenH;
+        const brickH3d = (['staand_tegelverband', 'staand_halfsteens'].includes(s.verband ?? DEFAULT_VERBAND)) ? effectiveMat3d.steenL : effectiveMat3d.steenH;
         const allRows = [];
         for (const w of axisW) {
           const wo = w.wallOrigin;
@@ -3219,7 +3222,7 @@ export default function App() {
             return [{ ...piece, start: Math.max(ps, zX1), length: Math.min(pe, zX2) - Math.max(ps, zX1) }];
           }).filter((p) => p.length > 1),
         })).filter((row) => row.pieces.length > 0);
-        const zoneBrickH3d = zoneVerband3d === 'staand_tegelverband' ? zoneMat.steenL : zoneMat.steenH;
+        const zoneBrickH3d = (['staand_tegelverband', 'staand_halfsteens'].includes(zoneVerband3d)) ? zoneMat.steenL : zoneMat.steenH;
         enabledZones.push({ zX1, zX2, rows: clipRows, color: zs.color ?? s.color ?? '#a64033', brickH: zoneBrickH3d });
       }
 
@@ -3242,10 +3245,10 @@ export default function App() {
       })).filter((row) => row.pieces.length > 0);
 
       const groupVerband3d = s.verband ?? DEFAULT_VERBAND;
-      const groupBrickH3d = groupVerband3d === 'staand_tegelverband' ? effectiveMat3d.steenL : effectiveMat3d.steenH;
+      const groupBrickH3d = (['staand_tegelverband', 'staand_halfsteens'].includes(groupVerband3d)) ? effectiveMat3d.steenL : effectiveMat3d.steenH;
       const batches = [
-        { rows: generalRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, depthFromFace: depthFromFaceGeneral },
-        ...enabledZones.map((ez) => ({ rows: ez.rows, color: ez.color, brickH: ez.brickH, depthFromFace: depthFromFaceGeneral })),
+        { rows: generalRows, columns: facadeData.columns ?? [], colBrickW: facadeData.colBrickW, color: s.color ?? '#a64033', brickH: groupBrickH3d, depthFromFace: depthFromFaceGeneral },
+        ...enabledZones.map((ez) => ({ rows: ez.rows, columns: [], color: ez.color, brickH: ez.brickH, depthFromFace: depthFromFaceGeneral })),
       ];
 
       for (const pen of (s.penanten ?? [])) {
@@ -4513,7 +4516,7 @@ export default function App() {
             }).filter(Boolean);
           }
           panels = panels.filter((panel) => panel.height >= 200 && panel.width >= 10);
-          const facRowH = (s.verband ?? 'halfsteens') === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+          const facRowH = (['staand_tegelverband', 'staand_halfsteens'].includes(s.verband ?? 'halfsteens')) ? mat.steenL : mat.steenH;
           panels = panels.filter((panel) => {
             for (const row of (facRows ?? [])) {
               if (!row?.pieces?.length) continue;
@@ -4931,7 +4934,7 @@ export default function App() {
         if (!wrapRows.length) continue;
         const mainVerband = s.verband ?? DEFAULT_VERBAND;
         const mainMat = s.material ?? DEFAULT_MATERIAL;
-        const wrapBrickH = mainVerband === 'staand_tegelverband' ? mainMat.steenL : mainMat.steenH;
+        const wrapBrickH = (['staand_tegelverband', 'staand_halfsteens'].includes(mainVerband)) ? mainMat.steenL : mainMat.steenH;
         exportCornerWraps.push({
           secRwo,
           secGroupMinX,
