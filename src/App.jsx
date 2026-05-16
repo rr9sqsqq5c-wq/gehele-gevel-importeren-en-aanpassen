@@ -95,6 +95,55 @@ function detectMainInFront(secWalls, mainWalls, TOL = 50) {
   return true;
 }
 
+function computePenantCornerInfo(myGroup, adjGroup, wallMap, penantBreedte, side) {
+  if (!myGroup || !adjGroup) return null;
+  const myWalls = (myGroup.wallIds ?? []).map((id) => wallMap[id]).filter((w) => w && w.wallOrigin);
+  const adjWalls = (adjGroup.wallIds ?? []).map((id) => wallMap[id]).filter((w) => w && w.wallOrigin);
+  if (!myWalls.length || !adjWalls.length) return null;
+  let refMy = null, refAdj = null;
+  for (const wa of myWalls) {
+    for (const wb of adjWalls) {
+      const woA = wa.wallOrigin, woB = wb.wallOrigin;
+      if (woA.lengthAxis === woB.lengthAxis) continue;
+      if (woA.lengthAxis !== woB.thicknessAxis) continue;
+      if (woA.heightAxis !== woB.heightAxis) continue;
+      refMy = wa; refAdj = wb;
+      break;
+    }
+    if (refMy) break;
+  }
+  if (!refMy || !refAdj) return null;
+  const woA = refMy.wallOrigin;
+  const woB = refAdj.wallOrigin;
+  const sameAxisMy = myWalls.filter((w) => w.wallOrigin.lengthAxis === woA.lengthAxis);
+  const myLenStart = Math.min(...sameAxisMy.map((w) => w.wallOrigin.lengthStart));
+  const myLenEnd = Math.max(...sameAxisMy.map((w) => w.wallOrigin.lengthStart + (w.length ?? 0)));
+  const groupWidth = myLenEnd - myLenStart;
+  const bThk0 = woB.thicknessStart;
+  const bThk1 = woB.thicknessEnd ?? (bThk0 + (refAdj.thickness ?? 300));
+  const bThkOuter = woB.resolvedOutside?.outsidePos;
+  let cornerX_model;
+  if (bThkOuter != null) {
+    cornerX_model = bThkOuter;
+  } else if (side === 'left') {
+    cornerX_model = Math.abs(Math.min(bThk0, bThk1) - myLenStart) <= Math.abs(Math.max(bThk0, bThk1) - myLenStart)
+      ? Math.min(bThk0, bThk1) : Math.max(bThk0, bThk1);
+  } else {
+    cornerX_model = Math.abs(Math.max(bThk0, bThk1) - myLenEnd) <= Math.abs(Math.min(bThk0, bThk1) - myLenEnd)
+      ? Math.max(bThk0, bThk1) : Math.min(bThk0, bThk1);
+  }
+  const cornerX_local = cornerX_model - myLenStart;
+  const penantBreedteM = Math.max(1, penantBreedte || 400);
+  const penant_x = side === 'left'
+    ? Math.max(0, Math.round(cornerX_local))
+    : Math.max(0, Math.round(cornerX_local - penantBreedteM));
+  const myOutsidePos = woA.resolvedOutside?.outsidePos ?? woA.thicknessStart;
+  const bLenStart = woB.lengthStart;
+  const bLenEnd = woB.lengthEnd ?? (bLenStart + (refAdj.length ?? 0));
+  const adjCornerEnd = Math.abs(bLenStart - myOutsidePos) <= Math.abs(bLenEnd - myOutsidePos) ? 'left' : 'right';
+  return { cornerX_model, cornerX_local, penant_x, groupWidth, myLenStart, adjCornerEnd };
+}
+
 function detectCornerAdjacentGroups(myGroupId, groups, wallMap, TOL = 150) {
   const myGroup = groups.find((g) => g.id === myGroupId);
   if (!myGroup) return new Set();
@@ -1206,6 +1255,91 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       </div>
                     );
                   })()}
+                </div>
+              );
+            })()}
+            {(() => {
+              const hk = p.hoekKoppeling ?? { enabled: false, adjacentGroupId: null, side: 'left', autoPosition: true, extensionMode: 'toPenantFront' };
+              const myGroupObj = allGroups.find((g) => g.id === groupId);
+              const otherGroups = (allGroups ?? []).filter((g) => g.id !== groupId);
+              const computeFor = (nextHk, nextBreedte) => {
+                if (!nextHk.enabled || !nextHk.adjacentGroupId) return null;
+                const adjG = allGroups.find((g) => g.id === nextHk.adjacentGroupId);
+                if (!adjG) return null;
+                return computePenantCornerInfo(myGroupObj, adjG, wallMap, nextBreedte ?? 400, nextHk.side ?? 'left');
+              };
+              const updHk = (patch) => {
+                const merged = { ...hk, ...patch };
+                const ci = computeFor(merged, p.breedte ?? 400);
+                onUpdate({
+                  penanten: (settings.penanten ?? []).map((q) => {
+                    if (q.id !== p.id) return q;
+                    const nx = { ...q, hoekKoppeling: merged };
+                    if (ci) { nx.x = ci.penant_x; nx.xExpr = String(ci.penant_x); }
+                    return nx;
+                  }),
+                });
+              };
+              const adjGroupObj = hk.adjacentGroupId ? allGroups.find((g) => g.id === hk.adjacentGroupId) : null;
+              const cornerInfo = hk.enabled && adjGroupObj
+                ? computePenantCornerInfo(myGroupObj, adjGroupObj, wallMap, p.breedte ?? 400, hk.side ?? 'left')
+                : null;
+              const sideDepth = (hk.side === 'right') ? (p.diepteRechts ?? p.diepte ?? 150) : (p.diepteLinks ?? p.diepte ?? 150);
+              const brickDLocal = settings.brickDepth ?? 20;
+              const penantFrontDepth = Math.max(0, Math.round(sideDepth + brickDLocal));
+              const applyToAdjacent = () => {
+                if (!cornerInfo || !adjGroupObj || !onUpdateGroupSettings) return;
+                const adjSettings = getSettings ? getSettings(adjGroupObj.id) : {};
+                const ee = adjSettings.endExtensions ?? { left: { strips: 0, battens: 0, panels: 0 }, right: { strips: 0, battens: 0, panels: 0 } };
+                const cur = ee[cornerInfo.adjCornerEnd] ?? { strips: 0, battens: 0, panels: 0 };
+                const patch = { endExtensions: { ...ee, [cornerInfo.adjCornerEnd]: { ...cur, strips: penantFrontDepth, battens: penantFrontDepth, panels: penantFrontDepth } } };
+                onUpdateGroupSettings(adjGroupObj.id, patch);
+              };
+              return (
+                <div style={{ marginTop: 6, borderTop: '1px dashed #e2e8f0', paddingTop: 5 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', marginBottom: 4 }}>
+                    <input type="checkbox" checked={hk.enabled === true} onChange={(e) => updHk({ enabled: e.target.checked })} />
+                    <span title="Plaats dit penant exact op de hoek waar de aangrenzende gevel aansluit. De aangrenzende gevel loopt door tot de voorzijde van het penant.">Hoekaansluiting</span>
+                  </label>
+                  {hk.enabled && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <Field label="Aansluitende gevel" tip="Kies de aangrenzende (haakse) gevelgroep die op deze hoek aansluit.">
+                        <select value={hk.adjacentGroupId ?? ''} onChange={(e) => updHk({ adjacentGroupId: e.target.value || null })} style={{ ...inp, width: '100%' }}>
+                          <option value="">— kies groep —</option>
+                          {otherGroups.map((g) => {
+                            const gName = (getSettings ? getSettings(g.id)?.name : null) ?? g.id;
+                            return <option key={g.id} value={g.id}>{gName}</option>;
+                          })}
+                        </select>
+                      </Field>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {['left', 'right'].map((s) => (
+                          <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, cursor: 'pointer', color: '#334155' }}>
+                            <input type="radio" name={`hk-side-${p.id}`} value={s} checked={(hk.side ?? 'left') === s} onChange={() => updHk({ side: s })} />
+                            {s === 'left' ? 'Linker hoek' : 'Rechter hoek'}
+                          </label>
+                        ))}
+                      </div>
+                      <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 4, padding: '5px 7px', fontSize: 10, color: '#0c4a6e' }}>
+                        {cornerInfo ? (
+                          <>
+                            <div>Berekende penantpositie: <strong>x = {cornerInfo.penant_x} mm</strong></div>
+                            <div style={{ fontSize: 9, color: '#0369a1' }}>Hoekpunt model: {Math.round(cornerInfo.cornerX_model)} · groep-X-start: {Math.round(cornerInfo.myLenStart)}</div>
+                            <div style={{ fontSize: 9, color: '#0369a1' }}>Aansluitende gevel: uiteinde <strong>{cornerInfo.adjCornerEnd}</strong> · endExtension = {penantFrontDepth} mm</div>
+                          </>
+                        ) : (
+                          <span style={{ color: '#9f1239' }}>Kan hoekpunt niet bepalen (controleer aslogica van geselecteerde groep).</span>
+                        )}
+                      </div>
+                      <button
+                        disabled={!cornerInfo}
+                        onClick={applyToAdjacent}
+                        style={{ fontSize: 10, background: cornerInfo ? '#0f766e' : '#e2e8f0', color: cornerInfo ? '#fff' : '#94a3b8', border: 'none', borderRadius: 3, padding: '4px 8px', cursor: cornerInfo ? 'pointer' : 'default', fontWeight: 600 }}
+                      >
+                        ✓ Toepassen op aansluitende gevel
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })()}

@@ -76,7 +76,7 @@ function _computeNewOutsideDir(wo, allWallOrigins) {
   const wallCenter_t = (tStart + tEnd) / 2;
   const toOutside_t = wallCenter_t - buildingCenter_t;
   if (!wo.wallLengthDir) return _computeOldOutsideDir(wo, allWallOrigins);
-  const upAxis = wo.heightAxis ?? 'y';
+  const upAxis = wo.heightAxis ?? 'z';
   const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
   const ld = wo.wallLengthDir;
   const cx = ld.y * gu.z - ld.z * gu.y;
@@ -125,7 +125,7 @@ function _classifyWallExterior(wo, globalBBox, openings) {
   }
 
   if (wo.wallLengthDir && globalBBox) {
-    const upAxis = wo.heightAxis ?? 'y';
+    const upAxis = wo.heightAxis ?? 'z';
     const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
     const ld = wo.wallLengthDir;
     const cx = ld.y * gu.z - ld.z * gu.y;
@@ -193,7 +193,7 @@ function _resolveOneWallOutside(wo, allOrigins, globalBBox) {
   let candidateA = null;
   let candidateB = null;
   if (wo.wallLengthDir) {
-    const upAxis = wo.heightAxis ?? 'y';
+    const upAxis = wo.heightAxis ?? 'z';
     const gu = { x: upAxis === 'x' ? 1 : 0, y: upAxis === 'y' ? 1 : 0, z: upAxis === 'z' ? 1 : 0 };
     const ld = wo.wallLengthDir;
     const cx = ld.y * gu.z - ld.z * gu.y;
@@ -702,12 +702,12 @@ export async function runGeometryValidation(file, onProgress = null) {
         const wallBB = getBBox(api, modelID, wID);
         if (wallBB) {
           const dx = wallBB.maxX - wallBB.minX, dy = wallBB.maxY - wallBB.minY, dz = wallBB.maxZ - wallBB.minZ;
-          const sortedAxes = [{ axis: 'x', val: dx }, { axis: 'y', val: dy }, { axis: 'z', val: dz }]
-            .sort((a, b) => a.val - b.val);
-          const lengthAxis = sortedAxes[2].axis, heightAxis = sortedAxes[1].axis, thicknessAxis = sortedAxes[0].axis;
-          const length = Math.round(sortedAxes[2].val * 1000);
-          const height = Math.round(sortedAxes[1].val * 1000);
-          const thickness = Math.round(sortedAxes[0].val * 1000);
+          const heightAxis = 'z';
+          const lengthAxis = dx >= dy ? 'x' : 'y';
+          const thicknessAxis = dx >= dy ? 'y' : 'x';
+          const length = Math.round(Math.max(dx, dy) * 1000);
+          const height = Math.round(dz * 1000);
+          const thickness = Math.round(Math.min(dx, dy) * 1000);
           if (length >= 100 && height >= 100) {
             const wallLine = api.GetLine(modelID, wID, false);
             const name = wallLine?.Name?.value ?? `Wand #${wID}`;
@@ -990,18 +990,12 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
           const dy = wallBB.maxY - wallBB.minY;
           const dz = wallBB.maxZ - wallBB.minZ;
 
-          const sortedAxes = [
-            { axis: "x", val: dx },
-            { axis: "y", val: dy },
-            { axis: "z", val: dz },
-          ].sort((a, b) => a.val - b.val);
+          const heightAxis    = 'z';
+          const lengthAxis    = dx >= dy ? 'x' : 'y';
+          const thicknessAxis = dx >= dy ? 'y' : 'x';
 
-          const lengthAxis    = sortedAxes[2].axis;
-          const heightAxis    = sortedAxes[1].axis;
-          const thicknessAxis = sortedAxes[0].axis;
-
-          const length = Math.round(sortedAxes[2].val * 1000);
-          const height = Math.round(sortedAxes[1].val * 1000);
+          const length = Math.round(Math.max(dx, dy) * 1000);
+          const height = Math.round(dz * 1000);
 
           if (length < 100 || height < 100) continue;
 
@@ -2204,17 +2198,11 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
         const dx = bb.maxX - bb.minX;
         const dy = bb.maxY - bb.minY;
         const dz = bb.maxZ - bb.minZ;
-        const sortedAxes = [
-          { axis: 'x', val: dx },
-          { axis: 'y', val: dy },
-          { axis: 'z', val: dz },
-        ].sort((a, b) => a.val - b.val);
-
-        const lengthAxis    = sortedAxes[2].axis;
-        const heightAxis    = sortedAxes[1].axis;
-        const thicknessAxis = sortedAxes[0].axis;
-        const length = Math.round(sortedAxes[2].val * 1000);
-        const height = Math.round(sortedAxes[1].val * 1000);
+        const heightAxis    = 'z';
+        const lengthAxis    = dx >= dy ? 'x' : 'y';
+        const thicknessAxis = dx >= dy ? 'y' : 'x';
+        const length = Math.round(Math.max(dx, dy) * 1000);
+        const height = Math.round(dz * 1000);
 
         if (length < 100 || height < 100) continue;
 
