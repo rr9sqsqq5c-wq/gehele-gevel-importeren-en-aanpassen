@@ -745,25 +745,27 @@ function SlimFort3D({ groupPattern, settings, brickD, upAxis, allWalls }) {
           allBrBoxes.push(getSlimFortElemBox(refWallOrigin, groupMinX, groupMinH, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, allWalls, flip));
         }
       } else if (faceType === 'side-left' || faceType === 'side-right') {
+        const faceBaseH = face.heightStart ?? groupMinH;
         for (const eps of grid.epsElements) {
-          allEpsBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, allWalls, flip));
+          allEpsBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, faceBaseH, groupWidth, faceType, cornerOffset, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, allWalls, flip));
         }
         for (const p of grid.profiles) {
-          allProfBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, allWalls, flip));
+          allProfBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, faceBaseH, groupWidth, faceType, cornerOffset, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, allWalls, flip));
         }
         for (const b of grid.brackets) {
-          allBrBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, allWalls, flip));
+          allBrBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, faceBaseH, groupWidth, faceType, cornerOffset, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, allWalls, flip));
         }
       } else if (faceType === 'portal-left' || faceType === 'portal-right') {
         const { openingX, openingY, openingWidth } = face;
+        const faceBaseH = face.heightStart ?? groupMinH;
         for (const eps of grid.epsElements) {
-          allEpsBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, allWalls, flip));
+          allEpsBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, faceBaseH, faceType, cornerOffset, openingX, openingY, openingWidth, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, allWalls, flip));
         }
         for (const p of grid.profiles) {
-          allProfBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, allWalls, flip));
+          allProfBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, faceBaseH, faceType, cornerOffset, openingX, openingY, openingWidth, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, allWalls, flip));
         }
         for (const b of grid.brackets) {
-          allBrBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, allWalls, flip));
+          allBrBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, faceBaseH, faceType, cornerOffset, openingX, openingY, openingWidth, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, allWalls, flip));
         }
       } else if (faceType === 'back') {
         let backOutsidePos = face.outsidePos;
