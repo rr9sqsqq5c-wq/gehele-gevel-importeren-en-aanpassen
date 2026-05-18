@@ -361,14 +361,29 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
     const faceW = groupWidth * scale * 0.001;
     const faceH = groupHeight * scale * 0.001;
 
-    // Compute wall polygon shapes in group-local coords (group origin = bottom-left of bounding box)
-    const groupMinL = walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.lengthStart ?? 0)) : 0;
-    const groupMinH = walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.heightStart ?? 0)) : 0;
+    // Compute wall polygon shapes in group-local coords using normalized (facade-aligned) axes
+    const _refWo = facadeData?.refWallOrigin;
+    const _refLAxis = _refWo?.lengthAxis;
+    const _refHAxis = _refWo?.heightAxis;
+    const _refTAxis = _refWo?.thicknessAxis;
+    const groupMinL = facadeData?.groupMinX ?? (walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.lengthStart ?? 0)) : 0);
+    const groupMinH = facadeData?.groupMinH ?? (walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.heightStart ?? 0)) : 0);
     const rawWallPolys = (walls ?? []).map(w => {
       if (!w.facadePoly || w.facadePoly.length < 3) return null;
-      const offL = (w.wallOrigin?.lengthStart ?? 0) - groupMinL;
-      const offH = (w.wallOrigin?.heightStart ?? 0) - groupMinH;
-      return w.facadePoly.map(pt => ({ l: pt.l + offL, h: pt.h + offH }));
+      const wo = w.wallOrigin;
+      if (!wo) return null;
+      let lStart = wo.lengthStart ?? 0;
+      let hStart = wo.heightStart ?? 0;
+      let polyPts = w.facadePoly;
+      if (_refLAxis && _refHAxis && wo.thicknessAxis === _refTAxis &&
+          wo.lengthAxis === _refHAxis && wo.heightAxis === _refLAxis) {
+        lStart = wo.heightStart ?? 0;
+        hStart = wo.lengthStart ?? 0;
+        polyPts = w.facadePoly.map(pt => ({ l: pt.h, h: pt.l }));
+      }
+      const offL = lStart - groupMinL;
+      const offH = hStart - groupMinH;
+      return polyPts.map(pt => ({ l: pt.l + offL, h: pt.h + offH }));
     }).filter(Boolean);
     const wallGroupPolys = rawWallPolys.length ? rawWallPolys : [];
     const hasWallPolys = wallGroupPolys.length > 0;
