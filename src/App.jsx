@@ -4340,29 +4340,34 @@ export default function App() {
   }
 
   function handleExportMallen() {
-    const firstGroup = groups.find((g) => getSettings(g.id).panelen?.enabled);
-    if (!firstGroup) { alert('Schakel panelen in voor ten minste één groep.'); return; }
-    const s = getSettings(firstGroup.id);
-    const mat = s.material ?? DEFAULT_MATERIAL;
-    const verband = s.verband ?? DEFAULT_VERBAND;
-    const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400, tolerantieL: s.panelen.tolerantieL ?? 1, tolerantieH: s.panelen.tolerantieH ?? 1, offsetX: s.panelen.malOffsetX ?? 0 };
-    const tpl = getMoldTemplates(verband, mat, moldDims);
-    tpl.templates.forEach((tmpl) => {
-      const dxf = generateMoldDXF(mat, verband, moldDims, tmpl.id);
-      const blob = new Blob([dxf], { type: 'application/dxf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `MAL-${tmpl.id}-${verband}.dxf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    });
-    const html = generateCombinedMoldPrintHTML(mat, verband, moldDims);
-    const win = window.open('', 'MAL-Links-Rechts');
-    if (win) { win.document.write(html); win.document.close(); }
-    else alert('Pop-up geblokkeerd. Sta pop-ups toe voor deze pagina.');
+    try {
+      const firstGroup = groups.find((g) => getSettings(g.id).panelen?.enabled);
+      if (!firstGroup) { alert('Schakel panelen in voor ten minste één groep.'); return; }
+      const s = getSettings(firstGroup.id);
+      const mat = s.material ?? DEFAULT_MATERIAL;
+      const verband = s.verband ?? DEFAULT_VERBAND;
+      const moldDims = { hoogte: s.panelen?.malBreedte ?? 270, lengte: s.panelen?.malLengte ?? 3400, tolerantieL: s.panelen?.tolerantieL ?? 1, tolerantieH: s.panelen?.tolerantieH ?? 1, offsetX: s.panelen?.malOffsetX ?? 0 };
+      const tpl = getMoldTemplates(verband, mat, moldDims);
+      tpl.templates.forEach((tmpl) => {
+        const dxf = generateMoldDXF(mat, verband, moldDims, tmpl.id);
+        const blob = new Blob([dxf], { type: 'application/dxf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `MAL-${tmpl.id}-${verband}.dxf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+      const html = generateCombinedMoldPrintHTML(mat, verband, moldDims);
+      const win = window.open('', 'MAL-Links-Rechts');
+      if (win) { win.document.write(html); win.document.close(); }
+      else alert('Pop-up geblokkeerd. Sta pop-ups toe voor deze pagina.');
+    } catch (err) {
+      console.error('handleExportMallen fout:', err);
+      alert(`Fout bij aanmaken maltekening:\n${err.message}`);
+    }
   }
 
   function handleExport() {
