@@ -4339,7 +4339,7 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
-  function handleExportMallen() {
+  async function handleExportMallen() {
     try {
       const firstGroup = groups.find((g) => getSettings(g.id).panelen?.enabled);
       if (!firstGroup) { alert('Schakel panelen in voor ten minste één groep.'); return; }
@@ -4348,6 +4348,12 @@ export default function App() {
       const verband = s.verband ?? DEFAULT_VERBAND;
       const moldDims = { hoogte: s.panelen?.malBreedte ?? 270, lengte: s.panelen?.malLengte ?? 3400, tolerantieL: s.panelen?.tolerantieL ?? 1, tolerantieH: s.panelen?.tolerantieH ?? 1, offsetX: s.panelen?.malOffsetX ?? 0 };
       const tpl = getMoldTemplates(verband, mat, moldDims);
+
+      const win = window.open('', 'MAL-Links-Rechts');
+      if (!win) { alert('Pop-up geblokkeerd. Sta pop-ups toe voor deze pagina.'); return; }
+      win.document.write('<html><body><p>Maltekening laden...</p></body></html>');
+
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const dxfErrors = [];
       for (const tmpl of tpl.templates) {
         try {
@@ -4360,22 +4366,25 @@ export default function App() {
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+          await sleep(400);
         } catch (dxfErr) {
           dxfErrors.push(`MAL ${tmpl.id}: ${dxfErr.message}`);
         }
       }
       if (dxfErrors.length) alert(`DXF fouten:\n${dxfErrors.join('\n')}`);
+
       let html;
       try {
         html = generateCombinedMoldPrintHTML(mat, verband, moldDims);
       } catch (svgErr) {
+        win.close();
         alert(`Fout bij SVG/PDF generatie:\n${svgErr.message}`);
         return;
       }
-      const win = window.open('', 'MAL-Links-Rechts');
-      if (win) { win.document.write(html); win.document.close(); }
-      else alert('Pop-up geblokkeerd. Sta pop-ups toe voor deze pagina.');
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
     } catch (err) {
       console.error('handleExportMallen fout:', err);
       alert(`Fout bij aanmaken maltekening:\n${err.message}`);
