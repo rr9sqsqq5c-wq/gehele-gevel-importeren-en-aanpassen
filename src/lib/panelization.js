@@ -1061,7 +1061,8 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const rowY2 = dimBase + dimRowH * 2.7;
   const COL_ORANGE = '#f59e0b';
   if (refBricks.length) {
-    const cx = b => ox + frameLeft + b.x + b.w / 2;
+    const stoot = mat?.stoot ?? 10;
+    const cx = b => ox + frameLeft + b.x + b.w / 2 + stoot / 2;
     // left edge to first centre
     parts.push(dimLine(ox, cx(refBricks[0]), rowY2, String(rn(cx(refBricks[0]) - ox)), COL_ORANGE, 4, 7));
     parts.push(plusTick(cx(refBricks[0]), rowY2, COL_ORANGE));
@@ -1421,7 +1422,8 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
   // DIM ROW 2 — centre-to-centre (orange)
   const rowY2 = dimBase + dimRowH * 2.7;
   if (refBricks.length) {
-    const cx = b => ox + frameLeft + b.x + b.w / 2;
+    const stoot = mat?.stoot ?? 10;
+    const cx = b => ox + frameLeft + b.x + b.w / 2 + stoot / 2;
     parts.push(dimLine(ox, cx(refBricks[0]), rowY2, String(rn(cx(refBricks[0]) - ox)), COL_ORANGE, 4, 7));
     for (let i = 0; i < refBricks.length - 1; i++) {
       const c1 = cx(refBricks[i]), c2 = cx(refBricks[i + 1]);
