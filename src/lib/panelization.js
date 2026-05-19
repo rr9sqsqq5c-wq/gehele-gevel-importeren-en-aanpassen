@@ -896,8 +896,8 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   const header = [
     '0', 'SECTION', '2', 'HEADER',
     '9', '$ACADVER', '1', 'AC1009',
-    '9', '$EXTMIN', '10', '0.0', '20', '-30', '30', '0.0',
-    '9', '$EXTMAX', '10', String(moldW), '20', String(moldH + 30), '30', '0.0',
+    '9', '$EXTMIN', '10', '-10.0', '20', '-30', '30', '0.0',
+    '9', '$EXTMAX', '10', String(moldW + 10), '20', String(moldH + 30), '30', '0.0',
     '9', '$LUNITS', '70', '4',
     '0', 'ENDSEC',
     '0', 'SECTION', '2', 'TABLES',
