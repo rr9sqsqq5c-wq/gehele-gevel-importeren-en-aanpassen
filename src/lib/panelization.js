@@ -1011,6 +1011,7 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
       if (b.label !== 'Strek' && sW > 12) {
         parts.push(`<text x="${r2(Number(sLeft) + Number(sW)/2)}" y="${r2(Number(sTop) + Number(sH)/2 + 2.5)}" text-anchor="middle" font-size="5" fill="#475569">${b.label[0]}</text>`);
       }
+      parts.push(`<text x="${r2(Number(sLeft) + Number(sW) - 1.5)}" y="${r2(Number(sTop) + Number(sH) - 1.5)}" text-anchor="end" font-size="4" fill="#64748b">${b.w}</text>`);
     }
     // Row label inside mold on the left
     const labelY = r2(oy + row.yRow + slotH / 2 + 2.5);
@@ -1345,6 +1346,7 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
         out.push(`<rect x="${sLeft}" y="${sTop}" width="${sW}" height="${sH}" fill="${fill}" stroke="#334155" stroke-width="1" rx="1"/>`);
         if (b.label !== 'Strek' && sW > 12)
           out.push(`<text x="${r2(Number(sLeft) + Number(sW)/2)}" y="${r2(Number(sTop) + Number(sH)/2 + 2.5)}" text-anchor="middle" font-size="5" fill="#475569">${b.label[0]}</text>`);
+        out.push(`<text x="${r2(Number(sLeft) + Number(sW) - 1.5)}" y="${r2(Number(sTop) + Number(sH) - 1.5)}" text-anchor="end" font-size="4" fill="#64748b">${b.w}</text>`);
       }
       const labelY = r2(oy + row.yRow + slotH / 2 + 2.5);
       out.push(`<text x="${r2(ox + frameLeft + 2)}" y="${labelY}" font-size="6" fill="#475569">R${row.globalRow + 1}</text>`);
