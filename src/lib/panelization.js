@@ -838,10 +838,16 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   const r2 = (v) => Math.round(v * 100) / 100;
   const lines = [];
 
+  function addLine(x1, y1, x2, y2, layer, color) {
+    lines.push('0', 'LINE', '8', layer, '62', String(color),
+      '10', String(r2(x1)), '20', String(r2(y1)),
+      '11', String(r2(x2)), '21', String(r2(y2)));
+  }
   function addPolyRect(x1, y1, w, h, layer, color) {
-    lines.push('0', 'LWPOLYLINE', '8', layer, '62', String(color), '70', '1', '90', '4');
-    for (const [px, py] of [[x1, y1], [x1 + w, y1], [x1 + w, y1 + h], [x1, y1 + h]])
-      lines.push('10', String(r2(px)), '20', String(r2(py)));
+    addLine(x1,     y1,     x1 + w, y1,     layer, color);
+    addLine(x1 + w, y1,     x1 + w, y1 + h, layer, color);
+    addLine(x1 + w, y1 + h, x1,     y1 + h, layer, color);
+    addLine(x1,     y1 + h, x1,     y1,     layer, color);
   }
   function addCircle(cx, cy, radius, layer, color) {
     lines.push('0', 'CIRCLE', '8', layer, '62', String(color),
@@ -862,9 +868,9 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
     for (let i = notchXs.length - 1; i >= 0; i--) {
       pts.push([notchXs[i] + notchWs[i], moldH], [notchXs[i] + notchWs[i], moldH - notchDepth], [notchXs[i], moldH - notchDepth], [notchXs[i], moldH]);
     }
-    pts.push([0, moldH]);
-    lines.push('0', 'LWPOLYLINE', '8', 'FRAME', '62', '7', '70', '1', '90', String(pts.length));
-    for (const [px, py] of pts) lines.push('10', String(r2(px)), '20', String(r2(py)));
+    pts.push([0, moldH], [0, 0]);
+    for (let i = 0; i < pts.length - 1; i++)
+      addLine(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 'FRAME', 7);
   }
   addPolyRect(frameLeft, frameH, innerW, innerH, 'GUIDE', 8);
 
