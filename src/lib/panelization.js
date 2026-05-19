@@ -820,10 +820,10 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   }
   pinYs.push(Math.round(((rows[rowsPerMold - 1].yRow + slotH + moldH) / 2) * 10) / 10);
 
-  // Notch X-positions: fixed at 270, 970, 1670, 2370, 3070mm; all 62mm wide
+  // Notch X-positions: fixed candidates; only include those fully within the mold width
   function calcNotchXs() {
     const notchW = 62;
-    const xs = [270, 970, 1670, 2370, 3070];
+    const xs = [270, 970, 1670, 2370, 3070].filter(x => x + notchW <= moldW);
     return { notchXs: xs, notchWs: xs.map(() => notchW) };
   }
   const { notchXs, notchWs } = calcNotchXs();
