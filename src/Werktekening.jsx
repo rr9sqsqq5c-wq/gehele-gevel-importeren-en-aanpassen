@@ -1507,7 +1507,9 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
               {/* ── Maltekening per uniek verband ── */}
               {uniqueMolds.map(({ verband: mv, mat: mm, key }) => {
                 const tpl = getMoldTemplates(mv, mm, moldDims);
-                const combinedSvgHtml = generateCombinedMoldSVG(mm, mv, moldDims);
+                let combinedSvgHtml = '';
+                try { combinedSvgHtml = generateCombinedMoldSVG(mm, mv, moldDims); }
+                catch (e) { combinedSvgHtml = `<p style="color:red;font-size:12px">SVG fout: ${e.message}</p>`; }
                 function exportSVG() {
                   const svgStr = generateCombinedMoldSVG(mm, mv, moldDims);
                   const blob = new Blob([svgStr], { type: 'image/svg+xml' });

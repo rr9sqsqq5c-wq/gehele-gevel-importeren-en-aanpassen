@@ -785,7 +785,14 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
       if (x + kopW > 0 && x < innerW) bricks.push({ x, w: kopW, label: 'Kop' });
       x += kopW + stoot;
     }
+    if (colStep <= 0) return bricks;
+    if (x + brickW < 0) {
+      const skips = Math.max(0, Math.floor((-x - brickW) / colStep));
+      x += skips * colStep;
+    }
+    let safetyCounter = 0;
     while (x < innerW + 0.001) {
+      if (++safetyCounter > 50000) break;
       if (x + brickW > 0 && x < innerW) {
         const cx = Math.max(0, x);
         const cw = Math.min(x + brickW, innerW) - cx;
