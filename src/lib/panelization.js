@@ -880,10 +880,6 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
     }
     addText(frameLeft, row.yRow - 10, 6, `Rij ${row.globalRow + 1}  off=${row.off}mm  tol±${tolerantieL}x${g.tolerantieH}mm`, 'LABELS');
   }
-  for (const py of pinYs)
-    for (let x = frameLeft; x <= moldW - frameLeft + 0.1; x += pinStepX)
-      addCircle(r2(x), r2(py), 3, 'HOLES', 1);
-
   // Alignment hole — Ø8mm, 11mm from left edge, vertically centred
   addCircle(11, r2(moldH / 2), 4, 'HOLES', 1);
 
