@@ -189,6 +189,91 @@ function detectCornerAdjacentGroups(myGroupId, groups, wallMap, envelopeMap, TOL
   console.log('[CT] detectCornerAdjacentGroups', { myGroupId, envLStart, envLEnd, adjacentIds: [...result] });
   return result;
 }
+
+function pkgOf(s) {
+  const artId = (s.lattenArtikelen ?? [])[0] ?? null;
+  const art = artId ? BATTEN_CATALOG.find((a) => a.id === artId) : null;
+  const lat = s.latten?.enabled !== false ? (art ? art.dikteMM : (s.latten?.dikte ?? 28)) : 0;
+  const pan = s.panelen?.enabled !== false ? (s.panelen?.dikte ?? 8) : 0;
+  const str = s.brickDepth ?? 20;
+  return { lat, pan, str, total: lat + pan + str };
+}
+
+function resolveCornerJoin(mainGroupId, secondaryGroupId, envelopeMap, getSettings, options = {}) {
+  const mainEnv = envelopeMap?.[mainGroupId];
+  const secEnv  = envelopeMap?.[secondaryGroupId];
+  if (!mainEnv || !secEnv) {
+    console.log('[CJ] resolveCornerJoin EARLY NULL', { mainGroupId, secondaryGroupId, hasMainEnv: !!mainEnv, hasSecEnv: !!secEnv });
+    return null;
+  }
+  const mainS = getSettings(mainGroupId);
+  const secS  = getSettings(secondaryGroupId);
+  const mainPkg = pkgOf(mainS);
+  const secPkg  = pkgOf(secS);
+  const overgangsvoeg = options.overgangsvoeg ?? 10;
+  const mainCenter     = (mainEnv.envelopeStart + mainEnv.envelopeEnd) / 2;
+  const secFaceCenter  = (secEnv.faceMin + secEnv.faceMax) / 2;
+  const mainSide       = secFaceCenter < mainCenter ? 'left' : 'right';
+  const secCenter      = (secEnv.envelopeStart + secEnv.envelopeEnd) / 2;
+  const mainFaceCenter = (mainEnv.faceMin + mainEnv.faceMax) / 2;
+  const secSide        = mainFaceCenter < secCenter ? 'left' : 'right';
+  const secThickness   = secEnv.faceMax - secEnv.faceMin;
+  const mainExtendStrips  = secThickness + secPkg.total;
+  const mainExtendBattens = secThickness + secPkg.lat;
+  const mainExtendPanels  = secThickness + secPkg.lat;
+  const secondaryTrimStrips  = -(Math.max(0, mainPkg.total - secPkg.str) + overgangsvoeg);
+  const secondaryTrimBattens = -overgangsvoeg;
+  const secondaryTrimPanels  = -(Math.max(0, mainPkg.total - secPkg.str) + overgangsvoeg);
+  const join = {
+    main: {
+      groupId: mainGroupId,
+      side: mainSide,
+      extend: { strips: mainExtendStrips, battens: mainExtendBattens, panels: mainExtendPanels },
+    },
+    secondary: {
+      groupId: secondaryGroupId,
+      side: secSide,
+      trim: { strips: secondaryTrimStrips, battens: secondaryTrimBattens, panels: secondaryTrimPanels },
+    },
+    debug: {
+      mainEnv, secEnv, mainPkg, secPkg, overgangsvoeg,
+      mainCenter, secFaceCenter, mainSide,
+      secCenter, mainFaceCenter, secSide,
+      secThickness,
+    },
+  };
+  console.log('[CJ] resolveCornerJoin', { mainGroupId, secondaryGroupId, mainSide, secSide, mainExtendStrips, secondaryTrimStrips, secondaryTrimBattens });
+  return join;
+}
+
+function applyCornerJoin(join, updateGroup, cornerConfigs, envelopeMap, getSettings) {
+  if (!join) return;
+  const applyOneSide = (gid, side, strips, battens, panels) => {
+    const s = getSettings(gid);
+    const oppSide = side === 'left' ? 'right' : 'left';
+    const isOppSideActive = Object.values(cornerConfigs).some((c) => {
+      if (c.mainGroupId === gid) {
+        const r = detectSecondaryCornerEnd([], [], envelopeMap, c.secondaryGroupId, c.mainGroupId);
+        return r === oppSide;
+      }
+      if (c.secondaryGroupId === gid) {
+        const r = detectSecondaryCornerEnd([], [], envelopeMap, c.mainGroupId, c.secondaryGroupId);
+        return r === oppSide;
+      }
+      return false;
+    });
+    const ee = s?.endExtensions ?? {};
+    const cur = ee[side] ?? {};
+    const oppCur = ee[oppSide] ?? {};
+    const newOpp = isOppSideActive ? oppCur : { ...oppCur, strips: 0, battens: 0, panels: 0 };
+    const patch = { endExtensions: { ...ee, [side]: { ...cur, strips, battens, panels }, [oppSide]: newOpp } };
+    console.log('[CJ] applyCornerJoin apply', { gid, side, strips, battens, panels, isOppSideActive });
+    updateGroup(gid, patch);
+  };
+  applyOneSide(join.main.groupId, join.main.side, join.main.extend.strips, join.main.extend.battens, join.main.extend.panels);
+  applyOneSide(join.secondary.groupId, join.secondary.side, join.secondary.trim.strips, join.secondary.trim.battens, join.secondary.trim.panels);
+}
+
 const DEFAULT_VERBAND = 'halfsteens';
 
 function computeGroupCornerTrims(groupId, cornerConfigs, groups, wallMap, settingsMap, TOL = 150) {
@@ -906,54 +991,15 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
   const recomputeAllCorners = () => {
     let count = 0;
     for (const [, cfg] of Object.entries(cornerConfigs)) {
-      const mainGroupObj = allGroups.find((g) => g.id === cfg.mainGroupId);
-      const secGroupObj  = allGroups.find((g) => g.id === cfg.secondaryGroupId);
-      if (!mainGroupObj || !secGroupObj) continue;
-      const mainS = getSettings ? getSettings(cfg.mainGroupId) : {};
-      const secS  = getSettings ? getSettings(cfg.secondaryGroupId) : {};
-      const mainWalls = mainGroupObj.wallIds.map((id) => wallMap[id]).filter((w) => w?.wallOrigin);
-      const secWalls  = secGroupObj.wallIds.map((id)  => wallMap[id]).filter((w) => w?.wallOrigin);
-      const wallThk = (walls) => walls.length ? Math.round(Math.max(...walls.map((w) => Math.abs((w.wallOrigin.thicknessEnd ?? (w.wallOrigin.thicknessStart + (w.thickness ?? 0))) - w.wallOrigin.thicknessStart)))) : 0;
-      const mainWT = wallThk(mainWalls);
-      const secWT  = wallThk(secWalls);
-      const pkgOf = (s) => {
-        const artId = (s.lattenArtikelen ?? [])[0] ?? null;
-        const art = artId ? BATTEN_CATALOG.find((a) => a.id === artId) : null;
-        const lat = s.latten?.enabled !== false ? (art ? art.dikteMM : (s.latten?.dikte ?? 28)) : 0;
-        const pan = s.panelen?.enabled !== false ? (s.panelen?.dikte ?? 8) : 0;
-        const str = s.brickDepth ?? 20;
-        return { lat, pan, str, total: lat + pan + str };
-      };
-      const mainPkg = pkgOf(mainS);
-      const secPkg  = pkgOf(secS);
       const overgangsvoeg = cfg.overgangsvoeg ?? 10;
-      const mainIntEnd = detectSecondaryCornerEnd(secWalls, mainWalls, envelopeMap, cfg.secondaryGroupId, cfg.mainGroupId);
-      const secIntEnd  = detectSecondaryCornerEnd(mainWalls, secWalls, envelopeMap, cfg.mainGroupId, cfg.secondaryGroupId);
-      const mainInFront = detectMainInFront(secWalls, mainWalls, envelopeMap, cfg.secondaryGroupId, cfg.mainGroupId);
-      if (!mainIntEnd || !secIntEnd) continue;
-      const mSugStrips  = mainInFront ? secPkg.total                      : secWT + secPkg.total;
-      const mSugLatten  = mainInFront ? secPkg.lat                        : secWT + secPkg.lat;
-      const mSugPanelen = mainInFront ? secPkg.lat                        : secWT + secPkg.lat;
-      const sSugStrips  = mainInFront ? -(mainPkg.lat + overgangsvoeg)    : mainPkg.total - secPkg.str - overgangsvoeg;
-      const sSugLatten  = mainInFront ? -(mainPkg.lat + overgangsvoeg)    : -overgangsvoeg;
-      const sSugPanelen = mainInFront ? -(mainPkg.lat + overgangsvoeg)    : mainPkg.total - secPkg.str - overgangsvoeg;
-      const applyToGroup = (gid, intEnd, sRef, sugStrips, sugLatten, sugPanelen) => {
-        const oppSide = intEnd === 'left' ? 'right' : 'left';
-        const isOppSideActive = Object.values(cornerConfigs).some((c) => {
-          if (c.mainGroupId === gid) return detectSecondaryCornerEnd([], [], envelopeMap, c.secondaryGroupId, c.mainGroupId) === oppSide;
-          if (c.secondaryGroupId === gid) return detectSecondaryCornerEnd([], [], envelopeMap, c.mainGroupId, c.secondaryGroupId) === oppSide;
-          return false;
-        });
-        const ee = sRef.endExtensions ?? {};
-        const cur = ee[intEnd] ?? {};
-        const oppCur = ee[oppSide] ?? {};
-        const newOpp = isOppSideActive ? oppCur : { ...oppCur, strips: 0, battens: 0, panels: 0 };
-        const patch = { endExtensions: { ...ee, [intEnd]: { ...cur, strips: sugStrips, battens: sugLatten, panels: sugPanelen }, [oppSide]: newOpp } };
+      const _getS = getSettings ?? (() => ({}));
+      const join = resolveCornerJoin(cfg.mainGroupId, cfg.secondaryGroupId, envelopeMap, _getS, { overgangsvoeg });
+      if (!join) continue;
+      const updateGroup = (gid, patch) => {
         if (gid === groupId) onUpdate(patch);
         else onUpdateGroupSettings?.(gid, patch);
       };
-      applyToGroup(cfg.mainGroupId,       mainIntEnd, mainS, mSugStrips,  mSugLatten,  mSugPanelen);
-      applyToGroup(cfg.secondaryGroupId,  secIntEnd,  secS,  sSugStrips,  sSugLatten,  sSugPanelen);
+      applyCornerJoin(join, updateGroup, cornerConfigs, envelopeMap, _getS);
       count++;
     }
     setRecalcResult(count);
@@ -2574,62 +2620,29 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       Type: <strong>Stompe aansluiting</strong>
                     </div>
                     {(() => {
-                      const mainGroupObj = allGroups.find((g) => g.id === cfg.mainGroupId);
-                      const secGroupObj  = allGroups.find((g) => g.id === cfg.secondaryGroupId);
-                      const mainS = getSettings ? getSettings(cfg.mainGroupId) : {};
-                      const secS  = getSettings ? getSettings(cfg.secondaryGroupId) : {};
-                      const mainWalls = mainGroupObj ? mainGroupObj.wallIds.map((id) => wallMap[id]).filter((w) => w && w.wallOrigin) : [];
-                      const secWalls  = secGroupObj  ? secGroupObj.wallIds.map((id) => wallMap[id]).filter((w) => w && w.wallOrigin) : [];
-                      const wallThk = (walls) => walls.length ? Math.round(Math.max(...walls.map((w) => Math.abs((w.wallOrigin.thicknessEnd ?? (w.wallOrigin.thicknessStart + (w.thickness ?? 0))) - w.wallOrigin.thicknessStart)))) : 0;
-                      const mainWT = wallThk(mainWalls);
-                      const secWT  = wallThk(secWalls);
-                      const pkgOf = (s) => {
-                        const artId = (s.lattenArtikelen ?? [])[0] ?? null;
-                        const art = artId ? BATTEN_CATALOG.find((a) => a.id === artId) : null;
-                        const lat = s.latten?.enabled !== false ? (art ? art.dikteMM : (s.latten?.dikte ?? 28)) : 0;
-                        const pan = s.panelen?.enabled !== false ? (s.panelen?.dikte ?? 8) : 0;
-                        const str = s.brickDepth ?? 20;
-                        return { lat, pan, str, total: lat + pan + str };
-                      };
-                      const mainPkg = pkgOf(mainS);
-                      const secPkg  = pkgOf(secS);
                       const overgangsvoeg = cfg.overgangsvoeg ?? 10;
-                      const mainIntEnd = detectSecondaryCornerEnd(secWalls, mainWalls, envelopeMap, cfg.secondaryGroupId, cfg.mainGroupId);
-                      const secIntEnd  = detectSecondaryCornerEnd(mainWalls, secWalls, envelopeMap, cfg.mainGroupId, cfg.secondaryGroupId);
-                      const mainInFront = detectMainInFront(secWalls, mainWalls, envelopeMap, cfg.secondaryGroupId, cfg.mainGroupId);
-                      console.log('[CT] IIFE corner render', { cornerId, mainGroupId: cfg.mainGroupId, secGroupId: cfg.secondaryGroupId, mainIntEnd, secIntEnd, mainInFront, canApplyWillBe: !!(mainIntEnd && secIntEnd) });
-                      const visualEnd = (intEnd, s) => intEnd ? (s.outsideDirFlip ? (intEnd === 'left' ? 'right' : 'left') : intEnd) : null;
-                      const mainVisEnd = visualEnd(mainIntEnd, mainS);
-                      const secVisEnd  = visualEnd(secIntEnd, secS);
+                      const _getS = getSettings ?? (() => ({}));
+                      const join = resolveCornerJoin(cfg.mainGroupId, cfg.secondaryGroupId, envelopeMap, _getS, { overgangsvoeg });
+                      const mainS = _getS(cfg.mainGroupId);
+                      const secS  = _getS(cfg.secondaryGroupId);
+                      const visualEnd = (side, s) => side ? (s.outsideDirFlip ? (side === 'left' ? 'right' : 'left') : side) : null;
+                      const mainVisEnd = join ? visualEnd(join.main.side, mainS) : null;
+                      const secVisEnd  = join ? visualEnd(join.secondary.side, secS) : null;
                       const endLbl = (ve) => ve === 'left' ? 'links' : ve === 'right' ? 'rechts' : '?';
-                      const mSugStrips  = mainInFront ? secPkg.total                         : secWT + secPkg.total;
-                      const mSugLatten  = mainInFront ? secPkg.lat                          : secWT + secPkg.lat;
-                      const mSugPanelen = mainInFront ? secPkg.lat                          : secWT + secPkg.lat;
-                      const sSugStrips  = mainInFront ? -(mainPkg.lat + overgangsvoeg)        : mainPkg.total - secPkg.str - overgangsvoeg;
-                      const sSugLatten  = mainInFront ? -(mainPkg.lat + overgangsvoeg)        : -overgangsvoeg;
-                      const sSugPanelen = mainInFront ? -(mainPkg.lat + overgangsvoeg)        : mainPkg.total - secPkg.str - overgangsvoeg;
-                      const applyGroup = (gid, intEnd, s, sugStrips, sugLatten, sugPanelen) => {
-                        if (!intEnd) return;
-                        const oppSide = intEnd === 'left' ? 'right' : 'left';
-                        const isOppSideActive = Object.values(cornerConfigs).some((c) => {
-                          if (c.mainGroupId === gid) return detectSecondaryCornerEnd([], [], envelopeMap, c.secondaryGroupId, c.mainGroupId) === oppSide;
-                          if (c.secondaryGroupId === gid) return detectSecondaryCornerEnd([], [], envelopeMap, c.mainGroupId, c.secondaryGroupId) === oppSide;
-                          return false;
-                        });
-                        const ee = s.endExtensions ?? {};
-                        const cur = ee[intEnd] ?? {};
-                        const oppCur = ee[oppSide] ?? {};
-                        const newOpp = isOppSideActive ? oppCur : { ...oppCur, strips: 0, battens: 0, panels: 0 };
-                        const patch = { endExtensions: { ...ee, [intEnd]: { ...cur, strips: sugStrips, battens: sugLatten, panels: sugPanelen }, [oppSide]: newOpp } };
-                        console.log('[CT] applyGroup', { gid, intEnd, oppSide, isOppSideActive, sugStrips, sugLatten, sugPanelen, eeBefore: JSON.stringify(ee), eeAfter: JSON.stringify(patch.endExtensions) });
+                      const mSugStrips  = join?.main.extend.strips  ?? 0;
+                      const mSugLatten  = join?.main.extend.battens ?? 0;
+                      const mSugPanelen = join?.main.extend.panels  ?? 0;
+                      const sSugStrips  = join?.secondary.trim.strips  ?? 0;
+                      const sSugLatten  = join?.secondary.trim.battens ?? 0;
+                      const sSugPanelen = join?.secondary.trim.panels  ?? 0;
+                      const mainPkg     = join?.debug.mainPkg ?? { lat: 0, pan: 0, str: 0, total: 0 };
+                      const secPkg      = join?.debug.secPkg  ?? { lat: 0, pan: 0, str: 0, total: 0 };
+                      const updateGroup = (gid, patch) => {
                         if (gid === groupId) onUpdate(patch);
                         else onUpdateGroupSettings?.(gid, patch);
                       };
-                      const applyAll = () => {
-                        applyGroup(cfg.mainGroupId, mainIntEnd, mainS, mSugStrips, mSugLatten, mSugPanelen);
-                        applyGroup(cfg.secondaryGroupId, secIntEnd, secS, sSugStrips, sSugLatten, sSugPanelen);
-                      };
-                      const canApply = !!(mainIntEnd && secIntEnd);
+                      const applyAll = () => applyCornerJoin(join, updateGroup, cornerConfigs, envelopeMap, _getS);
+                      const canApply = !!join;
                       const row = (lbl, val, hint) => (
                         <Fragment key={lbl}>
                           <span>{lbl}</span>
@@ -2656,28 +2669,24 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                             <div style={{ fontWeight: 600, color: '#1d4ed8', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
                               <span>Aanzichtsgevel ({mainS.name ?? cfg.mainGroupId}) — {endLbl(mainVisEnd)} uiteinde</span>
                               {cfg.mainGroupId === groupId && <span style={{ fontWeight: 400, color: '#6b7280' }}>(deze groep)</span>}
-                              <span style={{ fontSize: 9, background: mainInFront ? '#dcfce7' : '#fef9c3', color: mainInFront ? '#166534' : '#854d0e', borderRadius: 2, padding: '1px 4px', fontWeight: 700 }}>
-                                {mainInFront ? 'loopt voor' : 'loopt achter'}
-                              </span>
+                              <span style={{ fontSize: 9, background: '#dcfce7', color: '#166534', borderRadius: 2, padding: '1px 4px', fontWeight: 700 }}>loopt door</span>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '2px 8px', color: '#374151' }}>
-                              {row('Strips',  mSugStrips,  mainInFront ? `${secPkg.lat}+${secPkg.pan}` : `${secWT}+${secPkg.lat}+${secPkg.pan}`)}
-                              {row('Latten',  mSugLatten,  mainInFront ? `${secPkg.lat}` : `${secWT}+${secPkg.lat}`)}
-                              {row('Panelen', mSugPanelen, mainInFront ? `${secPkg.lat}+${secPkg.pan}` : `${secWT}+${secPkg.lat}+${secPkg.pan}`)}
+                              {row('Strips',  mSugStrips,  `secDikte+${secPkg.total}`)}
+                              {row('Latten',  mSugLatten,  `secDikte+${secPkg.lat}`)}
+                              {row('Panelen', mSugPanelen, `secDikte+${secPkg.lat}`)}
                             </div>
                           </div>
                           <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '6px 8px', fontSize: 10 }}>
                             <div style={{ fontWeight: 600, color: '#92400e', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
                               <span>Aansluitende gevel ({secS.name ?? cfg.secondaryGroupId}) — {endLbl(secVisEnd)} uiteinde</span>
                               {cfg.secondaryGroupId === groupId && <span style={{ fontWeight: 400, color: '#6b7280' }}>(deze groep)</span>}
-                              <span style={{ fontSize: 9, background: mainInFront ? '#fef9c3' : '#dcfce7', color: mainInFront ? '#854d0e' : '#166534', borderRadius: 2, padding: '1px 4px', fontWeight: 700 }}>
-                                {mainInFront ? 'loopt achter' : 'loopt voor'}
-                              </span>
+                              <span style={{ fontSize: 9, background: '#fef9c3', color: '#854d0e', borderRadius: 2, padding: '1px 4px', fontWeight: 700 }}>wordt ingekort</span>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '2px 8px', color: '#374151' }}>
-                              {row('Strips',  sSugStrips,  `${mainPkg.lat}+${overgangsvoeg}`)}
-                              {row('Latten',  sSugLatten,  mainInFront ? `${mainPkg.lat}+${overgangsvoeg}` : `-${overgangsvoeg}`)}
-                              {row('Panelen', sSugPanelen, `${mainPkg.lat}+${overgangsvoeg}`)}
+                              {row('Strips',  sSugStrips,  `-(mainPkg-secStr+${overgangsvoeg})`)}
+                              {row('Latten',  sSugLatten,  `-${overgangsvoeg}`)}
+                              {row('Panelen', sSugPanelen, `-(mainPkg-secStr+${overgangsvoeg})`)}
                             </div>
                           </div>
                           <button
@@ -2685,7 +2694,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                             onClick={applyAll}
                             style={{ fontSize: 10, background: canApply ? '#0f766e' : '#e2e8f0', color: canApply ? '#fff' : '#94a3b8', border: 'none', borderRadius: 3, padding: '4px 10px', cursor: canApply ? 'pointer' : 'default', width: '100%', fontWeight: 600 }}
                           >
-                            {canApply ? '✓ Alle voorstellen toepassen' : '— Uiteinden niet automatisch bepaald'}
+                            {canApply ? '✓ Alle voorstellen toepassen' : '— Envelop niet beschikbaar'}
                           </button>
                         </div>
                       );
