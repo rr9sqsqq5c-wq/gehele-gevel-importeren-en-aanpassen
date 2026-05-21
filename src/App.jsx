@@ -64,6 +64,49 @@ function pickFacadeReferenceWall(walls) {
   return best ?? candidates[0];
 }
 
+function computeGroupFacadeEnvelope(group, wallMap) {
+  const walls = group.wallIds.map((id) => wallMap[id]).filter((w) => w?.wallOrigin);
+  const refWall = pickFacadeReferenceWall(walls);
+  if (!refWall) return null;
+  const refWo = refWall.wallOrigin;
+  const coplanar = walls.filter((w) =>
+    w.wallOrigin.lengthAxis === refWo.lengthAxis &&
+    w.wallOrigin.heightAxis === refWo.heightAxis
+  );
+  if (!coplanar.length) return null;
+  let envelopeStart = Infinity, envelopeEnd = -Infinity;
+  let heightStart = Infinity, heightEnd = -Infinity;
+  let faceMin = Infinity, faceMax = -Infinity;
+  for (const w of coplanar) {
+    const wo = w.wallOrigin;
+    const le = wo.lengthStart + (w.length ?? 0);
+    const he = wo.heightStart + (w.height ?? 0);
+    const te = wo.thicknessEnd ?? (wo.thicknessStart + (w.thickness ?? 300));
+    if (wo.lengthStart < envelopeStart) envelopeStart = wo.lengthStart;
+    if (le > envelopeEnd) envelopeEnd = le;
+    if (wo.heightStart < heightStart) heightStart = wo.heightStart;
+    if (he > heightEnd) heightEnd = he;
+    const tMin = Math.min(wo.thicknessStart, te);
+    const tMax = Math.max(wo.thicknessStart, te);
+    if (tMin < faceMin) faceMin = tMin;
+    if (tMax > faceMax) faceMax = tMax;
+  }
+  return {
+    groupId: group.id,
+    lengthAxis: refWo.lengthAxis,
+    heightAxis: refWo.heightAxis,
+    thicknessAxis: refWo.thicknessAxis,
+    envelopeStart,
+    envelopeEnd,
+    faceMin,
+    faceMax,
+    heightStart,
+    heightEnd,
+    refWall,
+    sourceWallCount: coplanar.length,
+  };
+}
+
 function detectSecondaryCornerEnd(secWalls, mainWalls, TOL = 150) {
   for (const mW of mainWalls) {
     const woM = mW.wallOrigin;
@@ -3004,6 +3047,15 @@ export default function App() {
     for (const g of groups) for (const id of g.wallIds) m[id] = g.id;
     return m;
   }, [groups]);
+
+  const envelopeMap = useMemo(() => {
+    const map = {};
+    for (const g of groups) {
+      const env = computeGroupFacadeEnvelope(g, wallMap);
+      if (env) map[g.id] = env;
+    }
+    return map;
+  }, [groups, wallMap]);
 
   const buildingEnvelopeData = useMemo(() => {
     if (!effectiveWalls.length) return null;
