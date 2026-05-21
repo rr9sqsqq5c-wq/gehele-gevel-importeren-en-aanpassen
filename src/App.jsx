@@ -110,27 +110,31 @@ function computeGroupFacadeEnvelope(group, wallMap) {
 function detectSecondaryCornerEnd(secWalls, mainWalls, envelopeMap, secGroupId, mainGroupId, TOL = 150) {
   const secEnv = envelopeMap?.[secGroupId];
   const mainEnv = envelopeMap?.[mainGroupId];
-  if (!secEnv || !mainEnv) return null;
+  if (!secEnv || !mainEnv) { console.log('[CT] detectSecondaryCornerEnd EARLY NULL', { secGroupId, mainGroupId, hasSecEnv: !!secEnv, hasMainEnv: !!mainEnv }); return null; }
   const secRwo = secEnv.refWall.wallOrigin;
   const mainRwo = mainEnv.refWall.wallOrigin;
-  if (secRwo.thicknessAxis !== mainRwo.lengthAxis) return null;
+  if (secRwo.thicknessAxis !== mainRwo.lengthAxis) { console.log('[CT] detectSecondaryCornerEnd AXIS MISMATCH', { secThkAxis: secRwo.thicknessAxis, mainLenAxis: mainRwo.lengthAxis }); return null; }
   const secCenterOnMainLen = (secEnv.faceMin + secEnv.faceMax) / 2;
   const mainLenCenter = (mainEnv.envelopeStart + mainEnv.envelopeEnd) / 2;
-  return secCenterOnMainLen < mainLenCenter ? 'left' : 'right';
+  const result = secCenterOnMainLen < mainLenCenter ? 'left' : 'right';
+  console.log('[CT] detectSecondaryCornerEnd', { secGroupId, mainGroupId, secFaceMin: secEnv.faceMin, secFaceMax: secEnv.faceMax, secCenterOnMainLen, mainLenStart: mainEnv.envelopeStart, mainLenEnd: mainEnv.envelopeEnd, mainLenCenter, result });
+  return result;
 }
 
 function detectMainInFront(secWalls, mainWalls, envelopeMap, secGroupId, mainGroupId, TOL = 50) {
   const secEnv = envelopeMap?.[secGroupId];
   const mainEnv = envelopeMap?.[mainGroupId];
-  if (!secEnv || !mainEnv) return true;
-  if (secEnv.lengthAxis !== mainEnv.thicknessAxis) return true;
+  if (!secEnv || !mainEnv) { console.log('[CT] detectMainInFront EARLY NULL', { secGroupId, mainGroupId, hasSecEnv: !!secEnv, hasMainEnv: !!mainEnv }); return true; }
+  if (secEnv.lengthAxis !== mainEnv.thicknessAxis) { console.log('[CT] detectMainInFront AXIS MISMATCH', { secLenAxis: secEnv.lengthAxis, mainThkAxis: mainEnv.thicknessAxis }); return true; }
   const secSpansMainThk = secEnv.envelopeStart <= mainEnv.faceMin + TOL && secEnv.envelopeEnd >= mainEnv.faceMax - TOL;
-  return !secSpansMainThk;
+  const result = !secSpansMainThk;
+  console.log('[CT] detectMainInFront', { secGroupId, mainGroupId, secEnvStart: secEnv.envelopeStart, secEnvEnd: secEnv.envelopeEnd, mainFaceMin: mainEnv.faceMin, mainFaceMax: mainEnv.faceMax, TOL, secSpansMainThk, mainInFront: result });
+  return result;
 }
 
 function detectCornerAdjacentGroups(myGroupId, groups, wallMap, envelopeMap, TOL = 150) {
   const myEnv = envelopeMap?.[myGroupId];
-  if (!myEnv) return null;
+  if (!myEnv) { console.log('[CT] detectCornerAdjacentGroups NO myEnv', myGroupId); return null; }
   const myGroup = groups.find((g) => g.id === myGroupId);
   if (!myGroup) return new Set();
   const myWalls = myGroup.wallIds.map((id) => wallMap[id]).filter(Boolean);
@@ -182,6 +186,7 @@ function detectCornerAdjacentGroups(myGroupId, groups, wallMap, envelopeMap, TOL
     }
     if (found) result.add(other.id);
   }
+  console.log('[CT] detectCornerAdjacentGroups', { myGroupId, envLStart, envLEnd, adjacentIds: [...result] });
   return result;
 }
 const DEFAULT_VERBAND = 'halfsteens';
@@ -2536,6 +2541,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       const mainIntEnd = detectSecondaryCornerEnd(secWalls, mainWalls, envelopeMap, cfg.secondaryGroupId, cfg.mainGroupId);
                       const secIntEnd  = detectSecondaryCornerEnd(mainWalls, secWalls, envelopeMap, cfg.mainGroupId, cfg.secondaryGroupId);
                       const mainInFront = detectMainInFront(secWalls, mainWalls, envelopeMap, cfg.secondaryGroupId, cfg.mainGroupId);
+                      console.log('[CT] IIFE corner render', { cornerId, mainGroupId: cfg.mainGroupId, secGroupId: cfg.secondaryGroupId, mainIntEnd, secIntEnd, mainInFront, canApplyWillBe: !!(mainIntEnd && secIntEnd) });
                       const visualEnd = (intEnd, s) => intEnd ? (s.outsideDirFlip ? (intEnd === 'left' ? 'right' : 'left') : intEnd) : null;
                       const mainVisEnd = visualEnd(mainIntEnd, mainS);
                       const secVisEnd  = visualEnd(secIntEnd, secS);
@@ -2543,9 +2549,9 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       const mSugStrips  = mainInFront ? secPkg.total                         : secWT + secPkg.total;
                       const mSugLatten  = mainInFront ? secPkg.lat                          : secWT + secPkg.lat;
                       const mSugPanelen = mainInFront ? secPkg.lat                          : secWT + secPkg.lat;
-                      const sSugStrips  = mainInFront ? mainPkg.lat + overgangsvoeg          : mainPkg.total - secPkg.str - overgangsvoeg;
-                      const sSugLatten  = mainInFront ? mainWT - overgangsvoeg               : -overgangsvoeg;
-                      const sSugPanelen = mainInFront ? mainPkg.lat + overgangsvoeg          : mainPkg.total - secPkg.str - overgangsvoeg;
+                      const sSugStrips  = mainInFront ? -(mainPkg.lat + overgangsvoeg)        : mainPkg.total - secPkg.str - overgangsvoeg;
+                      const sSugLatten  = mainInFront ? -(mainPkg.lat + overgangsvoeg)        : -overgangsvoeg;
+                      const sSugPanelen = mainInFront ? -(mainPkg.lat + overgangsvoeg)        : mainPkg.total - secPkg.str - overgangsvoeg;
                       const applyGroup = (gid, intEnd, s, sugStrips, sugLatten, sugPanelen) => {
                         if (!intEnd) return;
                         const oppSide = intEnd === 'left' ? 'right' : 'left';
@@ -2559,6 +2565,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                         const oppCur = ee[oppSide] ?? {};
                         const newOpp = isOppSideActive ? oppCur : { ...oppCur, strips: 0, battens: 0, panels: 0 };
                         const patch = { endExtensions: { ...ee, [intEnd]: { ...cur, strips: sugStrips, battens: sugLatten, panels: sugPanelen }, [oppSide]: newOpp } };
+                        console.log('[CT] applyGroup', { gid, intEnd, oppSide, isOppSideActive, sugStrips, sugLatten, sugPanelen, eeBefore: JSON.stringify(ee), eeAfter: JSON.stringify(patch.endExtensions) });
                         if (gid === groupId) onUpdate(patch);
                         else onUpdateGroupSettings?.(gid, patch);
                       };
@@ -2570,7 +2577,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       const row = (lbl, val, hint) => (
                         <Fragment key={lbl}>
                           <span>{lbl}</span>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>+{val} mm <span style={{ color: '#6b7280', fontWeight: 400 }}>({hint})</span></span>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{val >= 0 ? '+' : ''}{val} mm <span style={{ color: '#6b7280', fontWeight: 400 }}>({hint})</span></span>
                         </Fragment>
                       );
                       return (
@@ -2613,7 +2620,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '2px 8px', color: '#374151' }}>
                               {row('Strips',  sSugStrips,  `${mainPkg.lat}+${overgangsvoeg}`)}
-                              {row('Latten',  sSugLatten,  mainInFront ? `${mainWT}-10` : `-10`)}
+                              {row('Latten',  sSugLatten,  mainInFront ? `${mainPkg.lat}+${overgangsvoeg}` : `-${overgangsvoeg}`)}
                               {row('Panelen', sSugPanelen, `${mainPkg.lat}+${overgangsvoeg}`)}
                             </div>
                           </div>
@@ -3108,7 +3115,7 @@ export default function App() {
           if (!secGroup) continue;
           const secS = getSettings(secGroup.id);
           const secEnv = envelopeMap[cfg.secondaryGroupId];
-          if (!secEnv) continue;
+          if (!secEnv) { console.log('[CT] simpleCornerWrap SKIP no secEnv', cfg.secondaryGroupId); continue; }
           const secRwo = secEnv.refWall.wallOrigin;
           const secGroupMinX = secEnv.envelopeStart;
           const secGroupMinH = secEnv.heightStart;
@@ -3124,13 +3131,15 @@ export default function App() {
           const mainExtendL = Math.max(0, mainEE.left?.strips  ?? 0);
           const mainExtendR = Math.max(0, mainEE.right?.strips ?? 0);
           const stripsExtend = Math.max(mainExtendL, mainExtendR);
-          if (stripsExtend <= 0) continue;
+          console.log('[CT] simpleCornerWrap gate', { mainGroupId: group.id, secGroupId: cfg.secondaryGroupId, mainEE_leftStrips: mainEE.left?.strips, mainEE_rightStrips: mainEE.right?.strips, stripsExtend, secEE_leftStrips: secEE.left?.strips, secEE_rightStrips: secEE.right?.strips, secGW });
+          if (stripsExtend <= 0) { console.log('[CT] simpleCornerWrap SKIP stripsExtend<=0'); continue; }
           const secTrimL = (secEE.left?.strips  ?? 0) < 0;
           const secTrimR = (secEE.right?.strips ?? 0) < 0;
           let wrapPieceStart = null;
           if (secTrimL) wrapPieceStart = 0;
           else if (secTrimR) wrapPieceStart = secGW - stripsExtend;
-          if (wrapPieceStart === null) continue;
+          console.log('[CT] simpleCornerWrap wrapPieceStart', { secTrimL, secTrimR, wrapPieceStart });
+          if (wrapPieceStart === null) { console.log('[CT] simpleCornerWrap SKIP wrapPieceStart null'); continue; }
           const secIsSlimFort3d_sw = (secS.backingType ?? 'hout') === 'aluminium_slimfort';
           const secSfSettings3d_sw = secIsSlimFort3d_sw ? { ...SLIMFORT_DEFAULTS, ...(secS.slimFortSettings ?? {}) } : null;
           const secVentGap3d_sw = secIsSlimFort3d_sw ? (secS.concreteCladdingSettings?.panelVentilationGap ?? 0) : 0;
@@ -3404,13 +3413,15 @@ export default function App() {
         const mainExtendL = Math.max(0, mainEE.left?.strips  ?? 0);
         const mainExtendR = Math.max(0, mainEE.right?.strips ?? 0);
         const stripsExtend = Math.max(mainExtendL, mainExtendR);
-        if (stripsExtend <= 0) continue;
+        console.log('[CT] cornerWrap gate', { mainGroupId: group.id, secGroupId: cfg.secondaryGroupId, mainEE_leftStrips: mainEE.left?.strips, mainEE_rightStrips: mainEE.right?.strips, stripsExtend, secEE_leftStrips: secEE.left?.strips, secEE_rightStrips: secEE.right?.strips, secGW });
+        if (stripsExtend <= 0) { console.log('[CT] cornerWrap SKIP stripsExtend<=0'); continue; }
         const secTrimL = (secEE.left?.strips  ?? 0) < 0;
         const secTrimR = (secEE.right?.strips ?? 0) < 0;
         let wrapPieceStart = null;
         if (secTrimL) wrapPieceStart = 0;
         else if (secTrimR) wrapPieceStart = secGW - stripsExtend;
-        if (wrapPieceStart === null) continue;
+        console.log('[CT] cornerWrap wrapPieceStart', { secTrimL, secTrimR, wrapPieceStart });
+        if (wrapPieceStart === null) { console.log('[CT] cornerWrap SKIP wrapPieceStart null'); continue; }
         const secIsSlimFort3d_fw = (secS.backingType ?? 'hout') === 'aluminium_slimfort';
         const secSfSettings3d_fw = secIsSlimFort3d_fw ? { ...SLIMFORT_DEFAULTS, ...(secS.slimFortSettings ?? {}) } : null;
         const secVentGap3d_fw = secIsSlimFort3d_fw ? (secS.concreteCladdingSettings?.panelVentilationGap ?? 0) : 0;
