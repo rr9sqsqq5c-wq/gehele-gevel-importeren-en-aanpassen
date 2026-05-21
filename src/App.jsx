@@ -107,69 +107,25 @@ function computeGroupFacadeEnvelope(group, wallMap) {
   };
 }
 
-function detectSecondaryCornerEnd(secWalls, mainWalls, TOL = 150) {
-  for (const mW of mainWalls) {
-    const woM = mW.wallOrigin;
-    if (!woM) continue;
-    const mLenEnd = woM.lengthStart + (mW.length ?? 0);
-    const mThkEnd = woM.thicknessEnd ?? (woM.thicknessStart + (mW.thickness ?? 300));
-    for (const sW of secWalls) {
-      const woS = sW.wallOrigin;
-      if (!woS) continue;
-      if (woS.lengthAxis === woM.lengthAxis) continue;
-      if (woS.lengthAxis !== woM.thicknessAxis) continue;
-      const sThkEnd = woS.thicknessEnd ?? (woS.thicknessStart + (sW.thickness ?? 300));
-      const sLenEnd = woS.lengthStart + (sW.length ?? 0);
-      const ovLen = Math.min(sThkEnd, mLenEnd) - Math.max(woS.thicknessStart, woM.lengthStart);
-      if (ovLen <= -TOL) continue;
-      const ovDep = Math.min(sLenEnd, mThkEnd) - Math.max(woS.lengthStart, woM.thicknessStart);
-      if (ovDep <= -TOL) continue;
-      const secCenterOnMainLen = (woS.thicknessStart + sThkEnd) / 2;
-      const mainLenCenter = (woM.lengthStart + mLenEnd) / 2;
-      return secCenterOnMainLen < mainLenCenter ? 'left' : 'right';
-    }
-  }
-  return null;
+function detectSecondaryCornerEnd(secWalls, mainWalls, envelopeMap, secGroupId, mainGroupId, TOL = 150) {
+  const secEnv = envelopeMap?.[secGroupId];
+  const mainEnv = envelopeMap?.[mainGroupId];
+  if (!secEnv || !mainEnv) return null;
+  const secRwo = secEnv.refWall.wallOrigin;
+  const mainRwo = mainEnv.refWall.wallOrigin;
+  if (secRwo.thicknessAxis !== mainRwo.lengthAxis) return null;
+  const secCenterOnMainLen = (secEnv.faceMin + secEnv.faceMax) / 2;
+  const mainLenCenter = (mainEnv.envelopeStart + mainEnv.envelopeEnd) / 2;
+  return secCenterOnMainLen < mainLenCenter ? 'left' : 'right';
 }
 
-function detectMainInFront(secWalls, mainWalls, TOL = 50) {
-  const secRefWo = pickFacadeReferenceWall(secWalls)?.wallOrigin;
-  let envSecLenMin = Infinity, envSecLenMax = -Infinity;
-  for (const sW of secWalls) {
-    const woS = sW?.wallOrigin;
-    if (!woS) continue;
-    const sE = woS.lengthStart + (sW.length ?? 0);
-    if (woS.lengthStart < envSecLenMin) envSecLenMin = woS.lengthStart;
-    if (sE > envSecLenMax) envSecLenMax = sE;
-  }
-  if (secRefWo) {
-    for (const mW of mainWalls) {
-      const woM = mW?.wallOrigin;
-      if (!woM || woM.thicknessAxis !== secRefWo.lengthAxis) continue;
-      const tE = woM.thicknessEnd ?? (woM.thicknessStart + 500);
-      if (woM.thicknessStart < envSecLenMin) envSecLenMin = woM.thicknessStart;
-      if (tE > envSecLenMax) envSecLenMax = tE;
-    }
-  }
-  for (const mW of mainWalls) {
-    const woM = mW.wallOrigin;
-    if (!woM) continue;
-    const mThkEnd = woM.thicknessEnd ?? (woM.thicknessStart + (mW.thickness ?? 300));
-    const mainThkMin = Math.min(woM.thicknessStart, mThkEnd);
-    const mainThkMax = Math.max(woM.thicknessStart, mThkEnd);
-    for (const sW of secWalls) {
-      const woS = sW.wallOrigin;
-      if (!woS) continue;
-      if (woS.lengthAxis === woM.lengthAxis) continue;
-      if (woS.lengthAxis !== woM.thicknessAxis) continue;
-      const sLenEnd = woS.lengthStart + (sW.length ?? 0);
-      const secLenMin = isFinite(envSecLenMin) ? envSecLenMin : Math.min(woS.lengthStart, sLenEnd);
-      const secLenMax = isFinite(envSecLenMax) ? envSecLenMax : Math.max(woS.lengthStart, sLenEnd);
-      const secSpansMainThk = secLenMin <= mainThkMin + TOL && secLenMax >= mainThkMax - TOL;
-      return !secSpansMainThk;
-    }
-  }
-  return true;
+function detectMainInFront(secWalls, mainWalls, envelopeMap, secGroupId, mainGroupId, TOL = 50) {
+  const secEnv = envelopeMap?.[secGroupId];
+  const mainEnv = envelopeMap?.[mainGroupId];
+  if (!secEnv || !mainEnv) return true;
+  if (secEnv.lengthAxis !== mainEnv.thicknessAxis) return true;
+  const secSpansMainThk = secEnv.envelopeStart <= mainEnv.faceMin + TOL && secEnv.envelopeEnd >= mainEnv.faceMax - TOL;
+  return !secSpansMainThk;
 }
 
 function detectCornerAdjacentGroups(myGroupId, groups, wallMap, envelopeMap, TOL = 150) {
@@ -930,7 +886,7 @@ function computePerpendicularHints(groupId, allGroups, wallMap) {
   };
 }
 
-function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked, gapCenters, groupWidth, doorBottomYs = [], resolvedOutsideInfo = null, onManualOutsideDir, cornerConfigs = {}, allGroups = [], getSettings, onAddCorner, onUpdateCorner, onRemoveCorner, adjacentGroupIds = null, adjacentHints = [], wallMap = {}, onUpdateGroupSettings = null }) {
+function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked, gapCenters, groupWidth, doorBottomYs = [], resolvedOutsideInfo = null, onManualOutsideDir, cornerConfigs = {}, allGroups = [], getSettings, onAddCorner, onUpdateCorner, onRemoveCorner, adjacentGroupIds = null, adjacentHints = [], wallMap = {}, onUpdateGroupSettings = null, envelopeMap = {} }) {
   const mat = settings.material ?? { ...DEFAULT_MATERIAL };
   const [openSections, setOpenSections] = useState({});
   const toggle = (k) => setOpenSections((p) => ({ ...p, [k]: !(p[k] ?? false) }));
@@ -2577,9 +2533,9 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       const mainPkg = pkgOf(mainS);
                       const secPkg  = pkgOf(secS);
                       const overgangsvoeg = cfg.overgangsvoeg ?? 10;
-                      const mainIntEnd = detectSecondaryCornerEnd(secWalls, mainWalls);
-                      const secIntEnd  = detectSecondaryCornerEnd(mainWalls, secWalls);
-                      const mainInFront = detectMainInFront(secWalls, mainWalls);
+                      const mainIntEnd = detectSecondaryCornerEnd(secWalls, mainWalls, envelopeMap, cfg.secondaryGroupId, cfg.mainGroupId);
+                      const secIntEnd  = detectSecondaryCornerEnd(mainWalls, secWalls, envelopeMap, cfg.mainGroupId, cfg.secondaryGroupId);
+                      const mainInFront = detectMainInFront(secWalls, mainWalls, envelopeMap, cfg.secondaryGroupId, cfg.mainGroupId);
                       const visualEnd = (intEnd, s) => intEnd ? (s.outsideDirFlip ? (intEnd === 'left' ? 'right' : 'left') : intEnd) : null;
                       const mainVisEnd = visualEnd(mainIntEnd, mainS);
                       const secVisEnd  = visualEnd(secIntEnd, secS);
@@ -2592,9 +2548,17 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       const sSugPanelen = mainInFront ? mainPkg.lat + overgangsvoeg          : mainPkg.total - secPkg.str - overgangsvoeg;
                       const applyGroup = (gid, intEnd, s, sugStrips, sugLatten, sugPanelen) => {
                         if (!intEnd) return;
+                        const oppSide = intEnd === 'left' ? 'right' : 'left';
+                        const isOppSideActive = Object.values(cornerConfigs).some((c) => {
+                          if (c.mainGroupId === gid) return detectSecondaryCornerEnd([], [], envelopeMap, c.secondaryGroupId, c.mainGroupId) === oppSide;
+                          if (c.secondaryGroupId === gid) return detectSecondaryCornerEnd([], [], envelopeMap, c.mainGroupId, c.secondaryGroupId) === oppSide;
+                          return false;
+                        });
                         const ee = s.endExtensions ?? {};
                         const cur = ee[intEnd] ?? {};
-                        const patch = { endExtensions: { ...ee, [intEnd]: { ...cur, strips: sugStrips, battens: sugLatten, panels: sugPanelen } } };
+                        const oppCur = ee[oppSide] ?? {};
+                        const newOpp = isOppSideActive ? oppCur : { ...oppCur, strips: 0, battens: 0, panels: 0 };
+                        const patch = { endExtensions: { ...ee, [intEnd]: { ...cur, strips: sugStrips, battens: sugLatten, panels: sugPanelen }, [oppSide]: newOpp } };
                         if (gid === groupId) onUpdate(patch);
                         else onUpdateGroupSettings?.(gid, patch);
                       };
@@ -3143,14 +3107,12 @@ export default function App() {
           const secGroup = groups.find((g) => g.id === cfg.secondaryGroupId);
           if (!secGroup) continue;
           const secS = getSettings(secGroup.id);
-          const secWalls = secGroup.wallIds.map((id) => wallMap[id]).filter(Boolean).filter((w) => !!w.wallOrigin);
-          if (!secWalls.length) continue;
-          const secRefWall = [...secWalls].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
-          const secRwo = secRefWall.wallOrigin;
-          const secAxisW = secWalls.filter((w) => w.wallOrigin.lengthAxis === secRwo.lengthAxis);
-          const secGroupMinX = Math.min(...secAxisW.map((w) => w.wallOrigin.lengthStart));
-          const secGroupMinH = Math.min(...secAxisW.map((w) => w.wallOrigin.heightStart));
-          const secGW = Math.max(...secAxisW.map((w) => w.wallOrigin.lengthStart + (w.length ?? 0))) - secGroupMinX;
+          const secEnv = envelopeMap[cfg.secondaryGroupId];
+          if (!secEnv) continue;
+          const secRwo = secEnv.refWall.wallOrigin;
+          const secGroupMinX = secEnv.envelopeStart;
+          const secGroupMinH = secEnv.heightStart;
+          const secGW = secEnv.envelopeEnd - secEnv.envelopeStart;
           const secArtId = (secS.lattenArtikelen ?? [])[0] ?? null;
           const secArt = secArtId ? BATTEN_CATALOG.find((a) => a.id === secArtId) : null;
           const secLatDikte = secArt ? secArt.dikteMM : (secS.latten?.dikte ?? 28);
@@ -3425,14 +3387,12 @@ export default function App() {
         const secGroup = groups.find((g) => g.id === cfg.secondaryGroupId);
         if (!secGroup) continue;
         const secS = getSettings(secGroup.id);
-        const secWalls = secGroup.wallIds.map((id) => wallMap[id]).filter(Boolean).filter((w) => !!w.wallOrigin);
-        if (!secWalls.length) continue;
-        const secRefWall = [...secWalls].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
-        const secRwo = secRefWall.wallOrigin;
-        const secAxisW = secWalls.filter((w) => w.wallOrigin.lengthAxis === secRwo.lengthAxis);
-        const secGroupMinX = Math.min(...secAxisW.map((w) => w.wallOrigin.lengthStart));
-        const secGroupMinH = Math.min(...secAxisW.map((w) => w.wallOrigin.heightStart));
-        const secGW = Math.max(...secAxisW.map((w) => w.wallOrigin.lengthStart + (w.length ?? 0))) - secGroupMinX;
+        const secEnv = envelopeMap[cfg.secondaryGroupId];
+        if (!secEnv) continue;
+        const secRwo = secEnv.refWall.wallOrigin;
+        const secGroupMinX = secEnv.envelopeStart;
+        const secGroupMinH = secEnv.heightStart;
+        const secGW = secEnv.envelopeEnd - secEnv.envelopeStart;
         const secArtId = (secS.lattenArtikelen ?? [])[0] ?? null;
         const secArt = secArtId ? BATTEN_CATALOG.find((a) => a.id === secArtId) : null;
         const secLatDikte = secArt ? secArt.dikteMM : (secS.latten?.dikte ?? 28);
@@ -3552,7 +3512,7 @@ export default function App() {
       };
     }
     return result;
-  }, [groups, getSettings, wallMap, showPattern, adjacencies, cornerConfigs, settingsMap, groupEnvelopeVisibility]);
+  }, [groups, getSettings, wallMap, showPattern, adjacencies, cornerConfigs, settingsMap, groupEnvelopeVisibility, envelopeMap]);
 
   async function startScan(file, handle, isMerge = false) {
     setMergeMode(isMerge);
@@ -5026,14 +4986,12 @@ export default function App() {
         const secGroup = groups.find((g) => g.id === cfg.secondaryGroupId);
         if (!secGroup) continue;
         const secS = settingsMap[secGroup.id] ?? {};
-        const secWalls = secGroup.wallIds.map((id) => wallMap[id]).filter(Boolean).filter((w) => !!w.wallOrigin);
-        if (!secWalls.length) continue;
-        const secRefWall = [...secWalls].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
-        const secRwo = secRefWall.wallOrigin;
-        const secAxisW = secWalls.filter((w) => w.wallOrigin.lengthAxis === secRwo.lengthAxis);
-        const secGroupMinX = Math.min(...secAxisW.map((w) => w.wallOrigin.lengthStart));
-        const secGroupMinH = Math.min(...secAxisW.map((w) => w.wallOrigin.heightStart));
-        const secGW = Math.max(...secAxisW.map((w) => w.wallOrigin.lengthStart + (w.length ?? 0))) - secGroupMinX;
+        const secEnv = envelopeMap[cfg.secondaryGroupId];
+        if (!secEnv) continue;
+        const secRwo = secEnv.refWall.wallOrigin;
+        const secGroupMinX = secEnv.envelopeStart;
+        const secGroupMinH = secEnv.heightStart;
+        const secGW = secEnv.envelopeEnd - secEnv.envelopeStart;
         const secIsSlimFort = (secS.backingType ?? 'hout') === 'aluminium_slimfort';
         const secArtId = (secS.lattenArtikelen ?? [])[0] ?? null;
         const secArt = secArtId ? BATTEN_CATALOG.find((a) => a.id === secArtId) : null;
@@ -6194,6 +6152,7 @@ export default function App() {
                 }}
                 wallMap={wallMap}
                 onUpdateGroupSettings={(targetId, patch) => updateSettings(targetId, patch)}
+                envelopeMap={envelopeMap}
               />
             </div>
             {viewMode === '2d' && (() => {
