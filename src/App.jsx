@@ -100,20 +100,19 @@ function detectCornerAdjacentGroups(myGroupId, groups, wallMap, TOL = 150) {
   if (!myGroup) return new Set();
   const myWalls = myGroup.wallIds.map((id) => wallMap[id]).filter(Boolean);
   if (!myWalls.length || !myWalls[0]?.wallOrigin) return null;
+  let myLStart = Infinity, myLEnd = -Infinity;
+  for (const w of myWalls) {
+    const wo = w.wallOrigin;
+    if (!wo) continue;
+    const le = wo.lengthEnd ?? (wo.lengthStart + (w.length ?? 0));
+    if (wo.lengthStart < myLStart) myLStart = wo.lengthStart;
+    if (le > myLEnd) myLEnd = le;
+  }
   const result = new Set();
-  const GAP_TOL = 400;
   for (const other of groups) {
     if (other.id === myGroupId) continue;
     const otherWalls = other.wallIds.map((id) => wallMap[id]).filter(Boolean);
     if (!otherWalls.length || !otherWalls[0]?.wallOrigin) continue;
-    const bGroupMaxLenEnd = {};
-    for (const wb of otherWalls) {
-      const woB = wb.wallOrigin;
-      if (!woB) continue;
-      const la = woB.lengthAxis;
-      const bLE = woB.lengthEnd ?? (woB.lengthStart + (wb.length ?? 0));
-      if (bGroupMaxLenEnd[la] === undefined || bLE > bGroupMaxLenEnd[la]) bGroupMaxLenEnd[la] = bLE;
-    }
     let found = false;
     outer: for (const wa of myWalls) {
       const woA = wa.wallOrigin;
@@ -127,16 +126,18 @@ function detectCornerAdjacentGroups(myGroupId, groups, wallMap, TOL = 150) {
         if (woA.heightAxis !== woB.heightAxis) continue;
         if (woA.lengthAxis !== woB.thicknessAxis) continue;
         if (woA.thicknessAxis !== woB.lengthAxis) continue;
-        const bLenEnd = woB.lengthEnd ?? (woB.lengthStart + (wb.length ?? 0));
         const bThkEnd = woB.thicknessEnd ?? (woB.thicknessStart + 500);
         const aOverlapsBThk = aLenEnd >= woB.thicknessStart - TOL && woA.lengthStart <= bThkEnd + TOL;
         if (!aOverlapsBThk) continue;
-        const bMaxLenEnd = bGroupMaxLenEnd[woB.lengthAxis] ?? bLenEnd;
-        const overlapLen = Math.min(aThkEnd, bMaxLenEnd) - Math.max(woA.thicknessStart, woB.lengthStart);
-        if (overlapLen > -GAP_TOL) {
-          found = true;
-          break outer;
-        }
+        const bFaceNearAStart =
+          Math.abs(bThkEnd - myLStart) <= TOL ||
+          Math.abs(woB.thicknessStart - myLStart) <= TOL;
+        const bFaceNearAEnd =
+          Math.abs(bThkEnd - myLEnd) <= TOL ||
+          Math.abs(woB.thicknessStart - myLEnd) <= TOL;
+        if (!bFaceNearAStart && !bFaceNearAEnd) continue;
+        found = true;
+        break outer;
       }
     }
     if (found) result.add(other.id);
