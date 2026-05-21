@@ -74,6 +74,24 @@ function detectSecondaryCornerEnd(secWalls, mainWalls, TOL = 150) {
 }
 
 function detectMainInFront(secWalls, mainWalls, TOL = 50) {
+  const secRefWo = secWalls.find((w) => w?.wallOrigin)?.wallOrigin;
+  let envSecLenMin = Infinity, envSecLenMax = -Infinity;
+  for (const sW of secWalls) {
+    const woS = sW?.wallOrigin;
+    if (!woS) continue;
+    const sE = woS.lengthStart + (sW.length ?? 0);
+    if (woS.lengthStart < envSecLenMin) envSecLenMin = woS.lengthStart;
+    if (sE > envSecLenMax) envSecLenMax = sE;
+  }
+  if (secRefWo) {
+    for (const mW of mainWalls) {
+      const woM = mW?.wallOrigin;
+      if (!woM || woM.thicknessAxis !== secRefWo.lengthAxis) continue;
+      const tE = woM.thicknessEnd ?? (woM.thicknessStart + 500);
+      if (woM.thicknessStart < envSecLenMin) envSecLenMin = woM.thicknessStart;
+      if (tE > envSecLenMax) envSecLenMax = tE;
+    }
+  }
   for (const mW of mainWalls) {
     const woM = mW.wallOrigin;
     if (!woM) continue;
@@ -86,8 +104,8 @@ function detectMainInFront(secWalls, mainWalls, TOL = 50) {
       if (woS.lengthAxis === woM.lengthAxis) continue;
       if (woS.lengthAxis !== woM.thicknessAxis) continue;
       const sLenEnd = woS.lengthStart + (sW.length ?? 0);
-      const secLenMin = Math.min(woS.lengthStart, sLenEnd);
-      const secLenMax = Math.max(woS.lengthStart, sLenEnd);
+      const secLenMin = isFinite(envSecLenMin) ? envSecLenMin : Math.min(woS.lengthStart, sLenEnd);
+      const secLenMax = isFinite(envSecLenMax) ? envSecLenMax : Math.max(woS.lengthStart, sLenEnd);
       const secSpansMainThk = secLenMin <= mainThkMin + TOL && secLenMax >= mainThkMax - TOL;
       return !secSpansMainThk;
     }
