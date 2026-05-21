@@ -128,7 +128,11 @@ function detectCornerAdjacentGroups(myGroupId, groups, wallMap, TOL = 150) {
         if (woA.thicknessAxis !== woB.lengthAxis) continue;
         const bThkEnd = woB.thicknessEnd ?? (woB.thicknessStart + 500);
         const aOverlapsBThk = aLenEnd >= woB.thicknessStart - TOL && woA.lengthStart <= bThkEnd + TOL;
-        if (!aOverlapsBThk) continue;
+        const bLenEnd_val = woB.lengthEnd ?? (woB.lengthStart + (wb.length ?? 0));
+        const aThkMin = Math.min(woA.thicknessStart, aThkEnd);
+        const aThkMax = Math.max(woA.thicknessStart, aThkEnd);
+        const bSpansAThk = Math.min(aThkMax, bLenEnd_val) - Math.max(aThkMin, woB.lengthStart) > -TOL;
+        if (!aOverlapsBThk && !bSpansAThk) continue;
         const bFaceNearAStart =
           Math.abs(bThkEnd - myLStart) <= TOL ||
           Math.abs(woB.thicknessStart - myLStart) <= TOL;
