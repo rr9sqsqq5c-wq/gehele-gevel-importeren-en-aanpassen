@@ -934,7 +934,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
       const mSugStrips  = mainInFront ? secPkg.total                      : secWT + secPkg.total;
       const mSugLatten  = mainInFront ? secPkg.lat                        : secWT + secPkg.lat;
       const mSugPanelen = mainInFront ? secPkg.lat                        : secWT + secPkg.lat;
-      const sSugStrips  = mainInFront ? -(mainPkg.lat + overgangsvoeg)    : mainPkg.total - secPkg.str - overgangsvoeg;
+      const sSugStrips  = mainInFront ? -(mainPkg.lat + overgangsvoeg)    : -(mainPkg.total - secPkg.str - overgangsvoeg);
       const sSugLatten  = mainInFront ? -(mainPkg.lat + overgangsvoeg)    : -overgangsvoeg;
       const sSugPanelen = mainInFront ? -(mainPkg.lat + overgangsvoeg)    : mainPkg.total - secPkg.str - overgangsvoeg;
       const applyToGroup = (gid, intEnd, sRef, sugStrips, sugLatten, sugPanelen) => {
@@ -2605,7 +2605,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       const mSugStrips  = mainInFront ? secPkg.total                         : secWT + secPkg.total;
                       const mSugLatten  = mainInFront ? secPkg.lat                          : secWT + secPkg.lat;
                       const mSugPanelen = mainInFront ? secPkg.lat                          : secWT + secPkg.lat;
-                      const sSugStrips  = mainInFront ? -(mainPkg.lat + overgangsvoeg)        : mainPkg.total - secPkg.str - overgangsvoeg;
+                      const sSugStrips  = mainInFront ? -(mainPkg.lat + overgangsvoeg)        : -(mainPkg.total - secPkg.str - overgangsvoeg);
                       const sSugLatten  = mainInFront ? -(mainPkg.lat + overgangsvoeg)        : -overgangsvoeg;
                       const sSugPanelen = mainInFront ? -(mainPkg.lat + overgangsvoeg)        : mainPkg.total - secPkg.str - overgangsvoeg;
                       const applyGroup = (gid, intEnd, s, sugStrips, sugLatten, sugPanelen) => {
