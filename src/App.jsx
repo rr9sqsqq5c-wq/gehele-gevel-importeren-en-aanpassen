@@ -902,6 +902,62 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
   const [stripZoek, setStripZoek] = useState('');
   const [newCornerGroupId, setNewCornerGroupId] = useState('');
   const [cornerFloat, setCornerFloat] = useState(false);
+  const [recalcResult, setRecalcResult] = useState(null);
+  const recomputeAllCorners = () => {
+    let count = 0;
+    for (const [, cfg] of Object.entries(cornerConfigs)) {
+      const mainGroupObj = allGroups.find((g) => g.id === cfg.mainGroupId);
+      const secGroupObj  = allGroups.find((g) => g.id === cfg.secondaryGroupId);
+      if (!mainGroupObj || !secGroupObj) continue;
+      const mainS = getSettings ? getSettings(cfg.mainGroupId) : {};
+      const secS  = getSettings ? getSettings(cfg.secondaryGroupId) : {};
+      const mainWalls = mainGroupObj.wallIds.map((id) => wallMap[id]).filter((w) => w?.wallOrigin);
+      const secWalls  = secGroupObj.wallIds.map((id)  => wallMap[id]).filter((w) => w?.wallOrigin);
+      const wallThk = (walls) => walls.length ? Math.round(Math.max(...walls.map((w) => Math.abs((w.wallOrigin.thicknessEnd ?? (w.wallOrigin.thicknessStart + (w.thickness ?? 0))) - w.wallOrigin.thicknessStart)))) : 0;
+      const mainWT = wallThk(mainWalls);
+      const secWT  = wallThk(secWalls);
+      const pkgOf = (s) => {
+        const artId = (s.lattenArtikelen ?? [])[0] ?? null;
+        const art = artId ? BATTEN_CATALOG.find((a) => a.id === artId) : null;
+        const lat = s.latten?.enabled !== false ? (art ? art.dikteMM : (s.latten?.dikte ?? 28)) : 0;
+        const pan = s.panelen?.enabled !== false ? (s.panelen?.dikte ?? 8) : 0;
+        const str = s.brickDepth ?? 20;
+        return { lat, pan, str, total: lat + pan + str };
+      };
+      const mainPkg = pkgOf(mainS);
+      const secPkg  = pkgOf(secS);
+      const overgangsvoeg = cfg.overgangsvoeg ?? 10;
+      const mainIntEnd = detectSecondaryCornerEnd(secWalls, mainWalls, envelopeMap, cfg.secondaryGroupId, cfg.mainGroupId);
+      const secIntEnd  = detectSecondaryCornerEnd(mainWalls, secWalls, envelopeMap, cfg.mainGroupId, cfg.secondaryGroupId);
+      const mainInFront = detectMainInFront(secWalls, mainWalls, envelopeMap, cfg.secondaryGroupId, cfg.mainGroupId);
+      if (!mainIntEnd || !secIntEnd) continue;
+      const mSugStrips  = mainInFront ? secPkg.total                      : secWT + secPkg.total;
+      const mSugLatten  = mainInFront ? secPkg.lat                        : secWT + secPkg.lat;
+      const mSugPanelen = mainInFront ? secPkg.lat                        : secWT + secPkg.lat;
+      const sSugStrips  = mainInFront ? -(mainPkg.lat + overgangsvoeg)    : mainPkg.total - secPkg.str - overgangsvoeg;
+      const sSugLatten  = mainInFront ? -(mainPkg.lat + overgangsvoeg)    : -overgangsvoeg;
+      const sSugPanelen = mainInFront ? -(mainPkg.lat + overgangsvoeg)    : mainPkg.total - secPkg.str - overgangsvoeg;
+      const applyToGroup = (gid, intEnd, sRef, sugStrips, sugLatten, sugPanelen) => {
+        const oppSide = intEnd === 'left' ? 'right' : 'left';
+        const isOppSideActive = Object.values(cornerConfigs).some((c) => {
+          if (c.mainGroupId === gid) return detectSecondaryCornerEnd([], [], envelopeMap, c.secondaryGroupId, c.mainGroupId) === oppSide;
+          if (c.secondaryGroupId === gid) return detectSecondaryCornerEnd([], [], envelopeMap, c.mainGroupId, c.secondaryGroupId) === oppSide;
+          return false;
+        });
+        const ee = sRef.endExtensions ?? {};
+        const cur = ee[intEnd] ?? {};
+        const oppCur = ee[oppSide] ?? {};
+        const newOpp = isOppSideActive ? oppCur : { ...oppCur, strips: 0, battens: 0, panels: 0 };
+        const patch = { endExtensions: { ...ee, [intEnd]: { ...cur, strips: sugStrips, battens: sugLatten, panels: sugPanelen }, [oppSide]: newOpp } };
+        if (gid === groupId) onUpdate(patch);
+        else onUpdateGroupSettings?.(gid, patch);
+      };
+      applyToGroup(cfg.mainGroupId,       mainIntEnd, mainS, mSugStrips,  mSugLatten,  mSugPanelen);
+      applyToGroup(cfg.secondaryGroupId,  secIntEnd,  secS,  sSugStrips,  sSugLatten,  sSugPanelen);
+      count++;
+    }
+    setRecalcResult(count);
+  };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
@@ -2676,6 +2732,19 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                     : adjacentGroupIds !== null && adjacentGroupIds.size === 0
                       ? 'Geen aangrenzende gevels gedetecteerd (geen loodrechte wanden).'
                       : null}
+                </div>
+              )}
+              {Object.keys(cornerConfigs).length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, paddingTop: 6, borderTop: '1px solid #e2e8f0' }}>
+                  <button
+                    onClick={recomputeAllCorners}
+                    style={{ fontSize: 10, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 3, padding: '4px 10px', cursor: 'pointer', color: '#166534', fontWeight: 600, whiteSpace: 'nowrap' }}
+                  >
+                    ↺ Hoekwaarden herberekenen
+                  </button>
+                  {recalcResult !== null && (
+                    <span style={{ fontSize: 10, color: '#166534' }}>{recalcResult} hoek{recalcResult !== 1 ? 'en' : ''} bijgewerkt</span>
+                  )}
                 </div>
               )}
             </div>
