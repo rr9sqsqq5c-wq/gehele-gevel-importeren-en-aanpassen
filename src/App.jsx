@@ -108,6 +108,16 @@ function detectCornerAdjacentGroups(myGroupId, groups, wallMap, TOL = 150) {
     if (wo.lengthStart < myLStart) myLStart = wo.lengthStart;
     if (le > myLEnd) myLEnd = le;
   }
+  const _refWo = myWalls[0].wallOrigin;
+  let envLStart = myLStart, envLEnd = myLEnd;
+  for (const w of Object.values(wallMap)) {
+    const wo = w.wallOrigin;
+    if (!wo || wo.heightAxis !== _refWo.heightAxis || wo.thicknessAxis !== _refWo.lengthAxis) continue;
+    const tS = wo.thicknessStart;
+    const tE = wo.thicknessEnd ?? (wo.thicknessStart + 500);
+    if (tS < envLStart) envLStart = tS;
+    if (tE > envLEnd) envLEnd = tE;
+  }
   const result = new Set();
   for (const other of groups) {
     if (other.id === myGroupId) continue;
@@ -134,11 +144,11 @@ function detectCornerAdjacentGroups(myGroupId, groups, wallMap, TOL = 150) {
         const bSpansAThk = Math.min(aThkMax, bLenEnd_val) - Math.max(aThkMin, woB.lengthStart) > -TOL;
         if (!aOverlapsBThk && !bSpansAThk) continue;
         const bFaceNearAStart =
-          Math.abs(bThkEnd - myLStart) <= TOL ||
-          Math.abs(woB.thicknessStart - myLStart) <= TOL;
+          Math.abs(bThkEnd - envLStart) <= TOL ||
+          Math.abs(woB.thicknessStart - envLStart) <= TOL;
         const bFaceNearAEnd =
-          Math.abs(bThkEnd - myLEnd) <= TOL ||
-          Math.abs(woB.thicknessStart - myLEnd) <= TOL;
+          Math.abs(bThkEnd - envLEnd) <= TOL ||
+          Math.abs(woB.thicknessStart - envLEnd) <= TOL;
         if (!bFaceNearAStart && !bFaceNearAEnd) continue;
         found = true;
         break outer;
