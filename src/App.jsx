@@ -48,6 +48,22 @@ function cornerConfigKey(gA, gB) {
   return [gA, gB].sort().join('__X__');
 }
 
+function pickFacadeReferenceWall(walls) {
+  const candidates = walls.filter((w) => w?.wallOrigin);
+  if (!candidates.length) return null;
+  let best = null, bestScore = -Infinity;
+  for (const w of candidates) {
+    const wo = w.wallOrigin;
+    let score = 0;
+    if (!w.isZoneElement) score += 1000;
+    if (wo.heightAxis === 'z') score += 100;
+    if (wo.thicknessAxis !== wo.heightAxis) score += 10;
+    score += (w.length ?? 0) / 100000;
+    if (score > bestScore) { bestScore = score; best = w; }
+  }
+  return best ?? candidates[0];
+}
+
 function detectSecondaryCornerEnd(secWalls, mainWalls, TOL = 150) {
   for (const mW of mainWalls) {
     const woM = mW.wallOrigin;
@@ -74,7 +90,7 @@ function detectSecondaryCornerEnd(secWalls, mainWalls, TOL = 150) {
 }
 
 function detectMainInFront(secWalls, mainWalls, TOL = 50) {
-  const secRefWo = secWalls.find((w) => w?.wallOrigin)?.wallOrigin;
+  const secRefWo = pickFacadeReferenceWall(secWalls)?.wallOrigin;
   let envSecLenMin = Infinity, envSecLenMax = -Infinity;
   for (const sW of secWalls) {
     const woS = sW?.wallOrigin;
@@ -117,7 +133,8 @@ function detectCornerAdjacentGroups(myGroupId, groups, wallMap, TOL = 150) {
   const myGroup = groups.find((g) => g.id === myGroupId);
   if (!myGroup) return new Set();
   const myWalls = myGroup.wallIds.map((id) => wallMap[id]).filter(Boolean);
-  if (!myWalls.length || !myWalls[0]?.wallOrigin) return null;
+  const _refWall = pickFacadeReferenceWall(myWalls);
+  if (!myWalls.length || !_refWall) return null;
   let myLStart = Infinity, myLEnd = -Infinity;
   for (const w of myWalls) {
     const wo = w.wallOrigin;
@@ -126,7 +143,7 @@ function detectCornerAdjacentGroups(myGroupId, groups, wallMap, TOL = 150) {
     if (wo.lengthStart < myLStart) myLStart = wo.lengthStart;
     if (le > myLEnd) myLEnd = le;
   }
-  const _refWo = myWalls[0].wallOrigin;
+  const _refWo = _refWall.wallOrigin;
   let envLStart = myLStart, envLEnd = myLEnd;
   for (const w of Object.values(wallMap)) {
     const wo = w.wallOrigin;
