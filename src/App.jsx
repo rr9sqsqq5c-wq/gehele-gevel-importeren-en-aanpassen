@@ -172,22 +172,14 @@ function detectMainInFront(secWalls, mainWalls, TOL = 50) {
   return true;
 }
 
-function detectCornerAdjacentGroups(myGroupId, groups, wallMap, TOL = 150) {
+function detectCornerAdjacentGroups(myGroupId, groups, wallMap, envelopeMap, TOL = 150) {
+  const myEnv = envelopeMap?.[myGroupId];
+  if (!myEnv) return null;
   const myGroup = groups.find((g) => g.id === myGroupId);
   if (!myGroup) return new Set();
   const myWalls = myGroup.wallIds.map((id) => wallMap[id]).filter(Boolean);
-  const _refWall = pickFacadeReferenceWall(myWalls);
-  if (!myWalls.length || !_refWall) return null;
-  let myLStart = Infinity, myLEnd = -Infinity;
-  for (const w of myWalls) {
-    const wo = w.wallOrigin;
-    if (!wo) continue;
-    const le = wo.lengthEnd ?? (wo.lengthStart + (w.length ?? 0));
-    if (wo.lengthStart < myLStart) myLStart = wo.lengthStart;
-    if (le > myLEnd) myLEnd = le;
-  }
-  const _refWo = _refWall.wallOrigin;
-  let envLStart = myLStart, envLEnd = myLEnd;
+  const _refWo = myEnv.refWall.wallOrigin;
+  let envLStart = myEnv.envelopeStart, envLEnd = myEnv.envelopeEnd;
   for (const w of Object.values(wallMap)) {
     const wo = w.wallOrigin;
     if (!wo || wo.heightAxis !== _refWo.heightAxis || wo.thicknessAxis !== _refWo.lengthAxis) continue;
@@ -6169,9 +6161,9 @@ export default function App() {
                 cornerConfigs={cornerConfigs}
                 allGroups={groups}
                 getSettings={getSettings}
-                adjacentGroupIds={detectCornerAdjacentGroups(activeGroup.id, groups, wallMap)}
+                adjacentGroupIds={detectCornerAdjacentGroups(activeGroup.id, groups, wallMap, envelopeMap)}
                 adjacentHints={(() => {
-                  const adjIds = detectCornerAdjacentGroups(activeGroup.id, groups, wallMap);
+                  const adjIds = detectCornerAdjacentGroups(activeGroup.id, groups, wallMap, envelopeMap);
                   if (!adjIds) return [];
                   return [...adjIds].map((adjId) => {
                     const adjGroup = groups.find((g) => g.id === adjId);
