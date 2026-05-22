@@ -251,7 +251,7 @@ function resolveCornerJoin(mainGroupId, secondaryGroupId, envelopeMap, getSettin
 }
 
 function applyCornerJoin(join, updateGroup, cornerConfigs, envelopeMap, getSettings) {
-  if (!join) return;
+  if (!join?.front || !join?.adjacent) return;
   const applyOneSide = (gid, side, strips, battens, panels) => {
     const s = getSettings(gid);
     const oppSide = side === 'left' ? 'right' : 'left';
@@ -994,7 +994,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
   const [recalcResult, setRecalcResult] = useState(null);
   const recomputeAllCorners = () => {
     let count = 0;
-    for (const [, cfg] of Object.entries(cornerConfigs)) {
+    for (const [cfgKey, cfg] of Object.entries(cornerConfigs)) {
       const overgangsvoeg = cfg.overgangsvoeg ?? 10;
       const _getS = getSettings ?? (() => ({}));
       const join = resolveCornerJoin(cfg.mainGroupId, cfg.secondaryGroupId, envelopeMap, _getS, { overgangsvoeg });
@@ -1004,6 +1004,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         else onUpdateGroupSettings?.(gid, patch);
       };
       applyCornerJoin(join, updateGroup, cornerConfigs, envelopeMap, _getS);
+      onUpdateCorner?.(cfgKey, { frontTreatment: 'cover_butt' });
       count++;
     }
     setRecalcResult(count);
@@ -2630,22 +2631,27 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       const mainS = _getS(cfg.mainGroupId);
                       const secS  = _getS(cfg.secondaryGroupId);
                       const visualEnd = (side, s) => side ? (s.outsideDirFlip ? (side === 'left' ? 'right' : 'left') : side) : null;
-                      const mainVisEnd = join ? visualEnd(join.front.side, mainS) : null;
-                      const secVisEnd  = join ? visualEnd(join.adjacent.side, secS) : null;
+                      const joinFront    = join?.front    ?? null;
+                      const joinAdjacent = join?.adjacent ?? null;
+                      const mainVisEnd = joinFront    ? visualEnd(joinFront.side,    mainS) : null;
+                      const secVisEnd  = joinAdjacent ? visualEnd(joinAdjacent.side, secS)  : null;
                       const endLbl = (ve) => ve === 'left' ? 'links' : ve === 'right' ? 'rechts' : '?';
-                      const mSugStrips  = join?.front.extend.strips  ?? 0;
-                      const mSugLatten  = join?.front.extend.battens ?? 0;
-                      const mSugPanelen = join?.front.extend.panels  ?? 0;
-                      const sSugStrips  = join?.adjacent.extend.strips  ?? 0;
-                      const sSugLatten  = join?.adjacent.extend.battens ?? 0;
-                      const sSugPanelen = join?.adjacent.extend.panels  ?? 0;
+                      const mSugStrips  = joinFront?.extend.strips  ?? 0;
+                      const mSugLatten  = joinFront?.extend.battens ?? 0;
+                      const mSugPanelen = joinFront?.extend.panels  ?? 0;
+                      const sSugStrips  = joinAdjacent?.extend.strips  ?? 0;
+                      const sSugLatten  = joinAdjacent?.extend.battens ?? 0;
+                      const sSugPanelen = joinAdjacent?.extend.panels  ?? 0;
                       const mainPkg     = join?.debug.mainPkg ?? { lat: 0, pan: 0, str: 0, total: 0 };
                       const secPkg      = join?.debug.secPkg  ?? { lat: 0, pan: 0, str: 0, total: 0 };
                       const updateGroup = (gid, patch) => {
                         if (gid === groupId) onUpdate(patch);
                         else onUpdateGroupSettings?.(gid, patch);
                       };
-                      const applyAll = () => applyCornerJoin(join, updateGroup, cornerConfigs, envelopeMap, _getS);
+                      const applyAll = () => {
+                        applyCornerJoin(join, updateGroup, cornerConfigs, envelopeMap, _getS);
+                        onUpdateCorner(cornerId, { frontTreatment: 'cover_butt' });
+                      };
                       const canApply = !!join;
                       const row = (lbl, val, hint) => (
                         <Fragment key={lbl}>
@@ -3193,6 +3199,7 @@ export default function App() {
         const simpleCornerWraps = [];
         for (const [cfgKey, cfg] of Object.entries(cornerConfigs)) {
           if (cfg.mainGroupId !== group.id) continue;
+          if (cfg.frontTreatment) continue;
           const secGroup = groups.find((g) => g.id === cfg.secondaryGroupId);
           if (!secGroup) continue;
           const secS = getSettings(secGroup.id);
@@ -5021,6 +5028,7 @@ export default function App() {
       const exportCornerWraps = [];
       for (const [cfgKey, cfg] of Object.entries(cornerConfigs)) {
         if (cfg.mainGroupId !== group.id) continue;
+        if (cfg.frontTreatment) continue;
         const secGroup = groups.find((g) => g.id === cfg.secondaryGroupId);
         if (!secGroup) continue;
         const secS = settingsMap[secGroup.id] ?? {};
