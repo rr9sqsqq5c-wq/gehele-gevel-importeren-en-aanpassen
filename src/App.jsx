@@ -257,7 +257,21 @@ function resolveCornerJoin(mainGroupId, secondaryGroupId, envelopeMap, getSettin
       secCornerEnd, secApproachDir, mainFarFaceAdj, adjIntersectStrips, adjExtendStrips,
     },
   };
-  console.log('[CJ] resolveCornerJoin', { mainGroupId, secondaryGroupId, mainSide, secSide, mainCorner, secFarFace, extendStrips, extendBattens, adjExtendStrips, adjExtendBattens });
+  console.groupCollapsed(`[CJ] resolveCornerJoin  ${mainGroupId} (aanzicht) ↔ ${secondaryGroupId} (aansluitend)`);
+  console.log('Aanzichtsgevel (front)', mainGroupId);
+  console.log('  side:', mainSide, '| mainCorner:', mainCorner, '| envelope:', mainEnv.envelopeStart, '→', mainEnv.envelopeEnd);
+  console.log('  face range:', mainEnv.faceMin, '→', mainEnv.faceMax);
+  console.log('  pakket → strips total:', mainPkg.total, '| lat:', mainPkg.lat, '| str:', mainPkg.str);
+  console.log('  snijlijn strips:', intersectionStrips, '| battens:', intersectionBattens);
+  console.log('  extend → strips:', extendStrips, '| battens:', extendBattens, '| panels:', extendPanels);
+  console.log('Aansluitende gevel (adjacent)', secondaryGroupId);
+  console.log('  side:', secSide, '| secCornerEnd:', secCornerEnd, '| envelope:', secEnv.envelopeStart, '→', secEnv.envelopeEnd);
+  console.log('  face range:', secEnv.faceMin, '→', secEnv.faceMax, '| faceMin/Max gebruikt:', secMin, '/', secMax);
+  console.log('  pakket → strips total:', secPkg.total, '| lat:', secPkg.lat, '| str:', secPkg.str);
+  console.log('  mainFarFaceAdj:', mainFarFaceAdj, '| adjIntersectStrips:', adjIntersectStrips);
+  console.log('  extend → strips:', adjExtendStrips, '| battens:', adjExtendBattens, '| panels:', adjExtendPanels);
+  console.log('Overgangsvoeg:', overgangsvoeg);
+  console.groupEnd();
   return join;
 }
 
@@ -282,11 +296,20 @@ function applyCornerJoin(join, updateGroup, cornerConfigs, envelopeMap, getSetti
     const oppCur = ee[oppSide] ?? {};
     const newOpp = isOppSideActive ? oppCur : { ...oppCur, strips: 0, battens: 0, panels: 0 };
     const patch = { endExtensions: { ...ee, [side]: { ...cur, strips, battens, panels }, [oppSide]: newOpp } };
-    console.log('[CJ] applyCornerJoin apply', { gid, side, strips, battens, panels, isOppSideActive });
+    console.groupCollapsed(`[CJ] applyCornerJoin  ${gid}  zijde: ${side}`);
+    console.log('endExtensions vóór:', JSON.stringify(ee));
+    console.log('schrijf →', side, '{ strips:', strips, ', battens:', battens, ', panels:', panels, '}');
+    console.log('tegenovergestelde zijde', oppSide, isOppSideActive ? '→ BEWAARD (andere hoek actief)' : '→ GEWIST (strips/battens/panels = 0)');
+    console.log('endExtensions ná:', JSON.stringify(patch.endExtensions));
+    console.log('extendLeft → rendering:', (patch.endExtensions.left?.strips ?? 0) > 0 ? patch.endExtensions.left.strips : 0);
+    console.log('extendRight → rendering:', (patch.endExtensions.right?.strips ?? 0) > 0 ? patch.endExtensions.right.strips : 0);
+    console.groupEnd();
     updateGroup(gid, patch);
   };
+  console.group(`[CJ] applyCornerJoin  ${join.front.groupId} ↔ ${join.adjacent.groupId}`);
   applyOneSide(join.front.groupId, join.front.side, join.front.extend.strips, join.front.extend.battens, join.front.extend.panels);
   applyOneSide(join.adjacent.groupId, join.adjacent.side, join.adjacent.extend.strips, join.adjacent.extend.battens, join.adjacent.extend.panels);
+  console.groupEnd();
 }
 
 const DEFAULT_VERBAND = 'halfsteens';
