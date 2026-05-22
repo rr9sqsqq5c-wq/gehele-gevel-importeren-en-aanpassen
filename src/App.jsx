@@ -2669,7 +2669,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                             <div style={{ fontWeight: 600, color: '#1d4ed8', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
                               <span>Aanzichtsgevel ({mainS.name ?? cfg.mainGroupId}) — {endLbl(mainVisEnd)} uiteinde</span>
                               {cfg.mainGroupId === groupId && <span style={{ fontWeight: 400, color: '#6b7280' }}>(deze groep)</span>}
-                              <span style={{ fontSize: 9, background: '#dcfce7', color: '#166534', borderRadius: 2, padding: '1px 4px', fontWeight: 700 }}>loopt door</span>
+                              <span style={{ fontSize: 9, background: '#dcfce7', color: '#166534', borderRadius: 2, padding: '1px 4px', fontWeight: 700 }}>dekt kop af</span>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '2px 8px', color: '#374151' }}>
                               {row('Strips',  mSugStrips,  `secDikte+${secPkg.total}`)}
@@ -2768,7 +2768,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         ) : (
           <CollapsibleSection
             title="Hoekoplossingen"
-            tip={"Definieer hoekoplossingen met aangrenzende gevels.\n\n· Stompe aansluiting: aanzichtsgevel loopt door tot buitenzijde aansluitende gevel. Aansluitende gevel stopt op stootvoegafstand.\n\nOffsets worden automatisch berekend op basis van stripdikte, paneeldikte en latdikte."}
+            tip={"Definieer hoekoplossingen met aangrenzende gevels.\n\n· Stompe aansluiting: aanzichtsgevel blijft vóór en dekt de kop af. Aansluitende gevel sluit stomp aan en stopt met overgangsvoeg achter het pakket van de aanzichtsgevel.\n\nOffsets worden automatisch berekend op basis van stripdikte, paneeldikte en latdikte."}
             isOpen={isOpen('hoek')}
             onToggle={() => toggle('hoek')}
             badge={myCorners.length > 0 ? String(myCorners.length) : null}
