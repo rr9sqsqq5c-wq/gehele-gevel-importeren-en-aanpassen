@@ -539,7 +539,11 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     return false;
   }
 
-  const needsCoverageClip = wallRects.length > 1;
+  const thicknessValues = axisWalls.map((w) => w.wallOrigin.thicknessStart ?? 0);
+  const thicknessMin = Math.min(...thicknessValues);
+  const thicknessMax = Math.max(...thicknessValues);
+  const hasProtrudingPlanes = (thicknessMax - thicknessMin) > 50;
+  const needsCoverageClip = hasProtrudingPlanes && wallRects.length > 1;
 
   const rows = [];
   for (let r = rStart; r < rEnd; r++) {
