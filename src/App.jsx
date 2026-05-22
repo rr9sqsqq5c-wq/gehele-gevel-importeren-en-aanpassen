@@ -217,32 +217,36 @@ function resolveCornerJoin(mainGroupId, secondaryGroupId, envelopeMap, getSettin
   const secCenter      = (secEnv.envelopeStart + secEnv.envelopeEnd) / 2;
   const mainFaceCenter = (mainEnv.faceMin + mainEnv.faceMax) / 2;
   const secSide        = mainFaceCenter < secCenter ? 'left' : 'right';
-  const secThickness   = secEnv.faceMax - secEnv.faceMin;
-  const mainExtendStrips  = secThickness + secPkg.total;
-  const mainExtendBattens = secThickness + secPkg.lat;
-  const mainExtendPanels  = secThickness + secPkg.lat;
-  const secondaryTrimStrips  = -(Math.max(0, mainPkg.total - secPkg.str) + overgangsvoeg);
-  const secondaryTrimBattens = -overgangsvoeg;
-  const secondaryTrimPanels  = -(Math.max(0, mainPkg.total - secPkg.str) + overgangsvoeg);
+  const secMin         = Math.min(secEnv.faceMin, secEnv.faceMax);
+  const secMax         = Math.max(secEnv.faceMin, secEnv.faceMax);
+  const secFarFace     = mainSide === 'right' ? secMax : secMin;
+  const approachDir    = mainSide === 'right' ? 1 : -1;
+  const mainCorner     = mainSide === 'right' ? mainEnv.envelopeEnd : mainEnv.envelopeStart;
+  const intersectionStrips  = secFarFace + approachDir * secPkg.total;
+  const intersectionBattens = secFarFace - approachDir * overgangsvoeg;
+  const extendStrips  = Math.max(0, (intersectionStrips  - mainCorner) * approachDir);
+  const extendBattens = Math.max(0, (intersectionBattens - mainCorner) * approachDir);
+  const extendPanels  = extendBattens;
   const join = {
-    main: {
+    front: {
       groupId: mainGroupId,
       side: mainSide,
-      extend: { strips: mainExtendStrips, battens: mainExtendBattens, panels: mainExtendPanels },
+      extend: { strips: extendStrips, battens: extendBattens, panels: extendPanels },
     },
-    secondary: {
+    adjacent: {
       groupId: secondaryGroupId,
       side: secSide,
-      trim: { strips: secondaryTrimStrips, battens: secondaryTrimBattens, panels: secondaryTrimPanels },
+      extend: { strips: 0, battens: 0, panels: 0 },
     },
     debug: {
       mainEnv, secEnv, mainPkg, secPkg, overgangsvoeg,
-      mainCenter, secFaceCenter, mainSide,
-      secCenter, mainFaceCenter, secSide,
-      secThickness,
+      mainSide, secSide,
+      secMin, secMax, secFarFace, approachDir, mainCorner,
+      intersectionStrips, intersectionBattens,
+      extendStrips, extendBattens,
     },
   };
-  console.log('[CJ] resolveCornerJoin', { mainGroupId, secondaryGroupId, mainSide, secSide, mainExtendStrips, secondaryTrimStrips, secondaryTrimBattens });
+  console.log('[CJ] resolveCornerJoin', { mainGroupId, secondaryGroupId, mainSide, secSide, mainCorner, secFarFace, extendStrips, extendBattens });
   return join;
 }
 
@@ -270,8 +274,8 @@ function applyCornerJoin(join, updateGroup, cornerConfigs, envelopeMap, getSetti
     console.log('[CJ] applyCornerJoin apply', { gid, side, strips, battens, panels, isOppSideActive });
     updateGroup(gid, patch);
   };
-  applyOneSide(join.main.groupId, join.main.side, join.main.extend.strips, join.main.extend.battens, join.main.extend.panels);
-  applyOneSide(join.secondary.groupId, join.secondary.side, join.secondary.trim.strips, join.secondary.trim.battens, join.secondary.trim.panels);
+  applyOneSide(join.front.groupId, join.front.side, join.front.extend.strips, join.front.extend.battens, join.front.extend.panels);
+  applyOneSide(join.adjacent.groupId, join.adjacent.side, join.adjacent.extend.strips, join.adjacent.extend.battens, join.adjacent.extend.panels);
 }
 
 const DEFAULT_VERBAND = 'halfsteens';
@@ -2626,15 +2630,15 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       const mainS = _getS(cfg.mainGroupId);
                       const secS  = _getS(cfg.secondaryGroupId);
                       const visualEnd = (side, s) => side ? (s.outsideDirFlip ? (side === 'left' ? 'right' : 'left') : side) : null;
-                      const mainVisEnd = join ? visualEnd(join.main.side, mainS) : null;
-                      const secVisEnd  = join ? visualEnd(join.secondary.side, secS) : null;
+                      const mainVisEnd = join ? visualEnd(join.front.side, mainS) : null;
+                      const secVisEnd  = join ? visualEnd(join.adjacent.side, secS) : null;
                       const endLbl = (ve) => ve === 'left' ? 'links' : ve === 'right' ? 'rechts' : '?';
-                      const mSugStrips  = join?.main.extend.strips  ?? 0;
-                      const mSugLatten  = join?.main.extend.battens ?? 0;
-                      const mSugPanelen = join?.main.extend.panels  ?? 0;
-                      const sSugStrips  = join?.secondary.trim.strips  ?? 0;
-                      const sSugLatten  = join?.secondary.trim.battens ?? 0;
-                      const sSugPanelen = join?.secondary.trim.panels  ?? 0;
+                      const mSugStrips  = join?.front.extend.strips  ?? 0;
+                      const mSugLatten  = join?.front.extend.battens ?? 0;
+                      const mSugPanelen = join?.front.extend.panels  ?? 0;
+                      const sSugStrips  = join?.adjacent.extend.strips  ?? 0;
+                      const sSugLatten  = join?.adjacent.extend.battens ?? 0;
+                      const sSugPanelen = join?.adjacent.extend.panels  ?? 0;
                       const mainPkg     = join?.debug.mainPkg ?? { lat: 0, pan: 0, str: 0, total: 0 };
                       const secPkg      = join?.debug.secPkg  ?? { lat: 0, pan: 0, str: 0, total: 0 };
                       const updateGroup = (gid, patch) => {
@@ -2672,21 +2676,21 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                               <span style={{ fontSize: 9, background: '#dcfce7', color: '#166534', borderRadius: 2, padding: '1px 4px', fontWeight: 700 }}>dekt kop af</span>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '2px 8px', color: '#374151' }}>
-                              {row('Strips',  mSugStrips,  `secDikte+${secPkg.total}`)}
-                              {row('Latten',  mSugLatten,  `secDikte+${secPkg.lat}`)}
-                              {row('Panelen', mSugPanelen, `secDikte+${secPkg.lat}`)}
+                              {row('Strips',  mSugStrips,  `snijlijn+${secPkg.total}`)}
+                              {row('Latten',  mSugLatten,  `snijlijn-overgangsvoeg`)}
+                              {row('Panelen', mSugPanelen, `snijlijn-overgangsvoeg`)}
                             </div>
                           </div>
                           <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4, padding: '6px 8px', fontSize: 10 }}>
                             <div style={{ fontWeight: 600, color: '#92400e', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
                               <span>Aansluitende gevel ({secS.name ?? cfg.secondaryGroupId}) — {endLbl(secVisEnd)} uiteinde</span>
                               {cfg.secondaryGroupId === groupId && <span style={{ fontWeight: 400, color: '#6b7280' }}>(deze groep)</span>}
-                              <span style={{ fontSize: 9, background: '#fef9c3', color: '#854d0e', borderRadius: 2, padding: '1px 4px', fontWeight: 700 }}>wordt ingekort</span>
+                              <span style={{ fontSize: 9, background: '#fef9c3', color: '#854d0e', borderRadius: 2, padding: '1px 4px', fontWeight: 700 }}>stompe aansluiting</span>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '2px 8px', color: '#374151' }}>
-                              {row('Strips',  sSugStrips,  `-(mainPkg-secStr+${overgangsvoeg})`)}
-                              {row('Latten',  sSugLatten,  `-${overgangsvoeg}`)}
-                              {row('Panelen', sSugPanelen, `-(mainPkg-secStr+${overgangsvoeg})`)}
+                              {row('Strips',  sSugStrips,  `0 (stopt op eigen envelop)`)}
+                              {row('Latten',  sSugLatten,  `0 (stopt op eigen envelop)`)}
+                              {row('Panelen', sSugPanelen, `0 (stopt op eigen envelop)`)}
                             </div>
                           </div>
                           <button
@@ -3469,61 +3473,6 @@ export default function App() {
       const clippedBatches = batches.map((b) => b.sideType ? b : { ...b, rows: clipFull(b.rows) }).filter((b) => b.rows.length > 0 || b.sideType);
 
       const cornerWraps = [];
-      for (const [cfgKey, cfg] of Object.entries(cornerConfigs)) {
-        if (cfg.mainGroupId !== group.id) continue;
-        const secGroup = groups.find((g) => g.id === cfg.secondaryGroupId);
-        if (!secGroup) continue;
-        const secS = getSettings(secGroup.id);
-        const secEnv = envelopeMap[cfg.secondaryGroupId];
-        if (!secEnv) continue;
-        const secRwo = secEnv.refWall.wallOrigin;
-        const secGroupMinX = secEnv.envelopeStart;
-        const secGroupMinH = secEnv.heightStart;
-        const secGW = secEnv.envelopeEnd - secEnv.envelopeStart;
-        const secArtId = (secS.lattenArtikelen ?? [])[0] ?? null;
-        const secArt = secArtId ? BATTEN_CATALOG.find((a) => a.id === secArtId) : null;
-        const secLatDikte = secArt ? secArt.dikteMM : (secS.latten?.dikte ?? 28);
-        const secHasVertLat = secS.latten?.richting === 'verticaal';
-        const secEffLat = secHasVertLat ? 2 * secLatDikte : secLatDikte;
-        const secPanelD = secS.panelen?.dikte ?? 8;
-        const mainEE = s.endExtensions ?? {};
-        const secEE  = secS.endExtensions ?? {};
-        const mainExtendL = Math.max(0, mainEE.left?.strips  ?? 0);
-        const mainExtendR = Math.max(0, mainEE.right?.strips ?? 0);
-        const stripsExtend = Math.max(mainExtendL, mainExtendR);
-        console.log('[CT] cornerWrap gate', { mainGroupId: group.id, secGroupId: cfg.secondaryGroupId, mainEE_leftStrips: mainEE.left?.strips, mainEE_rightStrips: mainEE.right?.strips, stripsExtend, secEE_leftStrips: secEE.left?.strips, secEE_rightStrips: secEE.right?.strips, secGW });
-        if (stripsExtend <= 0) { console.log('[CT] cornerWrap SKIP stripsExtend<=0'); continue; }
-        const secTrimL = (secEE.left?.strips  ?? 0) < 0;
-        const secTrimR = (secEE.right?.strips ?? 0) < 0;
-        let wrapPieceStart = null;
-        if (secTrimL) wrapPieceStart = 0;
-        else if (secTrimR) wrapPieceStart = secGW - stripsExtend;
-        console.log('[CT] cornerWrap wrapPieceStart', { secTrimL, secTrimR, wrapPieceStart });
-        if (wrapPieceStart === null) { console.log('[CT] cornerWrap SKIP wrapPieceStart null'); continue; }
-        const secIsSlimFort3d_fw = (secS.backingType ?? 'hout') === 'aluminium_slimfort';
-        const secSfSettings3d_fw = secIsSlimFort3d_fw ? { ...SLIMFORT_DEFAULTS, ...(secS.slimFortSettings ?? {}) } : null;
-        const secVentGap3d_fw = secIsSlimFort3d_fw ? (secS.concreteCladdingSettings?.panelVentilationGap ?? 0) : 0;
-        const secSfDepths3d_fw = secIsSlimFort3d_fw ? getSlimFortDepths(secSfSettings3d_fw, secVentGap3d_fw, secPanelD, brickD3dEarly) : null;
-        const wrapDepthFromFace = secIsSlimFort3d_fw
-          ? secSfDepths3d_fw.brickCenter
-          : secEffLat + secPanelD + brickD3dEarly / 2;
-        const wrapYs = facadeData.allRowYs?.length
-          ? facadeData.allRowYs
-          : (facadeData.rowYSchedule?.length ? facadeData.rowYSchedule : generalRows.map((row) => row.y));
-        const wrapRows = wrapYs.map((y) => ({ y, pieces: [{ start: wrapPieceStart, length: stripsExtend }] }));
-        if (!wrapRows.length) continue;
-        cornerWraps.push({
-          secRwo,
-          secGroupMinX,
-          secGroupMinH,
-          secOutsideDirFlip: !!(secS.outsideDirFlip),
-          depthFromFace: wrapDepthFromFace,
-          brickD: brickD3dEarly,
-          rows: wrapRows,
-          color: s.color ?? '#a64033',
-          brickH: groupBrickH3d,
-        });
-      }
 
       const _rwo3d = facadeData.refWallOrigin ?? withOrigin[0].wallOrigin;
       let _sfFaces3d = null;
