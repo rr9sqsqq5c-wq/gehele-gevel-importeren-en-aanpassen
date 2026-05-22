@@ -227,6 +227,16 @@ function resolveCornerJoin(mainGroupId, secondaryGroupId, envelopeMap, getSettin
   const extendStrips  = Math.max(0, (intersectionStrips  - mainCorner) * approachDir);
   const extendBattens = Math.max(0, (intersectionBattens - mainCorner) * approachDir);
   const extendPanels  = extendBattens;
+  const secCornerEnd   = secSide === 'right' ? secEnv.envelopeEnd   : secEnv.envelopeStart;
+  const secApproachDir = secSide === 'right' ? 1 : -1;
+  const mainFarFaceAdj = secApproachDir > 0
+    ? Math.max(mainEnv.faceMin, mainEnv.faceMax)
+    : Math.min(mainEnv.faceMin, mainEnv.faceMax);
+  const adjIntersectStrips  = mainFarFaceAdj + secApproachDir * mainPkg.total - secApproachDir * overgangsvoeg;
+  const adjIntersectBattens = mainFarFaceAdj + secApproachDir * mainPkg.lat   - secApproachDir * overgangsvoeg;
+  const adjExtendStrips  = Math.max(0, (adjIntersectStrips  - secCornerEnd) * secApproachDir);
+  const adjExtendBattens = Math.max(0, (adjIntersectBattens - secCornerEnd) * secApproachDir);
+  const adjExtendPanels  = adjExtendBattens;
   const join = {
     front: {
       groupId: mainGroupId,
@@ -236,7 +246,7 @@ function resolveCornerJoin(mainGroupId, secondaryGroupId, envelopeMap, getSettin
     adjacent: {
       groupId: secondaryGroupId,
       side: secSide,
-      extend: { strips: 0, battens: 0, panels: 0 },
+      extend: { strips: adjExtendStrips, battens: adjExtendBattens, panels: adjExtendPanels },
     },
     debug: {
       mainEnv, secEnv, mainPkg, secPkg, overgangsvoeg,
@@ -244,9 +254,10 @@ function resolveCornerJoin(mainGroupId, secondaryGroupId, envelopeMap, getSettin
       secMin, secMax, secFarFace, approachDir, mainCorner,
       intersectionStrips, intersectionBattens,
       extendStrips, extendBattens,
+      secCornerEnd, secApproachDir, mainFarFaceAdj, adjIntersectStrips, adjExtendStrips,
     },
   };
-  console.log('[CJ] resolveCornerJoin', { mainGroupId, secondaryGroupId, mainSide, secSide, mainCorner, secFarFace, extendStrips, extendBattens });
+  console.log('[CJ] resolveCornerJoin', { mainGroupId, secondaryGroupId, mainSide, secSide, mainCorner, secFarFace, extendStrips, extendBattens, adjExtendStrips, adjExtendBattens });
   return join;
 }
 
