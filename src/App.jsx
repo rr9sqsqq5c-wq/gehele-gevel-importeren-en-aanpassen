@@ -4124,6 +4124,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const validIds = new Set(groups.map((g) => g.id));
+    setCornerConfigs((prev) => {
+      const stale = Object.keys(prev).filter((k) => !validIds.has(prev[k].mainGroupId) || !validIds.has(prev[k].secondaryGroupId));
+      if (!stale.length) return prev;
+      console.log('[CJ] cleanup stale cornerConfigs:', stale.map((k) => `${prev[k].mainGroupId}↔${prev[k].secondaryGroupId}`));
+      const next = { ...prev };
+      stale.forEach((k) => delete next[k]);
+      return next;
+    });
+  }, [groups]);
+
+  useEffect(() => {
     if (!_hydratedRef.current) return;
     if (_saveTimerRef.current) clearTimeout(_saveTimerRef.current);
     _saveTimerRef.current = setTimeout(() => {
