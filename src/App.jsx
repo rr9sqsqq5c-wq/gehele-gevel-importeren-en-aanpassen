@@ -4076,7 +4076,11 @@ export default function App() {
         const sm = state.groupSettings ?? state.settingsMap ?? {};
         setGroups(state.groups);
         setGroupLinks(state.groupLinks ?? {});
-        if (state.cornerConfigs && typeof state.cornerConfigs === 'object') setCornerConfigs(state.cornerConfigs);
+        if (state.cornerConfigs && typeof state.cornerConfigs === 'object') {
+          const validIds = new Set(state.groups.map((g) => g.id));
+          const cleanedCC = Object.fromEntries(Object.entries(state.cornerConfigs).filter(([, c]) => validIds.has(c.mainGroupId) && validIds.has(c.secondaryGroupId)));
+          setCornerConfigs(cleanedCC);
+        }
         setSettingsMap(sm);
         if (state.wallDimOverrides && typeof state.wallDimOverrides === 'object') setWallDimOverrides(state.wallDimOverrides);
         if (Array.isArray(state.allWalls) && state.allWalls.length > 0) {
@@ -4245,6 +4249,13 @@ export default function App() {
   function deleteGroup(gid) {
     pushHistory(groups);
     setGroups((prev) => prev.filter((g) => g.id !== gid));
+    setCornerConfigs((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (next[key].mainGroupId === gid || next[key].secondaryGroupId === gid) delete next[key];
+      }
+      return next;
+    });
     if (activeGroupId === gid) setActiveGroupId(null);
   }
 
@@ -4331,7 +4342,9 @@ export default function App() {
         const loadedSm = typeof data.groupSettings === 'object' && data.groupSettings !== null ? data.groupSettings : {};
         setGroups(loadedGroups);
         setGroupLinks(typeof data.groupLinks === 'object' && data.groupLinks !== null ? data.groupLinks : {});
-        setCornerConfigs(typeof data.cornerConfigs === 'object' && data.cornerConfigs !== null ? data.cornerConfigs : {});
+        const loadedValidIds = new Set(loadedGroups.map((g) => g.id));
+        const loadedCC = typeof data.cornerConfigs === 'object' && data.cornerConfigs !== null ? data.cornerConfigs : {};
+        setCornerConfigs(Object.fromEntries(Object.entries(loadedCC).filter(([, c]) => loadedValidIds.has(c.mainGroupId) && loadedValidIds.has(c.secondaryGroupId))));
         setSettingsMap(loadedSm);
         setWallDimOverrides(typeof data.wallDimOverrides === 'object' && data.wallDimOverrides !== null ? data.wallDimOverrides : {});
         setGroupsHistory([]);
