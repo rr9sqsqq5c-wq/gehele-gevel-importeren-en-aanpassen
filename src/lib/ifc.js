@@ -459,6 +459,167 @@ function getBBox(api, modelID, expressID) {
   return ok ? { minX, maxX, minY, maxY, minZ, maxZ, localXDir, localYDir } : null;
 }
 
+const _UPAXIS_CONFIDENCE_HIGH = 0.75;
+const _UPAXIS_CONFIDENCE_LOW  = 0.55;
+const _UPAXIS_NORMAL_SAMPLE_MAX = 400;
+
+function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO', sampleSize = 30 } = {}) {
+  if (forceOrientation === 'X_NEG90') {
+    console.debug('[UpAxis] forceOrientation=X_NEG90 → heightAxis=z (Z-up IFC model)');
+    return 'z';
+  }
+  if (forceOrientation === 'NONE') {
+    console.debug('[UpAxis] forceOrientation=NONE → heightAxis=y (geen rotatie)');
+    return 'y';
+  }
+
+  const sampleIDs = [];
+  for (const wType of wallTypes) {
+    const idsVec = api.GetLineIDsWithType(modelID, wType);
+    for (let i = 0; i < idsVec.size() && sampleIDs.length < sampleSize; i++) {
+      sampleIDs.push(idsVec.get(i));
+    }
+  }
+
+  if (sampleIDs.length === 0) {
+    console.debug('[UpAxis] Geen wanden gevonden voor detectie → fallback z');
+    return 'z';
+  }
+
+  let totalYExtent = 0, totalZExtent = 0;
+  let totalNormAbsY = 0, totalNormAbsZ = 0, normCount = 0;
+
+  for (const id of sampleIDs) {
+    let mesh;
+    try { mesh = api.GetFlatMesh(modelID, id); } catch { continue; }
+    if (!mesh || mesh.geometries.size() === 0) continue;
+
+    for (let gi = 0; gi < mesh.geometries.size(); gi++) {
+      const placed = mesh.geometries.get(gi);
+      let geom;
+      try {
+        geom = api.GetGeometry(modelID, placed.geometryExpressID);
+        const verts = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
+        const m = placed.flatTransformation;
+
+        let minY = Infinity, maxY = -Infinity;
+        let minZ = Infinity, maxZ = -Infinity;
+
+        const vertCount = Math.floor(verts.length / 6);
+        const step = Math.max(1, Math.floor(vertCount / _UPAXIS_NORMAL_SAMPLE_MAX));
+
+        for (let i = 0; i < vertCount; i++) {
+          const base = i * 6;
+          const lx = verts[base] ?? 0, ly = verts[base + 1] ?? 0, lz = verts[base + 2] ?? 0;
+          const wy = m[1] * lx + m[5] * ly + m[9]  * lz + m[13];
+          const wz = m[2] * lx + m[6] * ly + m[10] * lz + m[14];
+          if (wy < minY) minY = wy;
+          if (wy > maxY) maxY = wy;
+          if (wz < minZ) minZ = wz;
+          if (wz > maxZ) maxZ = wz;
+
+          if (i % step === 0) {
+            const nx = verts[base + 3] ?? 0, ny = verts[base + 4] ?? 0, nz = verts[base + 5] ?? 0;
+            const wny = m[1] * nx + m[5] * ny + m[9]  * nz;
+            const wnz = m[2] * nx + m[6] * ny + m[10] * nz;
+            totalNormAbsY += Math.abs(wny);
+            totalNormAbsZ += Math.abs(wnz);
+            normCount++;
+          }
+        }
+
+        if (maxY > minY) totalYExtent += (maxY - minY);
+        if (maxZ > minZ) totalZExtent += (maxZ - minZ);
+      } finally {
+        geom?.delete();
+      }
+    }
+  }
+
+  const bboxTotal = totalYExtent + totalZExtent;
+  const bboxZScore = bboxTotal > 1e-6 ? totalZExtent / bboxTotal : 0;
+  const bboxYScore = bboxTotal > 1e-6 ? totalYExtent / bboxTotal : 0;
+  let bboxVote = 'UNKNOWN', bboxScore = 0;
+  if (bboxZScore > 0.6) { bboxVote = 'z'; bboxScore = bboxZScore; }
+  else if (bboxYScore > 0.6) { bboxVote = 'y'; bboxScore = bboxYScore; }
+
+  const normTotal = totalNormAbsY + totalNormAbsZ;
+  const normYFrac = normTotal > 1e-6 ? totalNormAbsY / normTotal : 0;
+  const normZFrac = normTotal > 1e-6 ? totalNormAbsZ / normTotal : 0;
+  let normalVote = 'UNKNOWN', normalScore = 0;
+  if (normYFrac > 0.6) { normalVote = 'z'; normalScore = normYFrac; }
+  else if (normZFrac > 0.6) { normalVote = 'y'; normalScore = normZFrac; }
+
+  console.debug(`[UpAxis] BBox vote: ${bboxVote} (zExtent=${totalZExtent.toFixed(3)} yExtent=${totalYExtent.toFixed(3)}, score=${bboxScore.toFixed(3)})`);
+  console.debug(`[UpAxis] Normal vote: ${normalVote} (|normY|=${(totalNormAbsY / Math.max(1, normCount)).toFixed(4)} |normZ|=${(totalNormAbsZ / Math.max(1, normCount)).toFixed(4)}, score=${normalScore.toFixed(3)})`);
+
+  let detectedAxis, confidence, reason;
+  if (bboxVote !== 'UNKNOWN' && normalVote !== 'UNKNOWN') {
+    if (bboxVote === normalVote) {
+      detectedAxis = bboxVote;
+      confidence = (bboxScore + normalScore) / 2;
+      reason = `Beide votes overeen: bbox=${bboxVote}(${bboxScore.toFixed(2)}) normals=${normalVote}(${normalScore.toFixed(2)})`;
+    } else {
+      detectedAxis = 'UNKNOWN';
+      confidence = 0.5;
+      reason = `Votes conflicteren: bbox=${bboxVote}(${bboxScore.toFixed(2)}) vs normals=${normalVote}(${normalScore.toFixed(2)})`;
+    }
+  } else if (bboxVote !== 'UNKNOWN') {
+    detectedAxis = bboxVote;
+    confidence = bboxScore * 0.7;
+    reason = `Alleen bbox beschikbaar: ${bboxVote}(${bboxScore.toFixed(2)})`;
+  } else if (normalVote !== 'UNKNOWN') {
+    detectedAxis = normalVote;
+    confidence = normalScore * 0.7;
+    reason = `Alleen normals beschikbaar: ${normalVote}(${normalScore.toFixed(2)})`;
+  } else {
+    detectedAxis = 'UNKNOWN';
+    confidence = 0;
+    reason = 'Beide votes onbepaald';
+  }
+
+  if (detectedAxis === 'UNKNOWN' || confidence < _UPAXIS_CONFIDENCE_LOW) {
+    detectedAxis = 'z';
+    reason += ' → fallback naar z';
+  }
+
+  const confidenceLabel =
+    confidence >= _UPAXIS_CONFIDENCE_HIGH ? 'HOOG'
+    : confidence >= _UPAXIS_CONFIDENCE_LOW ? 'MATIG'
+    : 'LAAG';
+
+  console.debug(`[UpAxis] Resultaat: heightAxis=${detectedAxis}, confidence=${confidence.toFixed(3)} (${confidenceLabel})`);
+  console.debug(`[UpAxis] Reden: ${reason}`);
+  console.debug(`[UpAxis] Sample: ${sampleIDs.length} wanden, ${normCount} normaalvectoren geanalyseerd`);
+
+  return detectedAxis;
+}
+
+function deriveWallAxes(dx, dy, dz, heightAxis) {
+  if (heightAxis === 'y') {
+    const lengthAxis    = dx >= dz ? 'x' : 'z';
+    const thicknessAxis = dx >= dz ? 'z' : 'x';
+    return {
+      heightAxis,
+      lengthAxis,
+      thicknessAxis,
+      length:    Math.round(Math.max(dx, dz) * 1000),
+      height:    Math.round(dy * 1000),
+      thickness: Math.round(Math.min(dx, dz) * 1000),
+    };
+  }
+  const lengthAxis    = dx >= dy ? 'x' : 'y';
+  const thicknessAxis = dx >= dy ? 'y' : 'x';
+  return {
+    heightAxis:    'z',
+    lengthAxis,
+    thicknessAxis,
+    length:    Math.round(Math.max(dx, dy) * 1000),
+    height:    Math.round(dz * 1000),
+    thickness: Math.round(Math.min(dx, dy) * 1000),
+  };
+}
+
 function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
   let mesh;
   try { mesh = api.GetFlatMesh(modelID, expressID); } catch { return null; }
@@ -694,6 +855,8 @@ export async function runGeometryValidation(file, onProgress = null) {
       for (let i = 0; i < idsVec.size(); i++) allWallIDs.push({ id: idsVec.get(i), wType });
     }
 
+    const _upAxis = detectModelUpAxis(api, modelID, [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL]);
+
     onProgress?.({ current: 0, total: allWallIDs.length, log: `${allWallIDs.length} IfcWall elementen valideren…` });
 
     let processed = 0, lastYield = Date.now();
@@ -702,12 +865,7 @@ export async function runGeometryValidation(file, onProgress = null) {
         const wallBB = getBBox(api, modelID, wID);
         if (wallBB) {
           const dx = wallBB.maxX - wallBB.minX, dy = wallBB.maxY - wallBB.minY, dz = wallBB.maxZ - wallBB.minZ;
-          const heightAxis = 'z';
-          const lengthAxis = dx >= dy ? 'x' : 'y';
-          const thicknessAxis = dx >= dy ? 'y' : 'x';
-          const length = Math.round(Math.max(dx, dy) * 1000);
-          const height = Math.round(dz * 1000);
-          const thickness = Math.round(Math.min(dx, dy) * 1000);
+          const { heightAxis, lengthAxis, thicknessAxis, length, height, thickness } = deriveWallAxes(dx, dy, dz, _upAxis);
           if (length >= 100 && height >= 100) {
             const wallLine = api.GetLine(modelID, wID, false);
             const name = wallLine?.Name?.value ?? `Wand #${wID}`;
@@ -976,6 +1134,8 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
       }
     }
 
+    const _upAxis = detectModelUpAxis(api, modelID, wallTypesList2);
+
     onProgress?.({ phase: 'init', log: `web-ifc model geopend, ${totalWalls} wanden in selectie` });
     onProgress?.({ phase: 'wanden', current: 0, total: totalWalls });
 
@@ -990,12 +1150,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
           const dy = wallBB.maxY - wallBB.minY;
           const dz = wallBB.maxZ - wallBB.minZ;
 
-          const heightAxis    = 'z';
-          const lengthAxis    = dx >= dy ? 'x' : 'y';
-          const thicknessAxis = dx >= dy ? 'y' : 'x';
-
-          const length = Math.round(Math.max(dx, dy) * 1000);
-          const height = Math.round(dz * 1000);
+          const { heightAxis, lengthAxis, thicknessAxis, length, height } = deriveWallAxes(dx, dy, dz, _upAxis);
 
           if (length < 100 || height < 100) continue;
 
@@ -2139,6 +2294,8 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
       } catch { }
     }
 
+    const _upAxis = detectModelUpAxis(api, modelID, [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL]);
+
     onProgress?.({ phase: 'init', log: `${allElemIDs.length} zone-elementen gevonden` });
     onProgress?.({ phase: 'wanden', current: 0, total: allElemIDs.length });
 
@@ -2198,11 +2355,7 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
         const dx = bb.maxX - bb.minX;
         const dy = bb.maxY - bb.minY;
         const dz = bb.maxZ - bb.minZ;
-        const heightAxis    = 'z';
-        const lengthAxis    = dx >= dy ? 'x' : 'y';
-        const thicknessAxis = dx >= dy ? 'y' : 'x';
-        const length = Math.round(Math.max(dx, dy) * 1000);
-        const height = Math.round(dz * 1000);
+        const { heightAxis, lengthAxis, thicknessAxis, length, height } = deriveWallAxes(dx, dy, dz, _upAxis);
 
         if (length < 100 || height < 100) continue;
 
