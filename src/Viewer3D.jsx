@@ -36,7 +36,7 @@ function detectUpAxis(walls) {
     if (h === 'y') yCount++;
     else if (h === 'z') zCount++;
   }
-  return (zCount === 0 && yCount > 0) ? 'y' : 'z';
+  return yCount > zCount ? 'y' : 'z';
 }
 
 function getWallBox(wall, upAxis = 'z') {
