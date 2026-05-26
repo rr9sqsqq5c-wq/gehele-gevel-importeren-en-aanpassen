@@ -3178,6 +3178,7 @@ export default function App() {
   const [hiddenGroupIds, setHiddenGroupIds] = useState(new Set());
   const [forceOrientation, setForceOrientation] = useState('AUTO');
   const [upAxisDebug, setUpAxisDebug] = useState(null);
+  const [showUpAxisDebug, setShowUpAxisDebug] = useState(false);
   const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
@@ -3908,7 +3909,7 @@ export default function App() {
       if (!walls) {
         addLog('Geen cache — IFC parsen gestart…');
         walls = await parseIfc(pendingFile, filter, (p) => {
-          if (p.phase === 'upaxis') { setUpAxisDebug(p); return; }
+          if (p.phase === 'upaxis') { setUpAxisDebug(p); setShowUpAxisDebug(true); return; }
           if (p.log) { addLog(p.log); return; }
           setLoadProgress({ current: p.current, total: p.total });
           if (p.total > 0 && p.current === 1) addLog(`${p.total} wanden gevonden, verwerken gestart…`);
@@ -3997,7 +3998,7 @@ export default function App() {
       }
 
       const elements = await parseIfcZoneElements(pendingFile, allowedTypes.size ? allowedTypes : null, (p) => {
-        if (p.phase === 'upaxis') { setUpAxisDebug(p); return; }
+        if (p.phase === 'upaxis') { setUpAxisDebug(p); setShowUpAxisDebug(true); return; }
         if (p.log) { addLog(p.log); return; }
         setLoadProgress({ current: p.current, total: p.total });
         if (p.total > 0 && p.current === p.total) addLog(`${p.total} elementen verwerkt`);
@@ -4048,7 +4049,7 @@ export default function App() {
       }
 
       const elements = await parseIfcZoneElements(pendingFile, allowedTypes.size ? allowedTypes : null, (p) => {
-        if (p.phase === 'upaxis') { setUpAxisDebug(p); return; }
+        if (p.phase === 'upaxis') { setUpAxisDebug(p); setShowUpAxisDebug(true); return; }
         if (p.log) { addLog(p.log); return; }
         setLoadProgress({ current: p.current, total: p.total });
         if (p.total > 0 && p.current === p.total) addLog(`${p.total} zone-elementen verwerkt`);
@@ -5478,11 +5479,11 @@ export default function App() {
         </div>
       )}
 
-      {upAxisDebug && loadStatus === 'loaded' && (
+      {upAxisDebug && showUpAxisDebug && (
         <div style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 50, background: '#1e293b', color: '#f1f5f9', borderRadius: 8, padding: '10px 14px', fontSize: 11, fontFamily: 'monospace', boxShadow: '0 4px 20px rgba(0,0,0,0.4)', minWidth: 240, maxWidth: 320 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <span style={{ fontWeight: 700, fontSize: 12, color: '#38bdf8' }}>Oriëntatie-detectie</span>
-            <button onClick={() => setUpAxisDebug(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>✕</button>
+            <button onClick={() => setShowUpAxisDebug(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>✕</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 10px', lineHeight: 1.7 }}>
             <span style={{ color: '#94a3b8' }}>heightAxis</span>
@@ -5781,6 +5782,15 @@ export default function App() {
             <Tooltip text="Bekijk de logica-regels per onderdeel en de wijzigingshistorie">
               <button onClick={() => setShowRulesModal(true)} style={{ background: '#475569', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>? Regels</button>
             </Tooltip>
+            {upAxisDebug && (
+              <Tooltip text={`Oriëntatie-detectie: heightAxis=${upAxisDebug.axis}, confidence=${upAxisDebug.confidence != null ? upAxisDebug.confidence.toFixed(2) : '—'}`}>
+                <button
+                  onClick={() => setShowUpAxisDebug((v) => !v)}
+                  style={{ background: showUpAxisDebug ? '#0f766e' : '#334155', color: showUpAxisDebug ? '#fff' : '#94a3b8', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer', fontFamily: 'monospace' }}>
+                  ⬆ {upAxisDebug.axis}-up
+                </button>
+              </Tooltip>
+            )}
             <span style={{ fontSize: 10, color: '#475569', userSelect: 'none' }}>v{APP_VERSION}</span>
           </div>
         </div>
