@@ -466,11 +466,11 @@ const _UPAXIS_NORMAL_SAMPLE_MAX = 400;
 function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO', sampleSize = 30 } = {}) {
   if (forceOrientation === 'X_NEG90') {
     console.debug('[UpAxis] forceOrientation=X_NEG90 → heightAxis=z (Z-up IFC model)');
-    return 'z';
+    return { axis: 'z', bboxVote: 'n.v.t.', bboxScore: 1, normalVote: 'n.v.t.', normalScore: 1, confidence: 1, confidenceLabel: 'HOOG', reason: 'forceOrientation=X_NEG90', sampleCount: 0, normCount: 0, forceOrientation };
   }
   if (forceOrientation === 'NONE') {
     console.debug('[UpAxis] forceOrientation=NONE → heightAxis=y (geen rotatie)');
-    return 'y';
+    return { axis: 'y', bboxVote: 'n.v.t.', bboxScore: 1, normalVote: 'n.v.t.', normalScore: 1, confidence: 1, confidenceLabel: 'HOOG', reason: 'forceOrientation=NONE', sampleCount: 0, normCount: 0, forceOrientation };
   }
 
   const sampleIDs = [];
@@ -592,7 +592,23 @@ function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO',
   console.debug(`[UpAxis] Reden: ${reason}`);
   console.debug(`[UpAxis] Sample: ${sampleIDs.length} wanden, ${normCount} normaalvectoren geanalyseerd`);
 
-  return detectedAxis;
+  return {
+    axis: detectedAxis,
+    bboxVote,
+    bboxScore,
+    bboxZScore,
+    bboxYScore,
+    normalVote,
+    normalScore,
+    normYFrac,
+    normZFrac,
+    confidence,
+    confidenceLabel,
+    reason,
+    sampleCount: sampleIDs.length,
+    normCount,
+    forceOrientation,
+  };
 }
 
 function deriveWallAxes(dx, dy, dz, heightAxis) {
@@ -855,7 +871,8 @@ export async function runGeometryValidation(file, onProgress = null) {
       for (let i = 0; i < idsVec.size(); i++) allWallIDs.push({ id: idsVec.get(i), wType });
     }
 
-    const _upAxis = detectModelUpAxis(api, modelID, [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL]);
+    const _upAxisResult = detectModelUpAxis(api, modelID, [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL]);
+    const _upAxis = _upAxisResult.axis;
 
     onProgress?.({ current: 0, total: allWallIDs.length, log: `${allWallIDs.length} IfcWall elementen valideren…` });
 
@@ -1002,7 +1019,7 @@ function unquoteStep(s) {
   return null;
 }
 
-export async function parseIfc(file, allowedTypes = null, onProgress = null) {
+export async function parseIfc(file, allowedTypes = null, onProgress = null, { forceOrientation = 'AUTO' } = {}) {
   const { IFC, api } = await getApi();
 
   let modelID, wallTypeMap, ownModel = false;
@@ -1134,7 +1151,9 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null) {
       }
     }
 
-    const _upAxis = detectModelUpAxis(api, modelID, wallTypesList2);
+    const _upAxisResult = detectModelUpAxis(api, modelID, wallTypesList2, { forceOrientation });
+    const _upAxis = _upAxisResult.axis;
+    onProgress?.({ phase: 'upaxis', ..._upAxisResult });
 
     onProgress?.({ phase: 'init', log: `web-ifc model geopend, ${totalWalls} wanden in selectie` });
     onProgress?.({ phase: 'wanden', current: 0, total: totalWalls });
@@ -2226,7 +2245,7 @@ export async function scanIfcElementTypes(file) {
 // Parses zone elements from an IFC file — any building element type, not just walls.
 // allowedTypes: Map<ifcEntityType (e.g. 'IFCWALL'), Set<typeName> | null> or null for all
 // Returns elements in the same structure as parseIfc walls, with isZoneElement: true
-export async function parseIfcZoneElements(file, allowedTypes = null, onProgress = null) {
+export async function parseIfcZoneElements(file, allowedTypes = null, onProgress = null, { forceOrientation = 'AUTO' } = {}) {
   const { IFC, api } = await getApi();
 
   let modelID, ownModel = false;
@@ -2294,7 +2313,9 @@ export async function parseIfcZoneElements(file, allowedTypes = null, onProgress
       } catch { }
     }
 
-    const _upAxis = detectModelUpAxis(api, modelID, [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL]);
+    const _upAxisResult = detectModelUpAxis(api, modelID, [IFC.IFCWALLSTANDARDCASE, IFC.IFCWALL], { forceOrientation });
+    const _upAxis = _upAxisResult.axis;
+    onProgress?.({ phase: 'upaxis', ..._upAxisResult });
 
     onProgress?.({ phase: 'init', log: `${allElemIDs.length} zone-elementen gevonden` });
     onProgress?.({ phase: 'wanden', current: 0, total: allElemIDs.length });

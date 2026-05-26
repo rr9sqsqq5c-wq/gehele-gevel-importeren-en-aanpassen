@@ -3176,6 +3176,8 @@ export default function App() {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [hiddenGroupIds, setHiddenGroupIds] = useState(new Set());
+  const [forceOrientation, setForceOrientation] = useState('AUTO');
+  const [upAxisDebug, setUpAxisDebug] = useState(null);
   const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
@@ -3906,11 +3908,12 @@ export default function App() {
       if (!walls) {
         addLog('Geen cache — IFC parsen gestart…');
         walls = await parseIfc(pendingFile, filter, (p) => {
+          if (p.phase === 'upaxis') { setUpAxisDebug(p); return; }
           if (p.log) { addLog(p.log); return; }
           setLoadProgress({ current: p.current, total: p.total });
           if (p.total > 0 && p.current === 1) addLog(`${p.total} wanden gevonden, verwerken gestart…`);
           if (p.total > 0 && p.current === p.total) addLog(`Alle ${p.total} wanden verwerkt`);
-        });
+        }, { forceOrientation });
         addLog(`Resultaat opslaan in cache…`);
         saveParsedWalls(cacheKey, pendingFile.size, walls).catch(() => {});
       }
@@ -3994,10 +3997,11 @@ export default function App() {
       }
 
       const elements = await parseIfcZoneElements(pendingFile, allowedTypes.size ? allowedTypes : null, (p) => {
+        if (p.phase === 'upaxis') { setUpAxisDebug(p); return; }
         if (p.log) { addLog(p.log); return; }
         setLoadProgress({ current: p.current, total: p.total });
         if (p.total > 0 && p.current === p.total) addLog(`${p.total} elementen verwerkt`);
-      });
+      }, { forceOrientation });
 
       if (!elements.length) throw new Error('Geen elementen gevonden met de geselecteerde types');
 
@@ -4044,10 +4048,11 @@ export default function App() {
       }
 
       const elements = await parseIfcZoneElements(pendingFile, allowedTypes.size ? allowedTypes : null, (p) => {
+        if (p.phase === 'upaxis') { setUpAxisDebug(p); return; }
         if (p.log) { addLog(p.log); return; }
         setLoadProgress({ current: p.current, total: p.total });
         if (p.total > 0 && p.current === p.total) addLog(`${p.total} zone-elementen verwerkt`);
-      });
+      }, { forceOrientation });
 
       if (!elements.length) throw new Error('Geen zone-elementen gevonden met de geselecteerde types');
       addLog(`✓ ${elements.length} zone-elementen geladen, achterliggende wanden laden voor openingen…`);
@@ -5393,7 +5398,28 @@ export default function App() {
               )}
             </div>
 
-            <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ marginTop: 10, padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Oriëntatie-detectie</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {['AUTO', 'X_NEG90', 'NONE'].map((opt) => {
+                  const labels = { AUTO: 'Auto', X_NEG90: 'Z-up (IFC standaard)', NONE: 'Y-up (geen rotatie)' };
+                  const active = forceOrientation === opt;
+                  return (
+                    <button key={opt} onClick={() => setForceOrientation(opt)}
+                      style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: `1px solid ${active ? '#3b82f6' : '#cbd5e1'}`, background: active ? '#eff6ff' : '#fff', color: active ? '#1d4ed8' : '#374151', cursor: 'pointer', fontWeight: active ? 700 : 400 }}>
+                      {labels[opt]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>
+                {forceOrientation === 'AUTO' && 'Automatisch detecteren via bbox- en normaalvector-analyse'}
+                {forceOrientation === 'X_NEG90' && 'Model heeft X=-90° rotatie nodig → Z omhoog in IFC-coördinaten'}
+                {forceOrientation === 'NONE' && 'Geen rotatie — Y omhoog (bijv. Revit-export zonder rotatie)'}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 12, color: '#64748b', flex: 1 }}>
                 {totalSelected} element{totalSelected !== 1 ? 'en' : ''} geselecteerd
                 {!mergeMode && zoneImportMode && <span style={{ color: '#3b82f6', fontWeight: 600 }}> · Zone-modus</span>}
@@ -5449,6 +5475,34 @@ export default function App() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {upAxisDebug && loadStatus === 'loaded' && (
+        <div style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 50, background: '#1e293b', color: '#f1f5f9', borderRadius: 8, padding: '10px 14px', fontSize: 11, fontFamily: 'monospace', boxShadow: '0 4px 20px rgba(0,0,0,0.4)', minWidth: 240, maxWidth: 320 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontWeight: 700, fontSize: 12, color: '#38bdf8' }}>Oriëntatie-detectie</span>
+            <button onClick={() => setUpAxisDebug(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>✕</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 10px', lineHeight: 1.7 }}>
+            <span style={{ color: '#94a3b8' }}>heightAxis</span>
+            <span style={{ fontWeight: 700, color: upAxisDebug.axis === 'z' ? '#4ade80' : '#fbbf24' }}>{upAxisDebug.axis}</span>
+            <span style={{ color: '#94a3b8' }}>forceOrientation</span>
+            <span>{upAxisDebug.forceOrientation ?? 'AUTO'}</span>
+            <span style={{ color: '#94a3b8' }}>confidence</span>
+            <span style={{ color: upAxisDebug.confidenceLabel === 'HOOG' ? '#4ade80' : upAxisDebug.confidenceLabel === 'MATIG' ? '#fbbf24' : '#f87171' }}>
+              {upAxisDebug.confidence != null ? upAxisDebug.confidence.toFixed(3) : '—'} ({upAxisDebug.confidenceLabel ?? '—'})
+            </span>
+            <span style={{ color: '#94a3b8' }}>bbox vote</span>
+            <span>{upAxisDebug.bboxVote ?? '—'} ({upAxisDebug.bboxScore != null ? upAxisDebug.bboxScore.toFixed(3) : '—'})</span>
+            <span style={{ color: '#94a3b8' }}>normal vote</span>
+            <span>{upAxisDebug.normalVote ?? '—'} ({upAxisDebug.normalScore != null ? upAxisDebug.normalScore.toFixed(3) : '—'})</span>
+            <span style={{ color: '#94a3b8' }}>samples</span>
+            <span>{upAxisDebug.sampleCount ?? '—'} wanden, {upAxisDebug.normCount ?? '—'} normals</span>
+          </div>
+          {upAxisDebug.reason && (
+            <div style={{ marginTop: 6, color: '#64748b', fontSize: 10, borderTop: '1px solid #334155', paddingTop: 5 }}>{upAxisDebug.reason}</div>
+          )}
         </div>
       )}
 
