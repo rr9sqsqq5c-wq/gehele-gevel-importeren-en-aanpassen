@@ -465,12 +465,16 @@ const _UPAXIS_NORMAL_SAMPLE_MAX = 400;
 
 function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO', sampleSize = 30 } = {}) {
   if (forceOrientation === 'X_NEG90') {
-    console.debug('[UpAxis] forceOrientation=X_NEG90 → heightAxis=z (Z-up IFC model)');
+    console.debug('[UpAxis] forceOrientation=X_NEG90 → heightAxis=z (Z-up IFC model, rotatie -90°)');
     return { axis: 'z', bboxVote: 'n.v.t.', bboxScore: 1, normalVote: 'n.v.t.', normalScore: 1, confidence: 1, confidenceLabel: 'HOOG', reason: 'forceOrientation=X_NEG90', sampleCount: 0, normCount: 0, forceOrientation };
   }
   if (forceOrientation === 'NONE') {
     console.debug('[UpAxis] forceOrientation=NONE → heightAxis=y (geen rotatie)');
     return { axis: 'y', bboxVote: 'n.v.t.', bboxScore: 1, normalVote: 'n.v.t.', normalScore: 1, confidence: 1, confidenceLabel: 'HOOG', reason: 'forceOrientation=NONE', sampleCount: 0, normCount: 0, forceOrientation };
+  }
+  if (forceOrientation === 'X_POS90') {
+    console.debug('[UpAxis] forceOrientation=X_POS90 → heightAxis=z_neg (omgekeerd Z-up model, rotatie +90°)');
+    return { axis: 'z_neg', bboxVote: 'n.v.t.', bboxScore: 1, normalVote: 'n.v.t.', normalScore: 1, confidence: 1, confidenceLabel: 'HOOG', reason: 'forceOrientation=X_POS90', sampleCount: 0, normCount: 0, forceOrientation };
   }
 
   const sampleIDs = [];
@@ -612,6 +616,7 @@ function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO',
 }
 
 function deriveWallAxes(dx, dy, dz, heightAxis) {
+  if (heightAxis === 'z_neg') heightAxis = 'z';
   if (heightAxis === 'y') {
     const lengthAxis    = dx >= dz ? 'x' : 'z';
     const thicknessAxis = dx >= dz ? 'z' : 'x';

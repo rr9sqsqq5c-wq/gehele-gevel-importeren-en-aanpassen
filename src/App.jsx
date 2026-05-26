@@ -5401,9 +5401,9 @@ export default function App() {
 
             <div style={{ marginTop: 10, padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Oriëntatie-detectie</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {['AUTO', 'X_NEG90', 'NONE'].map((opt) => {
-                  const labels = { AUTO: 'Auto', X_NEG90: 'Z-up (IFC standaard)', NONE: 'Y-up (geen rotatie)' };
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {['AUTO', 'X_NEG90', 'NONE', 'X_POS90'].map((opt) => {
+                  const labels = { AUTO: 'Auto', X_NEG90: '-90° (Z-up)', NONE: '0° (Y-up)', X_POS90: '+90° (omgekeerd)' };
                   const active = forceOrientation === opt;
                   return (
                     <button key={opt} onClick={() => setForceOrientation(opt)}
@@ -5415,8 +5415,9 @@ export default function App() {
               </div>
               <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>
                 {forceOrientation === 'AUTO' && 'Automatisch detecteren via bbox- en normaalvector-analyse'}
-                {forceOrientation === 'X_NEG90' && 'Model heeft X=-90° rotatie nodig → Z omhoog in IFC-coördinaten'}
-                {forceOrientation === 'NONE' && 'Geen rotatie — Y omhoog (bijv. Revit-export zonder rotatie)'}
+                {forceOrientation === 'X_NEG90' && 'Rotatie -90° — Z omhoog in IFC (standaard ArchiCAD / Revit met IFC-export)'}
+                {forceOrientation === 'NONE' && 'Geen rotatie — Y omhoog (bijv. Revit native export of CAD-omgeving)'}
+                {forceOrientation === 'X_POS90' && 'Rotatie +90° — model staat gespiegeld/omgekeerd; Z-as negatief omhoog'}
               </div>
             </div>
 

@@ -26,6 +26,7 @@ function CameraAccessor({ cameraRef }) {
 
 function ifcToThree(ifcX, ifcY, ifcZ, upAxis = 'z') {
   if (upAxis === 'y') return [ifcX / 1000, ifcY / 1000, ifcZ / 1000];
+  if (upAxis === 'z_neg') return [ifcX / 1000, -ifcZ / 1000, ifcY / 1000];
   return [ifcX / 1000, ifcZ / 1000, ifcY / 1000];
 }
 
