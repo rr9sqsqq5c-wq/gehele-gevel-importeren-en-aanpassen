@@ -24,10 +24,19 @@ function CameraAccessor({ cameraRef }) {
   return null;
 }
 
-function ifcToThree(ifcX, ifcY, ifcZ, upAxis = 'z') {
-  if (upAxis === 'y') return [ifcX / 1000, ifcY / 1000, ifcZ / 1000];
-  if (upAxis === 'z_neg') return [ifcX / 1000, -ifcZ / 1000, ifcY / 1000];
-  return [ifcX / 1000, ifcZ / 1000, ifcY / 1000];
+function ifcToThree(ifcX, ifcY, ifcZ) {
+  return [ifcX / 1000, ifcY / 1000, ifcZ / 1000];
+}
+
+function upAxisToRotX(upAxis) {
+  if (upAxis === 'y') return 0;
+  if (upAxis === 'z_neg') return Math.PI / 2;
+  return -Math.PI / 2;
+}
+
+function rotateXPt(rotX, x, y, z) {
+  const c = Math.cos(rotX), s = Math.sin(rotX);
+  return [x, y * c - z * s, y * s + z * c];
 }
 
 function detectUpAxis(walls) {
@@ -40,7 +49,7 @@ function detectUpAxis(walls) {
   return yCount > zCount ? 'y' : 'z';
 }
 
-function getWallBox(wall, upAxis = 'z') {
+function getWallBox(wall) {
   const wo = wall.wallOrigin;
   if (!wo) return null;
 
@@ -56,14 +65,14 @@ function getWallBox(wall, upAxis = 'z') {
   dims[wo.thicknessAxis] = thickness;
 
   return {
-    pos: ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
-    size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+    pos: ifcToThree(ifc.x, ifc.y, ifc.z),
+    size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
     wo,
     thickness,
   };
 }
 
-function getBrickPos(wall, pieceStart, pieceLen, rowY, steenH, brickD, upAxis = 'z') {
+function getBrickPos(wall, pieceStart, pieceLen, rowY, steenH, brickD) {
   const wo = wall.wallOrigin;
   const ifc = { x: 0, y: 0, z: 0 };
   const tStart = wo.thicknessStart;
@@ -81,8 +90,8 @@ function getBrickPos(wall, pieceStart, pieceLen, rowY, steenH, brickD, upAxis = 
   brickDims[wo.thicknessAxis] = brickD;
 
   return {
-    pos: ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
-    size: ifcToThree(brickDims.x, brickDims.y, brickDims.z, upAxis).map(Math.abs),
+    pos: ifcToThree(ifc.x, ifc.y, ifc.z),
+    size: ifcToThree(brickDims.x, brickDims.y, brickDims.z).map(Math.abs),
   };
 }
 
@@ -136,7 +145,7 @@ function getOutsideFaceInfo(rwo, allWalls) {
     : { outsidePos: tEnd, outsideDir: +1 };
 }
 
-function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth = 20, panelDikte = 8, penantShift = 0, outsideDirFlip = false, materialStoot = 10) {
+function getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth = 20, panelDikte = 8, penantShift = 0, outsideDirFlip = false, materialStoot = 10) {
   if (!rwo) return [];
   const pX = penant.x ?? 0;
   const pB = Math.max(1, penant.breedte ?? 400);
@@ -166,8 +175,8 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, lat
     dims[rwo.heightAxis]    = pH;
     dims[rwo.thicknessAxis] = boxThick;
     return {
-      pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
-      size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+      pos:  ifcToThree(ifc.x, ifc.y, ifc.z),
+      size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
     };
   };
 
@@ -181,8 +190,8 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, lat
 
 function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift = 0, outsideDirFlip = false, materialStoot = 10 }) {
   const boxes = useMemo(
-    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot),
-    [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot]
+    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot),
+    [penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot]
   );
   const cornerBattens = useMemo(() => {
     if (!rwo) return [];
@@ -215,8 +224,8 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, a
       dims[rwo.heightAxis]    = pH;
       dims[rwo.thicknessAxis] = ld;
       return {
-        pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
-        size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+        pos:  ifcToThree(ifc.x, ifc.y, ifc.z),
+        size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
       };
     });
   }, [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip]);
@@ -1276,7 +1285,7 @@ function CameraPresetController({ preset, center, span, onDone }) {
   return null;
 }
 
-function FocusGroupCamera({ activeGroupId, groups, walls, upAxis, groupSettings }) {
+function FocusGroupCamera({ activeGroupId, groups, walls, rotX, groupSettings }) {
   const { camera, controls } = useThree();
   const targetRef = useRef(null);
 
@@ -1291,13 +1300,20 @@ function FocusGroupCamera({ activeGroupId, groups, walls, upAxis, groupSettings 
     let minY = Infinity, maxY = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
     for (const wall of groupWalls) {
-      const box = getWallBox(wall, upAxis);
+      const box = getWallBox(wall);
       if (!box) continue;
       const [px, py, pz] = box.pos;
       const [sx, sy, sz] = box.size;
-      minX = Math.min(minX, px - sx / 2); maxX = Math.max(maxX, px + sx / 2);
-      minY = Math.min(minY, py - sy / 2); maxY = Math.max(maxY, py + sy / 2);
-      minZ = Math.min(minZ, pz - sz / 2); maxZ = Math.max(maxZ, pz + sz / 2);
+      const corners = [[-1,-1,-1],[-1,-1,1],[-1,1,-1],[-1,1,1],[1,-1,-1],[1,-1,1],[1,1,-1],[1,1,1]];
+      for (const [cx2, cy2, cz2] of corners) {
+        const lx = px + cx2 * sx / 2;
+        const ly = py + cy2 * sy / 2;
+        const lz = pz + cz2 * sz / 2;
+        const [wx, wy, wz] = rotateXPt(rotX, lx, ly, lz);
+        if (wx < minX) minX = wx; if (wx > maxX) maxX = wx;
+        if (wy < minY) minY = wy; if (wy > maxY) maxY = wy;
+        if (wz < minZ) minZ = wz; if (wz > maxZ) maxZ = wz;
+      }
     }
     if (!isFinite(minX)) return;
 
@@ -1312,14 +1328,15 @@ function FocusGroupCamera({ activeGroupId, groups, walls, upAxis, groupSettings 
     const outsideDir = dirFlip ? -rawDir.outsideDir : rawDir.outsideDir;
     const ifcDirVec = { x: 0, y: 0, z: 0 };
     ifcDirVec[rwo.thicknessAxis] = outsideDir * 1000;
-    const [dx, dy, dz] = ifcToThree(ifcDirVec.x, ifcDirVec.y, ifcDirVec.z, upAxis);
+    const [ldx, ldy, ldz] = ifcToThree(ifcDirVec.x, ifcDirVec.y, ifcDirVec.z);
+    const [dx, dy, dz] = rotateXPt(rotX, ldx, ldy, ldz);
     const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
     const d = span * 1.6;
     targetRef.current = {
       pos: new THREE.Vector3(cx + (dx / len) * d, cy + (dy / len) * d, cz + (dz / len) * d),
       lookAt: new THREE.Vector3(cx, cy, cz),
     };
-  }, [activeGroupId, groups, walls, upAxis, groupSettings]);
+  }, [activeGroupId, groups, walls, rotX, groupSettings]);
 
   useFrame(() => {
     if (!targetRef.current || !controls) return;
@@ -1338,7 +1355,7 @@ function FocusGroupCamera({ activeGroupId, groups, walls, upAxis, groupSettings 
   return null;
 }
 
-function CameraInit({ walls, upAxis }) {
+function CameraInit({ walls, rotX }) {
   const { camera, controls } = useThree();
   const done = useRef(false);
   const pendingRef = useRef(null);
@@ -1352,14 +1369,21 @@ function CameraInit({ walls, upAxis }) {
 
     let validBoxCount = 0;
     for (const wall of walls) {
-      const box = getWallBox(wall, upAxis);
+      const box = getWallBox(wall);
       if (!box) continue;
       validBoxCount++;
       const [px, py, pz] = box.pos;
       const [sx, sy, sz] = box.size;
-      minX = Math.min(minX, px - sx / 2); maxX = Math.max(maxX, px + sx / 2);
-      minY = Math.min(minY, py - sy / 2); maxY = Math.max(maxY, py + sy / 2);
-      minZ = Math.min(minZ, pz - sz / 2); maxZ = Math.max(maxZ, pz + sz / 2);
+      const corners = [[-1,-1,-1],[-1,-1,1],[-1,1,-1],[-1,1,1],[1,-1,-1],[1,-1,1],[1,1,-1],[1,1,1]];
+      for (const [cx2, cy2, cz2] of corners) {
+        const lx = px + cx2 * sx / 2;
+        const ly = py + cy2 * sy / 2;
+        const lz = pz + cz2 * sz / 2;
+        const [wx, wy, wz] = rotateXPt(rotX, lx, ly, lz);
+        if (wx < minX) minX = wx; if (wx > maxX) maxX = wx;
+        if (wy < minY) minY = wy; if (wy > maxY) maxY = wy;
+        if (wz < minZ) minZ = wz; if (wz > maxZ) maxZ = wz;
+      }
     }
 
     if (validBoxCount === 0 || !isFinite(minX)) {
@@ -1378,7 +1402,7 @@ function CameraInit({ walls, upAxis }) {
       cx, cy, cz,
       pos: new THREE.Vector3(cx + spanX * 0.6, cy + spanAll * 0.5, cz + spanZ * 0.6),
     };
-  }, [walls, upAxis]);
+  }, [walls, rotX]);
 
   useFrame(() => {
     if (done.current || !pendingRef.current) return;
@@ -1435,6 +1459,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
   const containerRef = useRef(null);
 
   const upAxis = useMemo(() => detectUpAxis(walls), [walls]);
+  const rotX   = useMemo(() => upAxisToRotX(upAxis), [upAxis]);
 
   const wallGroupMap = useMemo(() => {
     const map = {};
@@ -1450,20 +1475,27 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
     let minY = Infinity, maxY = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
     for (const wall of walls) {
-      const box = getWallBox(wall, upAxis);
+      const box = getWallBox(wall);
       if (!box) continue;
       const [px, py, pz] = box.pos;
       const [sx, sy, sz] = box.size;
-      minX = Math.min(minX, px - sx / 2); maxX = Math.max(maxX, px + sx / 2);
-      minY = Math.min(minY, py - sy / 2); maxY = Math.max(maxY, py + sy / 2);
-      minZ = Math.min(minZ, pz - sz / 2); maxZ = Math.max(maxZ, pz + sz / 2);
+      const corners = [[-1,-1,-1],[-1,-1,1],[-1,1,-1],[-1,1,1],[1,-1,-1],[1,-1,1],[1,1,-1],[1,1,1]];
+      for (const [cx, cy, cz] of corners) {
+        const lx = px + cx * sx / 2;
+        const ly = py + cy * sy / 2;
+        const lz = pz + cz * sz / 2;
+        const [wx, wy, wz] = rotateXPt(rotX, lx, ly, lz);
+        if (wx < minX) minX = wx; if (wx > maxX) maxX = wx;
+        if (wy < minY) minY = wy; if (wy > maxY) maxY = wy;
+        if (wz < minZ) minZ = wz; if (wz > maxZ) maxZ = wz;
+      }
     }
     if (!isFinite(minX)) return { center: [0, 0, 0], span: 10 };
     return {
       center: [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2],
       span: Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1),
     };
-  }, [walls, upAxis]);
+  }, [walls, rotX]);
 
   function handlePreset(key) {
     setPreset(null);
@@ -1510,10 +1542,11 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
 
     const candidates = [];
     for (const wall of walls) {
-      const box = getWallBox(wall, upAxis);
+      const box = getWallBox(wall);
       if (!box) continue;
       const [px, py, pz] = box.pos;
-      const worldPos = new THREE.Vector3(px, py, pz);
+      const [wx, wy, wz] = rotateXPt(rotX, px, py, pz);
+      const worldPos = new THREE.Vector3(wx, wy, wz);
       const ndc = worldPos.clone().project(camera);
       if (ndc.z > 1) continue;
       const sx = (ndc.x + 1) / 2 * canvasW;
@@ -1567,13 +1600,14 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
     >
       <Canvas camera={{ fov: 45, near: 0.01, far: 2000 }}>
         <CameraAccessor cameraRef={cameraRef} />
-        <CameraInit walls={walls} upAxis={upAxis} />
+        <CameraInit walls={walls} rotX={rotX} />
         <CameraPresetController preset={preset} center={center} span={span} onDone={() => setPreset(null)} />
-        <FocusGroupCamera activeGroupId={activeGroupId} groups={groups} walls={walls} upAxis={upAxis} groupSettings={groupSettings} />
+        <FocusGroupCamera activeGroupId={activeGroupId} groups={groups} walls={walls} rotX={rotX} groupSettings={groupSettings} />
         <SceneLights />
         <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault enabled={!boxSelectMode} />
         <gridHelper args={[500, 100, '#1e3a5f', '#1e293b']} position={[center[0], center[1] - span * 0.5, center[2]]} />
 
+        <group rotation-x={rotX}>
         {walls.map((wall, wi) => {
           const group = wallGroupMap[wall.expressID];
           const settings = group ? groupSettings(group.id) : null;
@@ -1690,6 +1724,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
             );
           });
         })}
+        </group>
       </Canvas>
 
       {walls.length > 0 && groups.length > 0 && (
