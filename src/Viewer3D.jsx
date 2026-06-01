@@ -1500,7 +1500,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
     return map;
   }, [groups]);
 
-  const { center, span } = useMemo(() => {
+  const { center, span, groundY } = useMemo(() => {
     if (!walls.length) return { center: [0, 0, 0], span: 10 };
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
@@ -1521,10 +1521,11 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
         if (wz < minZ) minZ = wz; if (wz > maxZ) maxZ = wz;
       }
     }
-    if (!isFinite(minX)) return { center: [0, 0, 0], span: 10 };
+    if (!isFinite(minX)) return { center: [0, 0, 0], span: 10, groundY: 0 };
     return {
       center: [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2],
       span: Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1),
+      groundY: minY,  // werkelijke onderkant van het gebouw
     };
   }, [walls, projectMatrix]);
 
@@ -1636,7 +1637,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
         <FocusGroupCamera activeGroupId={activeGroupId} groups={groups} walls={walls} groupSettings={groupSettings} projectMatrix={projectMatrix} />
         <SceneLights />
         <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault enabled={!boxSelectMode} />
-        <gridHelper args={[500, 100, '#1e3a5f', '#1e293b']} position={[center[0], center[1] - span * 0.5, center[2]]} />
+        <gridHelper args={[500, 100, '#1e3a5f', '#1e293b']} position={[center[0], groundY ?? (center[1] - span * 0.5), center[2]]} />
 
         <group ref={rootGroupRef}>
         {walls.map((wall, wi) => {
