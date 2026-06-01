@@ -485,8 +485,11 @@ function readTrueNorthRotation(api, modelID) {
         const y = typeof dir[1] === 'object' ? dir[1]?.value : dir[1];
         if (typeof x !== 'number' || typeof y !== 'number') continue;
         const trueNorthAngle = Math.atan2(x, y);
-        console.log('[TrueNorth] vector:', x.toFixed(4), y.toFixed(4), '→ hoek:', (trueNorthAngle * 180 / Math.PI).toFixed(1), '° → Y-rotatie viewer:', (-trueNorthAngle * 180 / Math.PI).toFixed(1), '°');
-        return -trueNorthAngle;
+        // Na X_NEG90: Three.js Y-as = IFC Z-as. Y-rotatie = trueNorthAngle - π/2
+        // (= -(90° - trueNorthAngle_degrees))
+        const viewerRotY = trueNorthAngle - Math.PI / 2;
+        console.log('[TrueNorth] vector:', x.toFixed(4), y.toFixed(4), '→ hoek:', (trueNorthAngle * 180 / Math.PI).toFixed(1), '° → Y-rotatie viewer:', (viewerRotY * 180 / Math.PI).toFixed(1), '°');
+        return viewerRotY;
       } catch { }
     }
   } catch { }
