@@ -1414,14 +1414,15 @@ function CameraInit({ walls, projectMatrix }) {
     const cx = (minX + maxX) / 2;
     const cz = (minZ + maxZ) / 2;
     const buildingHeight = Math.max(maxY, 0.1);
-    const buildingDepth  = Math.max(maxZ - minZ, 0.1);
+    const buildingSpan   = Math.max(maxX - minX, maxZ - minZ, 0.1);
+    const dist           = buildingSpan * 1.2;
 
     pendingRef.current = {
-      cx, cy: 0, cz,
+      cx, cy: buildingHeight * 0.4, cz,
       pos: new THREE.Vector3(
         cx,
-        buildingHeight * 0.8,
-        cz + buildingDepth * 1.5
+        buildingHeight * 2.0,
+        cz + dist
       ),
     };
   }, [walls, projectMatrix]);
