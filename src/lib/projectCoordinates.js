@@ -193,6 +193,9 @@ export function threeToIfcMm(x, y, z) {
  *   - "Nieuw project" in App.jsx
  *   - Eerste bestand laden na een nieuw project
  */
+/** Geeft de huidige TrueNorth-hoek terug in radialen. */
+export function getTrueNorthAngle() { return _trueNorthAngle; }
+
 export function reset() {
   _projectOrigin = null;
   _trueNorthAngle = 0;

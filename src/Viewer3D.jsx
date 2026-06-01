@@ -2,7 +2,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
 import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
-import { buildProjectMatrix } from './lib/projectCoordinates.js';
+import { buildProjectMatrix, getTrueNorthAngle } from './lib/projectCoordinates.js';
 import { generateSlimFortGrid, SLIMFORT_DEFAULTS, getSlimFortDepths, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
 
 function checkWebGL() {
@@ -1259,37 +1259,40 @@ function CameraPresetController({ preset, center, span, onDone }) {
 
   useEffect(() => {
     if (!preset) return;
-    const [cx, cy, cz] = centerRef.current;
-    const sp = spanRef.current;
-    const d = Math.max(sp * 1.5, 1);
+    const α    = getTrueNorthAngle();
+    const cx   = _centerXRef.current;
+    const cz   = _centerZRef.current;
+    const h    = _buildingHeightRef.current;
+    const dist = _buildingSpanRef.current * 1.2;
+    const ty   = h * 0.4;
+    const tgt  = new THREE.Vector3(cx, ty, cz);
 
     const presets = {
-      N:    { pos: [cx, cy, cz + d], up: [0, 1, 0] },
-      Z:    { pos: [cx, cy, cz - d], up: [0, 1, 0] },
-      O:    { pos: [cx + d, cy, cz], up: [0, 1, 0] },
-      W:    { pos: [cx - d, cy, cz], up: [0, 1, 0] },
-      Top:  { pos: [cx, cy + d * 1.5, cz],     up: [0, 0, -1] },
-      Home: { pos: [cx + sp * 0.7, cy + sp * 0.5, cz + sp * 0.7], up: [0, 1, 0] },
+      N:    { pos: new THREE.Vector3(cx + Math.sin(α)*dist,  ty,    cz + Math.cos(α)*dist), tgt },
+      Z:    { pos: new THREE.Vector3(cx - Math.sin(α)*dist,  ty,    cz - Math.cos(α)*dist), tgt },
+      O:    { pos: new THREE.Vector3(cx + Math.cos(α)*dist,  ty,    cz - Math.sin(α)*dist), tgt },
+      W:    { pos: new THREE.Vector3(cx - Math.cos(α)*dist,  ty,    cz + Math.sin(α)*dist), tgt },
+      T:    { pos: new THREE.Vector3(cx,                     dist,  cz),
+              tgt: new THREE.Vector3(cx, 0, cz) },
+      Home: { pos: new THREE.Vector3(cx + dist*0.7, h*2.0, cz + dist*0.7), tgt },
     };
 
     const p = presets[preset];
     if (!p) return;
     const fov = preset === 'Home' ? 45 : 25;
-    target.current = { pos: new THREE.Vector3(...p.pos), up: new THREE.Vector3(...p.up), fov };
+    target.current = { pos: p.pos, tgt: p.tgt, up: new THREE.Vector3(0, 1, 0), fov };
   }, [preset]);
 
   useFrame(() => {
     if (!target.current || !controls) return;
-    const { pos, up, fov } = target.current;
-    const [cx, cy, cz] = center;
+    const { pos, tgt, up, fov } = target.current;
 
     camera.position.lerp(pos, 0.1);
     camera.up.lerp(up, 0.1);
     if (fov !== undefined) camera.fov += (fov - camera.fov) * 0.1;
     camera.updateProjectionMatrix();
 
-    const ct = controls.target;
-    ct.lerp(new THREE.Vector3(cx, cy, cz), 0.1);
+    controls.target.lerp(tgt, 0.1);
     controls.update();
 
     if (camera.position.distanceTo(pos) < 0.001) {
@@ -1372,6 +1375,12 @@ function FocusGroupCamera({ activeGroupId, groups, walls, groupSettings, project
   return null;
 }
 
+// Module-level refs: gedeeld tussen CameraInit en CameraPresetController
+const _buildingHeightRef = { current: 10 };
+const _buildingSpanRef   = { current: 60 };
+const _centerXRef        = { current: 0 };
+const _centerZRef        = { current: 0 };
+
 function CameraInit({ walls, projectMatrix }) {
   const { camera, controls } = useThree();
   const done = useRef(false);
@@ -1417,6 +1426,12 @@ function CameraInit({ walls, projectMatrix }) {
     const buildingSpan   = Math.max(maxX - minX, maxZ - minZ, 0.1);
     const dist           = buildingSpan * 1.2;
 
+    // Sla op in module-level refs voor CameraPresetController
+    _buildingHeightRef.current = buildingHeight;
+    _buildingSpanRef.current   = buildingSpan;
+    _centerXRef.current        = cx;
+    _centerZRef.current        = cz;
+
     pendingRef.current = {
       cx, cy: buildingHeight * 0.4, cz,
       pos: new THREE.Vector3(
@@ -1448,7 +1463,7 @@ const COMPASS = [
   { key: 'O',    label: 'O',   title: 'Oost',    gridPos: '3/4' },
   { key: 'Z',    label: 'Z',   title: 'Zuid',    gridPos: '4/3' },
   { key: 'W',    label: 'W',   title: 'West',    gridPos: '3/2' },
-  { key: 'Top',  label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
+  { key: 'T',    label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
 ];
 
 export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData, projectInfo = null }) {
@@ -1912,7 +1927,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
                     color: preset === key ? '#fff' : '#94a3b8',
                     border: '1px solid #334155',
                     borderRadius: 4,
-                    fontSize: key === 'Top' ? 14 : 12,
+                    fontSize: key === 'T' ? 14 : 12,
                     fontWeight: 700,
                     cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
