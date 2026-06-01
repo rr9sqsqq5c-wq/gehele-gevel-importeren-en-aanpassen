@@ -196,6 +196,23 @@ export function threeToIfcMm(x, y, z) {
 /** Geeft de huidige TrueNorth-hoek terug in radialen. */
 export function getTrueNorthAngle() { return _trueNorthAngle; }
 
+/**
+ * Herstelt de module-state vanuit een gecachede projectInfo snapshot.
+ * Aanroepen bij een cache-hit zodat registerIfcContext niet nodig is.
+ */
+export function restoreProjectInfo(info) {
+  if (!info) return;
+  _projectOrigin  = info.origin ?? null;
+  _trueNorthAngle = (info.trueNorthDegrees ?? 0) * Math.PI / 180;
+  _hasTrueNorth   = info.hasTrueNorth ?? false;
+  _originSource   = info.originSource ?? null;
+  console.log('[ProjectCoords] Hersteld uit cache:', {
+    origin: _projectOrigin,
+    trueNorthDegrees: info.trueNorthDegrees,
+    originSource: _originSource,
+  });
+}
+
 export function reset() {
   _projectOrigin = null;
   _trueNorthAngle = 0;

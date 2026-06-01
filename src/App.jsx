@@ -2,10 +2,10 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { reset as resetCoordinates } from './lib/projectCoordinates.js';
+import { reset as resetCoordinates, restoreProjectInfo } from './lib/projectCoordinates.js';
 import handleidingMd from '../HANDLEIDING.md?raw';
 warmupWebIFC();
-import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState } from './lib/storage.js';
+import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, clearParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState } from './lib/storage.js';
 import { detectAdjacencies, detectAdjacenciesAsync, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
@@ -3808,6 +3808,7 @@ export default function App() {
     deleteSavedIfcFile().catch(() => {});
     deleteFileHandle().catch(() => {});
     clearProjectState().catch(() => {});
+    clearParsedWalls().catch(() => {});
     setAllWalls([]);
     setWallDimOverrides({});
     setAdjacencies([]);
@@ -3896,19 +3897,22 @@ export default function App() {
     addLog(`Bestand: ${pendingFile.name} (${(pendingFile.size / 1024 / 1024).toFixed(1)} MB)`);
     try {
       const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
-      const CACHE_SCHEMA_V = 11;
+      const CACHE_SCHEMA_V = 12;
       const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}`;
 
       addLog(filter ? `Filter: ${[...filter].join(', ')}` : 'Alle wandtypen worden geladen');
       addLog('Cache controleren…');
 
       let walls = null;
+      let cachedProjectInfo = null;
       try {
         const cached = await loadParsedWalls(cacheKey, pendingFile.size);
         if (cached) {
-          addLog(`✓ Cache gevonden! ${cached.length} wanden direct geladen`);
-          walls = cached;
-          setLoadProgress({ current: cached.length, total: cached.length });
+          addLog(`✓ Cache gevonden! ${cached.walls.length} wanden direct geladen`);
+          walls = cached.walls;
+          cachedProjectInfo = cached.projectInfo;
+          if (cachedProjectInfo) restoreProjectInfo(cachedProjectInfo);
+          setLoadProgress({ current: walls.length, total: walls.length });
         }
       } catch { }
 
@@ -3922,10 +3926,10 @@ export default function App() {
         };
         walls = await runNewEngineAdapter(pendingFile, filter, progressCb, { forceOrientation });
         addLog(`Resultaat opslaan in cache…`);
-        saveParsedWalls(cacheKey, pendingFile.size, walls).catch(() => {});
+        saveParsedWalls(cacheKey, pendingFile.size, walls, walls.projectInfo ?? null).catch(() => {});
       }
 
-      setProjectInfo(walls.projectInfo ?? null);
+      setProjectInfo(walls.projectInfo ?? cachedProjectInfo ?? null);
       if (!walls.length) throw new Error('Geen wanden gevonden met de geselecteerde types');
       addLog(`✓ ${walls.length} wanden geladen, aangrenzendheid detecteren…`);
       const adj = await detectAdjacenciesAsync(walls, (i, total) => {
