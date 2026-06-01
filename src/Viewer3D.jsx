@@ -1412,15 +1412,17 @@ function CameraInit({ walls, projectMatrix }) {
     }
 
     const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
     const cz = (minZ + maxZ) / 2;
-    const spanX = maxX - minX;
-    const spanZ = maxZ - minZ;
-    const spanAll = Math.max(spanX, maxY - minY, spanZ, 0.1);
+    const buildingHeight = Math.max(maxY, 0.1);
+    const buildingDepth  = Math.max(maxZ - minZ, 0.1);
 
     pendingRef.current = {
-      cx, cy, cz,
-      pos: new THREE.Vector3(cx + spanX * 0.6, cy + spanAll * 0.5, cz + spanZ * 0.6),
+      cx, cy: 0, cz,
+      pos: new THREE.Vector3(
+        cx,
+        buildingHeight * 0.8,
+        cz + buildingDepth * 1.5
+      ),
     };
   }, [walls, projectMatrix]);
 
