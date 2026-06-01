@@ -28,11 +28,7 @@ function ifcToThree(ifcX, ifcY, ifcZ) {
   return [ifcX / 1000, ifcY / 1000, ifcZ / 1000];
 }
 
-function orientationModeToRotX(mode) {
-  if (mode === 'NONE') return 0;
-  if (mode === 'X_POS90') return Math.PI / 2;
-  return -Math.PI / 2;
-}
+const ROT_X = -Math.PI / 2;
 
 function rotateXPt(rotX, x, y, z) {
   const c = Math.cos(rotX), s = Math.sin(rotX);
@@ -1315,7 +1311,8 @@ function CameraPresetController({ preset, center, span, onDone }) {
   return null;
 }
 
-function FocusGroupCamera({ activeGroupId, groups, walls, rotX, groupSettings }) {
+function FocusGroupCamera({ activeGroupId, groups, walls, groupSettings }) {
+  const rotX = ROT_X;
   const { camera, controls } = useThree();
   const targetRef = useRef(null);
 
@@ -1366,7 +1363,7 @@ function FocusGroupCamera({ activeGroupId, groups, walls, rotX, groupSettings })
       pos: new THREE.Vector3(cx + (dx / len) * d, cy + (dy / len) * d, cz + (dz / len) * d),
       lookAt: new THREE.Vector3(cx, cy, cz),
     };
-  }, [activeGroupId, groups, walls, rotX, groupSettings]);
+  }, [activeGroupId, groups, walls, groupSettings]);
 
   useFrame(() => {
     if (!targetRef.current || !controls) return;
@@ -1385,7 +1382,8 @@ function FocusGroupCamera({ activeGroupId, groups, walls, rotX, groupSettings })
   return null;
 }
 
-function CameraInit({ walls, rotX }) {
+function CameraInit({ walls }) {
+  const rotX = ROT_X;
   const { camera, controls } = useThree();
   const done = useRef(false);
   const pendingRef = useRef(null);
@@ -1432,7 +1430,7 @@ function CameraInit({ walls, rotX }) {
       cx, cy, cz,
       pos: new THREE.Vector3(cx + spanX * 0.6, cy + spanAll * 0.5, cz + spanZ * 0.6),
     };
-  }, [walls, rotX]);
+  }, [walls]);
 
   useFrame(() => {
     if (done.current || !pendingRef.current) return;
@@ -1458,7 +1456,7 @@ const COMPASS = [
   { key: 'Top',  label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
 ];
 
-export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData, orientationMode = 'X_NEG90' }) {
+export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData }) {
   const [hoveredWallId, setHoveredWallId] = useState(null);
   const [preset, setPreset] = useState(null);
   const [boxSelectMode, setBoxSelectMode] = useState(false);
@@ -1488,35 +1486,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
   const cameraRef = useRef(null);
   const containerRef = useRef(null);
 
-  const rotX = orientationModeToRotX(orientationMode);
-  console.log('[OrientationVerify] Viewer3D', { orientationMode, rotX });
-
-  useEffect(() => {
-    if (!walls || walls.length === 0) return;
-    const heightAxisCounts = {};
-    for (const w of walls) {
-      const h = w.wallOrigin?.heightAxis ?? 'unknown';
-      heightAxisCounts[h] = (heightAxisCounts[h] || 0) + 1;
-    }
-    const detectedAxis = detectUpAxis(walls);
-    const expectedMode =
-      detectedAxis === 'z' ? 'X_NEG90' :
-      detectedAxis === 'y' ? 'NONE' :
-      'onbekend';
-    const mismatch = orientationMode !== expectedMode;
-    console.log('[OrientationDiag] walls/orientationMode gewijzigd', {
-      wallCount: walls.length,
-      heightAxisCounts,
-      detectedUpAxis: detectedAxis,
-      orientationMode,
-      rotX: orientationModeToRotX(orientationMode),
-      expectedMode,
-      mismatch,
-      uitleg: mismatch
-        ? `MISMATCH: heightAxis-meerderheid="${detectedAxis}" verwacht mode="${expectedMode}" maar actief="${orientationMode}"`
-        : `OK: heightAxis="${detectedAxis}" komt overeen met mode="${orientationMode}"`,
-    });
-  }, [walls, orientationMode]);
+  const rotX = ROT_X;
 
   const wallGroupMap = useMemo(() => {
     const map = {};
@@ -1552,7 +1522,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
       center: [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2],
       span: Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1),
     };
-  }, [walls, rotX]);
+  }, [walls]);
 
   function handlePreset(key) {
     setPreset(null);
@@ -1657,9 +1627,9 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
     >
       <Canvas camera={{ fov: 45, near: 0.01, far: 2000 }}>
         <CameraAccessor cameraRef={cameraRef} />
-        <CameraInit walls={walls} rotX={rotX} />
+        <CameraInit walls={walls} />
         <CameraPresetController preset={preset} center={center} span={span} onDone={() => setPreset(null)} />
-        <FocusGroupCamera activeGroupId={activeGroupId} groups={groups} walls={walls} rotX={rotX} groupSettings={groupSettings} />
+        <FocusGroupCamera activeGroupId={activeGroupId} groups={groups} walls={walls} groupSettings={groupSettings} />
         <SceneLights />
         <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault enabled={!boxSelectMode} />
         <gridHelper args={[500, 100, '#1e3a5f', '#1e293b']} position={[center[0], center[1] - span * 0.5, center[2]]} />

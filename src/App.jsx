@@ -2,7 +2,6 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-const _DEV_MODE = import.meta.env.DEV;
 import handleidingMd from '../HANDLEIDING.md?raw';
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState } from './lib/storage.js';
@@ -3179,10 +3178,6 @@ export default function App() {
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [hiddenGroupIds, setHiddenGroupIds] = useState(new Set());
   const [forceOrientation, setForceOrientation] = useState('AUTO');
-  const [importEngine, setImportEngine] = useState('legacy-inherited');
-  const [upAxisDebug, setUpAxisDebug] = useState(null);
-  const [showUpAxisDebug, setShowUpAxisDebug] = useState(false);
-  const [viewerOrientationMode, setViewerOrientationMode] = useState('X_NEG90');
   const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
@@ -3895,11 +3890,10 @@ export default function App() {
     addLog(`Bestand: ${pendingFile.name} (${(pendingFile.size / 1024 / 1024).toFixed(1)} MB)`);
     try {
       const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
-      const CACHE_SCHEMA_V = 10;
-      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|${importEngine}|v${CACHE_SCHEMA_V}`;
+      const CACHE_SCHEMA_V = 11;
+      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}`;
 
       addLog(filter ? `Filter: ${[...filter].join(', ')}` : 'Alle wandtypen worden geladen');
-      if (importEngine === 'legacy-inherited') addLog('[DEV] Import engine: legacy + inherited openings');
       addLog('Cache controleren…');
 
       let walls = null;
@@ -3915,38 +3909,14 @@ export default function App() {
       if (!walls) {
         addLog('Geen cache — IFC parsen gestart…');
         const progressCb = (p) => {
-          if (p.phase === 'upaxis') { setUpAxisDebug(p); setShowUpAxisDebug(true); return; }
           if (p.log) { addLog(p.log); return; }
           setLoadProgress({ current: p.current, total: p.total });
           if (p.total > 0 && p.current === 1) addLog(`${p.total} wanden gevonden, verwerken gestart…`);
           if (p.total > 0 && p.current === p.total) addLog(`Alle ${p.total} wanden verwerkt`);
         };
-        walls = importEngine === 'legacy-inherited'
-          ? await runNewEngineAdapter(pendingFile, filter, progressCb, { forceOrientation })
-          : await parseIfc(pendingFile, filter, progressCb, { forceOrientation });
+        walls = await runNewEngineAdapter(pendingFile, filter, progressCb, { forceOrientation });
         addLog(`Resultaat opslaan in cache…`);
         saveParsedWalls(cacheKey, pendingFile.size, walls).catch(() => {});
-      }
-
-      {
-        const _countBy = (needle) => walls.filter((w) => (w.typeName ?? '').includes(needle)).reduce((s, w) => s + (w.openings?.length ?? 0), 0);
-        const _inheritedCount = walls.reduce((s, w) => s + (w.openings ?? []).filter(o => o._source === 'inherited').length, 0);
-        const _allOpeningIds = walls.flatMap(w => (w.openings ?? []).map(o => o.id));
-        const _duplicateCount = _allOpeningIds.length - new Set(_allOpeningIds).size;
-        console.log('[ImportEngine]', {
-          engine: importEngine,
-          wallCount: walls.length,
-          openingCount: walls.reduce((s, w) => s + (w.openings?.length ?? 0), 0),
-          inheritedOpeningCount: _inheritedCount,
-          duplicateOpeningCount: _duplicateCount,
-          'HSB_182.5_openings': _countBy('182.5'),
-          'HSB_272.5_openings': _countBy('272.5'),
-          'kopsegevel_openings': _countBy('kopsegevel'),
-          'walls_182.5_with_openings': walls.filter((w) => (w.typeName ?? '').includes('182.5') && (w.openings?.length ?? 0) > 0).length,
-          'walls_182.5_total': walls.filter((w) => (w.typeName ?? '').includes('182.5')).length,
-          'walls_272.5_with_openings': walls.filter((w) => (w.typeName ?? '').includes('272.5') && (w.openings?.length ?? 0) > 0).length,
-          'walls_kopsegevel_with_openings': walls.filter((w) => (w.typeName ?? '').includes('kopsegevel') && (w.openings?.length ?? 0) > 0).length,
-        });
       }
 
       if (!walls.length) throw new Error('Geen wanden gevonden met de geselecteerde types');
@@ -3955,34 +3925,6 @@ export default function App() {
         addLog(`Aangrenzendheid: ${i}/${total} wanden verwerkt…`);
       });
       addLog(`✓ Klaar — ${walls.length} wanden, ${adj.length} adjacenties`);
-      {
-        const _haDist = {};
-        for (const w of walls) {
-          const h = w.wallOrigin?.heightAxis ?? 'unknown';
-          _haDist[h] = (_haDist[h] || 0) + 1;
-        }
-        const _autoExpectedViewerMode = _haDist['z'] > (_haDist['y'] ?? 0) ? 'X_NEG90' : 'NONE';
-        setViewerOrientationMode(_autoExpectedViewerMode);
-        console.log('[OrientationDiag] import voltooid', {
-          forceOrientation,
-          viewerOrientationMode: _autoExpectedViewerMode,
-          heightAxisDistributie: _haDist,
-          aanbevolenViewerMode: _autoExpectedViewerMode,
-          mismatch: false,
-          uitleg: `OK: viewerOrientationMode="${_autoExpectedViewerMode}" automatisch ingesteld bij import`,
-        });
-      }
-      {
-        const wallsWithOpenings = walls.filter((w) => (w.openings?.length ?? 0) > 0);
-        const withOrigin = wallsWithOpenings.filter((w) => !!w.wallOrigin);
-        const missing = wallsWithOpenings.filter((w) => !w.wallOrigin);
-        console.log('[WallOriginStageB]', {
-          totalWalls: walls.length,
-          wallsWithOpenings: wallsWithOpenings.length,
-          wallsWithOpeningsAndWallOrigin: withOrigin.length,
-          sampleMissingWallOriginIds: missing.slice(0, 5).map((w) => w.expressID),
-        });
-      }
       setAllWalls(walls);
       setAdjacencies(adj);
       setGroups([]);
