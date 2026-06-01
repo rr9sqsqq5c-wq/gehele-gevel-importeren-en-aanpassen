@@ -1637,7 +1637,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
         <FocusGroupCamera activeGroupId={activeGroupId} groups={groups} walls={walls} groupSettings={groupSettings} projectMatrix={projectMatrix} />
         <SceneLights />
         <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault enabled={!boxSelectMode} />
-        <gridHelper args={[500, 100, '#1e3a5f', '#1e293b']} position={[center[0], 0, center[2]]} />
+
 
         <group ref={rootGroupRef}>
         {walls.map((wall, wi) => {
