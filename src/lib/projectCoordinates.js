@@ -86,30 +86,31 @@ export function registerIfcContext(context, filename) {
 // ─── buildProjectMatrix ───────────────────────────────────────────────────────
 
 /**
- * Bouwt de IFC-world → Three.js transformatiematrix op basis van de huidige state.
+ * Bouwt de IFC-world → Three.js transformatiematrix.
  *
  * M = Ry(trueNorthAngle) * Rx(-90°) * T(-origin_m)
  *
- * De matrix wordt toegepast op punten die al via ifcToThree() (÷1000) naar
- * meters zijn omgezet. De matrix verzorgt:
- *   1. T(-origin_m)          — centreer het gebouw rond Three.js (0,0,0)
- *   2. Rx(-90°)              — IFC Z-up → Three.js Y-up
- *   3. Ry(trueNorthAngle)    — TrueNorth → Three.js -Z (noord = diepte-as)
+ * Accepteert een optionele `projectInfo` snapshot (uit React state) zodat de
+ * matrix correct blijft na Vite HMR-reloads (waarbij module-state gereset wordt).
+ * Zonder argument: gebruikt de huidige module-state.
  *
- * Bestanden met WCS-origin = (0,0,0) (Tekla, ArchiCAD) krijgen T(0) →
- * geen aftrek, maar dezelfde rotaties. Dit werkt correct mits het eerste
- * geladen bestand het Revit-casco is (met de significante RD-origin).
- *
+ * @param {object} [projectInfo]  snapshot van getProjectInfo() — optioneel
  * @returns {THREE.Matrix4}
  */
-export function buildProjectMatrix() {
-  const ox = (_projectOrigin?.x ?? 0) * 0.001; // mm → m
-  const oy = (_projectOrigin?.y ?? 0) * 0.001;
-  const oz = (_projectOrigin?.z ?? 0) * 0.001;
+export function buildProjectMatrix(projectInfo) {
+  // Gebruik projectInfo snapshot als beschikbaar, anders module-state
+  const origin = projectInfo?.origin ?? _projectOrigin;
+  const trueNorthAngle = projectInfo?.hasTrueNorth
+    ? (projectInfo.trueNorthDegrees * Math.PI / 180)
+    : _trueNorthAngle;
+
+  const ox = (origin?.x ?? 0) * 0.001; // mm → m
+  const oy = (origin?.y ?? 0) * 0.001;
+  const oz = (origin?.z ?? 0) * 0.001;
 
   const T  = new THREE.Matrix4().makeTranslation(-ox, -oy, -oz);
   const Rx = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
-  const Ry = new THREE.Matrix4().makeRotationY(_trueNorthAngle);
+  const Ry = new THREE.Matrix4().makeRotationY(trueNorthAngle);
 
   // M = Ry * Rx * T
   return new THREE.Matrix4()

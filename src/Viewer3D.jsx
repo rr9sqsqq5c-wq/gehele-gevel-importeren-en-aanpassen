@@ -1479,9 +1479,8 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
   const containerRef = useRef(null);
   const rootGroupRef = useRef(null);
 
-  // buildProjectMatrix() gebruikt de module-state uit projectCoordinates.js
-  // projectInfo triggert de useMemo wanneer een nieuw bestand geladen is
-  const projectMatrix = useMemo(() => buildProjectMatrix(), [projectInfo]);
+  // Geef projectInfo mee zodat de matrix correct blijft na Vite HMR-reloads
+  const projectMatrix = useMemo(() => buildProjectMatrix(projectInfo), [projectInfo]);
 
   // Stel de matrix handmatig in via ref — betrouwbaarder dan de matrix-prop in R3F
   useEffect(() => {
