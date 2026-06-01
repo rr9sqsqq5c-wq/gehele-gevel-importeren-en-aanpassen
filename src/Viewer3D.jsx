@@ -30,15 +30,35 @@ function ifcToThree(ifcX, ifcY, ifcZ) {
 
 /**
  * Bouw de IFC→Three.js transformatiematrix uit de projecttransformatie.
- * M = Ry(trueNorthAngle) * Rx(-90°)
- * ifcToThree() handelt de mm→m schaling al af.
+ *
+ * Volgorde (toegepast van rechts naar links op een punt):
+ *   1. T(-origin_m) — trek de WCS-origin af (in meters, na mm→m via ifcToThree)
+ *   2. Rx(-90°)     — IFC Z-up → Three.js Y-up
+ *   3. Ry(α)        — TrueNorth-rotatie
+ *
+ * M = Ry(α) * Rx(-90°) * T(-origin_m)
+ *
+ * ifcToThree() handelt de mm→m conversie (unitScale) al af, dus de matrix
+ * werkt op punten die al in meters zijn uitgedrukt.
  */
 function buildProjectMatrix(projectTransform) {
-  const [tn_x, tn_y] = projectTransform?.trueNorth ?? [0, 1];
-  const trueNorthAngle = Math.atan2(tn_x, tn_y);
+  const { origin = { x: 0, y: 0, z: 0 }, unitScale = 0.001, trueNorthAngle = 0 } = projectTransform ?? {};
+
+  // T(-origin_m): trek de WCS-origin af in meters.
+  // ifcToThree() deelt altijd door 1000 (mm→m), dus origin_m = origin_mm * 0.001.
+  // Als het bestand al in meters is (unitScale=1.0) past ifcToThree() niet goed,
+  // maar origin is dan sowieso 0 (Tekla-bestanden), dus geen effect.
+  const ox = origin.x * 0.001;
+  const oy = origin.y * 0.001;
+  const oz = origin.z * 0.001;
+  const T = new THREE.Matrix4().makeTranslation(-ox, -oy, -oz);
+
   const Rx = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
   const Ry = new THREE.Matrix4().makeRotationY(trueNorthAngle);
-  return new THREE.Matrix4().multiplyMatrices(Ry, Rx);
+
+  // M = Ry * Rx * T
+  const RxT = new THREE.Matrix4().multiplyMatrices(Rx, T);
+  return new THREE.Matrix4().multiplyMatrices(Ry, RxT);
 }
 
 function applyMatrix(mat, x, y, z) {

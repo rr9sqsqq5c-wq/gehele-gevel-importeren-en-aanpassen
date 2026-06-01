@@ -1,6 +1,16 @@
 import { getOpeningPoly } from './pattern.js';
 import { STEENSTRIP_CATALOG } from './battens.js';
 import { SLIMFORT_DEFAULTS, getSlimFortDepths } from './slimfort.js';
+
+// ─── Vaste projectconstanten (Revit Shared Coordinates, RD-stelsel) ───────────
+// WCS-origin uit het Revit-casco bestand (mm). Wordt afgetrokken van alle
+// IFC-coördinaten zodat het gebouw gecentreerd is rond (0,0,0) in Three.js.
+// Bij terugexport naar IFC weer optellen.
+export const PROJECT_ORIGIN_MM = { x: 111185325.125, y: 471934574.993, z: 0 };
+
+// Kanonieke TrueNorth voor dit project (Revit Shared Coordinates).
+// Geldt voor alle IFC-bestanden (Revit én Tekla).
+export const PROJECT_TRUE_NORTH = [0.61864839283756479, 0.78566797442653735];
 let _api = null;
 let _loading = null;
 let _cachedModel = null;
@@ -466,37 +476,91 @@ const _UPAXIS_NORMAL_SAMPLE_MAX = 400;
 /**
  * Leest de projecttransformatie uit IFCGEOMETRICREPRESENTATIONCONTEXT.
  * Retourneert {trueNorth: [x,y], unitScale: number} voor gebruik in de viewer.
- * Defaults: trueNorth=[0,1] (IFC Y = Noord), unitScale=0.001 (mm→m).
+ * Geeft {origin, unitScale, trueNorthAngle} terug voor gebruik in buildProjectMatrix().
  */
 function readProjectTransform(api, modelID) {
-  const result = { trueNorth: [0, 1], unitScale: 0.001 };
+  // Kanonieke projectwaarden als defaults
+  const [tn_x, tn_y] = PROJECT_TRUE_NORTH;
+  const tnLen = Math.sqrt(tn_x * tn_x + tn_y * tn_y) || 1;
+  const result = {
+    origin: { x: 0, y: 0, z: 0 },
+    unitScale: 0.001,
+    trueNorthAngle: Math.atan2(tn_x / tnLen, tn_y / tnLen),
+  };
+
   try {
-    const typeCode = api.GetTypeCodeFromName('IFCGEOMETRICREPRESENTATIONCONTEXT');
-    const ctxVec = api.GetLineIDsWithType(modelID, typeCode);
+    // ── 1. Eenheidsschaal uit IFCSIUNIT ────────────────────────────────────
+    try {
+      const siCode = api.GetTypeCodeFromName('IFCSIUNIT');
+      const siVec = api.GetLineIDsWithType(modelID, siCode);
+      for (let i = 0; i < siVec.size(); i++) {
+        try {
+          const u = api.GetLine(modelID, siVec.get(i), false);
+          const uType = u?.UnitType?.value ?? u?.UnitType ?? '';
+          if (!String(uType).includes('LENGTH')) continue;
+          const prefix = u?.Prefix?.value ?? u?.Prefix ?? '';
+          result.unitScale = String(prefix).includes('MILLI') ? 0.001 : 1.0;
+          break;
+        } catch { }
+      }
+    } catch { }
+
+    // ── 2. WCS-origin en TrueNorth uit IFCGEOMETRICREPRESENTATIONCONTEXT ──
+    const ctxCode = api.GetTypeCodeFromName('IFCGEOMETRICREPRESENTATIONCONTEXT');
+    const ctxVec = api.GetLineIDsWithType(modelID, ctxCode);
     for (let i = 0; i < ctxVec.size(); i++) {
       try {
         const ctx = api.GetLine(modelID, ctxVec.get(i), false);
         const ctxType = ctx?.ContextType?.value ?? ctx?.ContextType;
         if (typeof ctxType === 'string' && ctxType !== 'Model') continue;
+
+        // WCS-origin
+        const wcsRef = ctx?.WorldCoordinateSystem?.value;
+        if (wcsRef != null) {
+          const wcs = api.GetLine(modelID, wcsRef, false);
+          const originRef = wcs?.Location?.value ?? wcs?.args?.[0]?.value;
+          if (originRef != null) {
+            const pt = api.GetLine(modelID, originRef, false);
+            const coords = pt?.Coordinates;
+            if (Array.isArray(coords)) {
+              const ox = Number((coords[0]?.value ?? coords[0]) || 0);
+              const oy = Number((coords[1]?.value ?? coords[1]) || 0);
+              const oz = Number((coords[2]?.value ?? coords[2]) || 0);
+              // Non-zero WCS-origin → Revit-bestand met absolute RD-coördinaten
+              if (Math.abs(ox) > 1 || Math.abs(oy) > 1) {
+                result.origin = { x: PROJECT_ORIGIN_MM.x, y: PROJECT_ORIGIN_MM.y, z: PROJECT_ORIGIN_MM.z };
+              }
+            }
+          }
+        }
+
+        // TrueNorth uit bestand (alleen voor logging, we gebruiken PROJECT_TRUE_NORTH)
         const tnRef = ctx?.TrueNorth?.value;
-        if (tnRef == null) continue;
-        const tn = api.GetLine(modelID, tnRef, false);
-        const dir = tn?.DirectionRatios;
-        if (!Array.isArray(dir) || dir.length < 2) continue;
-        const x = typeof dir[0] === 'object' ? dir[0]?.value : dir[0];
-        const y = typeof dir[1] === 'object' ? dir[1]?.value : dir[1];
-        if (typeof x !== 'number' || typeof y !== 'number') continue;
-        const len = Math.sqrt(x * x + y * y) || 1;
-        result.trueNorth = [x / len, y / len];
-        const trueNorthAngle = Math.atan2(x / len, y / len);
-        console.log('[ProjectTransform] trueNorth:', (x/len).toFixed(4), (y/len).toFixed(4),
-          '→ trueNorthAngle:', (trueNorthAngle * 180 / Math.PI).toFixed(1), '°',
-          '→ matrix rotY:', (trueNorthAngle * 180 / Math.PI).toFixed(1), '°',
-          '| unitScale:', result.unitScale);
+        if (tnRef != null) {
+          const tn = api.GetLine(modelID, tnRef, false);
+          const dir = tn?.DirectionRatios;
+          if (Array.isArray(dir) && dir.length >= 2) {
+            const fx = Number(dir[0]?.value ?? dir[0]);
+            const fy = Number(dir[1]?.value ?? dir[1]);
+            const fl = Math.sqrt(fx*fx + fy*fy) || 1;
+            const fileAngle = Math.atan2(fx/fl, fy/fl);
+            if (Math.abs(fileAngle - result.trueNorthAngle) > 0.001) {
+              console.warn('[ProjectTransform] Bestand heeft afwijkende TrueNorth:', (fileAngle*180/Math.PI).toFixed(2), '° (project:', (result.trueNorthAngle*180/Math.PI).toFixed(2), '°) — project-waarde gebruikt');
+            }
+          }
+        }
         break;
       } catch { }
     }
   } catch { }
+
+  const useOrigin = Math.abs(result.origin.x) > 1 || Math.abs(result.origin.y) > 1;
+  console.log('[ProjectTransform]', {
+    unitScale: result.unitScale,
+    useProjectOrigin: useOrigin,
+    origin_m: useOrigin ? `(${(result.origin.x/1000).toFixed(0)}, ${(result.origin.y/1000).toFixed(0)})` : '(0, 0)',
+    trueNorthAngle_deg: (result.trueNorthAngle * 180 / Math.PI).toFixed(2),
+  });
   return result;
 }
 
