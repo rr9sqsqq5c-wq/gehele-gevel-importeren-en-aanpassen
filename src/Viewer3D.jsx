@@ -1259,7 +1259,6 @@ function CameraPresetController({ preset, center, span, onDone }) {
 
   useEffect(() => {
     if (!preset) return;
-    const α    = getTrueNorthAngle();
     const cx   = _centerXRef.current;
     const cz   = _centerZRef.current;
     const h    = _buildingHeightRef.current;
@@ -1268,11 +1267,11 @@ function CameraPresetController({ preset, center, span, onDone }) {
     const tgt  = new THREE.Vector3(cx, ty, cz);
 
     const presets = {
-      N:    { pos: new THREE.Vector3(cx + Math.sin(α)*dist,  ty,    cz + Math.cos(α)*dist), tgt },
-      Z:    { pos: new THREE.Vector3(cx - Math.sin(α)*dist,  ty,    cz - Math.cos(α)*dist), tgt },
-      O:    { pos: new THREE.Vector3(cx + Math.cos(α)*dist,  ty,    cz - Math.sin(α)*dist), tgt },
-      W:    { pos: new THREE.Vector3(cx - Math.cos(α)*dist,  ty,    cz + Math.sin(α)*dist), tgt },
-      T:    { pos: new THREE.Vector3(cx,                     dist,  cz),
+      N:    { pos: new THREE.Vector3(cx,        ty,    cz + dist), tgt },
+      Z:    { pos: new THREE.Vector3(cx,        ty,    cz - dist), tgt },
+      O:    { pos: new THREE.Vector3(cx + dist, ty,    cz       ), tgt },
+      W:    { pos: new THREE.Vector3(cx - dist, ty,    cz       ), tgt },
+      T:    { pos: new THREE.Vector3(cx,        dist,  cz),
               tgt: new THREE.Vector3(cx, 0, cz) },
       Home: { pos: new THREE.Vector3(cx + dist*0.7, h*2.0, cz + dist*0.7), tgt },
     };
