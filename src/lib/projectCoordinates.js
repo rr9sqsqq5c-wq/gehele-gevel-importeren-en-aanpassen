@@ -110,9 +110,11 @@ export function buildProjectMatrix() {
 
   const T  = new THREE.Matrix4().makeTranslation(-ox, -oy, -oz);
   const Rx = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+  const Ry = new THREE.Matrix4().makeRotationY(_trueNorthAngle);
 
-  // M = Rx * T  (TrueNorth bewaard in _trueNorthAngle voor threeToIfcMm)
-  return new THREE.Matrix4().multiplyMatrices(Rx, T);
+  // M = Ry * Rx * T
+  return new THREE.Matrix4()
+    .multiplyMatrices(Ry, new THREE.Matrix4().multiplyMatrices(Rx, T));
 }
 
 // ─── ifcMmToThree ─────────────────────────────────────────────────────────────

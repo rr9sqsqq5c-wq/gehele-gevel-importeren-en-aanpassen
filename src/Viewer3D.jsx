@@ -2,7 +2,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
 import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
-import { buildProjectMatrix } from './lib/projectCoordinates.js';
+import { buildProjectMatrix, getTrueNorthAngle } from './lib/projectCoordinates.js';
 import { generateSlimFortGrid, SLIMFORT_DEFAULTS, getSlimFortDepths, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
 
 function checkWebGL() {
@@ -1247,6 +1247,64 @@ function SceneLights() {
   );
 }
 
+function CameraPresetController({ preset, center, span, onDone }) {
+  const { camera, controls } = useThree();
+  const target = useRef(null);
+  const upTarget = useRef(new THREE.Vector3(0, 1, 0));
+  const centerRef = useRef(center);
+  const spanRef = useRef(span);
+
+  useEffect(() => { centerRef.current = center; }, [center]);
+  useEffect(() => { spanRef.current = span; }, [span]);
+
+  useEffect(() => {
+    if (!preset) return;
+    const α    = getTrueNorthAngle();
+    const cx   = _centerXRef.current;
+    const cz   = _centerZRef.current;
+    const h    = _buildingHeightRef.current;
+    const dist = _buildingSpanRef.current * 1.2;
+    const ty   = h * 0.4;
+    const tgt  = new THREE.Vector3(cx, ty, cz);
+
+    const presets = {
+      N:    { pos: new THREE.Vector3(cx + Math.sin(α)*dist,  ty,    cz + Math.cos(α)*dist), tgt },
+      Z:    { pos: new THREE.Vector3(cx - Math.sin(α)*dist,  ty,    cz - Math.cos(α)*dist), tgt },
+      O:    { pos: new THREE.Vector3(cx + Math.cos(α)*dist,  ty,    cz - Math.sin(α)*dist), tgt },
+      W:    { pos: new THREE.Vector3(cx - Math.cos(α)*dist,  ty,    cz + Math.sin(α)*dist), tgt },
+      T:    { pos: new THREE.Vector3(cx,                     dist,  cz),
+              tgt: new THREE.Vector3(cx, 0, cz) },
+      Home: { pos: new THREE.Vector3(cx + dist*0.7, h*2.0, cz + dist*0.7), tgt },
+    };
+
+    const p = presets[preset];
+    if (!p) return;
+    const fov = preset === 'Home' ? 45 : 25;
+    target.current = { pos: p.pos, tgt: p.tgt, up: new THREE.Vector3(0, 1, 0), fov };
+  }, [preset]);
+
+  useFrame(() => {
+    if (!target.current || !controls) return;
+    const { pos, tgt, up, fov } = target.current;
+
+    camera.position.lerp(pos, 0.1);
+    camera.up.lerp(up, 0.1);
+    if (fov !== undefined) camera.fov += (fov - camera.fov) * 0.1;
+    camera.updateProjectionMatrix();
+
+    controls.target.lerp(tgt, 0.1);
+    controls.update();
+
+    if (camera.position.distanceTo(pos) < 0.001) {
+      camera.position.copy(pos);
+      target.current = null;
+      onDone?.();
+    }
+  });
+
+  return null;
+}
+
 function FocusGroupCamera({ activeGroupId, groups, walls, groupSettings, projectMatrix }) {
   const { camera, controls } = useThree();
   const targetRef = useRef(null);
@@ -1317,6 +1375,12 @@ function FocusGroupCamera({ activeGroupId, groups, walls, groupSettings, project
   return null;
 }
 
+// Module-level refs: gedeeld tussen CameraInit en CameraPresetController
+const _buildingHeightRef = { current: 10 };
+const _buildingSpanRef   = { current: 60 };
+const _centerXRef        = { current: 0 };
+const _centerZRef        = { current: 0 };
+
 function CameraInit({ walls, projectMatrix }) {
   const { camera, controls } = useThree();
   const done = useRef(false);
@@ -1362,6 +1426,12 @@ function CameraInit({ walls, projectMatrix }) {
     const buildingSpan   = Math.max(maxX - minX, maxZ - minZ, 0.1);
     const dist           = buildingSpan * 1.2;
 
+    // Sla op in module-level refs voor CameraPresetController
+    _buildingHeightRef.current = buildingHeight;
+    _buildingSpanRef.current   = buildingSpan;
+    _centerXRef.current        = cx;
+    _centerZRef.current        = cz;
+
     pendingRef.current = {
       cx, cy: buildingHeight * 0.4, cz,
       pos: new THREE.Vector3(
@@ -1388,10 +1458,17 @@ function CameraInit({ walls, projectMatrix }) {
   return null;
 }
 
-
+const COMPASS = [
+  { key: 'N',    label: 'N',   title: 'Noord',   gridPos: '2/3' },
+  { key: 'O',    label: 'O',   title: 'Oost',    gridPos: '3/4' },
+  { key: 'Z',    label: 'Z',   title: 'Zuid',    gridPos: '4/3' },
+  { key: 'W',    label: 'W',   title: 'West',    gridPos: '3/2' },
+  { key: 'T',    label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
+];
 
 export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData }) {
   const [hoveredWallId, setHoveredWallId] = useState(null);
+  const [preset, setPreset] = useState(null);
   const [boxSelectMode, setBoxSelectMode] = useState(false);
   const [dragRect, setDragRect] = useState(null);
   const [hiddenGroupIdsInternal, setHiddenGroupIdsInternal] = useState(new Set());
@@ -1441,8 +1518,8 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
     return map;
   }, [groups]);
 
-  const center = useMemo(() => {
-    if (!walls.length) return [0, 0, 0];
+  const { center, span } = useMemo(() => {
+    if (!walls.length) return { center: [0, 0, 0], span: 10 };
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
@@ -1462,9 +1539,17 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
         if (wz < minZ) minZ = wz; if (wz > maxZ) maxZ = wz;
       }
     }
-    if (!isFinite(minX)) return [0, 0, 0];
-    return [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
+    if (!isFinite(minX)) return { center: [0, 0, 0], span: 10 };
+    return {
+      center: [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2],
+      span: Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1),
+    };
   }, [walls, projectMatrix]);
+
+  function handlePreset(key) {
+    setPreset(null);
+    setTimeout(() => setPreset(key), 10);
+  }
 
   function getCanvasPos(e) {
     const rect = containerRef.current.getBoundingClientRect();
@@ -1565,6 +1650,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
       <Canvas camera={{ fov: 45, near: 0.01, far: 2000 }}>
         <CameraAccessor cameraRef={cameraRef} />
         <CameraInit walls={walls} projectMatrix={projectMatrix} />
+        <CameraPresetController preset={preset} center={center} span={span} onDone={() => setPreset(null)} />
         <FocusGroupCamera activeGroupId={activeGroupId} groups={groups} walls={walls} groupSettings={groupSettings} projectMatrix={projectMatrix} />
         <SceneLights />
         <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault enabled={!boxSelectMode} />
@@ -1820,6 +1906,53 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
             }}
           >
             ⬚ Box
+          </button>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(5, 28px)',
+            gridTemplateRows: 'repeat(5, 28px)',
+            gap: 2,
+          }}>
+            {COMPASS.map(({ key, label, title, gridPos }) => {
+              const [row, col] = gridPos.split('/').map(Number);
+              return (
+                <button
+                  key={key}
+                  onClick={() => handlePreset(key)}
+                  title={title}
+                  style={{
+                    gridRow: row,
+                    gridColumn: col,
+                    width: 28, height: 28,
+                    background: preset === key ? '#3b82f6' : 'rgba(15,23,42,0.85)',
+                    color: preset === key ? '#fff' : '#94a3b8',
+                    border: '1px solid #334155',
+                    borderRadius: 4,
+                    fontSize: key === 'T' ? 14 : 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            onClick={() => handlePreset('Home')}
+            title="Perspectief (startpositie)"
+            style={{
+              width: 60, height: 24,
+              background: 'rgba(15,23,42,0.85)',
+              color: '#64748b',
+              border: '1px solid #334155',
+              borderRadius: 4,
+              fontSize: 10,
+              cursor: 'pointer',
+            }}
+          >
+            ⌂ Home
           </button>
         </div>
       )}
