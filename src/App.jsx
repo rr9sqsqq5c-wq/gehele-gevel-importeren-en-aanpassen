@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
+import { reset as resetCoordinates } from './lib/projectCoordinates.js';
 import handleidingMd from '../HANDLEIDING.md?raw';
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState } from './lib/storage.js';
@@ -3178,7 +3179,7 @@ export default function App() {
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [hiddenGroupIds, setHiddenGroupIds] = useState(new Set());
   const forceOrientation = 'AUTO';
-  const [projectTransform, setProjectTransform] = useState(null);
+  const [projectInfo, setProjectInfo] = useState(null);
   const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
@@ -3802,6 +3803,8 @@ export default function App() {
 
   function handleNewProject() {
     if (allWalls.length > 0 && !window.confirm('Huidig project wissen en opnieuw beginnen?')) return;
+    resetCoordinates();
+    setProjectInfo(null);
     deleteSavedIfcFile().catch(() => {});
     deleteFileHandle().catch(() => {});
     clearProjectState().catch(() => {});
@@ -3879,6 +3882,8 @@ export default function App() {
 
   async function confirmImport() {
     if (!pendingFile) return;
+    // Reset coördinaten bij een nieuw (niet-merge) import
+    if (!mergeMode && allWalls.length === 0) resetCoordinates();
     setLoadStatus('loading');
     setLoadProgress({ current: 0, total: 0 });
     loadLogsRef.current = [];
@@ -3920,7 +3925,7 @@ export default function App() {
         saveParsedWalls(cacheKey, pendingFile.size, walls).catch(() => {});
       }
 
-      setProjectTransform(walls.projectTransform ?? null);
+      setProjectInfo(walls.projectInfo ?? null);
       if (!walls.length) throw new Error('Geen wanden gevonden met de geselecteerde types');
       addLog(`✓ ${walls.length} wanden geladen, aangrenzendheid detecteren…`);
       const adj = await detectAdjacenciesAsync(walls, (i, total) => {
@@ -6035,7 +6040,7 @@ export default function App() {
                 hiddenGroupIds={hiddenGroupIds}
                 onHiddenGroupIdsChange={setHiddenGroupIds}
                 buildingEnvelopeData={buildingEnvelopeData}
-                projectTransform={projectTransform}
+                projectInfo={projectInfo}
               />
 
               {allWalls.length === 0 && (

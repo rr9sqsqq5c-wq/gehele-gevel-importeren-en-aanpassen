@@ -2,6 +2,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
 import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
+import { buildProjectMatrix } from './lib/projectCoordinates.js';
 import { generateSlimFortGrid, SLIMFORT_DEFAULTS, getSlimFortDepths, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
 
 function checkWebGL() {
@@ -28,38 +29,7 @@ function ifcToThree(ifcX, ifcY, ifcZ) {
   return [ifcX / 1000, ifcY / 1000, ifcZ / 1000];
 }
 
-/**
- * Bouw de IFC→Three.js transformatiematrix uit de projecttransformatie.
- *
- * Volgorde (toegepast van rechts naar links op een punt):
- *   1. T(-origin_m) — trek de WCS-origin af (in meters, na mm→m via ifcToThree)
- *   2. Rx(-90°)     — IFC Z-up → Three.js Y-up
- *   3. Ry(α)        — TrueNorth-rotatie
- *
- * M = Ry(α) * Rx(-90°) * T(-origin_m)
- *
- * ifcToThree() handelt de mm→m conversie (unitScale) al af, dus de matrix
- * werkt op punten die al in meters zijn uitgedrukt.
- */
-function buildProjectMatrix(projectTransform) {
-  const { origin = { x: 0, y: 0, z: 0 }, unitScale = 0.001, trueNorthAngle = 0 } = projectTransform ?? {};
-
-  // T(-origin_m): trek de WCS-origin af in meters.
-  // ifcToThree() deelt altijd door 1000 (mm→m), dus origin_m = origin_mm * 0.001.
-  // Als het bestand al in meters is (unitScale=1.0) past ifcToThree() niet goed,
-  // maar origin is dan sowieso 0 (Tekla-bestanden), dus geen effect.
-  const ox = origin.x * 0.001;
-  const oy = origin.y * 0.001;
-  const oz = origin.z * 0.001;
-  const T = new THREE.Matrix4().makeTranslation(-ox, -oy, -oz);
-
-  const Rx = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
-  const Ry = new THREE.Matrix4().makeRotationY(trueNorthAngle);
-
-  // M = Ry * Rx * T
-  const RxT = new THREE.Matrix4().multiplyMatrices(Rx, T);
-  return new THREE.Matrix4().multiplyMatrices(Ry, RxT);
-}
+// buildProjectMatrix is geïmporteerd uit ./lib/projectCoordinates.js
 
 function applyMatrix(mat, x, y, z) {
   const v = new THREE.Vector3(x, y, z).applyMatrix4(mat);
@@ -1478,7 +1448,7 @@ const COMPASS = [
   { key: 'Top',  label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
 ];
 
-export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData, projectTransform = null }) {
+export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData, projectInfo = null }) {
   const [hoveredWallId, setHoveredWallId] = useState(null);
   const [preset, setPreset] = useState(null);
   const [boxSelectMode, setBoxSelectMode] = useState(false);
@@ -1509,7 +1479,9 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
   const containerRef = useRef(null);
   const rootGroupRef = useRef(null);
 
-  const projectMatrix = useMemo(() => buildProjectMatrix(projectTransform), [projectTransform]);
+  // buildProjectMatrix() gebruikt de module-state uit projectCoordinates.js
+  // projectInfo triggert de useMemo wanneer een nieuw bestand geladen is
+  const projectMatrix = useMemo(() => buildProjectMatrix(), [projectInfo]);
 
   // Stel de matrix handmatig in via ref — betrouwbaarder dan de matrix-prop in R3F
   useEffect(() => {
