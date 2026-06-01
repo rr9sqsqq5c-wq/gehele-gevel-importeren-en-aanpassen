@@ -28,7 +28,8 @@ function ifcToThree(ifcX, ifcY, ifcZ) {
   return [ifcX / 1000, ifcY / 1000, ifcZ / 1000];
 }
 
-const ROT_X = -Math.PI / 2;
+const ROT_X_Z_UP = -Math.PI / 2;
+const ROT_X_Y_UP = 0;
 
 function rotateXPt(rotX, x, y, z) {
   const c = Math.cos(rotX), s = Math.sin(rotX);
@@ -1312,7 +1313,7 @@ function CameraPresetController({ preset, center, span, onDone }) {
 }
 
 function FocusGroupCamera({ activeGroupId, groups, walls, groupSettings }) {
-  const rotX = ROT_X;
+  const rotX = detectUpAxis(walls) === 'z' ? ROT_X_Z_UP : ROT_X_Y_UP;
   const { camera, controls } = useThree();
   const targetRef = useRef(null);
 
@@ -1383,7 +1384,7 @@ function FocusGroupCamera({ activeGroupId, groups, walls, groupSettings }) {
 }
 
 function CameraInit({ walls }) {
-  const rotX = ROT_X;
+  const rotX = detectUpAxis(walls) === 'z' ? ROT_X_Z_UP : ROT_X_Y_UP;
   const { camera, controls } = useThree();
   const done = useRef(false);
   const pendingRef = useRef(null);
@@ -1486,7 +1487,10 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
   const cameraRef = useRef(null);
   const containerRef = useRef(null);
 
-  const rotX = ROT_X;
+  const rotX = useMemo(
+    () => detectUpAxis(walls) === 'z' ? ROT_X_Z_UP : ROT_X_Y_UP,
+    [walls]
+  );
 
   const wallGroupMap = useMemo(() => {
     const map = {};
