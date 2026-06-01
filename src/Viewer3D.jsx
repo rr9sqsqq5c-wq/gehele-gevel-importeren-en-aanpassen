@@ -28,9 +28,9 @@ function ifcToThree(ifcX, ifcY, ifcZ) {
   return [ifcX / 1000, ifcY / 1000, ifcZ / 1000];
 }
 
-function upAxisToRotX(upAxis) {
-  if (upAxis === 'y') return 0;
-  if (upAxis === 'z_neg') return Math.PI / 2;
+function orientationModeToRotX(mode) {
+  if (mode === 'NONE') return 0;
+  if (mode === 'X_POS90') return Math.PI / 2;
   return -Math.PI / 2;
 }
 
@@ -188,7 +188,7 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, b
   ];
 }
 
-function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift = 0, outsideDirFlip = false, materialStoot = 10 }) {
+function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, allWalls, latDikte, brickDepth, panelDikte, penantShift = 0, outsideDirFlip = false, materialStoot = 10 }) {
   const boxes = useMemo(
     () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot),
     [penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot]
@@ -228,7 +228,7 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, a
         size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
       };
     });
-  }, [penant, rwo, groupMinX, groupMinH, upAxis, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip]);
+  }, [penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip]);
 
   if (!boxes.length) return null;
   return (
@@ -257,7 +257,7 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, upAxis, a
   );
 }
 
-function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY, steenH, brickD, upAxis, allWalls, flipDir = false, depthFromFace = null) {
+function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY, steenH, brickD, allWalls, flipDir = false, depthFromFace = null) {
   const raw = getOutsideFaceInfo(rwo, allWalls);
   const outsidePos = raw.outsidePos;
   const outsideDir = flipDir ? -raw.outsideDir : raw.outsideDir;
@@ -270,12 +270,12 @@ function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY,
   dims[rwo.heightAxis]    = steenH;
   dims[rwo.thicknessAxis] = brickD;
   return {
-    pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
-    size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+    pos:  ifcToThree(ifc.x, ifc.y, ifc.z),
+    size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
   };
 }
 
-function getPenantSideBrickPos(rwo, groupMinX, groupMinH, sideType, pX, pB, pieceStart, pieceLen, rowY, steenH, brickD, sideDepthOffset, upAxis, allWalls, flipDir = false) {
+function getPenantSideBrickPos(rwo, groupMinX, groupMinH, sideType, pX, pB, pieceStart, pieceLen, rowY, steenH, brickD, sideDepthOffset, allWalls, flipDir = false) {
   const raw = getOutsideFaceInfo(rwo, allWalls);
   const outsidePos = raw.outsidePos;
   const outsideDir = flipDir ? -raw.outsideDir : raw.outsideDir;
@@ -288,12 +288,12 @@ function getPenantSideBrickPos(rwo, groupMinX, groupMinH, sideType, pX, pB, piec
   dims[rwo.heightAxis]    = steenH;
   dims[rwo.thicknessAxis] = pieceLen;
   return {
-    pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
-    size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+    pos:  ifcToThree(ifc.x, ifc.y, ifc.z),
+    size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
   };
 }
 
-function getSlimFortElemBoxAt(rwo, groupMinX, groupMinH, x, y, width, height, depthStart, depthLen, upAxis, outsideDir, outsidePos) {
+function getSlimFortElemBoxAt(rwo, groupMinX, groupMinH, x, y, width, height, depthStart, depthLen, outsideDir, outsidePos) {
   const ifc = { x: 0, y: 0, z: 0 };
   ifc[rwo.lengthAxis]    = groupMinX + x + width / 2;
   ifc[rwo.heightAxis]    = groupMinH + y + height / 2;
@@ -303,12 +303,12 @@ function getSlimFortElemBoxAt(rwo, groupMinX, groupMinH, x, y, width, height, de
   dims[rwo.heightAxis]    = height;
   dims[rwo.thicknessAxis] = depthLen;
   return {
-    pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
-    size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+    pos:  ifcToThree(ifc.x, ifc.y, ifc.z),
+    size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
   };
 }
 
-function getSlimFortElemBox(rwo, groupMinX, groupMinH, x, y, width, height, depthStart, depthLen, upAxis, allWalls, flipDir) {
+function getSlimFortElemBox(rwo, groupMinX, groupMinH, x, y, width, height, depthStart, depthLen, allWalls, flipDir) {
   const raw = getOutsideFaceInfo(rwo, allWalls);
   const outsideDir = flipDir ? -raw.outsideDir : raw.outsideDir;
   const outsidePos = raw.outsidePos;
@@ -321,12 +321,12 @@ function getSlimFortElemBox(rwo, groupMinX, groupMinH, x, y, width, height, dept
   dims[rwo.heightAxis]    = height;
   dims[rwo.thicknessAxis] = depthLen;
   return {
-    pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
-    size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+    pos:  ifcToThree(ifc.x, ifc.y, ifc.z),
+    size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
   };
 }
 
-function getSlimFortSideFaceElemBox(rwo, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, localX, localY, localW, localH, depthStart, depthLen, upAxis, allWalls, flipDir) {
+function getSlimFortSideFaceElemBox(rwo, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, localX, localY, localW, localH, depthStart, depthLen, allWalls, flipDir) {
   const raw = getOutsideFaceInfo(rwo, allWalls);
   const outsideDir = flipDir ? -raw.outsideDir : raw.outsideDir;
   const outsidePos = raw.outsidePos;
@@ -347,12 +347,12 @@ function getSlimFortSideFaceElemBox(rwo, groupMinX, groupMinH, groupWidth, faceT
   }
   dims[rwo.lengthAxis] = depthLen;
   return {
-    pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
-    size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+    pos:  ifcToThree(ifc.x, ifc.y, ifc.z),
+    size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
   };
 }
 
-function getSlimFortPortalFaceElemBox(rwo, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, localX, localY, localW, localH, depthStart, depthLen, upAxis, allWalls, flipDir) {
+function getSlimFortPortalFaceElemBox(rwo, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, localX, localY, localW, localH, depthStart, depthLen, allWalls, flipDir) {
   const raw = getOutsideFaceInfo(rwo, allWalls);
   const outsideDir = flipDir ? -raw.outsideDir : raw.outsideDir;
   const outsidePos = raw.outsidePos;
@@ -369,12 +369,12 @@ function getSlimFortPortalFaceElemBox(rwo, groupMinX, groupMinH, faceType, corne
   }
   dims[rwo.lengthAxis] = depthLen;
   return {
-    pos:  ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
-    size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+    pos:  ifcToThree(ifc.x, ifc.y, ifc.z),
+    size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
   };
 }
 
-function getReturnFaceBrickPos(rwo, groupMinX, groupMinH, groupWidth, wallType, pieceStart, pieceLen, rowY, steenH, brickD, sfDepthOffset, brickCenterDepth, upAxis, allWalls, flipDir) {
+function getReturnFaceBrickPos(rwo, groupMinX, groupMinH, groupWidth, wallType, pieceStart, pieceLen, rowY, steenH, brickD, sfDepthOffset, brickCenterDepth, allWalls, flipDir) {
   const raw = getOutsideFaceInfo(rwo, allWalls);
   const outsidePos = raw.outsidePos;
   const outsideDir = flipDir ? -raw.outsideDir : raw.outsideDir;
@@ -391,12 +391,12 @@ function getReturnFaceBrickPos(rwo, groupMinX, groupMinH, groupWidth, wallType, 
   }
   dims[rwo.lengthAxis] = brickD;
   return {
-    pos: ifcToThree(ifc.x, ifc.y, ifc.z, upAxis),
-    size: ifcToThree(dims.x, dims.y, dims.z, upAxis).map(Math.abs),
+    pos: ifcToThree(ifc.x, ifc.y, ifc.z),
+    size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
   };
 }
 
-function SlimFortStitchDebug3D({ groupPattern, upAxis }) {
+function SlimFortStitchDebug3D({ groupPattern }) {
   const lines = useMemo(() => {
     const stitching = groupPattern?.slimFortStitching;
     if (!stitching) return null;
@@ -421,8 +421,8 @@ function SlimFortStitchDebug3D({ groupPattern, upAxis }) {
       p0[axes.thickness] = outsidePos / 1000;
       p1[axes.thickness] = outsidePos / 1000;
 
-      const a = ifcToThree(p0.x * 1000, p0.y * 1000, p0.z * 1000, upAxis);
-      const b = ifcToThree(p1.x * 1000, p1.y * 1000, p1.z * 1000, upAxis);
+      const a = ifcToThree(p0.x * 1000, p0.y * 1000, p0.z * 1000);
+      const b = ifcToThree(p1.x * 1000, p1.y * 1000, p1.z * 1000);
       edgeVerts.push(...a, ...b);
     }
 
@@ -445,13 +445,13 @@ function SlimFortStitchDebug3D({ groupPattern, upAxis }) {
       p0[axes.thickness] = outsidePos / 1000;
       p1[axes.thickness] = outsidePos / 1000;
 
-      const a = ifcToThree(p0.x * 1000, p0.y * 1000, p0.z * 1000, upAxis);
-      const b = ifcToThree(p1.x * 1000, p1.y * 1000, p1.z * 1000, upAxis);
+      const a = ifcToThree(p0.x * 1000, p0.y * 1000, p0.z * 1000);
+      const b = ifcToThree(p1.x * 1000, p1.y * 1000, p1.z * 1000);
       routeVerts.push(...a, ...b);
     }
 
     return { edgeVerts, routeVerts };
-  }, [groupPattern, upAxis]);
+  }, [groupPattern]);
 
   if (!lines) return null;
   const { edgeVerts, routeVerts } = lines;
@@ -478,7 +478,7 @@ function SlimFortStitchDebug3D({ groupPattern, upAxis }) {
   );
 }
 
-function WallDecompositionDebug3D({ groupPattern, upAxis }) {
+function WallDecompositionDebug3D({ groupPattern }) {
   const debugData = useMemo(() => {
     const wd = groupPattern?.wallDecomposition;
     if (!wd?.segments?.length) return null;
@@ -495,7 +495,7 @@ function WallDecompositionDebug3D({ groupPattern, upAxis }) {
     }
 
     function ptToThree(p) {
-      return ifcToThree(p.x, p.y, p.z, upAxis);
+      return ifcToThree(p.x, p.y, p.z);
     }
 
     const segmentLines = [];
@@ -578,14 +578,14 @@ function WallDecompositionDebug3D({ groupPattern, upAxis }) {
         p[axes.length] = lMid;
         p[axes.height] = hs + lh / 2;
         p[axes.thickness] = op;
-        return ifcToThree(p.x, p.y, p.z, upAxis);
+        return ifcToThree(p.x, p.y, p.z);
       }
 
       connVerts.push(...segCenter(segA), ...segCenter(segB));
     }
 
     return { segmentLines, labels, connVerts };
-  }, [groupPattern, upAxis]);
+  }, [groupPattern]);
 
   if (!debugData) return null;
   const { segmentLines, labels, connVerts } = debugData;
@@ -619,7 +619,7 @@ function WallDecompositionDebug3D({ groupPattern, upAxis }) {
   );
 }
 
-function SlimFortFaceDebug3D({ groupPattern, settings, upAxis }) {
+function SlimFortFaceDebug3D({ groupPattern, settings }) {
   const labels = useMemo(() => {
     if (!groupPattern || !settings) return null;
     const sfSettings = { ...SLIMFORT_DEFAULTS, ...(settings.slimFortSettings ?? {}) };
@@ -677,14 +677,14 @@ function SlimFortFaceDebug3D({ groupPattern, settings, upAxis }) {
 
       if (!labelPt) continue;
 
-      const position = ifcToThree(labelPt.x, labelPt.y, labelPt.z, upAxis);
+      const position = ifcToThree(labelPt.x, labelPt.y, labelPt.z);
       const faceColor = { front: '#3b82f6', 'side-left': '#8b5cf6', 'side-right': '#ec4899' }[face.faceType] ?? '#64748b';
 
       result.push({ position, faceType: face.faceType, wallType, mappedConcreteFace, localWidth, rangeStr, color: faceColor });
     }
 
     return result;
-  }, [groupPattern, settings, upAxis]);
+  }, [groupPattern, settings]);
 
   if (!labels?.length) return null;
 
@@ -704,7 +704,7 @@ function SlimFortFaceDebug3D({ groupPattern, settings, upAxis }) {
   );
 }
 
-function SlimFort3D({ groupPattern, settings, brickD, upAxis, allWalls }) {
+function SlimFort3D({ groupPattern, settings, brickD, allWalls }) {
   const { invalidate } = useThree();
 
   const sfData = useMemo(() => {
@@ -746,34 +746,34 @@ function SlimFort3D({ groupPattern, settings, brickD, upAxis, allWalls }) {
 
       if (faceType === 'front') {
         for (const eps of grid.epsElements) {
-          allEpsBoxes.push(getSlimFortElemBox(refWallOrigin, groupMinX, groupMinH, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, allWalls, flip));
+          allEpsBoxes.push(getSlimFortElemBox(refWallOrigin, groupMinX, groupMinH, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, allWalls, flip));
         }
         for (const p of grid.profiles) {
-          allProfBoxes.push(getSlimFortElemBox(refWallOrigin, groupMinX, groupMinH, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, allWalls, flip));
+          allProfBoxes.push(getSlimFortElemBox(refWallOrigin, groupMinX, groupMinH, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, allWalls, flip));
         }
         for (const b of grid.brackets) {
-          allBrBoxes.push(getSlimFortElemBox(refWallOrigin, groupMinX, groupMinH, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, allWalls, flip));
+          allBrBoxes.push(getSlimFortElemBox(refWallOrigin, groupMinX, groupMinH, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, allWalls, flip));
         }
       } else if (faceType === 'side-left' || faceType === 'side-right') {
         for (const eps of grid.epsElements) {
-          allEpsSideBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, allWalls, flip));
+          allEpsSideBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, allWalls, flip));
         }
         for (const p of grid.profiles) {
-          allProfSideBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, allWalls, flip));
+          allProfSideBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, allWalls, flip));
         }
         for (const b of grid.brackets) {
-          allBrSideBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, allWalls, flip));
+          allBrSideBoxes.push(getSlimFortSideFaceElemBox(refWallOrigin, groupMinX, groupMinH, groupWidth, faceType, cornerOffset, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, allWalls, flip));
         }
       } else if (faceType === 'portal-left' || faceType === 'portal-right') {
         const { openingX, openingY, openingWidth } = face;
         for (const eps of grid.epsElements) {
-          allEpsSideBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, allWalls, flip));
+          allEpsSideBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, allWalls, flip));
         }
         for (const p of grid.profiles) {
-          allProfSideBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, allWalls, flip));
+          allProfSideBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, allWalls, flip));
         }
         for (const b of grid.brackets) {
-          allBrSideBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, allWalls, flip));
+          allBrSideBoxes.push(getSlimFortPortalFaceElemBox(refWallOrigin, groupMinX, groupMinH, faceType, cornerOffset, openingX, openingY, openingWidth, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, allWalls, flip));
         }
       } else if (faceType === 'back') {
         let backOutsidePos = face.outsidePos;
@@ -785,13 +785,13 @@ function SlimFort3D({ groupPattern, settings, brickD, upAxis, allWalls }) {
           backOutsidePos = raw.outsidePos - rawDir * (face.backOffsetFromFront ?? 0);
         }
         for (const eps of grid.epsElements) {
-          allEpsBackBoxes.push(getSlimFortElemBoxAt(refWallOrigin, groupMinX, groupMinH, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, upAxis, backOutsideDir, backOutsidePos));
+          allEpsBackBoxes.push(getSlimFortElemBoxAt(refWallOrigin, groupMinX, groupMinH, eps.x, eps.y, eps.width, eps.height, epsDepthStart, epsDepthLen, backOutsideDir, backOutsidePos));
         }
         for (const p of grid.profiles) {
-          allProfBackBoxes.push(getSlimFortElemBoxAt(refWallOrigin, groupMinX, groupMinH, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, upAxis, backOutsideDir, backOutsidePos));
+          allProfBackBoxes.push(getSlimFortElemBoxAt(refWallOrigin, groupMinX, groupMinH, p.x, p.y, p.width, p.height, Math.max(1, profDepthStart), profDepthLen, backOutsideDir, backOutsidePos));
         }
         for (const b of grid.brackets) {
-          allBrBackBoxes.push(getSlimFortElemBoxAt(refWallOrigin, groupMinX, groupMinH, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, upAxis, backOutsideDir, backOutsidePos));
+          allBrBackBoxes.push(getSlimFortElemBoxAt(refWallOrigin, groupMinX, groupMinH, b.x, b.y, b.width, b.height, brDepthStart, brDepthLen, backOutsideDir, backOutsidePos));
         }
       }
     }
@@ -801,7 +801,7 @@ function SlimFort3D({ groupPattern, settings, brickD, upAxis, allWalls }) {
       epsBackBoxes: allEpsBackBoxes, profBackBoxes: allProfBackBoxes, brBackBoxes: allBrBackBoxes,
       epsSideBoxes: allEpsSideBoxes, profSideBoxes: allProfSideBoxes, brSideBoxes: allBrSideBoxes,
     };
-  }, [groupPattern, settings, brickD, upAxis, allWalls]);
+  }, [groupPattern, settings, brickD, allWalls]);
 
   useEffect(() => { invalidate(); }, [sfData, invalidate]);
 
@@ -868,7 +868,7 @@ function SlimFort3D({ groupPattern, settings, brickD, upAxis, allWalls }) {
   );
 }
 
-function ReturnWallBricks3D({ groupPattern, settings, brickD, upAxis, allWalls }) {
+function ReturnWallBricks3D({ groupPattern, settings, brickD, allWalls }) {
   const groupRef = useRef();
   const { invalidate } = useThree();
 
@@ -908,14 +908,14 @@ function ReturnWallBricks3D({ groupPattern, settings, brickD, upAxis, allWalls }
         bricks.push(getReturnFaceBrickPos(
           refWallOrigin, groupMinX, groupMinH, groupWidth, wallType,
           0, exposedDepth, localHStart + y, steenH, depth,
-          sfTotal, brickCenterDepth, upAxis, allWalls, flip
+          sfTotal, brickCenterDepth, allWalls, flip
         ));
         y += steenH;
       }
       if (bricks.length > 0) result.push({ color, bricks });
     }
     return result;
-  }, [groupPattern, settings, brickD, upAxis, allWalls]);
+  }, [groupPattern, settings, brickD, allWalls]);
 
   useEffect(() => {
     const group = groupRef.current;
@@ -955,7 +955,7 @@ function ReturnWallBricks3D({ groupPattern, settings, brickD, upAxis, allWalls }
   return <group ref={groupRef} />;
 }
 
-function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls, slimFort }) {
+function GroupBricks3D({ groupPattern, material, brickD, allWalls, slimFort }) {
   const groupRef = useRef();
   const { invalidate } = useThree();
 
@@ -973,7 +973,7 @@ function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls, slimF
           color: batch.color,
           bricks: batch.rows.flatMap((row) =>
             row.pieces.map((piece) =>
-              getPenantSideBrickPos(refWallOrigin, groupMinX, groupMinH, sideType, penantX, penantB, piece.start, piece.length, row.y, steenH, depth, sideDepthOffset, upAxis, allWalls, !!outsideDirFlip)
+              getPenantSideBrickPos(refWallOrigin, groupMinX, groupMinH, sideType, penantX, penantB, piece.start, piece.length, row.y, steenH, depth, sideDepthOffset, allWalls, !!outsideDirFlip)
             )
           ),
         };
@@ -983,7 +983,7 @@ function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls, slimF
         color: batch.color,
         bricks: batch.rows.flatMap((row) =>
           row.pieces.map((piece) =>
-            getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, upAxis, allWalls, !!outsideDirFlip, dfr)
+            getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, allWalls, !!outsideDirFlip, dfr)
           )
         ),
       };
@@ -991,13 +991,13 @@ function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls, slimF
     const wrapBatches = (cornerWraps ?? []).map((wrap, wi) => {
       const bricks = wrap.rows.flatMap((row) =>
         row.pieces.map((piece) =>
-          getGroupBrickPos(wrap.secRwo, wrap.secGroupMinX, wrap.secGroupMinH, piece.start, piece.length, row.y, wrap.brickH, wrap.brickD, upAxis, allWalls, !!wrap.secOutsideDirFlip, wrap.depthFromFace)
+          getGroupBrickPos(wrap.secRwo, wrap.secGroupMinX, wrap.secGroupMinH, piece.start, piece.length, row.y, wrap.brickH, wrap.brickD, allWalls, !!wrap.secOutsideDirFlip, wrap.depthFromFace)
         )
       );
       return { color: wrap.color, bricks };
     }).filter((b) => b.bricks.length > 0);
     return [...mainBatches, ...wrapBatches];
-  }, [groupPattern, material, brickD, upAxis, allWalls]);
+  }, [groupPattern, material, brickD, allWalls]);
 
   useEffect(() => {
     const group = groupRef.current;
@@ -1039,10 +1039,18 @@ function GroupBricks3D({ groupPattern, material, brickD, upAxis, allWalls, slimF
   return <group ref={groupRef} />;
 }
 
-function buildPolyExtrudeGeo(wall, upAxis) {
+function buildPolyExtrudeGeo(wall) {
   const poly = wall.facadePoly;
   const wo = wall.wallOrigin;
   if (!poly || poly.length < 3 || !wo) return null;
+  console.log('[FacadePolyDiag]', {
+    wallId: wall.expressID,
+    typeName: wall.typeName ?? null,
+    polyPoints: poly.length,
+    openingCount: wall.openings?.length ?? 0,
+    firstPt: poly[0],
+    lastPt: poly[poly.length - 1],
+  });
   try {
     const thickness = Math.max(50, Math.abs((wo.thicknessEnd ?? wo.thicknessStart + 200) - wo.thicknessStart));
     const tStart = wo.thicknessStart;
@@ -1053,18 +1061,21 @@ function buildPolyExtrudeGeo(wall, upAxis) {
       ifc[wo.lengthAxis]    = wo.lengthStart + l;
       ifc[wo.heightAxis]    = wo.heightStart + h;
       ifc[wo.thicknessAxis] = t;
-      return ifcToThree(ifc.x, ifc.y, ifc.z, upAxis);
+      return ifcToThree(ifc.x, ifc.y, ifc.z);
     };
 
     const fp = poly.map(p => toThree(p.l, p.h, tStart));
     const bp = poly.map(p => toThree(p.l, p.h, tEnd));
     const n = poly.length;
 
+    const contour2D = poly.map(p => new THREE.Vector2(p.l, p.h));
+    const triIndices = THREE.ShapeUtils.triangulateShape(contour2D, []);
+
     const positions = [];
     const push3 = (pt) => positions.push(pt[0], pt[1], pt[2]);
 
-    for (let i = 1; i < n - 1; i++) { push3(fp[0]); push3(fp[i]); push3(fp[i + 1]); }
-    for (let i = 1; i < n - 1; i++) { push3(bp[0]); push3(bp[i + 1]); push3(bp[i]); }
+    for (const [a, b, c] of triIndices) { push3(fp[a]); push3(fp[b]); push3(fp[c]); }
+    for (const [a, b, c] of triIndices) { push3(bp[a]); push3(bp[c]); push3(bp[b]); }
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
       push3(fp[i]); push3(fp[j]); push3(bp[j]);
@@ -1078,14 +1089,14 @@ function buildPolyExtrudeGeo(wall, upAxis) {
   } catch { return null; }
 }
 
-function WallMesh({ wall, isSelected, isHovered, groupColor, onSelect, onHover, upAxis }) {
-  const box = useMemo(() => getWallBox(wall, upAxis), [wall, upAxis]);
+function WallMesh({ wall, isSelected, isHovered, groupColor, onSelect, onHover }) {
+  const box = useMemo(() => getWallBox(wall), [wall]);
 
   const facadeGeo = useMemo(() => {
     const poly = wall.facadePoly;
     if (!poly || poly.length === 4) return null;
-    return buildPolyExtrudeGeo(wall, upAxis);
-  }, [wall, upAxis]);
+    return buildPolyExtrudeGeo(wall);
+  }, [wall]);
 
   useEffect(() => () => { facadeGeo?.dispose(); }, [facadeGeo]);
 
@@ -1152,13 +1163,32 @@ function WallMesh({ wall, isSelected, isHovered, groupColor, onSelect, onHover, 
   );
 }
 
-function OpeningMesh({ wall, opening, upAxis }) {
+function OpeningMesh({ wall, opening }) {
   const wo = wall.wallOrigin;
   if (!wo) return null;
 
   const thickness = Math.max(50, Math.abs((wo.thicknessEnd ?? wo.thicknessStart + 200) - wo.thicknessStart));
   const backFace  = wo.thicknessStart - 5;
   const frontFace = wo.thicknessStart + thickness + 5;
+  const { outsidePos: _oPos, outsideDir: _oDir } = getOutsideFaceInfo(wo, null);
+  const fillFace = _oPos + _oDir * 6;
+
+  console.log('[OpeningRender]', {
+    wallId: wall.expressID,
+    openingId: opening.id,
+    outsideDir: wo.resolvedOutside ?? null,
+    lengthAxis: wo.lengthAxis,
+    heightAxis: wo.heightAxis,
+    thicknessAxis: wo.thicknessAxis,
+    thicknessStart: wo.thicknessStart,
+    thicknessEnd: wo.thicknessEnd,
+    frontFace,
+    backFace,
+    openingX: opening.x,
+    openingY: opening.y,
+    openingWidth: opening.breedte,
+    openingHeight: opening.hoogte,
+  });
 
   const ox = opening.x ?? 0;
   const oy = opening.y ?? 0;
@@ -1186,7 +1216,7 @@ function OpeningMesh({ wall, opening, upAxis }) {
         ifc[wo.lengthAxis]    = wo.lengthStart + l;
         ifc[wo.heightAxis]    = wo.heightStart + h;
         ifc[wo.thicknessAxis] = tVal;
-        const [tx, ty, tz] = ifcToThree(ifc.x, ifc.y, ifc.z, upAxis);
+        const [tx, ty, tz] = ifcToThree(ifc.x, ifc.y, ifc.z);
         return new THREE.Vector3(tx, ty, tz);
       });
       return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat);
@@ -1201,7 +1231,7 @@ function OpeningMesh({ wall, opening, upAxis }) {
         ifc[wo.lengthAxis]    = wo.lengthStart + posArr[i];
         ifc[wo.heightAxis]    = wo.heightStart + posArr[i + 1];
         ifc[wo.thicknessAxis] = tVal;
-        const [tx, ty, tz] = ifcToThree(ifc.x, ifc.y, ifc.z, upAxis);
+        const [tx, ty, tz] = ifcToThree(ifc.x, ifc.y, ifc.z);
         posArr[i] = tx; posArr[i + 1] = ty; posArr[i + 2] = tz;
       }
       geo.attributes.position.needsUpdate = true;
@@ -1213,9 +1243,9 @@ function OpeningMesh({ wall, opening, upAxis }) {
     const setOrder = (obj) => { obj.renderOrder = 999; return obj; };
     group.add(setOrder(makePolyLine(frontFace)));
     group.add(setOrder(makePolyLine(backFace)));
-    group.add(setOrder(makePolyFill(frontFace + 1)));
+    group.add(setOrder(makePolyFill(fillFace)));
     return group;
-  }, [wo, ox, oy, ow, oh, frontFace, backFace, upAxis, opening.type, polyPts]);
+  }, [wo, ox, oy, ow, oh, frontFace, backFace, fillFace, opening.type, polyPts]);
 
   return <primitive object={meshObj} />;
 }
@@ -1428,7 +1458,7 @@ const COMPASS = [
   { key: 'Top',  label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
 ];
 
-export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData }) {
+export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData, orientationMode = 'X_NEG90' }) {
   const [hoveredWallId, setHoveredWallId] = useState(null);
   const [preset, setPreset] = useState(null);
   const [boxSelectMode, setBoxSelectMode] = useState(false);
@@ -1458,8 +1488,35 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
   const cameraRef = useRef(null);
   const containerRef = useRef(null);
 
-  const upAxis = useMemo(() => detectUpAxis(walls), [walls]);
-  const rotX   = useMemo(() => upAxisToRotX(upAxis), [upAxis]);
+  const rotX = orientationModeToRotX(orientationMode);
+  console.log('[OrientationVerify] Viewer3D', { orientationMode, rotX });
+
+  useEffect(() => {
+    if (!walls || walls.length === 0) return;
+    const heightAxisCounts = {};
+    for (const w of walls) {
+      const h = w.wallOrigin?.heightAxis ?? 'unknown';
+      heightAxisCounts[h] = (heightAxisCounts[h] || 0) + 1;
+    }
+    const detectedAxis = detectUpAxis(walls);
+    const expectedMode =
+      detectedAxis === 'z' ? 'X_NEG90' :
+      detectedAxis === 'y' ? 'NONE' :
+      'onbekend';
+    const mismatch = orientationMode !== expectedMode;
+    console.log('[OrientationDiag] walls/orientationMode gewijzigd', {
+      wallCount: walls.length,
+      heightAxisCounts,
+      detectedUpAxis: detectedAxis,
+      orientationMode,
+      rotX: orientationModeToRotX(orientationMode),
+      expectedMode,
+      mismatch,
+      uitleg: mismatch
+        ? `MISMATCH: heightAxis-meerderheid="${detectedAxis}" verwacht mode="${expectedMode}" maar actief="${orientationMode}"`
+        : `OK: heightAxis="${detectedAxis}" komt overeen met mode="${orientationMode}"`,
+    });
+  }, [walls, orientationMode]);
 
   const wallGroupMap = useMemo(() => {
     const map = {};
@@ -1622,7 +1679,6 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
               groupColor={settings?.color ?? null}
               onSelect={boxSelectMode ? null : onSelectWall}
               onHover={setHoveredWallId}
-              upAxis={upAxis}
             />
           );
         })}
@@ -1638,7 +1694,6 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
               groupPattern={gp}
               material={settings?.material}
               brickD={settings?.brickDepth ?? 20}
-              upAxis={upAxis}
               allWalls={walls}
               slimFort={(settings?.backingType ?? 'hout') === 'aluminium_slimfort'}
             />
@@ -1657,29 +1712,53 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
                 groupPattern={gp}
                 settings={settings}
                 brickD={settings?.brickDepth ?? 20}
-                upAxis={upAxis}
                 allWalls={walls}
               />
               <ReturnWallBricks3D
                 groupPattern={gp}
                 settings={settings}
                 brickD={settings?.brickDepth ?? 20}
-                upAxis={upAxis}
                 allWalls={walls}
               />
-              <SlimFortStitchDebug3D groupPattern={gp} upAxis={upAxis} />
-              <WallDecompositionDebug3D groupPattern={gp} upAxis={upAxis} />
-              <SlimFortFaceDebug3D groupPattern={gp} settings={settings} upAxis={upAxis} />
+              <SlimFortStitchDebug3D groupPattern={gp} />
+              <WallDecompositionDebug3D groupPattern={gp} />
+              <SlimFortFaceDebug3D groupPattern={gp} settings={settings} />
             </group>
           );
         })}
 
         {walls.flatMap((wall) => {
           const group = wallGroupMap[wall.expressID];
+          if ((wall.openings?.length ?? 0) > 0) {
+            console.log('[OpeningVisibility]', {
+              wallId: wall.expressID,
+              openingCount: wall.openings.length,
+              inGroup: !!group,
+              groupHidden: group ? hiddenGroupIds.has(group.id) : false,
+              hideUngrouped,
+              hasWallOrigin: !!wall.wallOrigin,
+            });
+          }
           if (group && hiddenGroupIds.has(group.id)) return [];
           if (!group && hideUngrouped) return [];
+          console.log('[OpeningData]', {
+            wallId: wall.expressID,
+            ifcExpressId: wall.expressID,
+            idSource: 'WebIFC.GetLineIDsWithType — wallId IS the raw IFC expressId, no transform',
+            wallName: wall.name,
+            typeName: wall.typeName ?? null,
+            openingCount: wall.openings?.length ?? 0,
+            openings: wall.openings,
+            groupId: group?.id ?? null,
+            groupWallIds: group?.wallIds ?? null,
+            planeId: wall.planeId ?? null,
+            sourceMeshIds: wall.sourceMeshIds ?? null,
+            wallOriginAxes: wall.wallOrigin
+              ? { length: wall.wallOrigin.lengthAxis, height: wall.wallOrigin.heightAxis, thickness: wall.wallOrigin.thicknessAxis }
+              : null,
+          });
           return (wall.openings ?? []).map((op) => (
-            <OpeningMesh key={`${wall.expressID}-${op.id}`} wall={wall} opening={op} upAxis={upAxis} />
+            <OpeningMesh key={`${wall.expressID}-${op.id}`} wall={wall} opening={op} />
           ));
         })}
 
@@ -1712,7 +1791,6 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
                 groupMinX={groupMinX}
                 groupMinH={groupMinH}
                 groupColor={settings?.color ?? '#6366f1'}
-                upAxis={upAxis}
                 allWalls={walls}
                 latDikte={penLatDikte}
                 brickDepth={penBrickD}

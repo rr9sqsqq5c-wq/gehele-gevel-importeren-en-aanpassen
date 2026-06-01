@@ -96,8 +96,10 @@ function _isCoLocated(host, layer) {
   const hTMid = ((hwo.thicknessStart ?? 0) + (hwo.thicknessEnd ?? hwo.thicknessStart + 272)) / 2;
   const lTMid = ((lwo.thicknessStart ?? 0) + (lwo.thicknessEnd ?? lwo.thicknessStart + 183)) / 2;
   const thicknessDiff = Math.abs(hTMid - lTMid);
-  const maxThicknessDiff = (hThick / 2) + (lThick / 2) + (sameStorey ? 200 : 100);
-  if (thicknessDiff > Math.min(maxThicknessDiff, _INHERIT_MAX_THICKNESS_DIFF_HARD)) return false;
+  const maxThicknessDiff = sameStorey
+    ? _INHERIT_MAX_THICKNESS_DIFF_HARD
+    : (hThick / 2) + (lThick / 2) + 100;
+  if (thicknessDiff > maxThicknessDiff) return false;
 
   const lOverlap = _intervalOverlap(
     hwo.lengthStart, hwo.lengthEnd ?? hwo.lengthStart,
@@ -109,21 +111,23 @@ function _isCoLocated(host, layer) {
   );
   if (minLen <= 0 || lOverlap / minLen < _INHERIT_MIN_OVERLAP_RATIO) return false;
 
-  const hHEnd = hwo.heightEnd ?? (hwo.heightStart + (host.height ?? 2700));
-  const lHEnd = lwo.heightEnd ?? (lwo.heightStart + (layer.height ?? 2700));
-  const hOverlap = _intervalOverlap(hwo.heightStart, hHEnd, lwo.heightStart, lHEnd);
-  const minHgt = Math.min(
-    Math.abs(hHEnd - hwo.heightStart),
-    Math.abs(lHEnd - lwo.heightStart),
-  );
-  if (minHgt <= 0 || hOverlap / minHgt < _INHERIT_MIN_OVERLAP_RATIO) return false;
+  if (!sameStorey) {
+    const hHEnd = hwo.heightEnd ?? (hwo.heightStart + (host.height ?? 2700));
+    const lHEnd = lwo.heightEnd ?? (lwo.heightStart + (layer.height ?? 2700));
+    const hOverlap = _intervalOverlap(hwo.heightStart, hHEnd, lwo.heightStart, lHEnd);
+    const minHgt = Math.min(
+      Math.abs(hHEnd - hwo.heightStart),
+      Math.abs(lHEnd - lwo.heightStart),
+    );
+    if (minHgt <= 0 || hOverlap / minHgt < _INHERIT_MIN_OVERLAP_RATIO) return false;
+  }
 
   return true;
 }
 
-function _adjustOpening(opening, host, layer) {
-  const dL = host.wallOrigin.lengthStart - layer.wallOrigin.lengthStart;
-  const dH = host.wallOrigin.heightStart - layer.wallOrigin.heightStart;
+function _adjustOpening(opening, host, layer, sameStorey = false) {
+  const dL = sameStorey ? 0 : host.wallOrigin.lengthStart - layer.wallOrigin.lengthStart;
+  const dH = sameStorey ? 0 : host.wallOrigin.heightStart - layer.wallOrigin.heightStart;
   const newX = opening.x + dL;
   const newY = opening.y + dH;
 
@@ -177,7 +181,7 @@ export function inheritOpeningsForWalls(walls) {
     if (usedStorey) storeyMatchCount++; else positionMatchCount++;
 
     const inheritedOpenings = (bestHost.openings ?? [])
-      .map((op) => _adjustOpening(op, bestHost, wall))
+      .map((op) => _adjustOpening(op, bestHost, wall, usedStorey))
       .filter(Boolean);
 
     if (inheritedOpenings.length === 0) return wall;
@@ -227,7 +231,7 @@ export function inheritOpeningsForWalls(walls) {
           const hOverlap = _intervalOverlap(hwo.heightStart, hHEnd, lwo.heightStart, lHEnd);
           const minHgt = Math.min(Math.abs(hHEnd - (hwo.heightStart ?? 0)), Math.abs(lHEnd - (lwo.heightStart ?? 0)));
           const heightOverlapRatioMin = minHgt > 0 ? hOverlap / minHgt : 0;
-          const passesHeight = minHgt > 0 && heightOverlapRatioMin >= _INHERIT_MIN_OVERLAP_RATIO;
+          const passesHeight = sameStorey || (minHgt > 0 && heightOverlapRatioMin >= _INHERIT_MIN_OVERLAP_RATIO);
           const finalMatch = sameAxes && passesThickness && passesLength && passesHeight;
           let rejectReason = null;
           if (!finalMatch) {
