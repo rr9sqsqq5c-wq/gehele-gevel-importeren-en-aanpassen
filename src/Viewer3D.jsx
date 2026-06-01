@@ -1267,21 +1267,6 @@ function CameraPresetController({ preset, center, span, onDone }) {
     const ty   = h * 0.4;
     const tgt  = new THREE.Vector3(cx, ty, cz);
 
-    console.log('[Windroos]', {
-      preset,
-      α: +α.toFixed(4),
-      sinα: +Math.sin(α).toFixed(4),
-      cosα: +Math.cos(α).toFixed(4),
-      cx: +cx.toFixed(2), cz: +cz.toFixed(2), ty: +ty.toFixed(2),
-      dist: +dist.toFixed(2),
-      h: +h.toFixed(2),
-      N_pos: {
-        x: +(cx + Math.sin(α)*dist).toFixed(2),
-        y: +ty.toFixed(2),
-        z: +(cz + Math.cos(α)*dist).toFixed(2),
-      },
-    });
-
     const presets = {
       N:    { pos: new THREE.Vector3(cx + Math.sin(α)*dist,  ty,    cz + Math.cos(α)*dist), tgt },
       Z:    { pos: new THREE.Vector3(cx - Math.sin(α)*dist,  ty,    cz - Math.cos(α)*dist), tgt },

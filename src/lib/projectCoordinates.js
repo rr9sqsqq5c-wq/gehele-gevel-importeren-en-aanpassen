@@ -112,8 +112,6 @@ export function buildProjectMatrix() {
   const Rx = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
   const Ry = new THREE.Matrix4().makeRotationY(_trueNorthAngle);
 
-  console.log('[Matrix]', { _trueNorthAngle: +_trueNorthAngle.toFixed(4), _projectOrigin });
-
   // M = Ry * Rx * T
   return new THREE.Matrix4()
     .multiplyMatrices(Ry, new THREE.Matrix4().multiplyMatrices(Rx, T));
