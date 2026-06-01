@@ -1103,6 +1103,33 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
 
   try {
 
+    // --- Storey-koppeling: wandID → storeyExpressID ---
+    // Wordt gebruikt door inheritOpeningsForWalls() om wanden uit dezelfde
+    // bouwlaag te matchen, ook als hun absolute z-coördinaten sterk verschillen
+    // (bijv. in gestapelde woningbouw met per-blok coördinaatstelsels).
+    const wallStoreyMap = {};
+    try {
+      const contVec = api.GetLineIDsWithType(modelID, IFC.IFCRELCONTAINEDINSPATIALSTRUCTURE);
+      for (let i = 0; i < contVec.size(); i++) {
+        try {
+          const rel = api.GetLine(modelID, contVec.get(i), false);
+          const structRef = rel?.RelatingStructure?.value;
+          if (!structRef) continue;
+          const structLine = api.GetRawLineData(modelID, structRef);
+          if (!structLine) continue;
+          const typeName = api.GetNameFromTypeCode(structLine.type).toUpperCase();
+          if (!typeName.includes('BUILDINGSTOREY') && !typeName.includes('STOREY')) continue;
+          const related = rel?.RelatedElements;
+          if (!Array.isArray(related)) continue;
+          for (const r of related) {
+            const wid = r?.value;
+            if (wid != null) wallStoreyMap[wid] = structRef;
+          }
+        } catch { }
+      }
+      console.log('[StoreyMap] Wanden gekoppeld aan bouwlaag:', Object.keys(wallStoreyMap).length);
+    } catch { }
+
     const openingType = {};
     const fillerExpressID = {};
     const relFillsVec = api.GetLineIDsWithType(modelID, IFC.IFCRELFILLSELEMENT);
@@ -1368,6 +1395,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
             wallOrigin,
             facadePoly: facadePoly ?? null,
             typeName: wallTypeMap[wID] ?? null,
+            storeyID: wallStoreyMap[wID] ?? null,
           });
         } catch { }
 
