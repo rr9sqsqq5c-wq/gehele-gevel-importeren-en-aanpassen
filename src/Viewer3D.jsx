@@ -1504,8 +1504,18 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
   const dragStart = useRef(null);
   const cameraRef = useRef(null);
   const containerRef = useRef(null);
+  const rootGroupRef = useRef(null);
 
   const projectMatrix = useMemo(() => buildProjectMatrix(projectTransform), [projectTransform]);
+
+  // Stel de matrix handmatig in via ref — betrouwbaarder dan de matrix-prop in R3F
+  useEffect(() => {
+    const g = rootGroupRef.current;
+    if (!g) return;
+    g.matrixAutoUpdate = false;
+    g.matrix.copy(projectMatrix);
+    g.matrixWorldNeedsUpdate = true;
+  }, [projectMatrix]);
 
   const wallGroupMap = useMemo(() => {
     const map = {};
@@ -1653,7 +1663,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
         <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault enabled={!boxSelectMode} />
         <gridHelper args={[500, 100, '#1e3a5f', '#1e293b']} position={[center[0], center[1] - span * 0.5, center[2]]} />
 
-        <group matrix={projectMatrix} matrixAutoUpdate={false}>
+        <group ref={rootGroupRef}>
         {walls.map((wall, wi) => {
           const group = wallGroupMap[wall.expressID];
           const settings = group ? groupSettings(group.id) : null;
