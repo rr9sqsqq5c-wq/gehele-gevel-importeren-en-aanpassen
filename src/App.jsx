@@ -3178,6 +3178,7 @@ export default function App() {
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [hiddenGroupIds, setHiddenGroupIds] = useState(new Set());
   const forceOrientation = 'AUTO';
+  const [trueNorthRotation, setTrueNorthRotation] = useState(0);
   const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
@@ -3919,6 +3920,7 @@ export default function App() {
         saveParsedWalls(cacheKey, pendingFile.size, walls).catch(() => {});
       }
 
+      setTrueNorthRotation(walls.trueNorthRotation ?? 0);
       if (!walls.length) throw new Error('Geen wanden gevonden met de geselecteerde types');
       addLog(`✓ ${walls.length} wanden geladen, aangrenzendheid detecteren…`);
       const adj = await detectAdjacenciesAsync(walls, (i, total) => {
@@ -6033,6 +6035,7 @@ export default function App() {
                 hiddenGroupIds={hiddenGroupIds}
                 onHiddenGroupIdsChange={setHiddenGroupIds}
                 buildingEnvelopeData={buildingEnvelopeData}
+                trueNorthRotation={trueNorthRotation}
               />
 
               {allWalls.length === 0 && (

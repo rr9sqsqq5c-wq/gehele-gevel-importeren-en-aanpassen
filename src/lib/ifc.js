@@ -463,6 +463,36 @@ const _UPAXIS_CONFIDENCE_HIGH = 0.75;
 const _UPAXIS_CONFIDENCE_LOW  = 0.55;
 const _UPAXIS_NORMAL_SAMPLE_MAX = 400;
 
+/**
+ * Leest de True North rotatie uit IFCGEOMETRICREPRESENTATIONCONTEXT.
+ * Geeft de hoek in radialen terug die de viewer om de Y-as moet draaien
+ * (na de X_NEG90 correctie) om het model noord-op te tonen.
+ * Geeft 0 terug als er geen True North in het bestand staat.
+ */
+function readTrueNorthRotation(api, modelID) {
+  try {
+    const typeCode = api.GetTypeCodeFromName('IFCGEOMETRICREPRESENTATIONCONTEXT');
+    const ctxVec = api.GetLineIDsWithType(modelID, typeCode);
+    for (let i = 0; i < ctxVec.size(); i++) {
+      try {
+        const ctx = api.GetLine(modelID, ctxVec.get(i), false);
+        const tnRef = ctx?.TrueNorth?.value;
+        if (tnRef == null) continue;
+        const tn = api.GetLine(modelID, tnRef, false);
+        const dir = tn?.DirectionRatios;
+        if (!Array.isArray(dir) || dir.length < 2) continue;
+        const x = typeof dir[0] === 'object' ? dir[0]?.value : dir[0];
+        const y = typeof dir[1] === 'object' ? dir[1]?.value : dir[1];
+        if (typeof x !== 'number' || typeof y !== 'number') continue;
+        const trueNorthAngle = Math.atan2(x, y);
+        console.log('[TrueNorth] vector:', x.toFixed(4), y.toFixed(4), '→ hoek:', (trueNorthAngle * 180 / Math.PI).toFixed(1), '° → Y-rotatie viewer:', (-trueNorthAngle * 180 / Math.PI).toFixed(1), '°');
+        return -trueNorthAngle;
+      } catch { }
+    }
+  } catch { }
+  return 0;
+}
+
 function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO', sampleSize = 30 } = {}) {
   if (forceOrientation === 'X_NEG90') {
     console.debug('[UpAxis] forceOrientation=X_NEG90 → heightAxis=z (Z-up IFC model, rotatie -90°)');
@@ -1491,6 +1521,8 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
       });
     }
 
+    const trueNorthRotation = readTrueNorthRotation(api, modelID);
+    walls.trueNorthRotation = trueNorthRotation;
     return walls;
   } finally {
     if (ownModel) {
