@@ -3177,7 +3177,7 @@ export default function App() {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [hiddenGroupIds, setHiddenGroupIds] = useState(new Set());
-  const [forceOrientation, setForceOrientation] = useState('AUTO');
+  const forceOrientation = 'AUTO';
   const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
@@ -5405,52 +5405,6 @@ export default function App() {
               )}
             </div>
 
-            <div style={{ marginTop: 10, padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 2 }}>Import oriëntatie analyse</div>
-              <div style={{ fontSize: 10, color: '#64748b', marginBottom: 6 }}>Alleen van toepassing tijdens het inlezen van het IFC-bestand. Na import gebruik je de rotatieknoppen in de 3D viewer.</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {['AUTO', 'X_NEG90', 'NONE', 'X_POS90'].map((opt) => {
-                  const labels = { AUTO: 'Auto', X_NEG90: '-90° (Z-up)', NONE: '0° (Y-up)', X_POS90: '+90° (omgekeerd)' };
-                  const active = forceOrientation === opt;
-                  return (
-                    <button key={opt} onClick={() => setForceOrientation(opt)}
-                      style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: `1px solid ${active ? '#3b82f6' : '#cbd5e1'}`, background: active ? '#eff6ff' : '#fff', color: active ? '#1d4ed8' : '#374151', cursor: 'pointer', fontWeight: active ? 700 : 400 }}>
-                      {labels[opt]}
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>
-                {forceOrientation === 'AUTO' && 'Automatisch detecteren via bbox- en normaalvector-analyse'}
-                {forceOrientation === 'X_NEG90' && 'Rotatie -90° — Z omhoog in IFC (standaard ArchiCAD / Revit met IFC-export)'}
-                {forceOrientation === 'NONE' && 'Geen rotatie — Y omhoog (bijv. Revit native export of CAD-omgeving)'}
-                {forceOrientation === 'X_POS90' && 'Rotatie +90° — model staat gespiegeld/omgekeerd; Z-as negatief omhoog'}
-              </div>
-            </div>
-
-            {_DEV_MODE && !mergeMode && !zoneImportMode && (
-              <div style={{ marginTop: 10, padding: '8px 10px', background: importEngine === 'legacy-inherited' ? '#fef9c3' : '#f8fafc', border: `1px solid ${importEngine === 'legacy-inherited' ? '#ca8a04' : '#e2e8f0'}`, borderRadius: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
-                  DEV — Import engine
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {['legacy', 'legacy-inherited'].map((eng) => {
-                    const active = importEngine === eng;
-                    const labels = { legacy: 'Legacy', 'legacy-inherited': 'Legacy + inherited openings' };
-                    return (
-                      <button key={eng} onClick={() => setImportEngine(eng)}
-                        style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: `1px solid ${active ? '#ca8a04' : '#cbd5e1'}`, background: active ? '#fef9c3' : '#fff', color: active ? '#92400e' : '#374151', cursor: 'pointer', fontWeight: active ? 700 : 400 }}>
-                        {labels[eng]}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={{ fontSize: 10, color: '#92400e', marginTop: 4 }}>
-                  {importEngine === 'legacy-inherited' && 'Inheritance: HSB_182.5 erft openingen van co-located HSB_272.5'}
-                  {importEngine === 'legacy' && 'Standaard import zonder inheritance (bestaand gedrag)'}
-                </div>
-              </div>
-            )}
 
             <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 12, color: '#64748b', flex: 1 }}>
@@ -5511,33 +5465,6 @@ export default function App() {
         </div>
       )}
 
-      {upAxisDebug && showUpAxisDebug && (
-        <div style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 50, background: '#1e293b', color: '#f1f5f9', borderRadius: 8, padding: '10px 14px', fontSize: 11, fontFamily: 'monospace', boxShadow: '0 4px 20px rgba(0,0,0,0.4)', minWidth: 240, maxWidth: 320 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-            <span style={{ fontWeight: 700, fontSize: 12, color: '#38bdf8' }}>Oriëntatie-detectie</span>
-            <button onClick={() => setShowUpAxisDebug(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>✕</button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 10px', lineHeight: 1.7 }}>
-            <span style={{ color: '#94a3b8' }}>heightAxis</span>
-            <span style={{ fontWeight: 700, color: upAxisDebug.axis === 'z' ? '#4ade80' : '#fbbf24' }}>{upAxisDebug.axis}</span>
-            <span style={{ color: '#94a3b8' }}>forceOrientation</span>
-            <span>{upAxisDebug.forceOrientation ?? 'AUTO'}</span>
-            <span style={{ color: '#94a3b8' }}>confidence</span>
-            <span style={{ color: upAxisDebug.confidenceLabel === 'HOOG' ? '#4ade80' : upAxisDebug.confidenceLabel === 'MATIG' ? '#fbbf24' : '#f87171' }}>
-              {upAxisDebug.confidence != null ? upAxisDebug.confidence.toFixed(3) : '—'} ({upAxisDebug.confidenceLabel ?? '—'})
-            </span>
-            <span style={{ color: '#94a3b8' }}>bbox vote</span>
-            <span>{upAxisDebug.bboxVote ?? '—'} ({upAxisDebug.bboxScore != null ? upAxisDebug.bboxScore.toFixed(3) : '—'})</span>
-            <span style={{ color: '#94a3b8' }}>normal vote</span>
-            <span>{upAxisDebug.normalVote ?? '—'} ({upAxisDebug.normalScore != null ? upAxisDebug.normalScore.toFixed(3) : '—'})</span>
-            <span style={{ color: '#94a3b8' }}>samples</span>
-            <span>{upAxisDebug.sampleCount ?? '—'} wanden, {upAxisDebug.normCount ?? '—'} normals</span>
-          </div>
-          {upAxisDebug.reason && (
-            <div style={{ marginTop: 6, color: '#64748b', fontSize: 10, borderTop: '1px solid #334155', paddingTop: 5 }}>{upAxisDebug.reason}</div>
-          )}
-        </div>
-      )}
 
       {similarSuggestions && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -5814,15 +5741,6 @@ export default function App() {
             <Tooltip text="Bekijk de logica-regels per onderdeel en de wijzigingshistorie">
               <button onClick={() => setShowRulesModal(true)} style={{ background: '#475569', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>? Regels</button>
             </Tooltip>
-            {upAxisDebug && (
-              <Tooltip text={`Oriëntatie-detectie: heightAxis=${upAxisDebug.axis}, confidence=${upAxisDebug.confidence != null ? upAxisDebug.confidence.toFixed(2) : '—'}`}>
-                <button
-                  onClick={() => setShowUpAxisDebug((v) => !v)}
-                  style={{ background: showUpAxisDebug ? '#0f766e' : '#334155', color: showUpAxisDebug ? '#fff' : '#94a3b8', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer', fontFamily: 'monospace' }}>
-                  ⬆ {upAxisDebug.axis}-up
-                </button>
-              </Tooltip>
-            )}
             <span style={{ fontSize: 10, color: '#475569', userSelect: 'none' }}>v{APP_VERSION}</span>
           </div>
         </div>
@@ -6115,7 +6033,6 @@ export default function App() {
                 hiddenGroupIds={hiddenGroupIds}
                 onHiddenGroupIdsChange={setHiddenGroupIds}
                 buildingEnvelopeData={buildingEnvelopeData}
-                orientationMode={viewerOrientationMode}
               />
 
               {allWalls.length === 0 && (
@@ -6134,28 +6051,6 @@ export default function App() {
                 </div>
               )}
 
-              {allWalls.length > 0 && (
-                <div style={{ position: 'absolute', bottom: 40, right: 10, display: 'flex', flexDirection: 'column', gap: 4, zIndex: 10 }}>
-                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', textAlign: 'center', marginBottom: 2 }}>Viewer rotatie</div>
-                  {[
-                    { mode: 'X_NEG90', label: '-90°', title: 'Z omhoog → Y omhoog (standaard IFC/Revit)' },
-                    { mode: 'NONE',    label: '0°',   title: 'Geen rotatie — model al Y-up' },
-                    { mode: 'X_POS90', label: '+90°', title: 'Omgekeerd Z-up model' },
-                  ].map(({ mode, label, title }) => {
-                    const active = viewerOrientationMode === mode;
-                    return (
-                      <button key={mode} title={title}
-                        onClick={() => {
-                          setViewerOrientationMode(mode);
-                          console.log('[OrientationVerify] viewer button →', { mode });
-                        }}
-                        style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: `1px solid ${active ? '#3b82f6' : 'rgba(255,255,255,0.25)'}`, background: active ? '#1d4ed8' : 'rgba(0,0,0,0.55)', color: active ? '#fff' : 'rgba(255,255,255,0.75)', cursor: 'pointer', fontWeight: active ? 700 : 400, minWidth: 52, textAlign: 'center' }}>
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
 
               {selectedWallIds.size > 0 && (
                 <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: '#1d4ed8', color: '#fff', fontSize: 12, padding: '5px 14px', borderRadius: 6, pointerEvents: 'none', fontWeight: 500 }}>
