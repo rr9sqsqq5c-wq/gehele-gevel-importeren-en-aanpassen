@@ -492,6 +492,8 @@ function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO',
 
   let totalYExtent = 0, totalZExtent = 0;
   let totalNormAbsY = 0, totalNormAbsZ = 0, normCount = 0;
+  let yUpVotes = 0, zUpVotes = 0;
+  const _STORY_H_MIN = 1.2, _STORY_H_MAX = 6.5;
 
   for (const id of sampleIDs) {
     let mesh;
@@ -532,20 +534,39 @@ function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO',
           }
         }
 
-        if (maxY > minY) totalYExtent += (maxY - minY);
-        if (maxZ > minZ) totalZExtent += (maxZ - minZ);
+        const yExt = maxY > minY ? maxY - minY : 0;
+        const zExt = maxZ > minZ ? maxZ - minZ : 0;
+        if (yExt > 0) totalYExtent += yExt;
+        if (zExt > 0) totalZExtent += zExt;
+
+        if (yExt >= _STORY_H_MIN && yExt <= _STORY_H_MAX && yExt < zExt * 0.8) {
+          yUpVotes++;
+        } else if (zExt >= _STORY_H_MIN && zExt <= _STORY_H_MAX && zExt < yExt * 0.8) {
+          zUpVotes++;
+        }
       } finally {
         geom?.delete();
       }
     }
   }
 
-  const bboxTotal = totalYExtent + totalZExtent;
-  const bboxZScore = bboxTotal > 1e-6 ? totalZExtent / bboxTotal : 0;
-  const bboxYScore = bboxTotal > 1e-6 ? totalYExtent / bboxTotal : 0;
+  const totalVotes = yUpVotes + zUpVotes;
+  const bboxYVoteFrac = totalVotes > 0 ? yUpVotes / totalVotes : 0;
+  const bboxZVoteFrac = totalVotes > 0 ? zUpVotes / totalVotes : 0;
   let bboxVote = 'UNKNOWN', bboxScore = 0;
-  if (bboxZScore > 0.6) { bboxVote = 'z'; bboxScore = bboxZScore; }
-  else if (bboxYScore > 0.6) { bboxVote = 'y'; bboxScore = bboxYScore; }
+  let bboxZScore = 0, bboxYScore = 0;
+  if (totalVotes >= 3) {
+    if (bboxYVoteFrac >= 0.6) { bboxVote = 'y'; bboxScore = bboxYVoteFrac; }
+    else if (bboxZVoteFrac >= 0.6) { bboxVote = 'z'; bboxScore = bboxZVoteFrac; }
+    bboxYScore = bboxYVoteFrac;
+    bboxZScore = bboxZVoteFrac;
+  } else {
+    const bboxTotal = totalYExtent + totalZExtent;
+    bboxZScore = bboxTotal > 1e-6 ? totalZExtent / bboxTotal : 0;
+    bboxYScore = bboxTotal > 1e-6 ? totalYExtent / bboxTotal : 0;
+    if (bboxZScore > 0.6) { bboxVote = 'z'; bboxScore = bboxZScore; }
+    else if (bboxYScore > 0.6) { bboxVote = 'y'; bboxScore = bboxYScore; }
+  }
 
   const normTotal = totalNormAbsY + totalNormAbsZ;
   const normYFrac = normTotal > 1e-6 ? totalNormAbsY / normTotal : 0;
@@ -554,7 +575,7 @@ function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO',
   if (normYFrac > 0.6) { normalVote = 'z'; normalScore = normYFrac; }
   else if (normZFrac > 0.6) { normalVote = 'y'; normalScore = normZFrac; }
 
-  console.debug(`[UpAxis] BBox vote: ${bboxVote} (zExtent=${totalZExtent.toFixed(3)} yExtent=${totalYExtent.toFixed(3)}, score=${bboxScore.toFixed(3)})`);
+  console.debug(`[UpAxis] BBox vote: ${bboxVote} (yUpVotes=${yUpVotes} zUpVotes=${zUpVotes} totalVotes=${totalVotes}, zExtent=${totalZExtent.toFixed(3)} yExtent=${totalYExtent.toFixed(3)}, score=${bboxScore.toFixed(3)})`);
   console.debug(`[UpAxis] Normal vote: ${normalVote} (|normY|=${(totalNormAbsY / Math.max(1, normCount)).toFixed(4)} |normZ|=${(totalNormAbsZ / Math.max(1, normCount)).toFixed(4)}, score=${normalScore.toFixed(3)})`);
 
   let detectedAxis, confidence, reason;
@@ -583,8 +604,13 @@ function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO',
   }
 
   if (detectedAxis === 'UNKNOWN' || confidence < _UPAXIS_CONFIDENCE_LOW) {
-    detectedAxis = 'z';
-    reason += ' → fallback naar z';
+    if (bboxVote !== 'UNKNOWN') {
+      detectedAxis = bboxVote;
+      reason += ` → low confidence, using bboxVote ${bboxVote}`;
+    } else {
+      detectedAxis = 'z';
+      reason += ' → fallback naar z';
+    }
   }
 
   const confidenceLabel =
@@ -595,6 +621,20 @@ function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO',
   console.debug(`[UpAxis] Resultaat: heightAxis=${detectedAxis}, confidence=${confidence.toFixed(3)} (${confidenceLabel})`);
   console.debug(`[UpAxis] Reden: ${reason}`);
   console.debug(`[UpAxis] Sample: ${sampleIDs.length} wanden, ${normCount} normaalvectoren geanalyseerd`);
+
+  const _derivedViewerMode = detectedAxis === 'z_neg' ? 'X_POS90' : detectedAxis === 'z' ? 'X_NEG90' : 'NONE';
+  console.log('[OrientationDecision]', {
+    forceOrientation,
+    detectedHeightAxis: detectedAxis,
+    confidence: +confidence.toFixed(3),
+    bboxVote,
+    bboxScore: +bboxScore.toFixed(3),
+    normalVote,
+    normalScore: +normalScore.toFixed(3),
+    selectedViewerMode: _derivedViewerMode,
+    userCorrectMode: 'UNKNOWN',
+    reason,
+  });
 
   return {
     axis: detectedAxis,
@@ -1093,6 +1133,37 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
         wallVoids[wID].push(oID);
       } catch { }
     }
+    {
+      const voidTypeCounts = {};
+      for (const wid of Object.keys(wallVoids)) {
+        const tName = wallTypeMap[+wid] ?? '(geen type)';
+        voidTypeCounts[tName] = (voidTypeCounts[tName] ?? 0) + wallVoids[+wid].length;
+      }
+      console.log('[VoidDiag] IFCRELVOIDSELEMENT per wandtype:', voidTypeCounts);
+      console.log('[VoidDiag] Totaal relaties:', relVoidsVec.size(), '| Wandtypen met voids:', Object.keys(voidTypeCounts).length);
+    }
+
+    {
+      let _openingElemCount = 0;
+      let _windowCount = 0;
+      let _doorCount = 0;
+      try { _openingElemCount = api.GetLineIDsWithType(modelID, IFC.IFCOPENINGELEMENT).size(); } catch {}
+      try { _windowCount      = api.GetLineIDsWithType(modelID, IFC.IFCWINDOW).size();         } catch {}
+      try { _doorCount        = api.GetLineIDsWithType(modelID, IFC.IFCDOOR).size();            } catch {}
+      const _totalVoids = Object.values(wallVoids).reduce((s, v) => s + v.length, 0);
+      console.log('[IfcSemanticDiag]', {
+        IFCRELVOIDSELEMENT:  relVoidsVec.size(),
+        IFCRELFILLSELEMENT:  relFillsVec.size(),
+        IFCOPENINGELEMENT:   _openingElemCount,
+        IFCWINDOW:           _windowCount,
+        IFCDOOR:             _doorCount,
+        wallsWithVoids:      Object.keys(wallVoids).length,
+        totalVoids:          _totalVoids,
+        fillersMapped:       Object.keys(fillerExpressID).length,
+        openingTypesMapped:  Object.keys(openingType).length,
+        openingTypeDistrib:  Object.values(openingType).reduce((m, t) => { m[t] = (m[t] ?? 0) + 1; return m; }, {}),
+      });
+    }
 
     const matLayerByWall = {};
     try {
@@ -1310,6 +1381,88 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
       }
 
     resolveOutsideDirections(walls);
+
+    {
+      const noVoidWalls   = walls.filter(w => w.openings.length === 0);
+      const hostWalls     = walls.filter(w => w.openings.length > 0);
+
+      const missing182  = noVoidWalls.filter(w => (w.typeName ?? '').includes('182.5')).slice(0, 3);
+      const missing272  = noVoidWalls.filter(w => (w.typeName ?? '').includes('272.5')).slice(0, 3);
+      const missingKop  = noVoidWalls.filter(w => (w.typeName ?? '').includes('kopsegevel')).slice(0, 3);
+
+      console.log('[VoidDiag2] Wanden zonder openings per type:', {
+        'HSB_182.5 (0 openings)': noVoidWalls.filter(w => (w.typeName ?? '').includes('182.5')).length,
+        'HSB_272.5 (0 openings)': noVoidWalls.filter(w => (w.typeName ?? '').includes('272.5')).length,
+        'kopsegevel (0 openings)': noVoidWalls.filter(w => (w.typeName ?? '').includes('kopsegevel')).length,
+        'HSB_272.5 (met openings)': hostWalls.filter(w => (w.typeName ?? '').includes('272.5')).length,
+      });
+
+      for (const cand of missing182) {
+        const wo = cand.wallOrigin;
+        if (!wo) continue;
+        const axis = wo.thicknessAxis;
+        const lAxis = wo.lengthAxis;
+        const tMid = ((wo.thicknessStart ?? 0) + (wo.thicknessEnd ?? wo.thicknessStart + 200)) / 2;
+
+        const overlapping = hostWalls.filter(h => {
+          const hwo = h.wallOrigin;
+          if (!hwo || hwo.thicknessAxis !== axis || hwo.lengthAxis !== lAxis) return false;
+          const hTMid = ((hwo.thicknessStart ?? 0) + (hwo.thicknessEnd ?? hwo.thicknessStart + 200)) / 2;
+          if (Math.abs(hTMid - tMid) > 400) return false;
+          const overlapL = Math.min(wo.lengthEnd, hwo.lengthEnd) - Math.max(wo.lengthStart, hwo.lengthStart);
+          return overlapL > 100;
+        });
+
+        console.log('[VoidDiag2] HSB_182.5 wand zonder openings:', {
+          wallId:        cand.expressID,
+          wallName:      cand.name,
+          typeName:      cand.typeName,
+          thicknessAxis: axis,
+          lengthAxis:    lAxis,
+          lengthStart:   wo.lengthStart,
+          lengthEnd:     wo.lengthEnd,
+          thicknessStart: wo.thicknessStart,
+          thicknessEnd:   wo.thicknessEnd,
+          directVoids:   (wallVoids[cand.expressID] ?? []).length,
+          overlappingHostsFound: overlapping.length,
+          overlappingHosts: overlapping.slice(0, 2).map(h => ({
+            wallId:        h.expressID,
+            wallName:      h.name,
+            typeName:      h.typeName,
+            openingCount:  h.openings.length,
+            thicknessStart: h.wallOrigin?.thicknessStart,
+            thicknessEnd:   h.wallOrigin?.thicknessEnd,
+            lengthStart:    h.wallOrigin?.lengthStart,
+            lengthEnd:      h.wallOrigin?.lengthEnd,
+          })),
+        });
+      }
+
+      if (missing182.length === 0) {
+        console.log('[VoidDiag2] Geen HSB_182.5 wanden zonder openings gevonden (of type niet aanwezig in selectie).');
+      }
+    }
+
+    {
+      const _typeGroups = {};
+      for (const w of walls) {
+        const t = w.typeName ?? '(geen type)';
+        if (!_typeGroups[t]) _typeGroups[t] = { total: 0, withOpenings: 0, complexFacade: 0, sampleWallIds: [] };
+        _typeGroups[t].total++;
+        if ((w.openings?.length ?? 0) > 0) _typeGroups[t].withOpenings++;
+        if ((w.facadePoly?.length ?? 0) > 4) _typeGroups[t].complexFacade++;
+        if (_typeGroups[t].sampleWallIds.length < 3 && (w.openings?.length ?? 0) > 0) {
+          _typeGroups[t].sampleWallIds.push({ wallId: w.expressID, openings: w.openings?.length ?? 0, facadePolyLen: w.facadePoly?.length ?? 0 });
+        }
+      }
+      console.log('[WallSummaryDiag]', {
+        totalWalls: walls.length,
+        totalWithOpenings: walls.filter(w => (w.openings?.length ?? 0) > 0).length,
+        totalWithComplexFacade: walls.filter(w => (w.facadePoly?.length ?? 0) > 4).length,
+        byType: _typeGroups,
+      });
+    }
+
     return walls;
   } finally {
     if (ownModel) {
