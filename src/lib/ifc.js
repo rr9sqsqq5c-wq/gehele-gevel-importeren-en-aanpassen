@@ -464,18 +464,20 @@ const _UPAXIS_CONFIDENCE_LOW  = 0.55;
 const _UPAXIS_NORMAL_SAMPLE_MAX = 400;
 
 /**
- * Leest de True North rotatie uit IFCGEOMETRICREPRESENTATIONCONTEXT.
- * Geeft de hoek in radialen terug die de viewer om de Y-as moet draaien
- * (na de X_NEG90 correctie) om het model noord-op te tonen.
- * Geeft 0 terug als er geen True North in het bestand staat.
+ * Leest de projecttransformatie uit IFCGEOMETRICREPRESENTATIONCONTEXT.
+ * Retourneert {trueNorth: [x,y], unitScale: number} voor gebruik in de viewer.
+ * Defaults: trueNorth=[0,1] (IFC Y = Noord), unitScale=0.001 (mm→m).
  */
-function readTrueNorthRotation(api, modelID) {
+function readProjectTransform(api, modelID) {
+  const result = { trueNorth: [0, 1], unitScale: 0.001 };
   try {
     const typeCode = api.GetTypeCodeFromName('IFCGEOMETRICREPRESENTATIONCONTEXT');
     const ctxVec = api.GetLineIDsWithType(modelID, typeCode);
     for (let i = 0; i < ctxVec.size(); i++) {
       try {
         const ctx = api.GetLine(modelID, ctxVec.get(i), false);
+        const ctxType = ctx?.ContextType?.value ?? ctx?.ContextType;
+        if (typeof ctxType === 'string' && ctxType !== 'Model') continue;
         const tnRef = ctx?.TrueNorth?.value;
         if (tnRef == null) continue;
         const tn = api.GetLine(modelID, tnRef, false);
@@ -484,16 +486,18 @@ function readTrueNorthRotation(api, modelID) {
         const x = typeof dir[0] === 'object' ? dir[0]?.value : dir[0];
         const y = typeof dir[1] === 'object' ? dir[1]?.value : dir[1];
         if (typeof x !== 'number' || typeof y !== 'number') continue;
-        const trueNorthAngle = Math.atan2(x, y);
-        // Na X_NEG90: Three.js Y-as = IFC Z-as. Y-rotatie = trueNorthAngle - π/2
-        // (= -(90° - trueNorthAngle_degrees))
-        const viewerRotY = trueNorthAngle - Math.PI / 2;
-        console.log('[TrueNorth] vector:', x.toFixed(4), y.toFixed(4), '→ hoek:', (trueNorthAngle * 180 / Math.PI).toFixed(1), '° → Y-rotatie viewer:', (viewerRotY * 180 / Math.PI).toFixed(1), '°');
-        return viewerRotY;
+        const len = Math.sqrt(x * x + y * y) || 1;
+        result.trueNorth = [x / len, y / len];
+        const trueNorthAngle = Math.atan2(x / len, y / len);
+        console.log('[ProjectTransform] trueNorth:', (x/len).toFixed(4), (y/len).toFixed(4),
+          '→ trueNorthAngle:', (trueNorthAngle * 180 / Math.PI).toFixed(1), '°',
+          '→ matrix rotY:', (trueNorthAngle * 180 / Math.PI).toFixed(1), '°',
+          '| unitScale:', result.unitScale);
+        break;
       } catch { }
     }
   } catch { }
-  return 0;
+  return result;
 }
 
 function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO', sampleSize = 30 } = {}) {
@@ -1524,8 +1528,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
       });
     }
 
-    const trueNorthRotation = readTrueNorthRotation(api, modelID);
-    walls.trueNorthRotation = trueNorthRotation;
+    walls.projectTransform = readProjectTransform(api, modelID);
     return walls;
   } finally {
     if (ownModel) {

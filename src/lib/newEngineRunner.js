@@ -287,6 +287,6 @@ export function inheritOpeningsForWalls(walls) {
 export async function runNewEngineAdapter(file, filter, onProgress, options) {
   const walls = await parseIfc(file, filter, onProgress, options);
   const result = inheritOpeningsForWalls(walls);
-  result.trueNorthRotation = walls.trueNorthRotation ?? 0;
+  result.projectTransform = walls.projectTransform ?? { trueNorth: [0, 1], unitScale: 0.001 };
   return result;
 }
