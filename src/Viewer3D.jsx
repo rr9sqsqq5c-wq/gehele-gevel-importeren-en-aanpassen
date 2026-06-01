@@ -1408,7 +1408,10 @@ function CameraInit({ walls, projectMatrix }) {
   const pendingRef = useRef(null);
 
   useEffect(() => {
-    if (done.current || !walls.length) return;
+    // Reset bij nieuw bestand of nieuwe matrix
+    done.current = false;
+    pendingRef.current = null;
+    if (!walls.length) return;
 
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
@@ -1449,7 +1452,7 @@ function CameraInit({ walls, projectMatrix }) {
       cx, cy, cz,
       pos: new THREE.Vector3(cx + spanX * 0.6, cy + spanAll * 0.5, cz + spanZ * 0.6),
     };
-  }, [walls]);
+  }, [walls, projectMatrix]);
 
   useFrame(() => {
     if (done.current || !pendingRef.current) return;
