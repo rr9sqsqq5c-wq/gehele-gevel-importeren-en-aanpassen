@@ -3179,7 +3179,7 @@ export default function App() {
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [hiddenGroupIds, setHiddenGroupIds] = useState(new Set());
   const forceOrientation = 'AUTO';
-  const [projectInfo, setProjectInfo] = useState(null);
+  // projectInfo React state vervalt — module-state in projectCoordinates.js is de enige bron
   const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
@@ -3804,7 +3804,6 @@ export default function App() {
   function handleNewProject() {
     if (allWalls.length > 0 && !window.confirm('Huidig project wissen en opnieuw beginnen?')) return;
     resetCoordinates();
-    setProjectInfo(null);
     deleteSavedIfcFile().catch(() => {});
     deleteFileHandle().catch(() => {});
     clearProjectState().catch(() => {});
@@ -3929,7 +3928,7 @@ export default function App() {
         saveParsedWalls(cacheKey, pendingFile.size, walls, walls.projectInfo ?? null).catch(() => {});
       }
 
-      setProjectInfo(walls.projectInfo ?? cachedProjectInfo ?? null);
+      // projectInfo React state vervalt — module-state is al gezet via registerIfcContext/restoreProjectInfo
       if (!walls.length) throw new Error('Geen wanden gevonden met de geselecteerde types');
       addLog(`✓ ${walls.length} wanden geladen, aangrenzendheid detecteren…`);
       const adj = await detectAdjacenciesAsync(walls, (i, total) => {
@@ -6044,7 +6043,6 @@ export default function App() {
                 hiddenGroupIds={hiddenGroupIds}
                 onHiddenGroupIdsChange={setHiddenGroupIds}
                 buildingEnvelopeData={buildingEnvelopeData}
-                projectInfo={projectInfo}
               />
 
               {allWalls.length === 0 && (

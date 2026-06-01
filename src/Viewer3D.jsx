@@ -1267,6 +1267,21 @@ function CameraPresetController({ preset, center, span, onDone }) {
     const ty   = h * 0.4;
     const tgt  = new THREE.Vector3(cx, ty, cz);
 
+    console.log('[Windroos]', {
+      preset,
+      α: +α.toFixed(4),
+      sinα: +Math.sin(α).toFixed(4),
+      cosα: +Math.cos(α).toFixed(4),
+      cx: +cx.toFixed(2), cz: +cz.toFixed(2), ty: +ty.toFixed(2),
+      dist: +dist.toFixed(2),
+      h: +h.toFixed(2),
+      N_pos: {
+        x: +(cx + Math.sin(α)*dist).toFixed(2),
+        y: +ty.toFixed(2),
+        z: +(cz + Math.cos(α)*dist).toFixed(2),
+      },
+    });
+
     const presets = {
       N:    { pos: new THREE.Vector3(cx + Math.sin(α)*dist,  ty,    cz + Math.cos(α)*dist), tgt },
       Z:    { pos: new THREE.Vector3(cx - Math.sin(α)*dist,  ty,    cz - Math.cos(α)*dist), tgt },
@@ -1466,7 +1481,7 @@ const COMPASS = [
   { key: 'T',    label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
 ];
 
-export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData, projectInfo = null }) {
+export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData }) {
   const [hoveredWallId, setHoveredWallId] = useState(null);
   const [preset, setPreset] = useState(null);
   const [boxSelectMode, setBoxSelectMode] = useState(false);
@@ -1497,8 +1512,9 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
   const containerRef = useRef(null);
   const rootGroupRef = useRef(null);
 
-  // Geef projectInfo mee zodat de matrix correct blijft na Vite HMR-reloads
-  const projectMatrix = useMemo(() => buildProjectMatrix(projectInfo), [projectInfo]);
+  // walls als dep: verandert altijd bij nieuwe import → matrix herberekend
+  // buildProjectMatrix() leest uitsluitend module-state (geen parameter)
+  const projectMatrix = useMemo(() => buildProjectMatrix(), [walls]);
 
   // Stel de matrix handmatig in via ref — betrouwbaarder dan de matrix-prop in R3F
   useEffect(() => {

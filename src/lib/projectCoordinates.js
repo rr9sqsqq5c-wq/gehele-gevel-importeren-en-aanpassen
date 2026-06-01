@@ -97,20 +97,22 @@ export function registerIfcContext(context, filename) {
  * @param {object} [projectInfo]  snapshot van getProjectInfo() — optioneel
  * @returns {THREE.Matrix4}
  */
-export function buildProjectMatrix(projectInfo) {
-  // Gebruik projectInfo snapshot als beschikbaar, anders module-state
-  const origin = projectInfo?.origin ?? _projectOrigin;
-  const trueNorthAngle = projectInfo?.hasTrueNorth
-    ? (projectInfo.trueNorthDegrees * Math.PI / 180)
-    : _trueNorthAngle;
-
-  const ox = (origin?.x ?? 0) * 0.001; // mm → m
-  const oy = (origin?.y ?? 0) * 0.001;
-  const oz = (origin?.z ?? 0) * 0.001;
+/**
+ * Bouwt de IFC→Three.js transformatiematrix.
+ * Leest UITSLUITEND uit module-state (_projectOrigin, _trueNorthAngle).
+ * Één bron van waarheid — geen fallbacks, geen parameters.
+ * Module-state wordt gezet via registerIfcContext() of restoreProjectInfo().
+ */
+export function buildProjectMatrix() {
+  const ox = (_projectOrigin?.x ?? 0) * 0.001;
+  const oy = (_projectOrigin?.y ?? 0) * 0.001;
+  const oz = (_projectOrigin?.z ?? 0) * 0.001;
 
   const T  = new THREE.Matrix4().makeTranslation(-ox, -oy, -oz);
   const Rx = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
-  const Ry = new THREE.Matrix4().makeRotationY(trueNorthAngle);
+  const Ry = new THREE.Matrix4().makeRotationY(_trueNorthAngle);
+
+  console.log('[Matrix]', { _trueNorthAngle: +_trueNorthAngle.toFixed(4), _projectOrigin });
 
   // M = Ry * Rx * T
   return new THREE.Matrix4()
