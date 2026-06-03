@@ -4378,8 +4378,14 @@ export default function App() {
     if (!ids.length) return;
     const gid = newGid();
     const color = nextColor();
-    const uniqueNames = new Set(groups.map((g) => getSettings(g.id).name));
-    const groupName = `Groep ${uniqueNames.size + 1}`;
+    // Label-nummer = hoogste bestaande "Groep N" + 1 (geen telling van set-grootte:
+    // die zakt na een deleteGroup-gat of dubbele naam en gaf dan een dubbel label).
+    // Een gat in de nummering is prima; een dubbel label niet.
+    const usedNums = groups
+      .map((g) => /^Groep (\d+)$/.exec(getSettings(g.id).name))
+      .filter(Boolean)
+      .map((m) => parseInt(m[1], 10));
+    const groupName = `Groep ${usedNums.length ? Math.max(...usedNums) + 1 : 1}`;
     forceInit(gid, color, groupName);
     const newGroup = { id: gid, wallIds: sortWallsInComponent(ids, allWalls, adjacencies), manual: true };
     const updatedGroups = [...groups, newGroup];
