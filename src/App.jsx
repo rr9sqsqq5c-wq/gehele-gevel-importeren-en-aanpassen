@@ -4677,7 +4677,14 @@ export default function App() {
       const withOrigin = walls.filter((w) => w.wallOrigin);
 
       const ctrimsExport = endExtensionsToTrims(s.endExtensions);
-      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsExport.extendLeft, ctrimsExport.extendRight);
+      // SINGLE-SOURCE (achter ?bestFitGroups=1): handmatige best-fit-groepen exporteren
+      // EXACT de bekleding die scherm/2D tonen — dezelfde allPatterns[group.id].facadeData
+      // (= buildBestFitFacadePattern-uitkomst). Zo wijkt de export niet af van het scherm.
+      // Vlag UIT of niet-handmatig → het bestaande oude pad (byte-identiek). Ontbreekt de
+      // best-fit-data onverhoopt → terugval op buildFullGroupFacadePattern.
+      const useBestFitExport = isBestFitGroups() && group.manual === true;
+      const facadeDataRaw = (useBestFitExport ? (allPatterns[group.id]?.facadeData ?? null) : null)
+        ?? buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsExport.extendLeft, ctrimsExport.extendRight);
       const _refWall = facadeDataRaw ? null : ([...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0] ?? null);
       const refWallOrigin = facadeDataRaw?.refWallOrigin ?? _refWall?.wallOrigin ?? null;
       const _axisW = refWallOrigin ? withOrigin.filter((w) => w.wallOrigin.lengthAxis === refWallOrigin.lengthAxis) : withOrigin;
