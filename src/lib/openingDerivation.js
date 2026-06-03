@@ -14,6 +14,24 @@
 //  - De kernfuncties krijgen (api, IFC, modelID) en zijn dus ook headless testbaar.
 
 import { parseIfc, getApi, resolveOutsideDirections } from './ifc.js';
+import { isOpeningUpAxisFix } from './featureFlags.js';
+
+// Eén bron van waarheid voor de up-as: lees de model-up-as af uit het WAND-SKELET zelf
+// (wallOrigin.heightAxis = uitkomst van detectModelUpAxis in parseIfc), i.p.v. 'm in de
+// openingsafleiding opnieuw te gokken met de kolom-heuristiek. 'z_neg' deelt wereld-Z.
+// Retourneert een up-vector ([0,1,0] enz.) of null als er geen heightAxis beschikbaar is.
+function modelUpFromWalls(walls) {
+  const vote = { x: 0, y: 0, z: 0 };
+  for (const w of (walls ?? [])) {
+    let h = w.wallOrigin?.heightAxis;
+    if (h === 'z_neg') h = 'z';
+    if (h === 'x' || h === 'y' || h === 'z') vote[h]++;
+  }
+  const tot = vote.x + vote.y + vote.z;
+  if (!tot) return null;
+  const ax = (vote.x >= vote.y && vote.x >= vote.z) ? 'x' : (vote.y >= vote.z ? 'y' : 'z');
+  return [ax === 'x' ? 1 : 0, ax === 'y' ? 1 : 0, ax === 'z' ? 1 : 0];
+}
 
 // ── (2) NL-SfB tabel ────────────────────────────────────────────────────────────
 // Eerste twee cijfers van de NL-SfB-code. 21 = buitenwand, 22 = binnenwand.
@@ -313,19 +331,50 @@ export async function applyProjectedOpenings(file, walls, onProgress) {
   const modelID = api.OpenModel(data, {});
   try {
     const hostIds = walls.map(w => w.expressID);
-    const up = detectUp(api, modelID, hostIds);
+    // ROBUUSTE FIX (achter ?openingUpAxisFix=1): voed het void-pad met de model-up-as
+    // van het WAND-SKELET zelf (detectModelUpAxis-uitkomst), zodat openingen in HETZELFDE
+    // frame als de wanden geprojecteerd worden. Geen model-up beschikbaar → detectUp als
+    // allerlaatste redmiddel. Vlag UIT = exact het huidige (kolom-heuristiek) gedrag.
+    // (Het void-LOZE fallback-pad in deriveOpeningsCore prefereert detectUpRobust en
+    //  blijft dus ongemoeid voor void-loze modellen.)
+    const up = isOpeningUpAxisFix()
+      ? (modelUpFromWalls(walls) ?? detectUp(api, modelID, hostIds))
+      : detectUp(api, modelID, hostIds);
     const { byHost, stats } = await deriveOpeningsCore(api, IFC, modelID, hostIds, up);
     onProgress?.({ log: `[nieuwe afleiding] openingen: ${stats.viaVoid} via voids, ${stats.viaFallback} via window/door-terugval, ${stats.slabVoids} op vloeren (overgeslagen)` });
 
+    const useSkeletonFrame = isOpeningUpAxisFix();
     for (const w of walls) {
       const ops = byHost.get(w.expressID) ?? [];
-      const tAxis = w.wallOrigin?.thicknessAxis;
+      const wo = w.wallOrigin;
+      const tAxis = wo?.thicknessAxis;
       for (const o of ops) {
         if (tAxis && o._worldAABB) {
           const a = o._worldAABB;
           const mn = tAxis === 'x' ? a.minX : tAxis === 'y' ? a.minY : a.minZ;
           const mx = tAxis === 'x' ? a.maxX : tAxis === 'y' ? a.maxY : a.maxZ;
           o.thicknessCenter = Math.round(((mn + mx) / 2) * 1000);
+        }
+        // FIX deel 2 (achter de vlag): herleid x/breedte/y/hoogte/polyPts in de
+        // lengthAxis-/heightAxis-RICHTING + lengthStart/heightStart-origin van het
+        // wand-skelet (één bron voor het HELE frame). _worldAABB is frame-onafhankelijk
+        // (pure wereld-bbox), dus dit corrigeert de L-richting-spiegeling zonder nieuwe
+        // heuristiek. Vlag UIT → onaangeroerd (oorspronkelijke buildFrame-projectie).
+        if (useSkeletonFrame && o._worldAABB && wo && wo.lengthAxis && wo.heightAxis) {
+          const a = o._worldAABB, M = 1000;
+          const lo = (ax) => (ax === 'x' ? a.minX : ax === 'y' ? a.minY : a.minZ) * M;
+          const hi = (ax) => (ax === 'x' ? a.maxX : ax === 'y' ? a.maxY : a.maxZ) * M;
+          const oLmin = lo(wo.lengthAxis), oLmax = hi(wo.lengthAxis);
+          const oHmin = lo(wo.heightAxis), oHmax = hi(wo.heightAxis);
+          const x = Math.max(0, Math.round(oLmin - wo.lengthStart));
+          const y = Math.max(0, Math.round(oHmin - wo.heightStart));
+          const breedte = Math.round(oLmax - oLmin);
+          const hoogte = Math.round(oHmax - oHmin);
+          o.x = x; o.y = y; o.breedte = breedte; o.hoogte = hoogte;
+          o.polyPts = [
+            { l: x, h: y }, { l: x, h: y + hoogte },
+            { l: x + breedte, h: y + hoogte }, { l: x + breedte, h: y },
+          ];
         }
         delete o._worldAABB; delete o._thkMm;
       }

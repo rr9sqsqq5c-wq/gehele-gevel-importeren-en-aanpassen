@@ -27,3 +27,11 @@ export function isNewOpeningDerivation() {
 export function isBestFitGroups() {
   return readFlag('bestFitGroups', false);
 }
+
+// Openingsafleiding gebruikt dezelfde model-up-as als het wand-skelet (één bron van
+// waarheid) i.p.v. de kolom-heuristiek (detectUp) opnieuw te gokken in het void-pad.
+// DEFAULT = false → exact het huidige (byte-identieke) gedrag.
+// Aanzetten: ?openingUpAxisFix=1 of localStorage 'openingUpAxisFix'='1'.
+export function isOpeningUpAxisFix() {
+  return readFlag('openingUpAxisFix', false);
+}
