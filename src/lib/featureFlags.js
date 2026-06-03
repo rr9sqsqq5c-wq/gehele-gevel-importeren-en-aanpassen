@@ -35,3 +35,11 @@ export function isBestFitGroups() {
 export function isOpeningUpAxisFix() {
   return readFlag('openingUpAxisFix', false);
 }
+
+// Zelf-bevattende projecten: bron-IFC-bytes worden in IndexedDB bewaard en de walls
+// worden bij laden VERS her-afgeleid (i.p.v. de bevroren opgeslagen walls[]). DEFAULT
+// = false → exact het bestaande save/load-gedrag (vlag-uit byte-identiek).
+// Aanzetten: ?selfContainedProjects=1 of localStorage 'selfContainedProjects'='1'.
+export function isSelfContainedProjects() {
+  return readFlag('selfContainedProjects', false);
+}

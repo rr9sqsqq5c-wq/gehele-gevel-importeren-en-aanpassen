@@ -2,13 +2,13 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects } from './lib/featureFlags.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
 import { buildBestFitFacadePattern } from './lib/facadePlane.js';
 import { reset as resetCoordinates, restoreProjectInfo } from './lib/projectCoordinates.js';
 import handleidingMd from '../HANDLEIDING.md?raw';
 warmupWebIFC();
-import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, clearParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState } from './lib/storage.js';
+import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, clearParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState, saveSourceIfc, loadSourceIfc } from './lib/storage.js';
 import { detectAdjacencies, detectAdjacenciesAsync, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
@@ -3186,6 +3186,9 @@ export default function App() {
   const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
 
   const _gidRef = useRef(1);
+  // Zelf-bevattende projecten: bron-IFC's van deze sessie [{prefix, file}] — alleen
+  // gevuld onder de vlag, gebruikt bij opslaan om bytes te persisteren.
+  const _sourceIfcsRef = useRef([]);
   const _colorIdxRef = useRef(0);
   const _hydratedRef = useRef(false);
   const _saveTimerRef = useRef(null);
@@ -3961,6 +3964,9 @@ export default function App() {
         if (gl.length) addLog(`✓ ${gl.length} stramienlijnen geïmporteerd`);
       } catch { setGridLines([]); }
       setLoadStatus('loaded');
+      // Zelf-bevattend project: onthoud de PRIMAIRE bron-IFC (prefix '' = native ids).
+      // Een primaire (niet-merge) import reset de bronnenlijst.
+      if (isSelfContainedProjects()) _sourceIfcsRef.current = [{ prefix: '', file: pendingFile }];
       setPendingFile(null);
       setWallTypes([]);
       _colorIdxRef.current = 0;
@@ -4049,6 +4055,9 @@ export default function App() {
       addLog(`✓ ${prefixed.length} elementen toegevoegd aan bestaande wanden`);
       setAllWalls((prev) => [...prev, ...prefixed]);
       setLoadStatus('loaded');
+      // Zelf-bevattend project: onthoud deze SECUNDAIRE bron-IFC met zijn prefix, zodat
+      // bij laden de synthetische ids (prefix+native) reproduceerbaar zijn.
+      if (isSelfContainedProjects()) _sourceIfcsRef.current = [...(_sourceIfcsRef.current ?? []), { prefix, file: pendingFile }];
       setPendingFile(null);
       setWallTypes([]);
       setMergeMode(false);
@@ -4454,7 +4463,48 @@ export default function App() {
     setSelectedWallIds(new Set());
   }
 
-  function handleSaveProject() {
+  // Zelf-bevattend project: leid de walls VERS af uit de gepersisteerde bron-IFC-bytes.
+  // Reproduceert de import: primair (prefix '') via runNewEngineAdapter (native ids),
+  // secundair (prefix 'm#_') via parseIfcZoneElements + (optioneel) applyProjectedOpenings
+  // met dezelfde prefix → identieke synthetische ids. Dangling-guard: elke group-wallId
+  // moet resolven, anders return null (= caller valt terug op opgeslagen walls[]).
+  async function rederiveSelfContainedWalls(data, loadedGroups) {
+    const sources = data.sourceIfcs ?? [];
+    const rebuilt = [];
+    const repopulate = [];
+    for (const s of sources) {
+      const rec = await loadSourceIfc(s.bytesKey);
+      if (!rec) { console.warn(`[selfContained] bron ontbreekt in IndexedDB: ${s.filename} (${s.bytesKey})`); return null; }
+      const file = new File([rec.data], s.filename ?? rec.name ?? 'bron.ifc', { type: 'application/x-step' });
+      const prefix = s.prefix ?? '';
+      if (!prefix) {
+        const walls = await runNewEngineAdapter(file, null, () => {}, { forceOrientation });
+        for (const w of (walls ?? [])) rebuilt.push(w); // native ids
+      } else {
+        const elements = await parseIfcZoneElements(file, null, () => {}, { forceOrientation });
+        if (isNewOpeningDerivation()) { try { await applyProjectedOpenings(file, elements, () => {}); } catch {} }
+        for (const el of (elements ?? [])) rebuilt.push({
+          ...el,
+          expressID: `${prefix}${el.expressID}`,
+          openings: (el.openings ?? []).map((op) => ({ ...op, id: `${prefix}${op.id}` })),
+          mergedFrom: s.filename,
+        });
+      }
+      repopulate.push({ prefix, file });
+    }
+    // DANGLING-GUARD
+    const idSet = new Set(rebuilt.map((w) => String(w.expressID)));
+    const need = new Set((loadedGroups ?? []).flatMap((g) => (g.wallIds ?? []).map(String)));
+    const missing = [...need].filter((id) => !idSet.has(id));
+    if (missing.length) {
+      console.warn(`[selfContained] ${missing.length} group-wallId(s) dangling na her-parse → fallback walls[]`, missing.slice(0, 8));
+      return null;
+    }
+    _sourceIfcsRef.current = repopulate; // latere re-save blijft zelf-bevattend
+    return rebuilt;
+  }
+
+  async function handleSaveProject() {
     const projectData = {
       _version: 2,
       _savedAt: new Date().toISOString(),
@@ -4466,6 +4516,35 @@ export default function App() {
       wallDimOverrides,
       walls: allWalls,
     };
+    // Zelf-bevattend project (achter de vlag): persisteer de bron-IFC-bytes in
+    // IndexedDB en voeg een {prefix→bestand}-map toe, zodat de walls bij laden VERS
+    // her-afgeleid kunnen worden. walls[] blijft ALTIJD geschreven → een save met
+    // vlag-UIT geladen valt gewoon terug op walls[]. Fout hierin = stille fallback
+    // naar de bestaande _version:2-save (persistentie blijft heilig).
+    if (isSelfContainedProjects()) {
+      try {
+        const sources = _sourceIfcsRef.current ?? [];
+        const sourceIfcs = [];
+        for (const s of sources) {
+          if (!s?.file) continue;
+          const buf = await s.file.arrayBuffer();
+          const bytesKey = `src:${s.file.name}|${s.file.size}`;
+          await saveSourceIfc(bytesKey, s.file.name, buf);
+          sourceIfcs.push({ prefix: s.prefix ?? '', filename: s.file.name, bytesKey });
+        }
+        if (sourceIfcs.length) {
+          projectData._version = 3;
+          projectData._selfContained = true;
+          projectData.sourceIfcs = sourceIfcs;
+        } else {
+          console.warn('[selfContained] geen bron-IFC’s onthouden in deze sessie → gewone _version:2-save');
+        }
+      } catch (e) {
+        console.warn('[selfContained] opslaan bron-IFC’s mislukt → gewone _version:2-save:', e);
+        delete projectData._version; projectData._version = 2;
+        delete projectData._selfContained; delete projectData.sourceIfcs;
+      }
+    }
     const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -4512,7 +4591,24 @@ export default function App() {
         setActiveGroupId(loadedGroups[0]?.id ?? null);
         setSimilarSuggestions(null);
         syncGidRef(loadedGroups, loadedSm);
-        const loadedWalls = Array.isArray(data.walls) ? data.walls : [];
+        let loadedWalls = Array.isArray(data.walls) ? data.walls : [];
+        // Zelf-bevattend project (achter de vlag): leid de walls VERS af uit de
+        // gepersisteerde bron-IFC-bytes i.p.v. de bevroren walls[]. Bij ELKE fout of
+        // dangling group-wallId → val terug op de opgeslagen walls[] (veilig, geen
+        // dataverlies). Oude saves (geen _selfContained) of vlag-uit → onaangeroerd.
+        if (isSelfContainedProjects() && data._selfContained && Array.isArray(data.sourceIfcs) && data.sourceIfcs.length) {
+          try {
+            const rebuilt = await rederiveSelfContainedWalls(data, loadedGroups);
+            if (rebuilt && rebuilt.length) {
+              loadedWalls = rebuilt;
+              console.log('[selfContained] walls VERS her-afgeleid uit bron-IFC’s:', rebuilt.length);
+            } else {
+              console.warn('[selfContained] her-afleiding afgebroken → fallback op opgeslagen walls[]');
+            }
+          } catch (e) {
+            console.warn('[selfContained] her-afleiding fout → fallback op opgeslagen walls[]:', e);
+          }
+        }
         if (loadedWalls.length > 0) {
           resolveOutsideDirections(loadedWalls);
           applyManualOutsideOverrides(loadedWalls, loadedGroups, loadedSm);
