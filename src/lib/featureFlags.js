@@ -22,10 +22,12 @@ export function isNewOpeningDerivation() {
   return readFlag('newOpenings', false);
 }
 
-// Stap: best-fit gevelvlak voor HANDMATIG aangemaakte groepen. DEFAULT = false.
-// Aanzetten: ?bestFitGroups=1 of localStorage 'bestFitGroups'='1'.
+// Best-fit gevelvlak voor HANDMATIG aangemaakte groepen. DEFAULT = TRUE (aan).
+// NOODREM: ?bestFitGroups=0 (of localStorage 'bestFitGroups'='0'/'false') schakelt het
+// expliciet UIT en valt terug op het oude pad (buildFullGroupFacadePattern). De
+// expliciete-uit-override werkt via readFlag (regel 9: param aanwezig met '0' → false).
 export function isBestFitGroups() {
-  return readFlag('bestFitGroups', false);
+  return readFlag('bestFitGroups', true);
 }
 
 // Openingsafleiding gebruikt dezelfde model-up-as als het wand-skelet (één bron van
