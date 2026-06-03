@@ -95,6 +95,29 @@ export async function clearParsedWalls() {
   });
 }
 
+// ── Zelf-bevattende projecten: bron-IFC-bytes onder een eigen sleutel (bytesKey).
+// Hergebruikt STORE_FILES (keyPath 'id'); deleteSavedIfcFile raakt alleen id 'last',
+// dus bron-bytes blijven onafhankelijk staan. Geen DB-schemawijziging.
+export async function saveSourceIfc(bytesKey, name, buf) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_FILES, 'readwrite');
+    tx.objectStore(STORE_FILES).put({ id: bytesKey, name, data: buf, savedAt: Date.now() });
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function loadSourceIfc(bytesKey) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_FILES, 'readonly');
+    const req = tx.objectStore(STORE_FILES).get(bytesKey);
+    req.onsuccess = () => { const rec = req.result; resolve(rec ? { name: rec.name, data: rec.data } : null); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
 const STORE_HANDLE = 'file-handles';
 
 function openHandleDB() {
