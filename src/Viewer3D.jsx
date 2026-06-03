@@ -1420,23 +1420,26 @@ function CameraInit({ walls, projectMatrix }) {
       return;
     }
 
+    // Frame het WERKELIJKE bbox-centrum + omvang (geen Y≥0/grond-aanname). Zo wordt
+    // het model gevonden waar de verticale extent ook ligt (zie docs DIAGNOSE 3).
     const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
     const cz = (minZ + maxZ) / 2;
-    const buildingHeight = Math.max(maxY, 0.1);
-    const buildingSpan   = Math.max(maxX - minX, maxZ - minZ, 0.1);
-    const dist           = buildingSpan * 1.2;
+    const sizeY        = Math.max(maxY - minY, 0.1);
+    const buildingSpan = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 0.1);
+    const dist         = buildingSpan * 1.2;
 
     // Sla op in module-level refs voor CameraPresetController
-    _buildingHeightRef.current = buildingHeight;
+    _buildingHeightRef.current = sizeY;
     _buildingSpanRef.current   = buildingSpan;
     _centerXRef.current        = cx;
     _centerZRef.current        = cz;
 
     pendingRef.current = {
-      cx, cy: buildingHeight * 0.4, cz,
+      cx, cy, cz,
       pos: new THREE.Vector3(
         cx,
-        buildingHeight * 2.0,
+        cy + buildingSpan * 0.5,
         cz + dist
       ),
     };

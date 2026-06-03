@@ -1,5 +1,7 @@
 import { adaptWallPlanesToBrickBoard } from './ifcAdapter.js';
 import { parseIfc } from './ifc.js';
+import { isNewOpeningDerivation } from './featureFlags.js';
+import { deriveWallsWithProjection } from './openingDerivation.js';
 
 export async function runNewEngine(_file, _options) {
   throw new Error(
@@ -285,6 +287,13 @@ export function inheritOpeningsForWalls(walls) {
 }
 
 export async function runNewEngineAdapter(file, filter, onProgress, options) {
+  // STAP 2: nieuw pad achter feature-flag. Standaard = oud pad.
+  if (isNewOpeningDerivation()) {
+    const walls = await deriveWallsWithProjection(file, filter, onProgress, options);
+    // GEEN inheritOpeningsForWalls: projectie koppelt elke opening al aan de juiste
+    // host; samenvoegen van multi-band hosts doet de gevelgroepering (pattern.js).
+    return walls; // walls.projectInfo is door parseIfc gezet
+  }
   const walls = await parseIfc(file, filter, onProgress, options);
   const result = inheritOpeningsForWalls(walls);
   result.projectInfo = walls.projectInfo ?? null;

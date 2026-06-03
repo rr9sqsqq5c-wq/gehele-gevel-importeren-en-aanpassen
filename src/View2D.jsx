@@ -22,7 +22,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [], stripZones = [], onStripZonesChange, outsideDirFlip = false, endExtensions, buildingEnvelopeData = null, envelopeVisibility = null, slimFortStitching = null, wallDecomposition = null }) {
+export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, startLijn, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [], stripZones = [], onStripZonesChange, outsideDirFlip = false, endExtensions, buildingEnvelopeData = null, envelopeVisibility = null, slimFortStitching = null, wallDecomposition = null }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -50,13 +50,10 @@ export function View2D({ walls, groupSettings, maxHoogte, startLijn, penantFaceD
   const _stripArt = _stripArtId ? STEENSTRIP_CATALOG.find((a) => a.id === _stripArtId) : null;
   const effectiveMat = _stripArt ? { ...mat, steenL: _stripArt.steenL, steenH: _stripArt.steenH } : mat;
 
-  const facadeData = useMemo(() => {
-    if (!walls?.length) return null;
-    const extendLeft = (endExtensions?.left?.strips ?? 0) > 0 ? (endExtensions.left.strips) : 0;
-    const extendRight = (endExtensions?.right?.strips ?? 0) > 0 ? (endExtensions.right.strips) : 0;
-    const result = buildFullGroupFacadePattern(walls, effectiveMat, verband, maxHoogte, zetwerk, null, startLijn, extendLeft, extendRight);
-    return result;
-  }, [walls, effectiveMat, verband, maxHoogte, startLijn, zetwerk, endExtensions]);
+  // SINGLE SOURCE OF TRUTH: de strip-bekleding komt uit de gedeelde facadeData die ook
+  // de 3D-render gebruikt (App.jsx allPatterns → buildBestFitFacadePattern of het oude
+  // buildFullGroupFacadePattern). View2D leidt de strippen NIET meer zelf af, zodat 2D
+  // en 3D nooit divergeren (incl. best-fit-dakranden, horizontaal verband, voegen).
 
   const PENANT_PANEL_INSET = 20;
 

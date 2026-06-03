@@ -2,6 +2,9 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
+import { isNewOpeningDerivation, isBestFitGroups } from './lib/featureFlags.js';
+import { applyProjectedOpenings } from './lib/openingDerivation.js';
+import { buildBestFitFacadePattern } from './lib/facadePlane.js';
 import { reset as resetCoordinates, restoreProjectInfo } from './lib/projectCoordinates.js';
 import handleidingMd from '../HANDLEIDING.md?raw';
 warmupWebIFC();
@@ -3236,7 +3239,10 @@ export default function App() {
   }, [buildingEnvelopeData, groups, wallMap, effectiveWalls]);
 
   const allPatterns = useMemo(() => {
-    if (!showPattern) return {};
+    // "Patroon 3D" verbergt alleen de 3D-overlay (knop staat enkel in 3D-modus). De
+    // 2D-gevel leest dezelfde bron (single source of truth), dus in 2D-modus altijd
+    // berekenen — anders zou 2D leeglopen wanneer de 3D-toggle uit staat.
+    if (!showPattern && viewMode !== '2d') return {};
     const result = {};
     for (const group of groups) {
       const s = getSettings(group.id);
@@ -3263,7 +3269,14 @@ export default function App() {
         : effectiveLatDepth3d + panelDikte3d + brickD3dEarly / 2;
       const ctrimsFull = endExtensionsToTrims(s.endExtensions);
       const _envVis3d = groupEnvelopeVisibility[group.id] ?? null;
-      const facadeData = buildFullGroupFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight);
+      // STAP: best-fit gevelvlak voor HANDMATIGE groepen achter de vlag. Vlag UIT of
+      // auto-groep → exact het bestaande pad (byte-identiek). Faalt de best-fit →
+      // val terug op het oude pad i.p.v. niets te tonen.
+      const useBestFit = isBestFitGroups() && group.manual === true;
+      const facadeData = (useBestFit
+        ? buildBestFitFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight)
+        : null)
+        ?? buildFullGroupFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight);
       if (!facadeData) {
         const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
         if (!refWall) continue;
@@ -3717,7 +3730,7 @@ export default function App() {
       };
     }
     return result;
-  }, [groups, getSettings, wallMap, showPattern, adjacencies, cornerConfigs, settingsMap, groupEnvelopeVisibility]);
+  }, [groups, getSettings, wallMap, showPattern, viewMode, adjacencies, cornerConfigs, settingsMap, groupEnvelopeVisibility]);
 
   async function startScan(file, handle, isMerge = false) {
     setMergeMode(isMerge);
@@ -3896,8 +3909,9 @@ export default function App() {
     addLog(`Bestand: ${pendingFile.name} (${(pendingFile.size / 1024 / 1024).toFixed(1)} MB)`);
     try {
       const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
-      const CACHE_SCHEMA_V = 12;
-      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}`;
+      const CACHE_SCHEMA_V = 13; // v13: up-as-fix (correcte verticaal per-wand + globale scène-oriëntatie)
+      const pathTag = isNewOpeningDerivation() ? 'newOpenings' : 'legacy';
+      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}|${pathTag}`;
 
       addLog(filter ? `Filter: ${[...filter].join(', ')}` : 'Alle wandtypen worden geladen');
       addLog('Cache controleren…');
@@ -4008,13 +4022,21 @@ export default function App() {
       }
 
       const elements = await parseIfcZoneElements(pendingFile, allowedTypes.size ? allowedTypes : null, (p) => {
-        if (p.phase === 'upaxis') { setUpAxisDebug(p); setShowUpAxisDebug(true); return; }
+        if (p.phase === 'upaxis') return; // up-as-debug-state bestaat niet (meer); negeer dit event
         if (p.log) { addLog(p.log); return; }
         setLoadProgress({ current: p.current, total: p.total });
         if (p.total > 0 && p.current === p.total) addLog(`${p.total} elementen verwerkt`);
       }, { forceOrientation });
 
       if (!elements.length) throw new Error('Geen elementen gevonden met de geselecteerde types');
+
+      // STAP 2: onder de feature-flag loopt ook de merge-import via de nieuwe
+      // openingsafleiding, zodat enkel- en merge-import consistent zijn. expressID's
+      // blijven numeriek tot ná deze stap (de prefix komt hieronder pas).
+      if (isNewOpeningDerivation()) {
+        addLog('Nieuwe openingsafleiding (merge-import)…');
+        await applyProjectedOpenings(pendingFile, elements, (p) => { if (p.log) addLog(p.log); });
+      }
 
       const prefix = `m${++_mergeCounterRef.current}_`;
       const prefixed = elements.map((el) => ({
@@ -4059,7 +4081,7 @@ export default function App() {
       }
 
       const elements = await parseIfcZoneElements(pendingFile, allowedTypes.size ? allowedTypes : null, (p) => {
-        if (p.phase === 'upaxis') { setUpAxisDebug(p); setShowUpAxisDebug(true); return; }
+        if (p.phase === 'upaxis') return; // up-as-debug-state bestaat niet (meer); negeer dit event
         if (p.log) { addLog(p.log); return; }
         setLoadProgress({ current: p.current, total: p.total });
         if (p.total > 0 && p.current === p.total) addLog(`${p.total} zone-elementen verwerkt`);
@@ -4359,7 +4381,7 @@ export default function App() {
     const uniqueNames = new Set(groups.map((g) => getSettings(g.id).name));
     const groupName = `Groep ${uniqueNames.size + 1}`;
     forceInit(gid, color, groupName);
-    const newGroup = { id: gid, wallIds: sortWallsInComponent(ids, allWalls, adjacencies) };
+    const newGroup = { id: gid, wallIds: sortWallsInComponent(ids, allWalls, adjacencies), manual: true };
     const updatedGroups = [...groups, newGroup];
     setGroups(updatedGroups);
     setSelectedWallIds(new Set());
@@ -6077,6 +6099,7 @@ export default function App() {
                   <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13 }}>Laden…</div>}>
                   <View2D
                     walls={activeGroup.wallIds.map((id) => wallMap[id]).filter(Boolean)}
+                    facadeData={allPatterns[activeGroup.id]?.facadeData ?? null}
                     groupSettings={getSettings(activeGroup.id)}
                     maxHoogte={getSettings(activeGroup.id).maxHoogte}
                     startLijn={getSettings(activeGroup.id).startLijn}

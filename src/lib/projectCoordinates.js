@@ -21,6 +21,11 @@ let _projectOrigin = null;   // { x, y, z } in mm — IFC world origin in RD-co�
 let _trueNorthAngle = 0;     // radialen — hoek voor Ry-rotatie om Y-as
 let _hasTrueNorth = false;
 let _originSource = null;    // bestandsnaam die de origin heeft bepaald
+// Gedetecteerde verticale as van de OPGELOSTE geometrie (detectModelUpAxis).
+// 'z' = IFC-conventie (Z-up → moet Rx(-90°) naar three Y-up); 'y' = al Y-up
+// (geen rotatie); 'z_neg' = omgekeerd Z-up (Rx(+90°)). MOET overeenkomen met de
+// per-wand-as (deriveWallAxes), anders kantelt het model in de scène.
+let _upAxis = 'z';
 
 const SIGNIFICANT_MM = 1000; // minimale afstand van (0,0,0) voor "significante" origin
 
@@ -36,7 +41,13 @@ const SIGNIFICANT_MM = 1000; // minimale afstand van (0,0,0) voor "significante"
  * @param {string} filename
  */
 export function registerIfcContext(context, filename) {
-  const { origin = { x: 0, y: 0, z: 0 }, trueNorth = null } = context;
+  const { origin = { x: 0, y: 0, z: 0 }, trueNorth = null, upAxis = null } = context;
+
+  // ── Up-as (verticaal van de opgeloste geometrie) ──
+  if (upAxis === 'y' || upAxis === 'z' || upAxis === 'z_neg') {
+    _upAxis = upAxis;
+    console.log(`[ProjectCoords] Up-as uit "${filename}": ${upAxis}` + (upAxis === 'y' ? ' (Y-up → geen Rx-rotatie in scène)' : ''));
+  }
 
   // ── Origin ──
   const dist = Math.sqrt(origin.x ** 2 + origin.y ** 2 + origin.z ** 2);
@@ -108,8 +119,23 @@ export function buildProjectMatrix() {
   const oy = (_projectOrigin?.y ?? 0) * 0.001;
   const oz = (_projectOrigin?.z ?? 0) * 0.001;
 
-  const T  = new THREE.Matrix4().makeTranslation(-ox, -oy, -oz);
-  const Rx = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+  // Frame-bewuste origin-aftrek. De WCS-origin is RD/Z-up: ox=Easting, oy=Northing,
+  // oz=elevatie (≈0). De VERTICALE geometrie-as (afhankelijk van _upAxis) moet de
+  // ELEVATIE (oz) afgetrokken krijgen, niet de Northing — anders belandt oy (≈472 km)
+  // op de verticaal en valt het model omlaag (zie docs DIAGNOSE 3). Voor 'y' remappen
+  // we de origin daarom naar het geometrie-frame: (Easting, elevatie, Northing).
+  const T = _upAxis === 'y'
+    ? new THREE.Matrix4().makeTranslation(-ox, -oz, -oy)
+    : new THREE.Matrix4().makeTranslation(-ox, -oy, -oz); // 'z'/'z_neg': Rx routeert oz naar de verticaal
+  // Rx hangt af van de gedetecteerde up-as (consistent met deriveWallAxes):
+  //   'z'     → Rx(-90°): IFC Z-up naar three Y-up (conventie / oude gedrag)
+  //   'y'     → identity: model is al Y-up, NIET roteren (anders ligt het op zijn kant)
+  //   'z_neg' → Rx(+90°): omgekeerd Z-up
+  const Rx = _upAxis === 'y'
+    ? new THREE.Matrix4() // identity
+    : _upAxis === 'z_neg'
+      ? new THREE.Matrix4().makeRotationX(Math.PI / 2)
+      : new THREE.Matrix4().makeRotationX(-Math.PI / 2);
   const Ry = new THREE.Matrix4().makeRotationY(_trueNorthAngle);
 
   // M = Ry * Rx * T
@@ -133,13 +159,19 @@ export function ifcMmToThree(x, y, z) {
   const oy = _projectOrigin?.y ?? 0;
   const oz = _projectOrigin?.z ?? 0;
 
-  // Stap 1: aftrek origin + mm→m
+  // Stap 1: frame-bewuste origin-aftrek + mm→m (zie buildProjectMatrix).
+  // Voor 'y' trekt de verticaal (Y) de elevatie (oz) af, niet de Northing (oy).
+  const sy = _upAxis === 'y' ? oz : oy;
+  const sz = _upAxis === 'y' ? oy : oz;
   const xm = (x - ox) * 0.001;
-  const ym = (y - oy) * 0.001;
-  const zm = (z - oz) * 0.001;
+  const ym = (y - sy) * 0.001;
+  const zm = (z - sz) * 0.001;
 
-  // Stap 2: Rx(-90°): (xm, ym, zm) → (xm, zm, -ym)
-  const ax = xm, ay = zm, az = -ym;
+  // Stap 2: Rx afhankelijk van up-as (zie buildProjectMatrix)
+  let ax, ay, az;
+  if (_upAxis === 'y') { ax = xm; ay = ym; az = zm; }                 // geen rotatie
+  else if (_upAxis === 'z_neg') { ax = xm; ay = -zm; az = ym; }       // Rx(+90°)
+  else { ax = xm; ay = zm; az = -ym; }                                // Rx(-90°), Z-up
 
   // Stap 3: Ry(trueNorthAngle)
   const ca = Math.cos(_trueNorthAngle);
@@ -175,14 +207,19 @@ export function threeToIfcMm(x, y, z) {
   const by = y;
   const bz = sa * x + ca * z;
 
-  // Inverse Rx(-90°) = Rx(+90°): (bx, by, bz) → (bx, -bz, by)
-  const cx = bx, cy = -bz, cz = by;
+  // Inverse Rx, afhankelijk van up-as (inverse van ifcMmToThree-stap 2)
+  let cx, cy, cz;
+  if (_upAxis === 'y') { cx = bx; cy = by; cz = bz; }                 // geen rotatie
+  else if (_upAxis === 'z_neg') { cx = bx; cy = bz; cz = -by; }       // inverse Rx(+90°)
+  else { cx = bx; cy = -bz; cz = by; }                                // inverse Rx(-90°), Z-up
 
-  // m → mm + origin
+  // m → mm + origin (frame-bewust, inverse van ifcMmToThree-stap 1)
+  const sy = _upAxis === 'y' ? oz : oy;
+  const sz = _upAxis === 'y' ? oy : oz;
   return [
     cx * 1000 + ox,
-    cy * 1000 + oy,
-    cz * 1000 + oz,
+    cy * 1000 + sy,
+    cz * 1000 + sz,
   ];
 }
 
@@ -206,10 +243,12 @@ export function restoreProjectInfo(info) {
   _trueNorthAngle = (info.trueNorthDegrees ?? 0) * Math.PI / 180;
   _hasTrueNorth   = info.hasTrueNorth ?? false;
   _originSource   = info.originSource ?? null;
+  _upAxis         = (info.upAxis === 'y' || info.upAxis === 'z' || info.upAxis === 'z_neg') ? info.upAxis : 'z';
   console.log('[ProjectCoords] Hersteld uit cache:', {
     origin: _projectOrigin,
     trueNorthDegrees: info.trueNorthDegrees,
     originSource: _originSource,
+    upAxis: _upAxis,
   });
 }
 
@@ -218,6 +257,7 @@ export function reset() {
   _trueNorthAngle = 0;
   _hasTrueNorth = false;
   _originSource = null;
+  _upAxis = 'z';
   console.log('[ProjectCoords] Reset — project state gewist');
 }
 
@@ -236,6 +276,7 @@ export function getProjectInfo() {
     origin: _projectOrigin ? { ..._projectOrigin } : null,
     trueNorthDegrees: _trueNorthAngle * 180 / Math.PI,
     hasTrueNorth: _hasTrueNorth,
+    upAxis: _upAxis,
     isReady: _hasTrueNorth, // werkt ook zonder origin (Tekla-first scenario)
   };
 }

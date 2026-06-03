@@ -468,11 +468,12 @@ const _UPAXIS_NORMAL_SAMPLE_MAX = 400;
  * Leest IFCGEOMETRICREPRESENTATIONCONTEXT en roept registerIfcContext() aan.
  * Werkt de centrale projectCoordinates module-state bij.
  */
-function _readAndRegisterIfcContext(api, modelID, filename) {
+function _readAndRegisterIfcContext(api, modelID, filename, upAxis = 'z') {
   const ctx_result = {
     origin: { x: 0, y: 0, z: 0 },
     trueNorth: null,
     unitScale: 0.001,
+    upAxis, // gedetecteerde verticaal → globale scène-oriëntatie (projectCoordinates)
   };
 
   try {
@@ -553,181 +554,138 @@ function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO',
     return { axis: 'z_neg', bboxVote: 'n.v.t.', bboxScore: 1, normalVote: 'n.v.t.', normalScore: 1, confidence: 1, confidenceLabel: 'HOOG', reason: 'forceOrientation=X_POS90', sampleCount: 0, normCount: 0, forceOrientation };
   }
 
-  const sampleIDs = [];
-  for (const wType of wallTypes) {
-    const idsVec = api.GetLineIDsWithType(modelID, wType);
-    for (let i = 0; i < idsVec.size() && sampleIDs.length < sampleSize; i++) {
-      sampleIDs.push(idsVec.get(i));
-    }
-  }
+  // ── AUTO: robuuste detectie van de verticaal van de OPGELOSTE (wereld) geometrie ──
+  // Waarom dit nodig is: BIL-MOO (en meer Revit/IFC-exports met een project-/site-
+  // coördinatenstelsel) komen uit web-ifc met de verticaal langs WERELD-Y i.p.v. Z.
+  // De oude bbox-ratio over een steekproef van 30 wanden koos dan ten onrechte 'z',
+  // waardoor deriveWallAxes hoogte en dikte verwisselde en gevels op het bovenvlak
+  // landden (zie docs/diagnose-hsb-gevelvlak.md). We volgen daarom de werkelijke
+  // verticaal van de OPGELOSTE geometrie via sterke, corroborerende signalen i.p.v.
+  // een aanname. Let op: deze functie bepaalt ALLEEN de up-as; deriveWallAxes is
+  // correct zodra de up-as klopt.
+  const _STORY_MIN = 1.2, _STORY_MAX = 6.5, _BUCKET = 0.05; // 50 mm
 
-  if (sampleIDs.length === 0) {
-    console.debug('[UpAxis] Geen wanden gevonden voor detectie → fallback z');
-    return 'z';
-  }
-
-  let totalYExtent = 0, totalZExtent = 0;
-  let totalNormAbsY = 0, totalNormAbsZ = 0, normCount = 0;
-  let yUpVotes = 0, zUpVotes = 0;
-  const _STORY_H_MIN = 1.2, _STORY_H_MAX = 6.5;
-
-  for (const id of sampleIDs) {
-    let mesh;
-    try { mesh = api.GetFlatMesh(modelID, id); } catch { continue; }
-    if (!mesh || mesh.geometries.size() === 0) continue;
-
+  // wereld-AABB (X/Y/Z extent) van één element
+  const _extentOf = (eid) => {
+    let mesh; try { mesh = api.GetFlatMesh(modelID, eid); } catch { return null; }
+    if (!mesh || mesh.geometries.size() === 0) return null;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity, ok = false;
     for (let gi = 0; gi < mesh.geometries.size(); gi++) {
-      const placed = mesh.geometries.get(gi);
-      let geom;
+      const placed = mesh.geometries.get(gi); let geom;
       try {
         geom = api.GetGeometry(modelID, placed.geometryExpressID);
         const verts = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
         const m = placed.flatTransformation;
-
-        let minY = Infinity, maxY = -Infinity;
-        let minZ = Infinity, maxZ = -Infinity;
-
-        const vertCount = Math.floor(verts.length / 6);
-        const step = Math.max(1, Math.floor(vertCount / _UPAXIS_NORMAL_SAMPLE_MAX));
-
-        for (let i = 0; i < vertCount; i++) {
-          const base = i * 6;
-          const lx = verts[base] ?? 0, ly = verts[base + 1] ?? 0, lz = verts[base + 2] ?? 0;
+        for (let i = 0; i < verts.length; i += 6) {
+          const lx = verts[i] ?? 0, ly = verts[i + 1] ?? 0, lz = verts[i + 2] ?? 0;
+          const wx = m[0] * lx + m[4] * ly + m[8]  * lz + m[12];
           const wy = m[1] * lx + m[5] * ly + m[9]  * lz + m[13];
           const wz = m[2] * lx + m[6] * ly + m[10] * lz + m[14];
-          if (wy < minY) minY = wy;
-          if (wy > maxY) maxY = wy;
-          if (wz < minZ) minZ = wz;
-          if (wz > maxZ) maxZ = wz;
-
-          if (i % step === 0) {
-            const nx = verts[base + 3] ?? 0, ny = verts[base + 4] ?? 0, nz = verts[base + 5] ?? 0;
-            const wny = m[1] * nx + m[5] * ny + m[9]  * nz;
-            const wnz = m[2] * nx + m[6] * ny + m[10] * nz;
-            totalNormAbsY += Math.abs(wny);
-            totalNormAbsZ += Math.abs(wnz);
-            normCount++;
-          }
+          if (wx < minX) minX = wx; if (wx > maxX) maxX = wx;
+          if (wy < minY) minY = wy; if (wy > maxY) maxY = wy;
+          if (wz < minZ) minZ = wz; if (wz > maxZ) maxZ = wz; ok = true;
         }
+      } finally { geom?.delete(); }
+    }
+    return ok ? { dx: maxX - minX, dy: maxY - minY, dz: maxZ - minZ } : null;
+  };
 
-        const yExt = maxY > minY ? maxY - minY : 0;
-        const zExt = maxZ > minZ ? maxZ - minZ : 0;
-        if (yExt > 0) totalYExtent += yExt;
-        if (zExt > 0) totalZExtent += zExt;
+  // alle wand-ids (gespreide steekproef bij heel grote modellen, niet de eerste-N)
+  const allWallIds = [];
+  for (const wType of wallTypes) { const v = api.GetLineIDsWithType(modelID, wType); for (let i = 0; i < v.size(); i++) allWallIds.push(v.get(i)); }
+  if (allWallIds.length === 0) {
+    return { axis: 'z', source: 'geen-wanden', confidence: 0, confidenceLabel: 'LAAG', reason: 'geen wanden → fallback z', sampleCount: 0, forceOrientation };
+  }
+  const _MAX_SCAN = 4000;
+  const stride = Math.max(1, Math.floor(allWallIds.length / _MAX_SCAN));
 
-        if (yExt >= _STORY_H_MIN && yExt <= _STORY_H_MAX && yExt < zExt * 0.8) {
-          yUpVotes++;
-        } else if (zExt >= _STORY_H_MIN && zExt <= _STORY_H_MAX && zExt < yExt * 0.8) {
-          zUpVotes++;
-        }
-      } finally {
-        geom?.delete();
+  // SIGNAAL 1 (primair): meest voorkomende GEDEELDE wandhoogte = verdiepingshoogte.
+  // Per as een histogram (50mm-buckets) van extents binnen storey-bereik over (een
+  // gespreide doorsnede van) ALLE wanden. De verticaal heeft een scherpe modus
+  // (elke wand op een verdieping deelt dezelfde hoogte); horizontale assen niet.
+  const bucketsY = new Map(), bucketsZ = new Map();
+  let sumY = 0, sumZ = 0, scanned = 0;
+  for (let idx = 0; idx < allWallIds.length; idx += stride) {
+    const e = _extentOf(allWallIds[idx]); if (!e) continue; scanned++;
+    sumY += e.dy; sumZ += e.dz;
+    if (e.dy >= _STORY_MIN && e.dy <= _STORY_MAX) { const k = Math.round(e.dy / _BUCKET); bucketsY.set(k, (bucketsY.get(k) || 0) + 1); }
+    if (e.dz >= _STORY_MIN && e.dz <= _STORY_MAX) { const k = Math.round(e.dz / _BUCKET); bucketsZ.set(k, (bucketsZ.get(k) || 0) + 1); }
+  }
+  const _modal = (mp) => { let count = 0, value = 0; for (const [k, c] of mp) if (c > count) { count = c; value = k * _BUCKET; } return { count, value: Math.round(value * 1000) }; };
+  const sharedY = _modal(bucketsY), sharedZ = _modal(bucketsZ);
+
+  // SIGNAAL 2 (corroboratie / tie-break): de lange-as (= hoogte) van ramen/deuren.
+  let doorVote = null;
+  {
+    const vote = { x: 0, y: 0, z: 0 };
+    for (const tn of ['IFCWINDOW', 'IFCDOOR']) {
+      let code; try { code = api.GetTypeCodeFromName(tn); } catch { continue; }
+      let vec; try { vec = api.GetLineIDsWithType(modelID, code); } catch { continue; }
+      for (let i = 0; i < vec.size(); i++) {
+        const e = _extentOf(vec.get(i)); if (!e) continue;
+        const mx = Math.max(e.dx, e.dy, e.dz);
+        if (mx === e.dx) vote.x++; else if (mx === e.dy) vote.y++; else vote.z++;
       }
     }
+    if (vote.y > 0 || vote.z > 0) doorVote = vote.y >= vote.z ? 'y' : 'z'; // x telt niet als verticaal
   }
 
-  const totalVotes = yUpVotes + zUpVotes;
-  const bboxYVoteFrac = totalVotes > 0 ? yUpVotes / totalVotes : 0;
-  const bboxZVoteFrac = totalVotes > 0 ? zUpVotes / totalVotes : 0;
-  let bboxVote = 'UNKNOWN', bboxScore = 0;
-  let bboxZScore = 0, bboxYScore = 0;
-  if (totalVotes >= 3) {
-    if (bboxYVoteFrac >= 0.6) { bboxVote = 'y'; bboxScore = bboxYVoteFrac; }
-    else if (bboxZVoteFrac >= 0.6) { bboxVote = 'z'; bboxScore = bboxZVoteFrac; }
-    bboxYScore = bboxYVoteFrac;
-    bboxZScore = bboxZVoteFrac;
+  // ── Beslissing ──
+  // Prioriteit (veilig: liever NIET flippen dan een Z-up model kantelen):
+  //   1) ramen/deuren-langeas (sterkste echte signaal; aanwezig in gebouwmodellen).
+  //   2) gedeelde verdiepingshoogte, maar ALLEEN bij een DUIDELIJKE winnaar
+  //      (winnaar >= 3× verliezer, of verliezer ~0). Dit voorkomt dat geclusterde
+  //      paneel-BREEDtes (bijv. GFRC: veel panelen 1700mm breed) als hoogte gelezen
+  //      worden.
+  //   3) ambigu (geen ramen/deuren én geen duidelijke modus) → 'z' = IFC-conventie
+  //      (Z-up). Zo blijven Z-up modellen zonder corroboratie ongemoeid.
+  // ΣY/ΣZ (extent-som) wordt bewust NIET als beslisser gebruikt: die is bevooroordeeld
+  // naar de breedste as, niet naar de verticaal.
+  const yC = sharedY.count, zC = sharedZ.count;
+  const maxC = Math.max(yC, zC), minC = Math.min(yC, zC);
+  const sharedWinner = yC >= zC ? 'y' : 'z';
+  const clearShared = maxC >= 3 && (minC === 0 || maxC >= 3 * minC);
+  let detectedAxis, source, confidence, reason;
+  if (doorVote && !(clearShared && doorVote !== sharedWinner)) {
+    detectedAxis = doorVote; source = 'ramen/deuren-langeas';
+    confidence = (clearShared && doorVote === sharedWinner) ? 0.95 : 0.8;
+    reason = `ramen/deuren-langeas → ${doorVote}` + (clearShared ? ` ; bevestigd door gedeelde hoogte (${sharedWinner}, ${maxC} vs ${minC})` : '');
+  } else if (clearShared && doorVote && doorVote !== sharedWinner) {
+    // conflict: meer bewijs in de wanden dan in de openingen → volg de wanden
+    detectedAxis = sharedWinner; source = 'gedeelde-hoogte(>deur-conflict)'; confidence = 0.6;
+    reason = `duidelijke gedeelde hoogte ${sharedWinner} (${maxC} vs ${minC}) wint van afwijkende ramen/deuren (${doorVote})`;
+  } else if (clearShared) {
+    detectedAxis = sharedWinner; source = 'gedeelde-verdiepingshoogte'; confidence = 0.85;
+    const winVal = sharedWinner === 'y' ? sharedY.value : sharedZ.value;
+    reason = `duidelijke modale wandhoogte langs ${sharedWinner} (${maxC} wanden @ ${winVal}mm vs ${minC})`;
   } else {
-    const bboxTotal = totalYExtent + totalZExtent;
-    bboxZScore = bboxTotal > 1e-6 ? totalZExtent / bboxTotal : 0;
-    bboxYScore = bboxTotal > 1e-6 ? totalYExtent / bboxTotal : 0;
-    if (bboxZScore > 0.6) { bboxVote = 'z'; bboxScore = bboxZScore; }
-    else if (bboxYScore > 0.6) { bboxVote = 'y'; bboxScore = bboxYScore; }
+    detectedAxis = 'z'; source = 'ambigu→default-z(IFC-conventie)'; confidence = 0.4;
+    reason = `geen ramen/deuren en geen duidelijke modus (y=${yC}, z=${zC}); val terug op IFC-conventie z`;
   }
-
-  const normTotal = totalNormAbsY + totalNormAbsZ;
-  const normYFrac = normTotal > 1e-6 ? totalNormAbsY / normTotal : 0;
-  const normZFrac = normTotal > 1e-6 ? totalNormAbsZ / normTotal : 0;
-  let normalVote = 'UNKNOWN', normalScore = 0;
-  if (normYFrac > 0.6) { normalVote = 'z'; normalScore = normYFrac; }
-  else if (normZFrac > 0.6) { normalVote = 'y'; normalScore = normZFrac; }
-
-  console.debug(`[UpAxis] BBox vote: ${bboxVote} (yUpVotes=${yUpVotes} zUpVotes=${zUpVotes} totalVotes=${totalVotes}, zExtent=${totalZExtent.toFixed(3)} yExtent=${totalYExtent.toFixed(3)}, score=${bboxScore.toFixed(3)})`);
-  console.debug(`[UpAxis] Normal vote: ${normalVote} (|normY|=${(totalNormAbsY / Math.max(1, normCount)).toFixed(4)} |normZ|=${(totalNormAbsZ / Math.max(1, normCount)).toFixed(4)}, score=${normalScore.toFixed(3)})`);
-
-  let detectedAxis, confidence, reason;
-  if (bboxVote !== 'UNKNOWN' && normalVote !== 'UNKNOWN') {
-    if (bboxVote === normalVote) {
-      detectedAxis = bboxVote;
-      confidence = (bboxScore + normalScore) / 2;
-      reason = `Beide votes overeen: bbox=${bboxVote}(${bboxScore.toFixed(2)}) normals=${normalVote}(${normalScore.toFixed(2)})`;
-    } else {
-      detectedAxis = 'UNKNOWN';
-      confidence = 0.5;
-      reason = `Votes conflicteren: bbox=${bboxVote}(${bboxScore.toFixed(2)}) vs normals=${normalVote}(${normalScore.toFixed(2)})`;
-    }
-  } else if (bboxVote !== 'UNKNOWN') {
-    detectedAxis = bboxVote;
-    confidence = bboxScore * 0.7;
-    reason = `Alleen bbox beschikbaar: ${bboxVote}(${bboxScore.toFixed(2)})`;
-  } else if (normalVote !== 'UNKNOWN') {
-    detectedAxis = normalVote;
-    confidence = normalScore * 0.7;
-    reason = `Alleen normals beschikbaar: ${normalVote}(${normalScore.toFixed(2)})`;
-  } else {
-    detectedAxis = 'UNKNOWN';
-    confidence = 0;
-    reason = 'Beide votes onbepaald';
-  }
-
-  if (detectedAxis === 'UNKNOWN' || confidence < _UPAXIS_CONFIDENCE_LOW) {
-    if (bboxVote !== 'UNKNOWN') {
-      detectedAxis = bboxVote;
-      reason += ` → low confidence, using bboxVote ${bboxVote}`;
-    } else {
-      detectedAxis = 'z';
-      reason += ' → fallback naar z';
-    }
-  }
-
-  const confidenceLabel =
-    confidence >= _UPAXIS_CONFIDENCE_HIGH ? 'HOOG'
-    : confidence >= _UPAXIS_CONFIDENCE_LOW ? 'MATIG'
-    : 'LAAG';
-
-  console.debug(`[UpAxis] Resultaat: heightAxis=${detectedAxis}, confidence=${confidence.toFixed(3)} (${confidenceLabel})`);
-  console.debug(`[UpAxis] Reden: ${reason}`);
-  console.debug(`[UpAxis] Sample: ${sampleIDs.length} wanden, ${normCount} normaalvectoren geanalyseerd`);
+  const confidenceLabel = confidence >= _UPAXIS_CONFIDENCE_HIGH ? 'HOOG' : confidence >= _UPAXIS_CONFIDENCE_LOW ? 'MATIG' : 'LAAG';
 
   const _derivedViewerMode = detectedAxis === 'z_neg' ? 'X_POS90' : detectedAxis === 'z' ? 'X_NEG90' : 'NONE';
   console.log('[OrientationDecision]', {
-    forceOrientation,
-    detectedHeightAxis: detectedAxis,
-    confidence: +confidence.toFixed(3),
-    bboxVote,
-    bboxScore: +bboxScore.toFixed(3),
-    normalVote,
-    normalScore: +normalScore.toFixed(3),
-    selectedViewerMode: _derivedViewerMode,
-    userCorrectMode: 'UNKNOWN',
-    reason,
+    forceOrientation, detectedHeightAxis: detectedAxis, source, confidence: +confidence.toFixed(3),
+    sharedY, sharedZ, doorVote, sumY: Math.round(sumY), sumZ: Math.round(sumZ),
+    scanned, selectedViewerMode: _derivedViewerMode, reason,
   });
 
   return {
     axis: detectedAxis,
-    bboxVote,
-    bboxScore,
-    bboxZScore,
-    bboxYScore,
-    normalVote,
-    normalScore,
-    normYFrac,
-    normZFrac,
-    confidence,
+    source,
+    confidence: +confidence.toFixed(3),
     confidenceLabel,
     reason,
-    sampleCount: sampleIDs.length,
-    normCount,
+    sharedY, sharedZ, doorVote,
+    sumY: Math.round(sumY), sumZ: Math.round(sumZ),
+    sampleCount: scanned,
     forceOrientation,
+    // legacy-velden (debug-weergave verwacht deze namen):
+    bboxVote: source.startsWith('gedeelde') ? detectedAxis : (source.startsWith('bbox') ? detectedAxis : '-'),
+    bboxScore: +confidence.toFixed(3),
+    normalVote: doorVote ?? '-',
+    normalScore: doorVote ? 1 : 0,
   };
 }
 
@@ -1344,6 +1302,23 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
           const wallBB = getBBox(api, modelID, wID);
           if (!wallBB) continue;
 
+          // TIJDELIJK DEBUG — verwijder na gebruik
+          const _DEBUG_IDS = [94805, 94833, 104739];
+          const _DEBUG_WORKING = 378791;
+          const _wallLine2 = api.GetLine(modelID, wID, false);
+          const _globalId2 = _wallLine2?.GlobalId?.value ?? '';
+          const _isDebugWall = wID === 94805 || wID === _DEBUG_WORKING || _globalId2.includes('26037507') || _globalId2.includes('25624793');
+          if (_isDebugWall) {
+            const _m = _extractWallMatrix(api, modelID, wID);
+            const _mArr = _m ? Array.from(_m) : new Array(16).fill(null);
+            console.log(`[WallBB-DEBUG] wID=${wID} globalId=${_globalId2} BB minX=${wallBB.minX.toFixed(4)} maxX=${wallBB.maxX.toFixed(4)} minY=${wallBB.minY.toFixed(4)} maxY=${wallBB.maxY.toFixed(4)} minZ=${wallBB.minZ.toFixed(4)} maxZ=${wallBB.maxZ.toFixed(4)}`);
+            console.log(`[WallBB-DEBUG] wID=${wID} flatTransformation m0-3:  ${_mArr.slice(0,4).map(v=>v?.toFixed(5)).join(', ')}`);
+            console.log(`[WallBB-DEBUG] wID=${wID} flatTransformation m4-7:  ${_mArr.slice(4,8).map(v=>v?.toFixed(5)).join(', ')}`);
+            console.log(`[WallBB-DEBUG] wID=${wID} flatTransformation m8-11: ${_mArr.slice(8,12).map(v=>v?.toFixed(5)).join(', ')}`);
+            console.log(`[WallBB-DEBUG] wID=${wID} flatTransformation m12-15:${_mArr.slice(12,16).map(v=>v?.toFixed(3)).join(', ')}`); // translatie
+          }
+          // EINDE TIJDELIJK DEBUG
+
           const dx = wallBB.maxX - wallBB.minX;
           const dy = wallBB.maxY - wallBB.minY;
           const dz = wallBB.maxZ - wallBB.minZ;
@@ -1403,6 +1378,29 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
 
 
               const oBB = getBBox(api, modelID, oID) ?? (fillID ? getBBox(api, modelID, fillID) : null);
+
+              // TIJDELIJK DEBUG — verwijder na gebruik
+              if (_isDebugWall) {
+                const oBB_raw  = getBBox(api, modelID, oID);
+                const oBB_fill = fillID ? getBBox(api, modelID, fillID) : null;
+                const oMat     = _extractWallMatrix(api, modelID, oID);
+                const oMatArr  = oMat ? Array.from(oMat) : null;
+                const source   = oBB_raw ? 'oID' : (oBB_fill ? 'fillID' : 'none');
+                const fmt = (b) => b ? `minX=${b.minX.toFixed(4)} maxX=${b.maxX.toFixed(4)} minY=${b.minY.toFixed(4)} maxY=${b.maxY.toFixed(4)} minZ=${b.minZ.toFixed(4)} maxZ=${b.maxZ.toFixed(4)}` : 'null';
+                console.log(`[OpeningBB-DEBUG] wID=${wID} oID=${oID} fillID=${fillID} oBB_source=${source}`);
+                console.log(`[OpeningBB-DEBUG]   oBB(oID):   ${fmt(oBB_raw)}`);
+                console.log(`[OpeningBB-DEBUG]   oBB(fill):  ${fmt(oBB_fill)}`);
+                console.log(`[OpeningBB-DEBUG]   oBB(used):  ${fmt(oBB)}`);
+                console.log(`[OpeningBB-DEBUG]   wallBB.${thicknessAxis}: ${wallBB[`min${thicknessAxis.toUpperCase()}`].toFixed(4)}..${wallBB[`max${thicknessAxis.toUpperCase()}`].toFixed(4)}`);
+                if (oMatArr) {
+                  console.log(`[OpeningBB-DEBUG]   oMat m0-3:   ${oMatArr.slice(0,4).map(v=>v.toFixed(5)).join(', ')}`);
+                  console.log(`[OpeningBB-DEBUG]   oMat m4-7:   ${oMatArr.slice(4,8).map(v=>v.toFixed(5)).join(', ')}`);
+                  console.log(`[OpeningBB-DEBUG]   oMat m8-11:  ${oMatArr.slice(8,12).map(v=>v.toFixed(5)).join(', ')}`);
+                  console.log(`[OpeningBB-DEBUG]   oMat m12-15: ${oMatArr.slice(12,16).map(v=>v.toFixed(3)).join(', ')}`);
+                }
+              }
+              // EINDE TIJDELIJK DEBUG
+
               if (!oBB && !polygon) continue;
 
               const wallMins = { x: wallBB.minX, y: wallBB.minY, z: wallBB.minZ };
@@ -1443,11 +1441,28 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
                 { l: finalX,           h: finalY + oHeight },
               ];
               let oThicknessCenter = null;
-              if (oBB) {
-                const oTMin = oBB[`min${thicknessAxis.toUpperCase()}`] * 1000;
-                const oTMax = oBB[`max${thicknessAxis.toUpperCase()}`] * 1000;
-                oThicknessCenter = Math.round((oTMin + oTMax) / 2);
+              // Voor thicknessCenter: filler (raam/deur) prefereren boven opening-element,
+              // want IfcOpeningElement omvat altijd de volledige wanddikte en geeft geen zijde-info.
+              const oBB_forThickness = (fillID ? getBBox(api, modelID, fillID) : null) ?? oBB;
+              if (oBB_forThickness) {
+                const oTMin = oBB_forThickness[`min${thicknessAxis.toUpperCase()}`] * 1000;
+                const oTMax = oBB_forThickness[`max${thicknessAxis.toUpperCase()}`] * 1000;
+                const wTMin = wallBB[`min${thicknessAxis.toUpperCase()}`] * 1000;
+                const wTMax = wallBB[`max${thicknessAxis.toUpperCase()}`] * 1000;
+                if (oTMax >= wTMin && oTMin <= wTMax) {
+                  oThicknessCenter = Math.round((oTMin + oTMax) / 2);
+                }
               }
+              // TIJDELIJK DEBUG thicknessCenter
+              if (_isDebugWall) {
+                const _oTMin = oBB ? oBB[`min${thicknessAxis.toUpperCase()}`] * 1000 : null;
+                const _oTMax = oBB ? oBB[`max${thicknessAxis.toUpperCase()}`] * 1000 : null;
+                const _wTMin = wallBB[`min${thicknessAxis.toUpperCase()}`] * 1000;
+                const _wTMax = wallBB[`max${thicknessAxis.toUpperCase()}`] * 1000;
+                console.log(`[ThicknessCenter-DEBUG] wID=${wID} oID=${oID} fillID=${fillID} thicknessAxis=${thicknessAxis} oTMin=${_oTMin?.toFixed(1)} oTMax=${_oTMax?.toFixed(1)} wTMin=${_wTMin.toFixed(1)} wTMax=${_wTMax.toFixed(1)} overlap=${_oTMax !== null && _oTMax >= _wTMin && _oTMin <= _wTMax} thicknessCenter=${oThicknessCenter}`);
+              }
+              // EINDE TIJDELIJK DEBUG
+
               openings.push({
                 id: oID,
                 type: openingType[oID] ?? "sparing",
@@ -1568,7 +1583,7 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
     }
 
     // Registreer IFC-context in projectCoordinates module en geef snapshot mee
-    _readAndRegisterIfcContext(api, modelID, file?.name ?? 'onbekend');
+    _readAndRegisterIfcContext(api, modelID, file?.name ?? 'onbekend', _upAxis);
     walls.projectInfo = getProjectInfo();
     return walls;
   } finally {
