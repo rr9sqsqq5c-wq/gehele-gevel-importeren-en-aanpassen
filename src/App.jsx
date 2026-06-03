@@ -6037,6 +6037,10 @@ export default function App() {
                   {groups.map((g) => {
                     const s = getSettings(g.id);
                     const isActive = activeGroupId === g.id;
+                    // Best-fit-waarschuwingen (alleen aanwezig onder ?bestFitGroups=1 voor
+                    // handmatige groepen). Puur afgeleid uit de bestaande facadeData; geen
+                    // badge als de array leeg/afwezig is → UI byte-identiek zonder vlag.
+                    const _bestFitWarnings = allPatterns[g.id]?.facadeData?._bestFit?.warnings ?? [];
                     return (
                       <div key={g.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                         <div
@@ -6064,6 +6068,14 @@ export default function App() {
                               input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { commit(); input.blur(); } if (ev.key === 'Escape') { input.value = s.name; input.blur(); } });
                             }}
                           >{s.name}</span>
+                          {_bestFitWarnings.length > 0 && (
+                            <span
+                              title={_bestFitWarnings.join('\n')}
+                              onClick={(e) => { e.stopPropagation(); alert('Best-fit gevelvlak — waarschuwing(en):\n\n• ' + _bestFitWarnings.join('\n\n• ')); }}
+                              style={{ fontSize: 11, flexShrink: 0, cursor: 'help' }}
+                              aria-label="best-fit waarschuwing"
+                            >⚠️</span>
+                          )}
                           <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>{g.wallIds.length} wand{g.wallIds.length !== 1 ? 'en' : ''}</span>
                           <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>{isActive ? '▲' : '▼'}</span>
                         </div>
