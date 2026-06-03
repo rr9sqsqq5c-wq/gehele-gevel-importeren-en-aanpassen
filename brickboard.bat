@@ -1,46 +1,49 @@
 @echo off
-title BrickBoard — opstarten
-cd /d "C:\Users\MurkAnneKooistraKooi\.zenflow\worktrees\multi-element-ifc-import-met-pat-f798"
+title Multi-Element IFC Brickstrip Planner - opstarten
 
 echo.
 echo ============================================================
-echo  BrickBoard IFC Planner
+echo  Multi-Element IFC Brickstrip Planner
+echo  Basis: v1.3-baseline (c38c357) - C:\dev\brickboard
 echo ============================================================
 echo.
 
-echo [1/4] Lopende Vite-processen stoppen...
-for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":5173 "') do taskkill /PID %%a /F >nul 2>&1
-for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":5174 "') do taskkill /PID %%a /F >nul 2>&1
-for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":5200 "') do taskkill /PID %%a /F >nul 2>&1
+echo [1/4] Lopende processen opruimen...
+
+echo  Vite stoppen op poort 5173...
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":5173 "') do (
+    taskkill /PID %%a /F >nul 2>&1
+)
+
+echo  Vite stoppen op poort 5174...
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":5174 "') do (
+    taskkill /PID %%a /F >nul 2>&1
+)
+
+echo  Vite stoppen op poort 5200...
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":5200 "') do (
+    taskkill /PID %%a /F >nul 2>&1
+)
+
+echo  Eventuele vite.js node-processen afsluiten...
+taskkill /FI "WINDOWTITLE eq IFC Brickstrip*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Vite Dev*" /F >nul 2>&1
+
 timeout /t 1 /nobreak >nul
 
-echo [2/4] IndexedDB cache wissen via Edge...
-rem Schrijf een tijdelijk JS-snippet dat de cache leeggooit via een data-URL
-rem Edge ondersteunt --app met --enable-automation niet altijd, dus we gebruiken
-rem een aparte opstart-pagina die de cache wist en dan doorverwijst.
-set CLEAR_HTML=%TEMP%\brickboard_clear_cache.html
-(
-  echo ^<html^>^<body^>^<script^>
-  echo   var req = indexedDB.deleteDatabase^('ifc-planner'^);
-  echo   req.onsuccess = function^(^) { window.location.href = 'http://localhost:5173'; };
-  echo   req.onerror   = function^(^) { window.location.href = 'http://localhost:5173'; };
-  echo   req.onblocked = function^(^) { window.location.href = 'http://localhost:5173'; };
-  echo   setTimeout^(function^(^){ window.location.href = 'http://localhost:5173'; }, 2000^);
-  echo ^</script^>^</body^>^</html^>
-) > "%CLEAR_HTML%"
+echo.
+echo [2/4] Naar projectmap navigeren...
+cd /d C:\dev\brickboard
+
+echo  Map: %CD%
+echo.
 
 echo [3/4] Vite dev server starten...
-start "BrickBoard — Vite Dev" cmd /k "cd /d C:\Users\MurkAnneKooistraKooi\.zenflow\worktrees\multi-element-ifc-import-met-pat-f798 && npx vite"
-
-echo [4/4] Wachten en browser openen...
-timeout /t 4 /nobreak >nul
-
-rem Open de cache-wis pagina — die stuurt automatisch door naar localhost:5173
-start "" "file://%CLEAR_HTML%"
+start "IFC Brickstrip Planner - Vite Dev" C:\Windows\system32\cmd.exe /k "cd /d C:\dev\brickboard && npm run dev"
 
 echo.
-echo ============================================================
-echo  Server draait. Cache wordt gewist bij opstarten.
-echo  Sluit het Vite-venster om te stoppen.
-echo ============================================================
-echo.
+echo [4/4] Wachten tot server klaar is (5 sec)...
+timeout /t 5 /nobreak >nul
+
+echo  Browser openen op http://localhost:5173 ...
+start "" "http://localhost:5173"
