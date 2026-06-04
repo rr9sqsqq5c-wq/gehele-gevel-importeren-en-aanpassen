@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode } from './lib/featureFlags.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
 import { buildBestFitFacadePattern } from './lib/facadePlane.js';
 import { reset as resetCoordinates, restoreProjectInfo } from './lib/projectCoordinates.js';
@@ -3323,7 +3323,8 @@ export default function App() {
           }).filter((row) => row.pieces.length > 0);
         };
         const simpleCornerWraps = [];
-        for (const [cfgKey, cfg] of Object.entries(cornerConfigs)) {
+        // CORNER_BUTT_MODE: stompe hoek → geen omslag-steenstrips op het loodrechte vlak.
+        if (!isCornerButtMode()) for (const [cfgKey, cfg] of Object.entries(cornerConfigs)) {
           if (cfg.mainGroupId !== group.id) continue;
           const secGroup = groups.find((g) => g.id === cfg.secondaryGroupId);
           if (!secGroup) continue;
@@ -3604,7 +3605,8 @@ export default function App() {
       const clippedBatches = batches.map((b) => b.sideType ? b : { ...b, rows: clipFull(b.rows) }).filter((b) => b.rows.length > 0 || b.sideType);
 
       const cornerWraps = [];
-      for (const [cfgKey, cfg] of Object.entries(cornerConfigs)) {
+      // CORNER_BUTT_MODE: stompe hoek → geen omslag-steenstrips op het loodrechte vlak.
+      if (!isCornerButtMode()) for (const [cfgKey, cfg] of Object.entries(cornerConfigs)) {
         if (cfg.mainGroupId !== group.id) continue;
         const secGroup = groups.find((g) => g.id === cfg.secondaryGroupId);
         if (!secGroup) continue;
@@ -5288,7 +5290,8 @@ export default function App() {
       const _ifcStripArt = _ifcStripArtId ? STEENSTRIP_CATALOG.find((a) => a.id === _ifcStripArtId) : null;
       const ifcBrickD = _ifcStripArt ? _ifcStripArt.dikte : (s.brickDepth ?? 20);
       const exportCornerWraps = [];
-      for (const [cfgKey, cfg] of Object.entries(cornerConfigs)) {
+      // CORNER_BUTT_MODE: stompe hoek → geen omslag-steenstrips op het loodrechte vlak.
+      if (!isCornerButtMode()) for (const [cfgKey, cfg] of Object.entries(cornerConfigs)) {
         if (cfg.mainGroupId !== group.id) continue;
         const secGroup = groups.find((g) => g.id === cfg.secondaryGroupId);
         if (!secGroup) continue;
