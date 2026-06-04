@@ -45,3 +45,15 @@ export function isOpeningUpAxisFix() {
 export function isSelfContainedProjects() {
   return readFlag('selfContainedProjects', false);
 }
+
+// Up-as voor wand-loze (sub)modellen: bij 0 wanden niet blind 'z', maar de up-as
+// ERVEN van een eerder geladen model met een CONFIDENT up-signaal (lastConfidentUpAxis),
+// anders een extent-heuristiek (kleinste extent = up, met vlakke-footprint-sanity),
+// anders 'z'. Lost het "breedte-als-hoogte" / best-fit-horizontaal-conflict op bij
+// een gemengde import (bv. hoofdmodel met wanden + los dakrand-submodel zonder wanden).
+// DEFAULT = false → de geen-wanden-tak geeft exact 'z' als nu (vlag-uit byte-identiek).
+// Aanzetten: ?upAxisInherit=1 of localStorage 'upAxisInherit'='1'.
+// Blast-radius: uitsluitend modellen met 0 wanden; modellen met ≥1 wand ongewijzigd.
+export function isUpAxisInheritFallback() {
+  return readFlag('upAxisInherit', false);
+}

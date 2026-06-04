@@ -27,6 +27,12 @@ let _originSource = null;    // bestandsnaam die de origin heeft bepaald
 // per-wand-as (deriveWallAxes), anders kantelt het model in de scène.
 let _upAxis = 'z';
 
+// De LAATSTE up-as die uit een CONFIDENTE detectie kwam (>= drempel; zie
+// detectModelUpAxis in ifc.js). Apart van _upAxis zodat een tussenliggend wand-loos
+// model of de laadvolgorde de erf-bron niet kan vergiftigen. Persistent over een
+// multi-model-import; gewist bij reset/start van een project.
+let _lastConfidentUpAxis = null;
+
 const SIGNIFICANT_MM = 1000; // minimale afstand van (0,0,0) voor "significante" origin
 
 // ─── registerIfcContext ───────────────────────────────────────────────────────
@@ -244,6 +250,8 @@ export function restoreProjectInfo(info) {
   _hasTrueNorth   = info.hasTrueNorth ?? false;
   _originSource   = info.originSource ?? null;
   _upAxis         = (info.upAxis === 'y' || info.upAxis === 'z' || info.upAxis === 'z_neg') ? info.upAxis : 'z';
+  // Zaai de erf-bron met de herstelde up-as (alleen gelezen in de flag-gated geen-wanden-tak).
+  if (info.upAxis === 'y' || info.upAxis === 'z' || info.upAxis === 'z_neg') _lastConfidentUpAxis = info.upAxis;
   console.log('[ProjectCoords] Hersteld uit cache:', {
     origin: _projectOrigin,
     trueNorthDegrees: info.trueNorthDegrees,
@@ -258,7 +266,14 @@ export function reset() {
   _hasTrueNorth = false;
   _originSource = null;
   _upAxis = 'z';
+  _lastConfidentUpAxis = null;
   console.log('[ProjectCoords] Reset — project state gewist');
+}
+
+// ─── lastConfidentUpAxis (erf-bron voor wand-loze submodellen) ─────────────────
+export function getLastConfidentUpAxis() { return _lastConfidentUpAxis; }
+export function setLastConfidentUpAxis(axis) {
+  if (axis === 'y' || axis === 'z' || axis === 'z_neg' || axis === 'x') _lastConfidentUpAxis = axis;
 }
 
 // ─── getProjectInfo ───────────────────────────────────────────────────────────

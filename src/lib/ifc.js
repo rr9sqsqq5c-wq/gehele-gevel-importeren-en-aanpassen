@@ -1,7 +1,8 @@
 import { getOpeningPoly } from './pattern.js';
 import { STEENSTRIP_CATALOG } from './battens.js';
 import { SLIMFORT_DEFAULTS, getSlimFortDepths } from './slimfort.js';
-import { registerIfcContext, getProjectInfo } from './projectCoordinates.js';
+import { registerIfcContext, getProjectInfo, getLastConfidentUpAxis, setLastConfidentUpAxis } from './projectCoordinates.js';
+import { isUpAxisInheritFallback } from './featureFlags.js';
 let _api = null;
 let _loading = null;
 let _cachedModel = null;
@@ -542,14 +543,17 @@ function _readAndRegisterIfcContext(api, modelID, filename, upAxis = 'z') {
 
 function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO', sampleSize = 30 } = {}) {
   if (forceOrientation === 'X_NEG90') {
+    setLastConfidentUpAxis('z');
     console.debug('[UpAxis] forceOrientation=X_NEG90 → heightAxis=z (Z-up IFC model, rotatie -90°)');
     return { axis: 'z', bboxVote: 'n.v.t.', bboxScore: 1, normalVote: 'n.v.t.', normalScore: 1, confidence: 1, confidenceLabel: 'HOOG', reason: 'forceOrientation=X_NEG90', sampleCount: 0, normCount: 0, forceOrientation };
   }
   if (forceOrientation === 'NONE') {
+    setLastConfidentUpAxis('y');
     console.debug('[UpAxis] forceOrientation=NONE → heightAxis=y (geen rotatie)');
     return { axis: 'y', bboxVote: 'n.v.t.', bboxScore: 1, normalVote: 'n.v.t.', normalScore: 1, confidence: 1, confidenceLabel: 'HOOG', reason: 'forceOrientation=NONE', sampleCount: 0, normCount: 0, forceOrientation };
   }
   if (forceOrientation === 'X_POS90') {
+    setLastConfidentUpAxis('z_neg');
     console.debug('[UpAxis] forceOrientation=X_POS90 → heightAxis=z_neg (omgekeerd Z-up model, rotatie +90°)');
     return { axis: 'z_neg', bboxVote: 'n.v.t.', bboxScore: 1, normalVote: 'n.v.t.', normalScore: 1, confidence: 1, confidenceLabel: 'HOOG', reason: 'forceOrientation=X_POS90', sampleCount: 0, normCount: 0, forceOrientation };
   }
@@ -594,6 +598,62 @@ function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO',
   const allWallIds = [];
   for (const wType of wallTypes) { const v = api.GetLineIDsWithType(modelID, wType); for (let i = 0; i < v.size(); i++) allWallIds.push(v.get(i)); }
   if (allWallIds.length === 0) {
+    // Wand-loos (sub)model. ALLEEN bij vlag AAN: erf de up-as van een eerder confident
+    // model (B) → anders extent-heuristiek met vlakke-footprint-sanity (A) → anders 'z'.
+    // Bij vlag UIT: exact 'z' als voorheen (byte-identiek).
+    if (isUpAxisInheritFallback()) {
+      // (b) ERVEN van een eerder CONFIDENT model (load-order-onafhankelijk).
+      const inherited = getLastConfidentUpAxis();
+      if (inherited) {
+        console.log(`[UpAxis] geen-wanden model → geërfde up-as '${inherited}' (van eerder confident model)`);
+        return { axis: inherited, source: 'geërfd-confident-model', confidence: 0.5, confidenceLabel: 'MATIG', reason: `geen wanden → geërfd '${inherited}'`, sampleCount: 0, forceOrientation };
+      }
+      // (c) EXTENT-HEURISTIEK: kleinste overall-extent = up, mits vlakke footprint
+      //     (beide niet-up-extents duidelijk groter); anders door naar 'z'.
+      const ext = (() => {
+        const types = ['IFCPLATE', 'IFCSLAB', 'IFCMEMBER', 'IFCCOVERING', 'IFCBUILDINGELEMENTPROXY', 'IFCCURTAINWALL'];
+        let mnX = Infinity, mxX = -Infinity, mnY = Infinity, mxY = -Infinity, mnZ = Infinity, mxZ = -Infinity, scanned = 0;
+        for (const tn of types) {
+          let code; try { code = api.GetTypeCodeFromName(tn); } catch { continue; }
+          let vec; try { vec = api.GetLineIDsWithType(modelID, code); } catch { continue; }
+          const n = vec.size(); if (!n) continue;
+          const st = Math.max(1, Math.floor(n / 400));
+          for (let i = 0; i < n; i += st) {
+            let mesh; try { mesh = api.GetFlatMesh(modelID, vec.get(i)); } catch { continue; }
+            if (!mesh || mesh.geometries.size() === 0) continue;
+            for (let gi = 0; gi < mesh.geometries.size(); gi++) {
+              const placed = mesh.geometries.get(gi); let geom;
+              try {
+                geom = api.GetGeometry(modelID, placed.geometryExpressID);
+                const verts = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
+                const m = placed.flatTransformation;
+                for (let v = 0; v < verts.length; v += 6) {
+                  const lx = verts[v] ?? 0, ly = verts[v + 1] ?? 0, lz = verts[v + 2] ?? 0;
+                  const wx = m[0] * lx + m[4] * ly + m[8]  * lz + m[12];
+                  const wy = m[1] * lx + m[5] * ly + m[9]  * lz + m[13];
+                  const wz = m[2] * lx + m[6] * ly + m[10] * lz + m[14];
+                  if (wx < mnX) mnX = wx; if (wx > mxX) mxX = wx;
+                  if (wy < mnY) mnY = wy; if (wy > mxY) mxY = wy;
+                  if (wz < mnZ) mnZ = wz; if (wz > mxZ) mxZ = wz;
+                }
+                scanned++;
+              } finally { geom?.delete(); }
+            }
+          }
+        }
+        if (!scanned) return null;
+        const span = { x: mxX - mnX, y: mxY - mnY, z: mxZ - mnZ };
+        const up = ['x', 'y', 'z'].reduce((a, b) => span[a] <= span[b] ? a : b);
+        const others = ['x', 'y', 'z'].filter((a) => a !== up);
+        const flat = span[up] > 1e-6 && others.every((a) => span[a] >= 1.3 * span[up]);
+        return flat ? { axis: up, span } : null;
+      })();
+      if (ext) {
+        console.log(`[UpAxis] geen-wanden model → extent-heuristiek up-as '${ext.axis}' (spans m: X=${ext.span.x.toFixed(1)} Y=${ext.span.y.toFixed(1)} Z=${ext.span.z.toFixed(1)})`);
+        return { axis: ext.axis, source: 'extent-heuristiek(geen-wanden)', confidence: 0.45, confidenceLabel: 'LAAG', reason: `geen wanden → extent '${ext.axis}'`, sampleCount: 0, forceOrientation };
+      }
+      console.log('[UpAxis] geen-wanden model → fallback z (geen confidente erf-bron, extent ambigu)');
+    }
     return { axis: 'z', source: 'geen-wanden', confidence: 0, confidenceLabel: 'LAAG', reason: 'geen wanden → fallback z', sampleCount: 0, forceOrientation };
   }
   const _MAX_SCAN = 4000;
@@ -663,6 +723,11 @@ function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO',
     reason = `geen ramen/deuren en geen duidelijke modus (y=${yC}, z=${zC}); val terug op IFC-conventie z`;
   }
   const confidenceLabel = confidence >= _UPAXIS_CONFIDENCE_HIGH ? 'HOOG' : confidence >= _UPAXIS_CONFIDENCE_LOW ? 'MATIG' : 'LAAG';
+
+  // Onthoud de up-as als erf-bron voor latere wand-loze submodellen — UITSLUITEND bij
+  // een confidente detectie (>= HOOG-drempel). Inert tenzij isUpAxisInheritFallback aan
+  // staat (alleen de geen-wanden-tak leest deze waarde) → vlag-uit byte-identiek.
+  if (confidence >= _UPAXIS_CONFIDENCE_HIGH) setLastConfidentUpAxis(detectedAxis);
 
   const _derivedViewerMode = detectedAxis === 'z_neg' ? 'X_POS90' : detectedAxis === 'z' ? 'X_NEG90' : 'NONE';
   console.log('[OrientationDecision]', {
