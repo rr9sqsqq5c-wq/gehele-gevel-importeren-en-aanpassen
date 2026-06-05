@@ -1,0 +1,123 @@
+{
+  "meta": {
+    "doel": "NULMETING / regressie-anker zones-feature (FASE 1-3)",
+    "model": "public/brickboard-a.ifc",
+    "modelFile": "BIL-MOO-A-ZZ-PBP.ifc",
+    "schema": "IFC2X3",
+    "gemaakt": "2026-06-05T13:49:07.541Z",
+    "generatorBron": {
+      "facadePlane": "src/lib/facadePlane.js",
+      "pattern": "src/lib/pattern.js"
+    },
+    "materiaal": {
+      "steenL": 210,
+      "steenH": 50,
+      "lint": 12,
+      "stoot": 10
+    },
+    "beperking": "headless wand-extractie; openings:[]; deterministische probe, geen app-pariteit"
+  },
+  "upAxis": {
+    "detected": "y",
+    "midVote": {
+      "x": 479,
+      "y": 1422,
+      "z": 529
+    },
+    "thinVote": {
+      "x": 1280,
+      "y": 0,
+      "z": 1150
+    },
+    "globalSpanMm": {
+      "x": 41048,
+      "y": 9598,
+      "z": 40700
+    },
+    "bron": "headless proxy voor getProjectInfo().upAxis (detectModelUpAxis ifc.js:544)"
+  },
+  "facadeSelection": {
+    "nAxis": "x",
+    "facadeCoordMm": 31350,
+    "wallCount": 48,
+    "totalWalls": 4128,
+    "usableWalls": 2430
+  },
+  "probes": {
+    "halfsteens": {
+      "generator": "buildBestFitFacadePattern",
+      "screen": {
+        "bron": "allPatterns[group].facadeData.rows (App.jsx:3279)",
+        "hash": "2d775c3a3e8ce977787ec28a754c638d22b4fe92dfa51ab25c2691b5ba119073",
+        "rowCount": 141,
+        "pieceCount": 6691
+      },
+      "export": {
+        "bron": "handleExport baseStripBatches (App.jsx:5244, 0 zones, identity trims)",
+        "hash": "2d775c3a3e8ce977787ec28a754c638d22b4fe92dfa51ab25c2691b5ba119073",
+        "rowCount": 141,
+        "pieceCount": 6691
+      },
+      "screenEqualsExport": true,
+      "groupWidth": 10280,
+      "groupHeight": 9205,
+      "plane": {
+        "uAxis": "y",
+        "tAxis": "z",
+        "nAxis": "x",
+        "outsideDir": -1,
+        "offsetMm": 31345,
+        "residualMm": 15,
+        "coFacingPct": 100
+      },
+      "warnings": []
+    },
+    "staand_tegelverband": {
+      "generator": "buildBestFitFacadePattern",
+      "screen": {
+        "bron": "allPatterns[group].facadeData.rows (App.jsx:3279)",
+        "hash": "6478efb898859433150532b43876c9d26748ee10fe0bb6de5172a7e111e9aba4",
+        "rowCount": 41,
+        "pieceCount": 7046
+      },
+      "export": {
+        "bron": "handleExport baseStripBatches (App.jsx:5244, 0 zones, identity trims)",
+        "hash": "6478efb898859433150532b43876c9d26748ee10fe0bb6de5172a7e111e9aba4",
+        "rowCount": 41,
+        "pieceCount": 7046
+      },
+      "screenEqualsExport": true,
+      "groupWidth": 10280,
+      "groupHeight": 9205,
+      "plane": {
+        "uAxis": "y",
+        "tAxis": "z",
+        "nAxis": "x",
+        "outsideDir": -1,
+        "offsetMm": 31345,
+        "residualMm": 15,
+        "coFacingPct": 100
+      },
+      "warnings": []
+    }
+  },
+  "stripZoneAnchor": {
+    "zone": {
+      "id": "sz_probe",
+      "x": 2000,
+      "y": 2000,
+      "width": 4000,
+      "height": 3000,
+      "verband": "staand_tegelverband",
+      "enabled": true
+    },
+    "twoDHash": "25663e05f0ac5423977084351d353579bb291ee474cfdb72e8e972c04bddf6c2",
+    "screenHash": "25663e05f0ac5423977084351d353579bb291ee474cfdb72e8e972c04bddf6c2",
+    "exportHash": "25663e05f0ac5423977084351d353579bb291ee474cfdb72e8e972c04bddf6c2",
+    "twoDEqualsScreenEqualsExport": true,
+    "note": "2D==scherm by construction (View2D tekent regionBatches verbatim); scherm==export bewezen via dezelfde gedeelde buildStripZoneRegions",
+    "regionCount": 2,
+    "zonePieceCount": 950,
+    "bricksOutsideRectOrVlak": 0
+  }
+}
