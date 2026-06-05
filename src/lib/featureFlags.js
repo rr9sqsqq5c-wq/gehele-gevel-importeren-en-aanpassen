@@ -51,9 +51,10 @@ export function isSelfContainedProjects() {
 // anders een extent-heuristiek (kleinste extent = up, met vlakke-footprint-sanity),
 // anders 'z'. Lost het "breedte-als-hoogte" / best-fit-horizontaal-conflict op bij
 // een gemengde import (bv. hoofdmodel met wanden + los dakrand-submodel zonder wanden).
-// DEFAULT = false → de geen-wanden-tak geeft exact 'z' als nu (vlag-uit byte-identiek).
-// Aanzetten: ?upAxisInherit=1 of localStorage 'upAxisInherit'='1'.
+// DEFAULT = true (gevalideerd; OFF was byte-identiek, worst-case valt terug op 'z').
+// NOODREM: ?upAxisInherit=0 (of localStorage 'upAxisInherit'='0'/'false') zet het
+// expliciet UIT en herstelt het oude geen-wanden→'z'-gedrag.
 // Blast-radius: uitsluitend modellen met 0 wanden; modellen met ≥1 wand ongewijzigd.
 export function isUpAxisInheritFallback() {
-  return readFlag('upAxisInherit', false);
+  return readFlag('upAxisInherit', true);
 }
