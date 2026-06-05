@@ -58,3 +58,13 @@ export function isSelfContainedProjects() {
 export function isUpAxisInheritFallback() {
   return readFlag('upAxisInherit', true);
 }
+
+// Stompe hoekterminatie: de aanzichtgevel (cfg.main) loopt door in zijn EIGEN vlak,
+// maar er worden GEEN omslag-steenstrips meer op het loodrechte (aansluitende) vlak
+// geplaatst. De aansluitende gevel butt ertegenaan via de bestaande endExtensions-trim.
+// DEFAULT = false → de wrap-keten blijft exact zoals nu (vlag-uit byte-identiek).
+// Aanzetten: ?cornerButt=1 of localStorage 'cornerButt'='1'.
+// Werkt ALLEEN op geconfigureerde hoeken (cfg); zonder cfg gebeurt er niets.
+export function isCornerButtMode() {
+  return readFlag('cornerButt', false);
+}
