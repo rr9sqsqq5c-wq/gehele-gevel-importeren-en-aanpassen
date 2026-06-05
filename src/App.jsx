@@ -2,7 +2,8 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isFeatureZones } from './lib/featureFlags.js';
+import { buildStripZoneRegions, hasPenants, getActiveStripZones } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
 import { buildBestFitFacadePattern } from './lib/facadePlane.js';
 import { reset as resetCoordinates, restoreProjectInfo } from './lib/projectCoordinates.js';
@@ -1094,7 +1095,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         )}
       </CollapsibleSection>
 
-      <CollapsibleSection title="Penanten" tip={"Een penant is een uitstekende verticale lijst in de gevel.\nGeef de X-positie, breedte, diepte en hoogte op in mm.\n· X positie = afstand van de linker groepsrand\n· Breedte = breedte van het penant\n· Diepte = uitsteek t.o.v. het gevelvlak\n· Hoogte = hoogte van het penant\n· Steenstrips starten symmetrisch vanuit het midden van de voorzijde"} isOpen={isOpen('penanten')} onToggle={() => toggle('penanten')} badge={(settings.penanten ?? []).length > 0 ? `${(settings.penanten ?? []).length}` : null} extra={<button onClick={() => onUpdate({ penanten: [...(settings.penanten ?? []), { id: Date.now(), x: 500, breedte: 400, diepte: 150, hoogte: 2000, hoekprofiel: { enabled: true, dikte: 2, breedteZijkant: 40, breedteVoorkant: 40 } }] })} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '2px 8px', cursor: 'pointer' }}>+ Toevoegen</button>}>
+      <CollapsibleSection title="Penanten" tip={"Een penant is een uitstekende verticale lijst in de gevel.\nGeef de X-positie, breedte, diepte en hoogte op in mm.\n· X positie = afstand van de linker groepsrand\n· Breedte = breedte van het penant\n· Diepte = uitsteek t.o.v. het gevelvlak\n· Hoogte = hoogte van het penant\n· Steenstrips starten symmetrisch vanuit het midden van de voorzijde"} isOpen={isOpen('penanten')} onToggle={() => toggle('penanten')} badge={(settings.penanten ?? []).length > 0 ? `${(settings.penanten ?? []).length}` : null} extra={(() => { const _szBlocked = (settings.stripZones ?? []).some((z) => z?.enabled === true); return <button disabled={_szBlocked} title={_szBlocked ? 'Dit vlak heeft actieve strip-zones — penanten zijn hier uitgesloten (wederzijds). Zet de zones uit om penanten te gebruiken.' : undefined} onClick={() => { if (_szBlocked) return; onUpdate({ penanten: [...(settings.penanten ?? []), { id: Date.now(), x: 500, breedte: 400, diepte: 150, hoogte: 2000, hoekprofiel: { enabled: true, dikte: 2, breedteZijkant: 40, breedteVoorkant: 40 } }] }); }} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '2px 8px', cursor: _szBlocked ? 'not-allowed' : 'pointer', opacity: _szBlocked ? 0.5 : 1 }}>+ Toevoegen</button>; })()}>
         <div>
         {(settings.penanten ?? []).length === 0 && (
           <div style={{ fontSize: 11, color: '#94a3b8' }}>Geen penanten</div>
@@ -3534,10 +3535,24 @@ export default function App() {
 
       const groupVerband3d = s.verband ?? DEFAULT_VERBAND;
       const groupBrickH3d = groupVerband3d === 'staand_tegelverband' ? effectiveMat3d.steenL : effectiveMat3d.steenH;
-      const batches = [
+      let batches = [
         { rows: generalRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, depthFromFace: depthFromFaceGeneral },
         ...enabledZones.map((ez) => ({ rows: ez.rows, color: ez.color, brickH: ez.brickH, depthFromFace: depthFromFaceGeneral })),
       ];
+      // FASE 2 — stripZone-regio-tak achter featureZones (default UIT). Alleen op
+      // NIET-penant-vlakken; penant-vlakken houden de tak hierboven byte-identiek.
+      // Eén bedrading: de gedeelde buildStripZoneRegions (ook door de export-glue gebruikt).
+      if (isFeatureZones() && !hasPenants(s) && getActiveStripZones(s).length > 0) {
+        const _regions = buildStripZoneRegions(facadeData, s.stripZones, mat, groupVerband3d, s.color ?? '#a64033', { stripArt: _3dStripArt });
+        if (_regions) {
+          batches = _regions.map((r) => ({
+            rows: r.rows,
+            color: r.color,
+            brickH: r.verband === 'staand_tegelverband' ? r.material.steenL : r.material.steenH,
+            depthFromFace: depthFromFaceGeneral,
+          }));
+        }
+      }
 
       for (const pen of (s.penanten ?? [])) {
         const pX  = pen.x   ?? 0;
@@ -4193,11 +4208,14 @@ export default function App() {
           const label = getZoneLabel(clusters, clusterIdx, ax);
           const substrate = detectSubstrateType(elems);
           initColor(gid, color, label);
-          newSettingsUpdates[gid] = {
-            stripZones,
+          // FASE 2c — maak GEEN sz_-zones op penant-vlakken (één bron: hasPenants).
+          // Verse auto-groepen hebben nooit penanten, dus dit verandert het huidige
+          // gedrag niet; de guard borgt de invariant als penanten ooit voor-gezaaid zijn.
+          const _baseUpd = {
             ...(substrate !== 'unknown' ? { wallSubstrateType: substrate } : {}),
             ...(substrate === 'beton' ? { backingType: 'aluminium_slimfort' } : {}),
           };
+          newSettingsUpdates[gid] = hasPenants(_baseUpd) ? _baseUpd : { ..._baseUpd, stripZones };
           newGroups.push({ id: gid, wallIds: elems.map(e => e.expressID) });
           newWalls.push(...elems);
         });
@@ -5241,7 +5259,14 @@ export default function App() {
           return { ...row, pieces };
         }).filter((row) => row.pieces.length > 0);
       };
-      const baseStripBatches = stripBatches ?? (facadeData?.rows ? [{ rows: facadeData.rows, material: mat, color: s.color ?? '#a64033', verband: s.verband ?? DEFAULT_VERBAND }] : null);
+      let baseStripBatches = stripBatches ?? (facadeData?.rows ? [{ rows: facadeData.rows, material: mat, color: s.color ?? '#a64033', verband: s.verband ?? DEFAULT_VERBAND }] : null);
+      // FASE 2 — stripZone-regio-tak (zelfde gedeelde functie als de scherm-glue, identieke
+      // argumenten ⇒ identieke regions ⇒ scherm-hash == export-hash). Alleen niet-penant-
+      // vlakken; penant-vlakken houden stripBatches hierboven byte-identiek.
+      if (facadeData && isFeatureZones() && !hasPenants(s) && getActiveStripZones(s).length > 0) {
+        const _regions = buildStripZoneRegions(facadeData, s.stripZones, mat, s.verband ?? DEFAULT_VERBAND, s.color ?? '#a64033', { stripArt: _stripBatchArt });
+        if (_regions) baseStripBatches = _regions.map((r) => ({ rows: r.rows, material: r.material, color: r.color, verband: r.verband }));
+      }
       const finalStripBatches = baseStripBatches && ifcGW > 0
         ? baseStripBatches.map((b) => ({ ...b, rows: _applyCornerToRows(b.rows, ifcGW) })).filter((b) => b.rows.length > 0)
         : baseStripBatches;
@@ -6235,6 +6260,7 @@ export default function App() {
                     zoneSettings={getSettings(activeGroup.id).zoneSettings ?? []}
                     stripZones={getSettings(activeGroup.id).stripZones ?? []}
                     onStripZonesChange={(zones) => updateSettings(activeGroup.id, { stripZones: zones })}
+                    regionBatches={(() => { const _s = getSettings(activeGroup.id); return isFeatureZones() && !hasPenants(_s) && getActiveStripZones(_s).length > 0 ? (allPatterns[activeGroup.id]?.batches ?? null) : null; })()}
                     outsideDirFlip={!!getSettings(activeGroup.id).outsideDirFlip}
                     endExtensions={getSettings(activeGroup.id).endExtensions}
                     buildingEnvelopeData={buildingEnvelopeData}
