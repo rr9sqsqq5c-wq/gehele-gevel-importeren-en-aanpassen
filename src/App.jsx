@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85 } from './lib/featureFlags.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
 import { buildBestFitFacadePattern } from './lib/facadePlane.js';
 import { reset as resetCoordinates, restoreProjectInfo } from './lib/projectCoordinates.js';
@@ -27,6 +27,10 @@ const SlimFortWerktekening = lazy(() => import('./SlimFortWerktekening.jsx').the
 const DetailBoek = lazy(() => import('./DetailBoek.jsx').then((m) => ({ default: m.DetailBoek })));
 
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
+// FASE 2b stompe-butt (achter vlag corner85): aansluitende strip/paneel 8 mm vóór de
+// aanzicht-strip-achterkant; aansluitende lat 5 mm vrij van de aanzicht-wand.
+const CORNER85_STRIP_GAP = 8; // mm — = voegW in HoekAansluitDetail (App.jsx:699)
+const CORNER85_LAT_GAP = 5;   // mm
 
 function computeCornerOffsets(mainSettings, secondarySettings) {
   const secMat = secondarySettings.material ?? DEFAULT_MATERIAL;
@@ -747,8 +751,8 @@ function HoekAansluitDetail({ mainS, secS }) {
       {/* ── SECONDARY FACADE (above cy = main wall face, right of cx) ── */}
       {/* secondary wall overlaps main wall at corner */}
       <rect x={cx - s(Wsec)} y={PAD} width={s(Wsec)} height={s(secAbove + Wm + Lm + Pm + Sm)} fill="url(#hw)" stroke="#475569" strokeWidth={0.8} />
-      {/* lat runs to 10mm before main wall exterior face (cy + Wm - 10) */}
-      {Lsec > 0 && <rect x={cx} y={PAD} width={s(Lsec)} height={s(secAbove + Wm - 10)} fill="url(#hl)" stroke="#78350f" strokeWidth={0.8} />}
+      {/* lat runs to 10mm (corner85: 5mm) before main wall exterior face */}
+      {Lsec > 0 && <rect x={cx} y={PAD} width={s(Lsec)} height={s(secAbove + Wm - (isCorner85() ? CORNER85_LAT_GAP : 10))} fill="url(#hl)" stroke="#78350f" strokeWidth={0.8} />}
       {/* panel and strip end 8mm before main Strip top face (= voegW gap) */}
       {Psec > 0 && <rect x={cx + s(Lsec)} y={PAD} width={s(Psec)} height={s(secAbove + Wm + Lm + Pm - voegW)} fill={C_P} stroke="#64748b" strokeWidth={0.8} />}
       {Ssec > 0 && <rect x={cx + s(Lsec + Psec)} y={PAD} width={s(Ssec)} height={s(secAbove + Wm + Lm + Pm - voegW)} fill={C_S} stroke="#92400e" strokeWidth={0.8} />}
@@ -2766,9 +2770,18 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       const mSugStrips  = mainInFront ? secPkg.total                         : secWT + secPkg.total;
                       const mSugLatten  = mainInFront ? secPkg.lat                          : secWT + secPkg.lat;
                       const mSugPanelen = mainInFront ? secPkg.lat                          : secWT + secPkg.lat;
-                      const sSugStrips  = mainInFront ? mainPkg.lat + overgangsvoeg          : mainPkg.total - secPkg.str - overgangsvoeg;
-                      const sSugLatten  = mainInFront ? mainWT - overgangsvoeg               : -overgangsvoeg;
-                      const sSugPanelen = mainInFront ? mainPkg.lat + overgangsvoeg          : mainPkg.total - secPkg.str - overgangsvoeg;
+                      // corner85 fixt ALLEEN de TRUE-oriëntatie (main vóór; schematiek = waarheidsbron).
+                      // FALSE-oriëntatie (main achter) = onvoorwaardelijk het origineel — de juiste
+                      // FALSE-offset volgt niet uit de schematiek en is niet zonder runtime-meting vast te leggen.
+                      const sSugStrips  = mainInFront
+                        ? (isCorner85() ? mainPkg.lat + mainPkg.pan - CORNER85_STRIP_GAP : mainPkg.lat + overgangsvoeg)
+                        : mainPkg.total - secPkg.str - overgangsvoeg;
+                      const sSugLatten  = mainInFront
+                        ? (isCorner85() ? mainWT - CORNER85_LAT_GAP : mainWT - overgangsvoeg)
+                        : -overgangsvoeg;
+                      const sSugPanelen = mainInFront
+                        ? (isCorner85() ? mainPkg.lat + mainPkg.pan - CORNER85_STRIP_GAP : mainPkg.lat + overgangsvoeg)
+                        : mainPkg.total - secPkg.str - overgangsvoeg;
                       const applyGroup = (gid, intEnd, s, sugStrips, sugLatten, sugPanelen) => {
                         if (!intEnd) return;
                         const ee = s.endExtensions ?? {};

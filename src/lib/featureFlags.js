@@ -68,3 +68,13 @@ export function isUpAxisInheritFallback() {
 export function isCornerButtMode() {
   return readFlag('cornerButt', false);
 }
+
+// FASE 2b — stompe-butt offset-fix. De aansluitende strip/paneel eindigen 8 mm vóór de
+// ACHTERKANT van de aanzicht-strip (anker = main lat+paneel, niet main lat+voeg), en de
+// aansluitende lat 5 mm vrij van de aanzicht-wand (i.p.v. 10). Corrigeert het anker van de
+// suggestie-formules + de hoek-schematiek (HoekAansluitDetail) consistent.
+// DEFAULT = false → exact de huidige overgangsvoeg-formules (vlag-uit byte-identiek).
+// Aanzetten: ?corner85=1 of localStorage 'corner85'='1'. Noodrem: ?corner85=0.
+export function isCorner85() {
+  return readFlag('corner85', false);
+}
