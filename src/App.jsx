@@ -4277,12 +4277,6 @@ export default function App() {
           resolveOutsideDirections(state.allWalls);
           applyManualOutsideOverrides(state.allWalls, state.groups, sm);
           setAllWalls(state.allWalls);
-          const _haDist = {};
-          for (const w of state.allWalls) {
-            const h = w.wallOrigin?.heightAxis ?? 'unknown';
-            _haDist[h] = (_haDist[h] || 0) + 1;
-          }
-          setViewerOrientationMode((_haDist['z'] ?? 0) > (_haDist['y'] ?? 0) ? 'X_NEG90' : 'NONE');
           setAdjacencies(await detectAdjacenciesAsync(state.allWalls));
           if (state.ifcFileName) setIfcFileName(state.ifcFileName);
           setLoadStatus('loaded');
