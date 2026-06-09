@@ -96,7 +96,16 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
   const baseMat = applyArt(mat);
   const planeRowH = bondRowH(defaultVerband, baseMat);
 
-  const zRect = (z) => ({ x0: z.x ?? 0, y0: z.y ?? 0, x1: (z.x ?? 0) + (z.width ?? 0), y1: (z.y ?? 0) + (z.height ?? 0) });
+  // EFFECTIEVE rechthoek: maxHoogte clipt de zone verticaal vanaf de ONDERKANT (y0).
+  // y1 = y0 + min(height, maxHoogte). Door de effectieve rect overal te gebruiken
+  // (complement-aftrek, zone-Y-clip, z-order) valt de strook BOVEN maxHoogte binnen de
+  // getekende rechthoek terug op het default-verband (complement) i.p.v. een blanco gat.
+  const zRect = (z) => {
+    const y0 = z.y ?? 0;
+    const h = z.height ?? 0;
+    const eff = (z.maxHoogte != null && z.maxHoogte > 0) ? Math.min(h, z.maxHoogte) : h;
+    return { x0: z.x ?? 0, y0, x1: (z.x ?? 0) + (z.width ?? 0), y1: y0 + eff };
+  };
   const rects = active.map(zRect);
 
   // ── complement = facadeData.rows − unie(zone-rechthoeken) ──

@@ -3,6 +3,7 @@ import { buildFullGroupFacadePattern, getOpeningPoly } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten } from './lib/panelization.js';
 import { brickColor, isTooSmall, polyXRangesAtY } from './lib/geometry.js';
 import { hasPenants } from './lib/zoneRegions.js';
+import { isFeatureZones } from './lib/featureFlags.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
 import { generateSlimFortGrid, generateSlimFortFaces, SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
 
@@ -64,6 +65,9 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
   // Tekenen blokkeren; getekende zones blijven inert (penanten winnen) + waarschuwing.
   const penantFace = hasPenants(groupSettings);
   const activeZoneCount = (stripZones ?? []).filter((z) => z?.enabled === true).length;
+  // FASE B — de hele stripZone-UI (teken-knop + zonelijst + anker-UI) staat achter de vlag.
+  // Vlag UIT → geen toolbar; View2D exact terug naar de pre-feature staat.
+  const zonesEnabled = isFeatureZones();
   const color = groupSettings?.color ?? '#a64033';
   const _stripArtId = (groupSettings?.steenstripsArtikelen ?? [])[0];
   const _stripArt = _stripArtId ? STEENSTRIP_CATALOG.find((a) => a.id === _stripArtId) : null;
@@ -1959,7 +1963,8 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
         onMouseMove={onMouseMove}
       />
 
-      {/* Toolbar top-left */}
+      {/* Toolbar top-left — alleen achter featureZones (pre-feature: geen toolbar) */}
+      {zonesEnabled && (
       <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
         <button
           disabled={penantFace}
@@ -2041,6 +2046,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
           );
         })()}
       </div>
+      )}
 
       <button
         onClick={fitToView}

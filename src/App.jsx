@@ -1465,7 +1465,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         );
       })()}
 
-      {(settings.stripZones ?? []).length > 0 && (() => {
+      {isFeatureZones() && (settings.stripZones ?? []).length > 0 && (() => {
         const szArr = settings.stripZones ?? [];
         const selZoneStripId = (settings.steenstripsArtikelen ?? [])[0] ?? null;
         const selZoneStripArt = selZoneStripId ? STEENSTRIP_CATALOG.find((a) => a.id === selZoneStripId) : null;
@@ -1533,34 +1533,16 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       <Field label="Label" tip="Naam van deze tekenzone.">
                         <input type="text" value={sz.label ?? ''} onChange={(e) => updZone(sz.id, { label: e.target.value })} style={{ ...inp, width: '100%' }} />
                       </Field>
-                      <Field label="Metselverband" tip="Verband voor deze zone.">
-                        <select value={zs.verband} onChange={(e) => updZone(sz.id, { verband: e.target.value })} style={inp}>
+                      <Field label="Metselverband" tip="Verband voor deze zone (alleen volledig ondersteunde bonds).">
+                        <select value={zs.verband === 'staand_tegelverband' ? 'staand_tegelverband' : 'halfsteens'} onChange={(e) => updZone(sz.id, { verband: e.target.value })} style={inp}>
                           <option value="halfsteens">Halfsteens</option>
-                          <option value="halfsteens_kop">Halfsteens kop</option>
                           <option value="staand_tegelverband">Staand tegelverband</option>
-                          <option value="wildverband">Wildverband</option>
                         </select>
                       </Field>
-                      <Field label="Achterconstructie" tip="Type achterconstructie voor deze zone.">
-                        <select value={zs.zoneBackingType ?? ''} onChange={(e) => updZone(sz.id, { zoneBackingType: e.target.value || null })} style={inp}>
-                          <option value="">Groep standaard</option>
-                          <option value="hout">Hout</option>
-                          <option value="aluminium">Aluminium</option>
-                          <option value="aluminium_slimfort">SlimFort XT®</option>
-                        </select>
-                      </Field>
-                      <Field label="Panelisatie" tip="Panelen in- of uitschakelen voor deze zone.">
-                        <select
-                          value={zs.zonePanelenEnabled === true ? 'aan' : zs.zonePanelenEnabled === false ? 'uit' : ''}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            updZone(sz.id, { zonePanelenEnabled: v === 'aan' ? true : v === 'uit' ? false : null });
-                          }}
-                          style={inp}
-                        >
-                          <option value="">Groep standaard</option>
-                          <option value="aan">Aan</option>
-                          <option value="uit">Uit</option>
+                      <Field label="Anker" tip="Uitlijning van het verband: vanuit de linksonderhoek van de zone (eigen anker), of doorlopend op de vlak-oorsprong.">
+                        <select value={zs.bondAnchor === 'planeOrigin' ? 'planeOrigin' : 'zoneBottomLeft'} onChange={(e) => updZone(sz.id, { bondAnchor: e.target.value })} style={inp}>
+                          <option value="zoneBottomLeft">Zone (linksonder)</option>
+                          <option value="planeOrigin">Vlak-oorsprong</option>
                         </select>
                       </Field>
                       {selZoneStripArt && (
