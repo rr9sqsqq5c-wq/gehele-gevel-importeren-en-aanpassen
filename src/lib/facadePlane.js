@@ -17,6 +17,7 @@
 
 import { buildFullGroupFacadePattern } from './pattern.js';
 import { getProjectInfo } from './projectCoordinates.js';
+import { isKeepEndExtension } from './featureFlags.js';
 
 const UP_AX = ['x', 'y', 'z'];
 const RESIDUAL_TOL_MM = 50;      // diepte-tolerantie (≤ enkele cm)
@@ -162,11 +163,20 @@ function toVirtualWall(member, plane) {
 
 // CONTOUR-MASKER: knip elke rij tot de unie van element-rechthoeken (relatief t.o.v.
 // groupMinX/groupMinH); zo blijft alles buiten een element ONbekleed.
-function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH) {
+function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft = 0, extendRight = 0) {
   const rects = vwalls.map(w => ({
     t0: (w.wallOrigin.lengthStart) - groupMinX, t1: (w.wallOrigin.lengthEnd) - groupMinX,
     u0: (w.wallOrigin.heightStart) - groupMinH, u1: (w.wallOrigin.heightEnd) - groupMinH,
   }));
+  // FASE 1 (keepEndExtension): de handmatige einduiteinde-extensie mag de GLOBALE
+  // buitenrand van de groep voorbij de gevelrand laten doorlopen (stompe hoek). We rekken
+  // UITSLUITEND de buitenste a/b op die samenvallen met de groep-extremen (gT0/gT1) —
+  // interne element-voegen en opening-contouren blijven ongemoeid (openingen zijn al uit de
+  // pieces geknipt vóór de mask). extendLeft/Right zijn 0 wanneer de vlag UIT staat, dus dit
+  // blok is dan een no-op en de mask is byte-identiek aan het origineel.
+  const keepExt = (extendLeft > 0 || extendRight > 0) && rects.length > 0;
+  const gT0 = keepExt ? Math.min(...rects.map(r => r.t0)) : 0;
+  const gT1 = keepExt ? Math.max(...rects.map(r => r.t1)) : 0;
   const out = [];
   for (const row of rows) {
     const y = row.y;
@@ -177,6 +187,11 @@ function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH) {
     // Een echte opening (≥ ~200 mm) overschrijdt de drempel en blijft dus open.
     const merged = [ivs[0].slice()];
     for (let i = 1; i < ivs.length; i++) { const last = merged[merged.length - 1]; if (ivs[i][0] <= last[1] + SEAM_MERGE_TOL) last[1] = Math.max(last[1], ivs[i][1]); else merged.push(ivs[i].slice()); }
+    // Vlag AAN: rek alleen de buitenste interval-rand op die de groep-extreme raakt.
+    if (keepExt) {
+      if (extendLeft  > 0 && Math.abs(merged[0][0]                 - gT0) < 0.5) merged[0][0]                 = gT0 - extendLeft;
+      if (extendRight > 0 && Math.abs(merged[merged.length - 1][1] - gT1) < 0.5) merged[merged.length - 1][1] = gT1 + extendRight;
+    }
     const pieces = [];
     for (const p of row.pieces) {
       const ps = p.start, pe = p.start + p.length;
@@ -207,7 +222,10 @@ export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, z
   const fd = buildFullGroupFacadePattern(vwalls, material, verband, maxHoogte, zetwerk, _minHoogte, startLijn, extendLeft, extendRight);
   if (!fd) return null;
   const rowH = verband === 'staand_tegelverband' ? (material.steenL ?? material.steenH ?? 50) : (material.steenH ?? 50);
-  fd.rows = maskRowsToContours(fd.rows, vwalls, fd.groupMinX, fd.groupMinH, rowH);
+  // FASE 1: vlag UIT → extend=0 doorgegeven → maskRowsToContours byte-identiek (knipt op
+  // footprint). Vlag AAN → de globale buitenrand behoudt de handmatige einduiteinde-extensie.
+  const _keepEndExt = isKeepEndExtension();
+  fd.rows = maskRowsToContours(fd.rows, vwalls, fd.groupMinX, fd.groupMinH, rowH, _keepEndExt ? extendLeft : 0, _keepEndExt ? extendRight : 0);
   fd._bestFit = {
     uAxis: plane.uAxis, tAxis: plane.tAxis, nAxis: plane.nAxis, outsideDir: plane.outsideDir,
     offsetMm: plane.offset, residualMm: plane.residualMm, coFacingPct: Math.round(plane.coFacingFrac * 100),

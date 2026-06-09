@@ -78,3 +78,14 @@ export function isCornerButtMode() {
 export function isCorner85() {
   return readFlag('corner85', false);
 }
+
+// FASE 1 — strips behouden hun handmatige einduiteinde-extensie (endExtensions) voorbij
+// de gevelrand. maskRowsToContours rekt dan ALLEEN de globale buitenrand van de groep op
+// (a_outer −= extendLeft, b_outer += extendRight); interne element-voegen en opening-
+// contouren blijven ongemoeid. Voor de stompe hoek (één vlak gaat niet de hoek om).
+// DEFAULT = false → de mask knipt strips exact op de footprint zoals nu (vlag-uit
+// byte-identiek). NOODREM: ?keepEndExtension=0 (of localStorage 'keepEndExtension'='0').
+// SCOPE: alleen strips (best-fit/handmatige groepen); panelen/latten volgen in Fase 2.
+export function isKeepEndExtension() {
+  return readFlag('keepEndExtension', false);
+}
