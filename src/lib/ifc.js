@@ -1,7 +1,7 @@
 import { getOpeningPoly } from './pattern.js';
 import { STEENSTRIP_CATALOG } from './battens.js';
 import { SLIMFORT_DEFAULTS, getSlimFortDepths } from './slimfort.js';
-import { registerIfcContext, getProjectInfo, getLastConfidentUpAxis, setLastConfidentUpAxis, setGeometryDerivedRenderOrigin } from './projectCoordinates.js';
+import { registerIfcContext, getProjectInfo, getLastConfidentUpAxis, setLastConfidentUpAxis, setGeometryDerivedRenderOrigin, getWorldAnchor } from './projectCoordinates.js';
 import { isUpAxisInheritFallback, isGeometryDerivedOrigin } from './featureFlags.js';
 let _api = null;
 let _loading = null;
@@ -1881,8 +1881,20 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
   const wcsAxisVec = dominantHA === 'y' ? [0,1,0] : dominantHA === 'x' ? [1,0,0] : [0,0,1];
   const wpt    = PT(0,0,0);
   const wcsAxisId = E(`IFCDIRECTION((${wcsAxisVec.join(',')}))`);
-  const wax    = E(`IFCAXIS2PLACEMENT3D(#${wpt},#${wcsAxisId},$)`);
-  const gCtx   = E(`IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#${wax},$)`);
+  const wax    = E(`IFCAXIS2PLACEMENT3D(#${wpt},#${wcsAxisId},$)`); // boom-as (lokaal) — ongewijzigd
+  // Stap 2 (oorzaak): de export schreef WCS=(0,0,0) → de georef (#20) viel weg → strips
+  // landden niet op de real-world positie. worldAnchor AANWEZIG (v2) → her-bed de ORIGINELE
+  // context-WCS (de #20 die we lazen) als WorldCoordinateSystem, MET een EIGEN as zodat de
+  // plaatsings-boom (site/building/storey = #wax) op (0,0,0) blijft. web-ifc past de boom toe
+  // (strips co-loceren met de wanden in emittedLocal) en negeert de context-WCS; een shared-
+  // coordinate-viewer past de context-WCS toe (strips op real-world, gelijk aan het origineel).
+  // worldAnchor AFWEZIG (v1) of contextWCS≈0 (boom/Tekla) → context-WCS = #wax → BYTE-IDENTIEK.
+  const _waC = getWorldAnchor()?.contextWCS;
+  const _hasAnchorWcs = _waC && (Math.abs(_waC.x ?? 0) + Math.abs(_waC.y ?? 0) + Math.abs(_waC.z ?? 0)) > 0;
+  const ctxAx  = _hasAnchorWcs
+    ? E(`IFCAXIS2PLACEMENT3D(#${PT(_waC.x, _waC.y, _waC.z)},#${wcsAxisId},$)`)
+    : wax;
+  const gCtx   = E(`IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#${ctxAx},$)`);
   const gSub   = E(`IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#${gCtx},$,.MODEL_VIEW.,$)`);
   const proj   = E(`IFCPROJECT(${G()},#${owH},'${(fileName || 'BrickslipExport').replace(/'/g,"\\'")}' ,$,$,$,$,(#${gCtx}),#${units})`);
   const sitePl = E(`IFCLOCALPLACEMENT($,#${wax})`);
@@ -2552,7 +2564,7 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
         URL.revokeObjectURL(url);
       }
     })();
-  } else {
+  } else if (typeof document !== 'undefined') {
     const blob = new Blob([content], { type: 'application/x-step' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -2561,6 +2573,9 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
     a.click();
     URL.revokeObjectURL(url);
   }
+  // Geef de IFC-tekst terug zodat ze headless (spike-round-trip) controleerbaar is.
+  // Browser-gedrag onveranderd: de aanroeper (App.jsx:5420) negeert de retourwaarde.
+  return content;
 }
 
 // Scans an IFC file for all common building element types (walls, slabs, proxies, coverings, etc.)
