@@ -2,10 +2,10 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85 } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis } from './lib/featureFlags.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
 import { buildBestFitFacadePattern } from './lib/facadePlane.js';
-import { reset as resetCoordinates, restoreProjectInfo } from './lib/projectCoordinates.js';
+import { reset as resetCoordinates, restoreProjectInfo, registerIfcContext } from './lib/projectCoordinates.js';
 import handleidingMd from '../HANDLEIDING.md?raw';
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, clearParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState, saveSourceIfc, loadSourceIfc } from './lib/storage.js';
@@ -3911,6 +3911,25 @@ export default function App() {
     a.click(); URL.revokeObjectURL(a.href);
   }
 
+  // RESTORE-UP-AS (vlag restoreUpAxis, default UIT): bij project-restore persisteert
+  // project-state geen upAxis (storage.js:168), en loadProjectState/loadProject roepen
+  // registerIfcContext/restoreProjectInfo NIET aan → _upAxis blijft de module-default 'z'
+  // (projectCoordinates.js:28) terwijl de herstelde wanden Y-up zijn. We leiden de up-as af
+  // uit de meerderheids-heightAxis van de wanden en zetten 'm via registerIfcContext (alleen
+  // upAxis; origin/trueNorth blijven ongemoeid door de bestaande guards). Vlag UIT → no-op
+  // (byte-identiek). Geen bruikbare wanden → laat de huidige default staan (geen verslechtering).
+  function restoreUpAxisFromWalls(walls) {
+    if (!isRestoreUpAxis()) return;
+    const vote = {};
+    for (const w of (walls ?? [])) {
+      const ha = w?.wallOrigin?.heightAxis;
+      if (ha === 'y' || ha === 'z' || ha === 'z_neg') vote[ha] = (vote[ha] ?? 0) + 1;
+    }
+    const axis = Object.keys(vote).sort((a, b) => vote[b] - vote[a])[0];
+    if (!axis) return;
+    registerIfcContext({ upAxis: axis }, 'project-restore (up-as afgeleid uit wanden)');
+  }
+
   async function confirmImport() {
     if (!pendingFile) return;
     // Reset coördinaten bij een nieuw (niet-merge) import
@@ -4287,6 +4306,7 @@ export default function App() {
         setSettingsMap(sm);
         if (state.wallDimOverrides && typeof state.wallDimOverrides === 'object') setWallDimOverrides(state.wallDimOverrides);
         if (Array.isArray(state.allWalls) && state.allWalls.length > 0) {
+          restoreUpAxisFromWalls(state.allWalls);
           resolveOutsideDirections(state.allWalls);
           applyManualOutsideOverrides(state.allWalls, state.groups, sm);
           setAllWalls(state.allWalls);
@@ -4619,6 +4639,7 @@ export default function App() {
           }
         }
         if (loadedWalls.length > 0) {
+          restoreUpAxisFromWalls(loadedWalls);
           resolveOutsideDirections(loadedWalls);
           applyManualOutsideOverrides(loadedWalls, loadedGroups, loadedSm);
           setAllWalls(loadedWalls);

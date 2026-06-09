@@ -89,3 +89,14 @@ export function isCorner85() {
 export function isKeepEndExtension() {
   return readFlag('keepEndExtension', false);
 }
+
+// RESTORE-UP-AS — bij het herstellen van een opgeslagen project (loadProjectState /
+// loadProject) wordt de up-as afgeleid uit de meerderheids-heightAxis van de herstelde
+// wanden, i.p.v. de module-default 'z' te laten staan (projectCoordinates.js:28). Lost de
+// "bijna-horizontaal / normaal ∥ up-as"-melding op die bij een heropende Y-up-sessie vuurt.
+// DERIVE-ONLY: niets gepersisteerd, geen storage-schema-wijziging.
+// DEFAULT = false → restore laat _upAxis ongemoeid zoals nu (vlag-uit byte-identiek).
+// NOODREM: ?restoreUpAxis=0 (of localStorage 'restoreUpAxis'='0').
+export function isRestoreUpAxis() {
+  return readFlag('restoreUpAxis', false);
+}
