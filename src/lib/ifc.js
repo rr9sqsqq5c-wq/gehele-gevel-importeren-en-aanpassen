@@ -1,8 +1,8 @@
 import { getOpeningPoly } from './pattern.js';
 import { STEENSTRIP_CATALOG } from './battens.js';
 import { SLIMFORT_DEFAULTS, getSlimFortDepths } from './slimfort.js';
-import { registerIfcContext, getProjectInfo, getLastConfidentUpAxis, setLastConfidentUpAxis } from './projectCoordinates.js';
-import { isUpAxisInheritFallback } from './featureFlags.js';
+import { registerIfcContext, getProjectInfo, getLastConfidentUpAxis, setLastConfidentUpAxis, setGeometryDerivedRenderOrigin } from './projectCoordinates.js';
+import { isUpAxisInheritFallback, isGeometryDerivedOrigin } from './featureFlags.js';
 let _api = null;
 let _loading = null;
 let _cachedModel = null;
@@ -539,6 +539,26 @@ function _readAndRegisterIfcContext(api, modelID, filename, upAxis = 'z') {
 
   // Registreer in centrale module
   registerIfcContext(ctx_result, filename ?? 'onbekend bestand');
+}
+
+// GEOMETRY_DERIVED_ORIGIN (Stap 1): leest IfcSite RefLatitude/RefLongitude (compound plane
+// angle = [deg,min,sec,millionths]) als georef-metadata voor worldAnchor. ALLEEN gevuld,
+// niet toegepast. Geeft de eerste site met beide velden, anders null. Faalt nooit hard.
+function _readSiteRefLatLong(api, modelID) {
+  try {
+    const siteCode = api.GetTypeCodeFromName('IFCSITE');
+    const vec = api.GetLineIDsWithType(modelID, siteCode);
+    const toArr = (v) => (Array.isArray(v) ? v.map((x) => Number(x?.value ?? x)) : null);
+    for (let i = 0; i < vec.size(); i++) {
+      try {
+        const s = api.GetLine(modelID, vec.get(i), false);
+        const la = toArr(s?.RefLatitude);
+        const lo = toArr(s?.RefLongitude);
+        if (la && lo) return { lat: la, long: lo };
+      } catch { }
+    }
+  } catch { }
+  return null;
 }
 
 function detectModelUpAxis(api, modelID, wallTypes, { forceOrientation = 'AUTO', sampleSize = 30 } = {}) {
@@ -1360,6 +1380,13 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
     onProgress?.({ phase: 'init', log: `web-ifc model geopend, ${totalWalls} wanden in selectie` });
     onProgress?.({ phase: 'wanden', current: 0, total: totalWalls });
 
+    // GEOMETRY_DERIVED_ORIGIN (Stap 1): globale emitted-local AABB (meters) over de BEHOUDEN
+    // wanden — bron voor de render-origin (AABB-center). Alleen accumuleren; de toepassing
+    // (buildProjectMatrix) en het zetten van module-state gebeuren achter de vlag.
+    let _eMinX = Infinity, _eMaxX = -Infinity;
+    let _eMinY = Infinity, _eMaxY = -Infinity;
+    let _eMinZ = Infinity, _eMaxZ = -Infinity;
+
     let processed = 0;
     let lastYield = Date.now();
     for (const wID of allWallIDs) {
@@ -1391,6 +1418,12 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
           const { heightAxis, lengthAxis, thicknessAxis, length, height } = deriveWallAxes(dx, dy, dz, _upAxis);
 
           if (length < 100 || height < 100) continue;
+
+          // GEOMETRY_DERIVED_ORIGIN: behouden wand → draagt bij aan de emitted-local AABB
+          // (zelfde wallBB-basis als wallOrigin; meters). Goedkoop, ongeacht de vlag.
+          if (wallBB.minX < _eMinX) _eMinX = wallBB.minX; if (wallBB.maxX > _eMaxX) _eMaxX = wallBB.maxX;
+          if (wallBB.minY < _eMinY) _eMinY = wallBB.minY; if (wallBB.maxY > _eMaxY) _eMaxY = wallBB.maxY;
+          if (wallBB.minZ < _eMinZ) _eMinZ = wallBB.minZ; if (wallBB.maxZ > _eMaxZ) _eMaxZ = wallBB.maxZ;
 
           const wallLine = api.GetLine(modelID, wID, false);
           const name = wallLine?.Name?.value ?? `Wand #${wID}`;
@@ -1649,6 +1682,27 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
 
     // Registreer IFC-context in projectCoordinates module en geef snapshot mee
     _readAndRegisterIfcContext(api, modelID, file?.name ?? 'onbekend', _upAxis);
+
+    // GEOMETRY_DERIVED_ORIGIN (Stap 1, vlag-gated): render-origin = AABB-center van de
+    // emitted-local geometrie (mm); world-anchor = de georef-bron (#20 + refLatLong +
+    // trueNorth + upAxis) als METADATA voor export (Stap 2 — hier alleen gevuld/
+    // gepersisteerd, NIET toegepast). Vlag UIT → niets gezet → #20-render-pad ongewijzigd.
+    if (isGeometryDerivedOrigin() && isFinite(_eMinX)) {
+      const renderOrigin = {
+        x: Math.round(((_eMinX + _eMaxX) / 2) * 1000),
+        y: Math.round(((_eMinY + _eMaxY) / 2) * 1000),
+        z: Math.round(((_eMinZ + _eMaxZ) / 2) * 1000),
+      };
+      const _pi = getProjectInfo(); // #20 + trueNorth zoals zojuist geregistreerd
+      const worldAnchor = {
+        contextWCS: _pi.origin,           // #20 (mm) — georef-bron, NIET de render-origin
+        refLatLong: _readSiteRefLatLong(api, modelID),
+        trueNorthDegrees: _pi.trueNorthDegrees,
+        upAxis: _upAxis,
+      };
+      setGeometryDerivedRenderOrigin(renderOrigin, worldAnchor);
+    }
+
     walls.projectInfo = getProjectInfo();
     return walls;
   } finally {

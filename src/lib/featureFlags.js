@@ -90,6 +90,21 @@ export function isKeepEndExtension() {
   return readFlag('keepEndExtension', false);
 }
 
+// GEOMETRY_DERIVED_ORIGIN (Stap 1) — de RENDER-origin wordt afgeleid uit de geometrie
+// (AABB-center van wat web-ifc default uitspuugt: boom toegepast, context-WCS #20 NIET),
+// i.p.v. de context-WCS #20 (georef-bron) blind af te trekken. Lost op dat een Revit-
+// shared-export ~485 km verschuift (we trekken een offset af die nooit in de geometrie
+// zat). De #20/refLatLong/trueNorth/upAxis verhuizen naar worldAnchor (metadata, ALLEEN
+// voor export — Stap 2 — in Stap 1 alleen gevuld/gepersisteerd, NIET toegepast).
+// SCOPE: alleen het parse-/import-pad + buildProjectMatrix-translatiebron + opslag-schema.
+// Het laad-/restore-pad wordt nergens geraakt: ontbreekt renderOrigin (oud project) →
+// buildProjectMatrix valt terug op het ongewijzigde #20-pad (byte-identiek).
+// DEFAULT = false → vlag-uit byte-identiek aan nu (translatie, schema én opgeslagen bytes).
+// Aanzetten: ?geometryDerivedOrigin=1 of localStorage 'geometryDerivedOrigin'='1'.
+export function isGeometryDerivedOrigin() {
+  return readFlag('geometryDerivedOrigin', false);
+}
+
 // RESTORE-UP-AS — bij het herstellen van een opgeslagen project (loadProjectState /
 // loadProject) wordt de up-as afgeleid uit de meerderheids-heightAxis van de herstelde
 // wanden, i.p.v. de module-default 'z' te laten staan (projectCoordinates.js:28). Lost de

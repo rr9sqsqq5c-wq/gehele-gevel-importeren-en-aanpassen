@@ -13,6 +13,7 @@
  */
 
 import * as THREE from 'three';
+import { isGeometryDerivedOrigin } from './featureFlags.js';
 
 // ─── Module-level state ───────────────────────────────────────────────────────
 // Wordt gezet door het eerste geladen IFC-bestand met een significante origin.
@@ -32,6 +33,17 @@ let _upAxis = 'z';
 // model of de laadvolgorde de erf-bron niet kan vergiftigen. Persistent over een
 // multi-model-import; gewist bij reset/start van een project.
 let _lastConfidentUpAxis = null;
+
+// GEOMETRY_DERIVED_ORIGIN (Stap 1, vlag-gated). Alleen gebruikt als de vlag AAN staat.
+//   _renderOrigin — geometrie-afgeleide render-shift (AABB-center van de emitted-local
+//                   geometrie), in mm, in HETZELFDE frame als de geometrie (IFC x/y/z).
+//                   Bron voor de translatie in buildProjectMatrix bij vlag AAN.
+//   _worldAnchor  — { contextWCS, refLatLong, trueNorthDegrees, upAxis } — metadata voor
+//                   export (Stap 2). In Stap 1 alleen gevuld/gepersisteerd, NIET toegepast.
+// Beide null bij vlag-uit én bij oude (schema<2) opgeslagen projecten → buildProjectMatrix
+// valt dan terug op het ongewijzigde #20-pad (byte-identiek).
+let _renderOrigin = null;
+let _worldAnchor = null;
 
 const SIGNIFICANT_MM = 1000; // minimale afstand van (0,0,0) voor "significante" origin
 
@@ -121,18 +133,34 @@ export function registerIfcContext(context, filename) {
  * Module-state wordt gezet via registerIfcContext() of restoreProjectInfo().
  */
 export function buildProjectMatrix() {
-  const ox = (_projectOrigin?.x ?? 0) * 0.001;
-  const oy = (_projectOrigin?.y ?? 0) * 0.001;
-  const oz = (_projectOrigin?.z ?? 0) * 0.001;
+  // GEOMETRY_DERIVED_ORIGIN (Stap 1): render-tijd honoreert een AANWEZIGE render-origin
+  // ALTIJD, ongeacht de vlagstand — de vlag bepaalt UITSLUITEND bij het PARSEN of er een
+  // nieuwe render-origin wordt afgeleid (ifc.js). Zo rendert/exporteert een v2-project
+  // (renderOrigin gezet) identiek met de vlag aan én uit; geen 485 km-terugval bij vlag-uit.
+  // De render-origin ligt in HETZELFDE frame als de geometrie (IFC x/y/z), dus een RECHTE
+  // aftrek voor élke up-as centreert correct; de 'y'-frame-remap in de UIT-tak compenseert
+  // juist het RD/Z-up-frame van #20 en mag hier NIET. Geen render-origin (v1/schema<1 of
+  // vlag-uit geparset) → ongewijzigd #20-pad (byte-identiek).
+  let T;
+  if (_renderOrigin != null) {
+    const rx = (_renderOrigin.x ?? 0) * 0.001;
+    const ry = (_renderOrigin.y ?? 0) * 0.001;
+    const rz = (_renderOrigin.z ?? 0) * 0.001;
+    T = new THREE.Matrix4().makeTranslation(-rx, -ry, -rz);
+  } else {
+    const ox = (_projectOrigin?.x ?? 0) * 0.001;
+    const oy = (_projectOrigin?.y ?? 0) * 0.001;
+    const oz = (_projectOrigin?.z ?? 0) * 0.001;
 
-  // Frame-bewuste origin-aftrek. De WCS-origin is RD/Z-up: ox=Easting, oy=Northing,
-  // oz=elevatie (≈0). De VERTICALE geometrie-as (afhankelijk van _upAxis) moet de
-  // ELEVATIE (oz) afgetrokken krijgen, niet de Northing — anders belandt oy (≈472 km)
-  // op de verticaal en valt het model omlaag (zie docs DIAGNOSE 3). Voor 'y' remappen
-  // we de origin daarom naar het geometrie-frame: (Easting, elevatie, Northing).
-  const T = _upAxis === 'y'
-    ? new THREE.Matrix4().makeTranslation(-ox, -oz, -oy)
-    : new THREE.Matrix4().makeTranslation(-ox, -oy, -oz); // 'z'/'z_neg': Rx routeert oz naar de verticaal
+    // Frame-bewuste origin-aftrek. De WCS-origin is RD/Z-up: ox=Easting, oy=Northing,
+    // oz=elevatie (≈0). De VERTICALE geometrie-as (afhankelijk van _upAxis) moet de
+    // ELEVATIE (oz) afgetrokken krijgen, niet de Northing — anders belandt oy (≈472 km)
+    // op de verticaal en valt het model omlaag (zie docs DIAGNOSE 3). Voor 'y' remappen
+    // we de origin daarom naar het geometrie-frame: (Easting, elevatie, Northing).
+    T = _upAxis === 'y'
+      ? new THREE.Matrix4().makeTranslation(-ox, -oz, -oy)
+      : new THREE.Matrix4().makeTranslation(-ox, -oy, -oz); // 'z'/'z_neg': Rx routeert oz naar de verticaal
+  }
   // Rx hangt af van de gedetecteerde up-as (consistent met deriveWallAxes):
   //   'z'     → Rx(-90°): IFC Z-up naar three Y-up (conventie / oude gedrag)
   //   'y'     → identity: model is al Y-up, NIET roteren (anders ligt het op zijn kant)
@@ -250,6 +278,11 @@ export function restoreProjectInfo(info) {
   _hasTrueNorth   = info.hasTrueNorth ?? false;
   _originSource   = info.originSource ?? null;
   _upAxis         = (info.upAxis === 'y' || info.upAxis === 'z' || info.upAxis === 'z_neg') ? info.upAxis : 'z';
+  // GEOMETRY_DERIVED_ORIGIN (Stap 1): render-origin/world-anchor uit een schema≥2 record.
+  // Ontbreekt (oud project) → null → buildProjectMatrix valt terug op het #20-pad → identieke
+  // render. GEEN her-derivatie: uitsluitend as-stored gelezen. Bij vlag-uit ongebruikt.
+  _renderOrigin = info.renderOrigin ?? null;
+  _worldAnchor  = info.worldAnchor ?? null;
   // Zaai de erf-bron met de herstelde up-as (alleen gelezen in de flag-gated geen-wanden-tak).
   if (info.upAxis === 'y' || info.upAxis === 'z' || info.upAxis === 'z_neg') _lastConfidentUpAxis = info.upAxis;
   console.log('[ProjectCoords] Hersteld uit cache:', {
@@ -267,8 +300,26 @@ export function reset() {
   _originSource = null;
   _upAxis = 'z';
   _lastConfidentUpAxis = null;
+  _renderOrigin = null;
+  _worldAnchor = null;
   console.log('[ProjectCoords] Reset — project state gewist');
 }
+
+// ─── GEOMETRY_DERIVED_ORIGIN render-origin + world-anchor (Stap 1) ─────────────
+/**
+ * Zet de geometrie-afgeleide render-origin (mm, in het geometrie-frame = AABB-center van
+ * de emitted-local geometrie) + world-anchor metadata. FIRST-WINS (spiegelt _projectOrigin):
+ * een later submodel overschrijft de render-origin van het eerste wand-dragende model niet.
+ * De aanroeper (parse-pad) gatet op isGeometryDerivedOrigin(); deze functie zelf niet.
+ */
+export function setGeometryDerivedRenderOrigin(renderOriginMm, worldAnchor) {
+  if (_renderOrigin == null && renderOriginMm) {
+    _renderOrigin = { x: renderOriginMm.x, y: renderOriginMm.y, z: renderOriginMm.z };
+  }
+  if (_worldAnchor == null && worldAnchor) _worldAnchor = { ...worldAnchor };
+}
+export function getRenderOrigin() { return _renderOrigin ? { ..._renderOrigin } : null; }
+export function getWorldAnchor() { return _worldAnchor ? { ..._worldAnchor } : null; }
 
 // ─── lastConfidentUpAxis (erf-bron voor wand-loze submodellen) ─────────────────
 export function getLastConfidentUpAxis() { return _lastConfidentUpAxis; }
@@ -285,7 +336,7 @@ export function setLastConfidentUpAxis(axis) {
  * @returns {{hasOrigin, originSource, origin, trueNorthDegrees, hasTrueNorth, isReady}}
  */
 export function getProjectInfo() {
-  return {
+  const base = {
     hasOrigin: _projectOrigin !== null,
     originSource: _originSource,
     origin: _projectOrigin ? { ..._projectOrigin } : null,
@@ -293,5 +344,15 @@ export function getProjectInfo() {
     hasTrueNorth: _hasTrueNorth,
     upAxis: _upAxis,
     isReady: _hasTrueNorth, // werkt ook zonder origin (Tekla-first scenario)
+  };
+  // GEOMETRY_DERIVED_ORIGIN (Stap 1): vlag AAN → schema v2 met render-origin + world-anchor
+  // (metadata; world-anchor pas in Stap 2 toegepast). Vlag UIT → EXACT het oude object
+  // (geen extra velden) zodat de opgeslagen bytes byte-identiek blijven.
+  if (!isGeometryDerivedOrigin()) return base;
+  return {
+    ...base,
+    schemaVersion: 2,
+    renderOrigin: _renderOrigin ? { ..._renderOrigin } : null,
+    worldAnchor: _worldAnchor ? { ..._worldAnchor } : null,
   };
 }
