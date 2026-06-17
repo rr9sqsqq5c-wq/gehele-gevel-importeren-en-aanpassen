@@ -115,3 +115,17 @@ export function isGeometryDerivedOrigin() {
 export function isRestoreUpAxis() {
   return readFlag('restoreUpAxis', false);
 }
+
+// WILDVERBAND KOPPELSTRIP (Fase 1 — alleen de 🧱-planner). Het wildverband wordt als
+// ÉÉN doorlopend verband (fase = rij % 6) over de gevel gelegd en bij de paneelranden
+// opgeknipt: de doorgesneden strip wordt een variabele-lengte KOPPELSTRIP (in-situ) die
+// de naad + paneelvoeg overbrugt. Startpaneel ligt links dicht, volgpanelen links open.
+// Vervangt het losse-module-per-paneel-pad (autoFillRow/buildFacadeFromCustomPanel).
+// SCOPE: uitsluitend het gevel-bouwpad in WildverbandPanel.jsx; de gewird 2D/3D/IFC-weg
+// (buildWildverbandPanelGrid) volgt in Fase 2.
+// DEFAULT = false → de planner is byte-identiek aan nu (oude buildFacade-paden).
+// Aanzetten: ?wildverbandKoppelstrip=1 of localStorage 'wildverbandKoppelstrip'='1'.
+// NOODREM: ?wildverbandKoppelstrip=0.
+export function isWildverbandKoppelstrip() {
+  return readFlag('wildverbandKoppelstrip', false);
+}

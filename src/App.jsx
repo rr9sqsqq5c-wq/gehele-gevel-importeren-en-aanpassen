@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip } from './lib/featureFlags.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
 import { buildBestFitFacadePattern } from './lib/facadePlane.js';
 import { reset as resetCoordinates, restoreProjectInfo, registerIfcContext } from './lib/projectCoordinates.js';
@@ -13,6 +13,7 @@ import { detectAdjacencies, detectAdjacenciesAsync, buildConnectedComponents, so
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateCombinedMoldPrintHTML, getMoldTemplates, buildWildverbandPanelGrid } from './lib/panelization.js';
+import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { openingXRangesAtY, polyXRangesAtY } from './lib/geometry.js';
 import { SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, generateSlimFortGrid, generateSlimFortFaces, applyCornerTrimToSlimFort, computeFaceLongRanges, applyRangesToGrid, getSlimFortDepths } from './lib/slimfort.js';
 import { detectBuildingEnvelope, extractVisibleConcreteFaces, buildAutoSlimFortSettings } from './lib/envelope.js';
@@ -1846,6 +1847,13 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                                   <rect x={fr} y={fr} width={previewW - 2*fr} height={previewH - 2*fr} fill="#1e293b" />
                                   {tmpl.rows.map((row) => {
                                     const yRow = fr + Math.round((tpl.innerH ?? (moldDimsLocal.hoogte - 2*tpl.frame)) * scale / 2 - ((tmpl.rowsPerMold - 1) * lm) / 2) + row.localRow * lm;
+                                    if (row.strips) {
+                                      return row.strips.map((s, si) => {
+                                        const cx = fr + Math.round(s.x * scale);
+                                        const cw = Math.max(1, Math.round(s.width * scale));
+                                        return <rect key={si} x={cx} y={yRow} width={cw} height={bH} fill={s.koppelstrip ? '#fb923c' : color} fillOpacity={s.koppelstrip ? 0.95 : 0.85} stroke="#1e293b" strokeWidth={0.5} />;
+                                      });
+                                    }
                                     const off = Math.round(row.offset * scale);
                                     const cs = Math.round(tmpl.colStep * scale);
                                     const bricks = [];
@@ -1863,7 +1871,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                                   })}
                                   <rect x={0} y={0} width={previewW} height={previewH} fill="none" stroke={color} strokeWidth={1.5} />
                                   <text x={fr+2} y={previewH - fr - 2} fontSize={7} fill="#e2e8f0" fontFamily="monospace">
-                                    {tmpl.rows.map((r) => `R${r.globalRow+1}: ${r.offset}mm`).join(' · ')}
+                                    {tmpl.rows.map((r) => r.strips ? `R${r.globalRow+1}` : `R${r.globalRow+1}: ${r.offset}mm`).join(' · ')}
                                   </text>
                                 </svg>
                               </div>
@@ -3289,10 +3297,17 @@ export default function App() {
       // auto-groep → exact het bestaande pad (byte-identiek). Faalt de best-fit →
       // val terug op het oude pad i.p.v. niets te tonen.
       const useBestFit = isBestFitGroups() && group.manual === true;
-      const facadeData = (useBestFit
+      let facadeData = (useBestFit
         ? buildBestFitFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight)
         : null)
         ?? buildFullGroupFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight);
+      // FASE 2 — wildverband: vervang de strip-rijen door het vastgelegde tegel-verband
+      // (buildTruthRows). Achter de vlag, default UIT → exact het bestaande pad. Voedt 3D
+      // (batches uit facadeData.rows) én 2D (dezelfde facadeData) uit één bron.
+      if (facadeData && (s.verband ?? DEFAULT_VERBAND) === 'wildverband' && isWildverbandKoppelstrip()) {
+        const _tr = buildTruthRows(facadeData.groupWidth, facadeData.groupHeight, effectiveMat3d, facadeData.groupOpenings ?? []);
+        facadeData = { ...facadeData, rows: _tr.rows, wildverbandBoardEdges: _tr.boardEdges };
+      }
       if (!facadeData) {
         const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
         if (!refWall) continue;
@@ -4850,6 +4865,13 @@ export default function App() {
           }),
         }));
         facadeData = { ...facadeDataRaw, rows: maskedRows };
+      }
+
+      // FASE 2 — wildverband-strips voor de IFC-export uit het vastgelegde tegel-verband
+      // (zelfde bron als scherm/2D/3D). Achter de vlag, default UIT → bestaande export.
+      if (facadeData && (s.verband ?? DEFAULT_VERBAND) === 'wildverband' && isWildverbandKoppelstrip()) {
+        const _tr = buildTruthRows(facadeData.groupWidth, facadeData.groupHeight, mat, facadeData.groupOpenings ?? []);
+        facadeData = { ...facadeData, rows: _tr.rows };
       }
 
       let panels = [];

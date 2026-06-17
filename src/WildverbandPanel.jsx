@@ -1,4 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
+import { isWildverbandKoppelstrip } from './lib/featureFlags.js';
+import { buildTruthFacade } from './lib/wildverbandKoppelstrip.js';
 
 const BRICK_COLORS = {
   Strek:       '#e8c5d8',
@@ -295,11 +297,9 @@ export function WildverbandPanel({ onClose }) {
   const paneelVoeg = params.paneel_voeg ?? 2;
   const activePanelHeight = rowCount * lagenmaat - paneelVoeg;
 
+  const koppelFlag = isWildverbandKoppelstrip();
+
   const basePanelBricks = useMemo(() => buildBasePanelBricks(params), [params]);
-  const facadeBricks = useMemo(() => {
-    if (savedCustomPanel) return buildFacadeFromCustomPanel(params, openings, savedCustomPanel, dims);
-    return buildFacadeBricks(params, openings);
-  }, [params, openings, savedCustomPanel, dims]);
   const panelGridLines = useMemo(() => buildPanelGrid(params), [params]);
 
   const getRow = useCallback(r => customRows[r] ?? [], [customRows]);
@@ -316,6 +316,20 @@ export function WildverbandPanel({ onClose }) {
   }, [customRows, dims, paneelVoeg]);
 
   const activePanelWidth = (!panelWidthLocked && panelWidthFromRow0 != null) ? panelWidthFromRow0 : params.paneel_breedte;
+
+  // FASE 1 — gevel-opbouw achter de vlag: tegel het vastgelegde WILDVERBAND_TRUTH-paneel
+  // (startpaneel 1×, daarna volgpanelen, 3 koppelstrippen in-situ, elke 6 rijen herhalend).
+  // Vlag UIT → null, en facadeBricks valt terug op exact de bestaande paden (byte-identiek).
+  const facadeKoppel = useMemo(() => {
+    if (!koppelFlag) return null;
+    const mat = { steenL: dims.S, steenH: dims.H, lint: dims.lv, stoot: dims.sv };
+    return buildTruthFacade(params.gevel_breedte, params.gevel_hoogte, mat, openings);
+  }, [koppelFlag, params.gevel_breedte, params.gevel_hoogte, dims, openings]);
+  const facadeBricks = useMemo(() => {
+    if (koppelFlag) return facadeKoppel?.bricks ?? [];
+    if (savedCustomPanel) return buildFacadeFromCustomPanel(params, openings, savedCustomPanel, dims);
+    return buildFacadeBricks(params, openings);
+  }, [koppelFlag, facadeKoppel, params, openings, savedCustomPanel, dims]);
 
   const totalCustomCounts = useMemo(() => {
     const counts = {};
@@ -803,6 +817,22 @@ export function WildverbandPanel({ onClose }) {
               </span>
             </span>
           )}
+          {koppelFlag && (
+            <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ display: 'inline-block', width: 14, height: 10, background: BRICK_COLORS['Strek'], border: '1px solid #c084a8' }} />
+                <span>Prefab strip</span>
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ display: 'inline-block', width: 14, height: 10, background: 'rgba(22,163,74,0.85)', border: '1px dashed #15803d' }} />
+                <span>Koppelstrip (in-situ)</span>
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ display: 'inline-block', width: 14, height: 10, borderLeft: '2px dashed #8b5cf6' }} />
+                <span>Paneelnaad</span>
+              </span>
+            </span>
+          )}
         </div>
         <svg width={svgW + PAD * 2} height={svgH + PAD * 2} xmlns="http://www.w3.org/2000/svg"
           style={{ background: '#f0f4f8', border: '1px solid #cbd5e1', borderRadius: 4 }}>
@@ -811,6 +841,9 @@ export function WildverbandPanel({ onClose }) {
             const rx = PAD + b.x * scale, ry = PAD + (gh - b.y - b.height) * scale;
             const rw = b.width * scale, rh = b.height * scale;
             if (rw < 0.5 || rh < 0.5) return null;
+            if (b.koppelstrip) {
+              return <rect key={i} x={rx} y={ry} width={rw} height={rh} fill="rgba(22,163,74,0.85)" stroke="#15803d" strokeWidth={0.5} strokeDasharray="2,1.5" />;
+            }
             if (b.isInsitu) {
               return <rect key={i} x={rx} y={ry} width={rw} height={rh} fill="#fff" stroke="#64748b" strokeWidth={0.5} strokeDasharray="2,1.5" />;
             }
@@ -819,6 +852,14 @@ export function WildverbandPanel({ onClose }) {
           {showGrid && panelGridLines.map((l, i) => (
             <line key={i} x1={PAD + l.x1 * scale} y1={PAD + (gh - l.y1) * scale} x2={PAD + l.x2 * scale} y2={PAD + (gh - l.y2) * scale}
               stroke="#2563eb" strokeWidth={0.6} strokeDasharray="4,3" opacity={0.5} />
+          ))}
+          {koppelFlag && (facadeKoppel?.boardEdges ?? []).map((bx, i) => (
+            <line key={`pe-${i}`} x1={PAD + bx * scale} y1={PAD} x2={PAD + bx * scale} y2={PAD + svgH}
+              stroke="#334155" strokeWidth={1.3} opacity={0.85} />
+          ))}
+          {koppelFlag && (facadeKoppel?.horizontalSeams ?? []).map((sy, i) => (
+            <line key={`ph-${i}`} x1={PAD} y1={PAD + (gh - sy) * scale} x2={PAD + svgW} y2={PAD + (gh - sy) * scale}
+              stroke="#8b5cf6" strokeWidth={1} strokeDasharray="2,2" opacity={0.45} />
           ))}
           {openings.map((op, i) => (
             <g key={op.id ?? i}>

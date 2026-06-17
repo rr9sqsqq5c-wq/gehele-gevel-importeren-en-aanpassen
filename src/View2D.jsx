@@ -3,6 +3,7 @@ import { buildFullGroupFacadePattern, getOpeningPoly } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten } from './lib/panelization.js';
 import { brickColor, isTooSmall, polyXRangesAtY } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
+import { isWildverbandKoppelstrip } from './lib/featureFlags.js';
 import { generateSlimFortGrid, generateSlimFortFaces, SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
 
 function hexToRgba(hex, alpha = 1) {
@@ -61,6 +62,9 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
     if (!facadeData) return [];
     const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
     if (verband === 'wildverband') {
+      // FASE 2: met de vlag aan komt het wildverband uit facadeData.rows (gedeelde bron,
+      // koppelstrip-tegelverband) → geen aparte panel-grid; de rows-tak hieronder rendert het.
+      if (isWildverbandKoppelstrip()) return [];
       const wRes = buildWildverbandPanelGrid(groupWidth, groupHeight, groupOpenings, effectiveMat, panelen ?? {});
       return wRes.panels;
     }
@@ -1275,7 +1279,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
           for (const piece of row.pieces) {
             const [pSx] = toScreen(mx(piece.start, piece.length), 0);
             const pSw = piece.length * scale * 0.001;
-            ctx.fillStyle = (piece.label === 'Strek' && isKoppelstrip(piece.start, piece.start + piece.length))
+            ctx.fillStyle = (piece.koppelstrip || (piece.label === 'Strek' && isKoppelstrip(piece.start, piece.start + piece.length)))
               ? 'rgba(22,163,74,0.85)'
               : brickColor(piece.label, color, piece.length, kopMM);
             ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));

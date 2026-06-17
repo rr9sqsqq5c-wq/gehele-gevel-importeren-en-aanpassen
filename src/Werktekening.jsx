@@ -3,6 +3,8 @@ import { buildFullGroupFacadePattern, buildFacePattern, buildMirroredFacePattern
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG, clipPanelToFacadePolys, detectKoppelstrippen, PANEL_GAP, buildWildverbandPanelGrid, computeHorizontalLatten } from './lib/panelization.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
+import { isWildverbandKoppelstrip } from './lib/featureFlags.js';
+import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 
 function generatePaneelId(entity, projectNr, level, stramienStart, stramienEnd, seqNr, panelType) {
   const e  = ((entity ?? 'P') + '').slice(0, 1).toUpperCase();
@@ -99,6 +101,22 @@ function getPanelStripsAnnotated(panel, facadeRows, verband, mat, koppelstripSet
       const rowH = row.height ?? mat.steenH;
       for (const strip of row.strips) {
         strips.push({ x: strip.x, y: row.y - panel.y, width: strip.width, height: rowH, label: strip.label, koppelstrip: !!strip.koppelstrip });
+      }
+    }
+  } else if (verband === 'wildverband') {
+    // FASE 2: board-paneel zonder eigen rows → clip de gedeelde truth-rijen (facadeRows)
+    // naar dit paneel; behoud label + koppelstrip (géén halfsteens-edge-fixups).
+    for (const row of facadeRows) {
+      if (row.y + stripH <= panel.y + 0.5 || row.y >= panel.y + panel.height - 0.5) continue;
+      for (const piece of row.pieces) {
+        if (piece.start + piece.length <= panel.x + 0.5 || piece.start >= panel.x + panel.width - 0.5) continue;
+        const clipX  = Math.max(piece.start, panel.x) - panel.x;
+        const clipX2 = Math.min(piece.start + piece.length, panel.x + panel.width) - panel.x;
+        const clipY  = Math.max(row.y, panel.y) - panel.y;
+        const clipY2 = Math.min(row.y + stripH, panel.y + panel.height) - panel.y;
+        if (clipX2 - clipX > 0.5 && clipY2 - clipY > 0.5) {
+          strips.push({ x: clipX, y: clipY, width: clipX2 - clipX, height: clipY2 - clipY, label: piece.label, koppelstrip: !!piece.koppelstrip });
+        }
       }
     }
   } else {
@@ -316,7 +334,14 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
-    return buildFullGroupFacadePattern(walls, mat, verband, maxH, zetwerk, null, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight);
+    const fd = buildFullGroupFacadePattern(walls, mat, verband, maxH, zetwerk, null, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight);
+    // FASE 2 — wildverband-strips uit het vastgelegde tegel-verband (zelfde bron als 2D/3D/IFC).
+    // Vlag UIT → exact het bestaande pad (byte-identiek).
+    if (fd && verband === 'wildverband' && isWildverbandKoppelstrip()) {
+      const _tr = buildTruthRows(fd.groupWidth, fd.groupHeight, mat, fd.groupOpenings ?? []);
+      return { ...fd, rows: _tr.rows };
+    }
+    return fd;
   }, [walls, mat, verband, maxH, zetwerk, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight]);
 
   const allPanels = useMemo(() => {
@@ -343,7 +368,20 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
       return { id: `pen_${i}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null };
     }).filter(Boolean);
     let panels = [];
-    if (verband === 'wildverband') {
+    if (verband === 'wildverband' && isWildverbandKoppelstrip()) {
+      // FASE 2: board-panelen op de truth-steek (zonder eigen .rows) → getPanelStripsAnnotated
+      // vult ze met het gedeelde truth-verband (facadeData.rows). Rand = kaarsrecht.
+      const _tr = buildTruthRows(groupWidth, groupHeight, mat, groupOpenings);
+      const rowsPerPanel = panelen?.rowsPerPanel ?? 12;
+      const panelH = rowsPerPanel * _tr.lagenmaat;
+      for (let px = 0; px < groupWidth - 0.5; px += _tr.pitch) {
+        const w = Math.min(_tr.boardWidth, groupWidth - px);
+        for (let py = 0; py < groupHeight - 0.5; py += panelH) {
+          const h = Math.min(panelH, groupHeight - py);
+          panels.push({ id: `wv_${Math.round(px)}_${Math.round(py)}`, x: px, y: py, width: w, height: h, type: px < 0.5 ? 'start' : 'volg', rowBase: Math.round(py / _tr.lagenmaat) });
+        }
+      }
+    } else if (verband === 'wildverband') {
       const wRes = buildWildverbandPanelGrid(groupWidth, groupHeight, groupOpenings, mat, panelen ?? {});
       panels = wRes.panels;
     } else {

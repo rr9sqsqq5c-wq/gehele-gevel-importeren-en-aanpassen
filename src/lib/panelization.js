@@ -1,5 +1,7 @@
 import { polyXRangesAtY, openingCoversX, openingXCoordsAtY } from './geometry.js';
 import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth, getWildverbandPanelBoundary } from './pattern.js';
+import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
+import { isWildverbandKoppelstrip } from './featureFlags.js';
 
 function round2(v) {
   return Math.round(v * 100) / 100;
@@ -756,7 +758,24 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   const WILD_FRACS = [0, 1/3, 2/3, 1/6, 5/6, 1/2];
   const MOLD_ORDER = ['Links', 'Rechts', 'C', 'D', 'A', 'B'];
   const moldIdx = MOLD_ORDER.indexOf(moldId) >= 0 ? Math.min(MOLD_ORDER.indexOf(moldId), 3) : 0;
-  const globalRowBase = verband === 'halfsteens' ? moldIdx % 2 : moldIdx * rowsPerMold;
+  // FASE 2 — truth-wildverband: 2 panelen (start+volg), echte strip-lijst per mal-rij.
+  // MAL 'A' = rij 1-3, MAL 'B' = rij 4-6; koppelstrip blijft meegelegd. Vlag UIT → oud model.
+  const isTruthWild = verband === 'wildverband' && isWildverbandKoppelstrip();
+  let truthByRow = null;
+  if (isTruthWild) {
+    const pitch = getModuleWidth(mat);
+    const fac = buildTruthFacade(2 * pitch, 6 * lagenmaat, mat, []);
+    truthByRow = new Map();
+    for (const b of fac.bricks) {
+      if (b.panelIndex > 1) continue;
+      const ri = Math.round(b.y / lagenmaat);
+      if (!truthByRow.has(ri)) truthByRow.set(ri, []);
+      truthByRow.get(ri).push({ x: b.x, w: b.width, label: b.type, koppelstrip: !!b.koppelstrip });
+    }
+  }
+  const globalRowBase = verband === 'halfsteens' ? moldIdx % 2
+    : isTruthWild ? (moldId === 'B' ? 1 : 0) * rowsPerMold
+    : moldIdx * rowsPerMold;
   const kopW  = isStaand ? 0 : Math.round((steenL - stoot) / 2);
   const drieKW = isStaand ? 0 : Math.round((steenL + stoot) * 0.75 - stoot);
 
@@ -776,6 +795,7 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
 
   function bricksInRow(localRow) {
     const globalRow = globalRowBase + localRow;
+    if (isTruthWild) return (truthByRow.get(globalRow) ?? []).slice().sort((a, b) => a.x - b.x);
     const off = rowOffset(localRow);
     const bricks = [];
 
@@ -852,7 +872,7 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
       '10', String(r2(x)), '20', String(r2(y)), '30', '0.0', '40', String(r2(h)), '1', text);
   }
 
-  const notchDepth = 20;
+  const notchDepth = 10;
   {
     const pts = [[0, 0]];
     for (let i = 0; i < notchXs.length; i++) {
@@ -936,7 +956,7 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const oy = mTop;   // mold top in SVG
 
   // Notch geometry — from _moldGeometry (first notch at frameLeft=40mm)
-  const notchDepth = 20;
+  const notchDepth = 10;
 
   // Mold outline path with notches cut from both top and bottom edges
   function moldOutlinePath() {
@@ -1006,10 +1026,10 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
     for (const b of row.bricks) {
       const sLeft = r2(ox + frameLeft + b.x - tolerantieL);
       const sW    = r2(b.w + 2 * tolerantieL);
-      const fill  = slotFill[b.label] ?? '#ffffff';
+      const fill  = b.koppelstrip ? '#fb923c' : (slotFill[b.label] ?? '#ffffff');
       parts.push(`<rect x="${sLeft}" y="${sTop}" width="${sW}" height="${sH}" fill="${fill}" stroke="#334155" stroke-width="1" rx="1"/>`);
-      if (b.label !== 'Strek' && sW > 12) {
-        parts.push(`<text x="${r2(Number(sLeft) + Number(sW)/2)}" y="${r2(Number(sTop) + Number(sH)/2 + 2.5)}" text-anchor="middle" font-size="5" fill="#475569">${b.label[0]}</text>`);
+      if ((b.koppelstrip || b.label !== 'Strek') && sW > 12) {
+        parts.push(`<text x="${r2(Number(sLeft) + Number(sW)/2)}" y="${r2(Number(sTop) + Number(sH)/2 + 2.5)}" text-anchor="middle" font-size="5" fill="${b.koppelstrip ? '#7c2d12' : '#475569'}">${b.label[0]}</text>`);
       }
     }
     // Row label inside mold on the left
@@ -1109,6 +1129,7 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
     { color: '#ffffff', stroke: '#334155', label: 'Strek' },
     { color: '#fef3c7', stroke: '#334155', label: 'Kop' },
     { color: '#dbeafe', stroke: '#334155', label: 'Drieklezoor' },
+    ...(verband === 'wildverband' && isWildverbandKoppelstrip() ? [{ color: '#fb923c', stroke: '#334155', label: 'Koppelstrip (meegelegd)' }] : []),
   ];
   legItems.forEach(({ color, stroke, label }, i) => {
     const lx  = r2(Number(legX) + legPad);
@@ -1212,6 +1233,38 @@ export function getMoldTemplates(verband, mat, moldDims) {
   const minRowGap = 10;
   const rowsPerMold = Math.min(3, Math.max(1, Math.floor((innerH + minRowGap) / (slotH_tmpl + minRowGap))));
 
+  // FASE 2 — truth-wildverband: 2 panelen per keer (start + volg), elk 6 rijen → MAL-A =
+  // rij 1-3, MAL-B = rij 4-6. Per mal-rij een ECHTE strip-lijst (variabele S/D/K) uit de
+  // vastgelegde waarheid; de koppelstrip blijft meegelegd (niet uitgesneden, fabrieksfout-vrij).
+  // Vlag UIT → het bestaande uniforme colStep-model (byte-identiek).
+  if (verband === 'wildverband' && isWildverbandKoppelstrip()) {
+    const pitch = getModuleWidth(mat);
+    const fac = buildTruthFacade(2 * pitch, 6 * lagenmaat, mat, []);
+    const byRow = new Map();
+    for (const b of fac.bricks) {
+      if (b.panelIndex > 1) continue; // alleen het startpaneel (0) + één volgpaneel (1)
+      const ri = Math.round(b.y / lagenmaat);
+      if (!byRow.has(ri)) byRow.set(ri, []);
+      byRow.get(ri).push({ x: b.x, width: b.width, type: b.type, koppelstrip: !!b.koppelstrip });
+    }
+    const ranges = [[0, 1, 2], [3, 4, 5]];
+    const templates = ranges.map((range, mi) => ({
+      id: ['A', 'B'][mi],
+      rowsPerMold: range.length,
+      lagenmaat, brickW, brickH, colStep, frame: frameH, innerH, rotated: false, wildverband: true,
+      rows: range.map((ri, lr) => ({
+        globalRow: ri, localRow: lr,
+        strips: (byRow.get(ri) ?? []).slice().sort((a, b) => a.x - b.x),
+        label: `Rij ${ri + 1}`,
+      })),
+    }));
+    return {
+      verband, molds: 2, rowsPerMold: 3, lagenmaat, brickW, brickH, colStep,
+      cycleLength: 6, rotated: false, moldW, moldH, frame: frameH, innerH,
+      wildverband: true, panelPitch: pitch, twoPanelWidth: 2 * pitch, templates,
+    };
+  }
+
   const extraOffsetX = moldDims?.offsetX ?? 0;
 
   function offsetForGlobalRow(globalRow) {
@@ -1304,7 +1357,7 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
   const svgW = mLeft + moldW + mRight;
   const svgH = oy2 + moldH + numDimRows * dimRowH + refGap + mBottom;
 
-  const notchDepth = 20;
+  const notchDepth = 10;
   const slotFill = { Strek: '#ffffff', Kop: '#fef3c7', Drieklezoor: '#dbeafe', Rest: '#fee2e2' };
   const COL_BLUE   = '#2563eb';
   const COL_ORANGE = '#f59e0b';
@@ -1340,10 +1393,10 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
       for (const b of row.bricks) {
         const sLeft = r2(ox + frameLeft + b.x - tolerantieL);
         const sW    = r2(b.w + 2 * tolerantieL);
-        const fill  = slotFill[b.label] ?? '#ffffff';
+        const fill  = b.koppelstrip ? '#fb923c' : (slotFill[b.label] ?? '#ffffff');
         out.push(`<rect x="${sLeft}" y="${sTop}" width="${sW}" height="${sH}" fill="${fill}" stroke="#334155" stroke-width="1" rx="1"/>`);
-        if (b.label !== 'Strek' && sW > 12)
-          out.push(`<text x="${r2(Number(sLeft) + Number(sW)/2)}" y="${r2(Number(sTop) + Number(sH)/2 + 2.5)}" text-anchor="middle" font-size="5" fill="#475569">${b.label[0]}</text>`);
+        if ((b.koppelstrip || b.label !== 'Strek') && sW > 12)
+          out.push(`<text x="${r2(Number(sLeft) + Number(sW)/2)}" y="${r2(Number(sTop) + Number(sH)/2 + 2.5)}" text-anchor="middle" font-size="5" fill="${b.koppelstrip ? '#7c2d12' : '#475569'}">${b.label[0]}</text>`);
       }
       const labelY = r2(oy + row.yRow + slotH / 2 + 2.5);
       out.push(`<text x="${r2(ox + frameLeft + 2)}" y="${labelY}" font-size="6" fill="#475569">R${row.globalRow + 1}</text>`);
@@ -1461,6 +1514,7 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
     { color: '#ffffff', stroke: '#334155', label: 'Strek' },
     { color: '#fef3c7', stroke: '#334155', label: 'Kop' },
     { color: '#dbeafe', stroke: '#334155', label: 'Drieklezoor' },
+    ...(verband === 'wildverband' && isWildverbandKoppelstrip() ? [{ color: '#fb923c', stroke: '#334155', label: 'Koppelstrip (meegelegd)' }] : []),
     { color: COL_BLUE,   label: 'Hoofdmaatvoering' },
     { color: COL_ORANGE, label: 'Modulemaat h.o.h.' },
   ];
