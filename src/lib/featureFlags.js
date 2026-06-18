@@ -129,3 +129,14 @@ export function isRestoreUpAxis() {
 export function isWildverbandKoppelstrip() {
   return readFlag('wildverbandKoppelstrip', false);
 }
+
+// FASE 2 — maatgevoerde rechthoek-stripZones met eigen verband per gevelvlak.
+// Met de vlag UIT wordt de stripZone-regio-functie NOOIT aangeroepen: de generator leest
+// stripZones niet en de output is byte-identiek aan de nulmeting (scherm én export), ook
+// op een project dat al getekende zones bevat. DEFAULT = false.
+// Aanzetten: ?featureZones=1 of localStorage 'featureZones'='1'.
+// Blast-radius: uitsluitend niet-penant-vlakken met >=1 ENABLED stripZone; penant-vlakken
+// en 0-zone-vlakken lopen het ongewijzigde (byte-identieke) pad.
+export function isFeatureZones() {
+  return readFlag('featureZones', false);
+}

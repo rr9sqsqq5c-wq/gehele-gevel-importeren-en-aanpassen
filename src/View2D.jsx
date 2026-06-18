@@ -2,6 +2,8 @@ import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { buildFullGroupFacadePattern, getOpeningPoly } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten } from './lib/panelization.js';
 import { brickColor, isTooSmall, polyXRangesAtY } from './lib/geometry.js';
+import { hasPenants } from './lib/zoneRegions.js';
+import { isFeatureZones } from './lib/featureFlags.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
 import { isWildverbandKoppelstrip } from './lib/featureFlags.js';
 import { generateSlimFortGrid, generateSlimFortFaces, SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
@@ -23,7 +25,7 @@ function pickGridStep(scale) {
   return 0;
 }
 
-export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, startLijn, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [], stripZones = [], onStripZonesChange, outsideDirFlip = false, endExtensions, buildingEnvelopeData = null, envelopeVisibility = null, slimFortStitching = null, wallDecomposition = null }) {
+export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, startLijn, penantFaceData, groupColor, zetwerk, panelen, latten, layerVisibility, gridLines = [], showCenterLines = false, zoneSettings = [], stripZones = [], onStripZonesChange, regionBatches = null, outsideDirFlip = false, endExtensions, buildingEnvelopeData = null, envelopeVisibility = null, slimFortStitching = null, wallDecomposition = null }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -37,6 +39,11 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
   const [drawingRect, setDrawingRect] = useState(null);
   const drawingRectRef = useRef(null);
   const [selectedZoneId, setSelectedZoneId] = useState(null);
+  // FASE 3 — eigenschappen-vooraf voor een nieuw te tekenen zone (verband + anker).
+  const [pendingVerband, setPendingVerband] = useState('staand_tegelverband');
+  const [pendingAnchor, setPendingAnchor] = useState('zoneBottomLeft');
+  const pendingRef = useRef({ verband: 'staand_tegelverband', anchor: 'zoneBottomLeft' });
+  pendingRef.current = { verband: pendingVerband, anchor: pendingAnchor };
   const stripZonesRef = useRef([]);
   const onStripZonesChangeRef = useRef(null);
 
@@ -44,8 +51,24 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
   stripZonesRef.current = stripZones;
   onStripZonesChangeRef.current = onStripZonesChange;
 
+  // FASE 2c — op een penant-vlak kan niet getekend worden: forceer tekenmodus uit
+  // (dekt het wisselen naar een penant-groep terwijl drawMode nog aan stond).
+  useEffect(() => {
+    if (penantFace && drawModeRef.current) {
+      drawModeRef.current = false; setDrawMode(false);
+      drawStartRef.current = null; drawingRectRef.current = null; setDrawingRect(null);
+    }
+  }, [penantFace]);
+
   const mat = groupSettings?.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
   const verband = groupSettings?.verband ?? 'halfsteens';
+  // FASE 2c — penant-vlak: strip-zones zijn wederzijds uitsluitend met penanten.
+  // Tekenen blokkeren; getekende zones blijven inert (penanten winnen) + waarschuwing.
+  const penantFace = hasPenants(groupSettings);
+  const activeZoneCount = (stripZones ?? []).filter((z) => z?.enabled === true).length;
+  // FASE B — de hele stripZone-UI (teken-knop + zonelijst + anker-UI) staat achter de vlag.
+  // Vlag UIT → geen toolbar; View2D exact terug naar de pre-feature staat.
+  const zonesEnabled = isFeatureZones();
   const color = groupSettings?.color ?? '#a64033';
   const _stripArtId = (groupSettings?.steenstripsArtikelen ?? [])[0];
   const _stripArt = _stripArtId ? STEENSTRIP_CATALOG.find((a) => a.id === _stripArtId) : null;
@@ -1230,7 +1253,10 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
         }
       }
       ctx.clip('evenodd');
-      if (hasZones) {
+      // FASE 3: bij actieve stripZone-regio's tekenen we de DOORGEGEVEN samengestelde
+      // batches (zelfde output als 3D/export) — niet de oude per-zone-clip. Flag UIT of
+      // 0 actieve zones → regionBatches is null → exact het bestaande pad (byte-identiek).
+      if (hasZones && !regionBatches) {
         ctx.beginPath();
         for (const sz of stripZones) {
           const [szSx, szSy] = toScreen(mx(sz.x, sz.width), sz.y + sz.height);
@@ -1245,7 +1271,30 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
         : [];
       const isKoppelstrip = (sx, ex) => panelRightEdges.some((bx) => bx > sx + 0.5 && bx < ex - 0.5);
       const tooSmallPieces = [];
-      if (verband === 'wildverband' && allPanels.length > 0) {
+      if (regionBatches) {
+        // 2D == 3D == export: teken stenen uit de doorgegeven samengestelde regio-batches.
+        // Elke batch heeft eigen kleur + brickH (eigen verband). Geometrie is al geklipt
+        // (rechthoek ∩ vlak − openingen − hogere zones) door buildStripZoneRegions.
+        for (const batch of regionBatches) {
+          const bStripH = batch.brickH ?? stripH;
+          const bColor = batch.color ?? color;
+          for (const row of (batch.rows ?? [])) {
+            const clippedTop = Math.min(row.y + bStripH, groupHeight);
+            const clippedBottom = Math.max(row.y, patternStartH);
+            const actualH = clippedTop - clippedBottom;
+            if (actualH <= 0) continue;
+            const [, rowSy] = toScreen(0, clippedTop);
+            const rowSh = actualH * scale * 0.001;
+            for (const piece of row.pieces) {
+              const [pSx] = toScreen(mx(piece.start, piece.length), 0);
+              const pSw = piece.length * scale * 0.001;
+              ctx.fillStyle = brickColor(piece.label, bColor, piece.length, kopMM);
+              ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
+              if (isTooSmall(piece.label, piece.length, kopMM)) tooSmallPieces.push({ pSx, rowSy, pSw, rowSh });
+            }
+          }
+        }
+      } else if (verband === 'wildverband' && allPanels.length > 0) {
         for (const panel of allPanels) {
           if (!panel.rows) continue;
           for (const row of panel.rows) {
@@ -1802,7 +1851,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
-  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, startLijn, penantFaceData, groupColor, effectiveMat, color, zetwerk, panelen, latten, layerVisibility, gridLines, showCenterLines, stripZones, drawingRect, selectedZoneId, outsideDirFlip, buildingEnvelopeData, envelopeVisibility, slimFortStitching, wallDecomposition, sfFaceLayout, allSlimFortFaces]);
+  }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, startLijn, penantFaceData, groupColor, effectiveMat, color, zetwerk, panelen, latten, layerVisibility, gridLines, showCenterLines, stripZones, regionBatches, drawingRect, selectedZoneId, outsideDirFlip, buildingEnvelopeData, envelopeVisibility, slimFortStitching, wallDecomposition, sfFaceLayout, allSlimFortFaces]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
@@ -1885,6 +1934,10 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
           width: Math.round(dr.width),
           height: Math.round(dr.height),
           label: `Zone ${String.fromCharCode(65 + curZones.length)}`,
+          // eigenschappen-vooraf: de zone volgt verband + anker live, en is direct actief.
+          verband: pendingRef.current.verband,
+          bondAnchor: pendingRef.current.anchor,
+          enabled: true,
           depthOffset: 0,
         };
         onStripZonesChangeRef.current?.([...curZones, newZone]);
@@ -1914,19 +1967,51 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
         onMouseMove={onMouseMove}
       />
 
-      {/* Toolbar top-left */}
+      {/* Toolbar top-left — alleen achter featureZones (pre-feature: geen toolbar) */}
+      {zonesEnabled && (
       <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
         <button
-          onClick={() => { setDrawMode((m) => { drawModeRef.current = !m; return !m; }); drawingRectRef.current = null; setDrawingRect(null); drawStartRef.current = null; }}
+          disabled={penantFace}
+          title={penantFace ? 'Dit vlak heeft penanten — strip-zones zijn hier uitgesloten (penanten winnen).' : undefined}
+          onClick={() => { if (penantFace) return; setDrawMode((m) => { drawModeRef.current = !m; return !m; }); drawingRectRef.current = null; setDrawingRect(null); drawStartRef.current = null; }}
           style={{
-            background: drawMode ? '#0e7490' : 'rgba(30,41,59,0.92)',
-            border: `1px solid ${drawMode ? '#22d3ee' : '#334155'}`,
-            color: drawMode ? '#22d3ee' : '#94a3b8',
-            padding: '4px 10px', fontSize: 11, borderRadius: 4, cursor: 'pointer', fontWeight: drawMode ? 700 : 400,
+            background: penantFace ? 'rgba(30,41,59,0.6)' : drawMode ? '#0e7490' : 'rgba(30,41,59,0.92)',
+            border: `1px solid ${penantFace ? '#334155' : drawMode ? '#22d3ee' : '#334155'}`,
+            color: penantFace ? '#475569' : drawMode ? '#22d3ee' : '#94a3b8',
+            padding: '4px 10px', fontSize: 11, borderRadius: 4, cursor: penantFace ? 'not-allowed' : 'pointer', fontWeight: drawMode ? 700 : 400,
           }}
         >
-          {drawMode ? '✏️ Teken zone — klik & sleep' : '▭ Teken zone'}
+          {penantFace ? '▭ Teken zone (uit: penanten)' : drawMode ? '✏️ Teken zone — klik & sleep' : '▭ Teken zone'}
         </button>
+
+        {drawMode && !penantFace && (
+          <div style={{ background: 'rgba(15,23,42,0.95)', border: '1px solid #0e7490', borderRadius: 4, padding: '5px 7px', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 170 }}>
+            <div style={{ fontSize: 9, color: '#67e8f9', fontWeight: 600 }}>Eigenschappen nieuwe zone</div>
+            <label style={{ fontSize: 9, color: '#94a3b8', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+              Verband
+              <select value={pendingVerband} onChange={(e) => setPendingVerband(e.target.value)}
+                style={{ fontSize: 10, background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 3, padding: '1px 3px' }}>
+                <option value="staand_tegelverband">Staand (verticaal)</option>
+                <option value="halfsteens">Halfsteens</option>
+              </select>
+            </label>
+            <label style={{ fontSize: 9, color: '#94a3b8', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+              Anker
+              <select value={pendingAnchor} onChange={(e) => setPendingAnchor(e.target.value)}
+                style={{ fontSize: 10, background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 3, padding: '1px 3px' }}>
+                <option value="zoneBottomLeft">Zone (linksonder)</option>
+                <option value="planeOrigin">Vlak-oorsprong</option>
+              </select>
+            </label>
+          </div>
+        )}
+
+        {penantFace && activeZoneCount > 0 && (
+          <div style={{ background: 'rgba(120,53,15,0.92)', border: '1px solid #f59e0b', borderRadius: 4, padding: '4px 8px', maxWidth: 220 }}>
+            <div style={{ fontSize: 10, color: '#fcd34d', fontWeight: 600 }}>⚠ Penanten actief</div>
+            <div style={{ fontSize: 9, color: '#fde68a', marginTop: 2 }}>{activeZoneCount} strip-zone(s) staan UIT — penanten winnen op dit vlak. Data blijft bewaard.</div>
+          </div>
+        )}
 
         {stripZones.length > 0 && (
           <div style={{ background: 'rgba(15,23,42,0.92)', border: '1px solid #1e3a5f', borderRadius: 4, padding: '4px 6px', minWidth: 180 }}>
@@ -1965,6 +2050,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
           );
         })()}
       </div>
+      )}
 
       <button
         onClick={fitToView}
