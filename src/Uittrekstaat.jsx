@@ -3,6 +3,8 @@ import { buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions } from './lib/panelization.js';
 import { openingXRangesAtY } from './lib/geometry.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
+import { isWildverbandKoppelstrip } from './lib/featureFlags.js';
+import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 
@@ -30,8 +32,15 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
   const groupWalls = group.wallIds.map((id) => walls.find((w) => w.expressID === id)).filter(Boolean);
   if (!groupWalls.length) return null;
 
-  const facadeData = buildFullGroupFacadePattern(groupWalls, mat, verband, s.maxHoogte, s.zetwerk, null);
+  let facadeData = buildFullGroupFacadePattern(groupWalls, mat, verband, s.maxHoogte, s.zetwerk, null);
   if (!facadeData) return null;
+  // FASE 2 — wildverband: de zaaglijst telt het vastgelegde truth-verband (zelfde bron als
+  // 2D/3D/IFC/werktekening) i.p.v. de tegelverband-degradatie uit pattern.js. Vlag UIT →
+  // ongewijzigd (byte-identiek).
+  if (verband === 'wildverband' && isWildverbandKoppelstrip()) {
+    const _tr = buildTruthRows(facadeData.groupWidth, facadeData.groupHeight, mat, facadeData.groupOpenings ?? []);
+    facadeData = { ...facadeData, rows: _tr.rows };
+  }
 
   const { groupWidth, groupHeight, groupOpenings, rows } = facadeData;
 
