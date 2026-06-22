@@ -115,10 +115,12 @@ export function isGeometryDerivedOrigin() {
 // wanden, i.p.v. de module-default 'z' te laten staan (projectCoordinates.js:28). Lost de
 // "bijna-horizontaal / normaal ∥ up-as"-melding op die bij een heropende Y-up-sessie vuurt.
 // DERIVE-ONLY: niets gepersisteerd, geen storage-schema-wijziging.
-// DEFAULT = false → restore laat _upAxis ongemoeid zoals nu (vlag-uit byte-identiek).
-// NOODREM: ?restoreUpAxis=0 (of localStorage 'restoreUpAxis'='0').
+// DEFAULT = true (gepromoveerd 2026-06-22): een heropende Y-up-sessie hield anders de
+// module-default 'z' aan → best-fit zag elke gevel als bijna-horizontaal vlak en gaf de
+// "vlak-normaal ∥ model-up-as"-melding bij het maken van een groep. DERIVE-ONLY (majority
+// heightAxis van de herstelde wanden); niets gepersisteerd. NOODREM: ?restoreUpAxis=0.
 export function isRestoreUpAxis() {
-  return readFlag('restoreUpAxis', false);
+  return readFlag('restoreUpAxis', true);
 }
 
 // WILDVERBAND KOPPELSTRIP (Fase 1 — alleen de 🧱-planner). Het wildverband wordt als
