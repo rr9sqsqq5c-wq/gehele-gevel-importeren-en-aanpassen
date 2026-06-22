@@ -548,15 +548,38 @@ function _readSiteRefLatLong(api, modelID) {
   try {
     const siteCode = api.GetTypeCodeFromName('IFCSITE');
     const vec = api.GetLineIDsWithType(modelID, siteCode);
-    const toArr = (v) => (Array.isArray(v) ? v.map((x) => Number(x?.value ?? x)) : null);
+    // web-ifc geeft IfcCompoundPlaneAngleMeasure als { value: [deg,min,sec,milj] } (GEEN bare
+    // array) → unwrap .value naar een lijst van getallen.
+    const toArr = (v) => {
+      const a = Array.isArray(v) ? v : (Array.isArray(v?.value) ? v.value : null);
+      return a ? a.map((x) => Number(x?.value ?? x)) : null;
+    };
+    // Revit-exports bevatten vaak één template-default-site (bv. Boston [42,24,53]) NAAST de
+    // echte projectsite, die in dit model 54× voorkomt (linked-model-artefact). "Eerste site met
+    // beide" zou Boston pakken (laagste expressID). Site->building-containment disambigueert niet
+    // (élke site decomponeert naar een building, ook Boston). Daarom: MEERDERHEIDSSTEM over alle
+    // sites met geldige RefLat/Long; geen unieke meerderheid → null (veilige fallback, nooit
+    // confidently-wrong). De georef-round-trip leunt sowieso op #20; dit is supplementaire metadata.
+    const tally = new Map(); // key → { lat, long, n }
     for (let i = 0; i < vec.size(); i++) {
       try {
         const s = api.GetLine(modelID, vec.get(i), false);
-        const la = toArr(s?.RefLatitude);
-        const lo = toArr(s?.RefLongitude);
-        if (la && lo) return { lat: la, long: lo };
+        const lat = toArr(s?.RefLatitude);
+        const long = toArr(s?.RefLongitude);
+        if (!lat || !long) continue;
+        const key = JSON.stringify([lat, long]);
+        const e = tally.get(key);
+        if (e) e.n++; else tally.set(key, { lat, long, n: 1 });
       } catch { }
     }
+    if (!tally.size) return null;
+    let best = null, bestN = 0, tie = false;
+    for (const e of tally.values()) {
+      if (e.n > bestN) { best = e; bestN = e.n; tie = false; }
+      else if (e.n === bestN) tie = true;
+    }
+    if (tie || !best) return null;
+    return { lat: best.lat, long: best.long };
   } catch { }
   return null;
 }
@@ -1906,7 +1929,13 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
   const gSub   = E(`IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#${gCtx},$,.MODEL_VIEW.,$)`);
   const proj   = E(`IFCPROJECT(${G()},#${owH},'${(fileName || 'BrickslipExport').replace(/'/g,"\\'")}' ,$,$,$,$,(#${gCtx}),#${units})`);
   const sitePl = E(`IFCLOCALPLACEMENT($,#${wax})`);
-  const site   = E(`IFCSITE(${G()},#${owH},'Site',$,$,#${sitePl},$,$,.ELEMENT.,$,$,$,$,$)`);
+  // FIX C (Concern 2): schrijf IfcSite RefLatitude/RefLongitude uit worldAnchor (compound plane
+  // angle = (deg,min,sec,milj)). Afwezig (geen anchor / geen meerderheidssite) → $,$ (byte-identiek).
+  const _waLL = getWorldAnchor()?.refLatLong;
+  const _llStr = (_waLL && Array.isArray(_waLL.lat) && Array.isArray(_waLL.long))
+    ? `(${_waLL.lat.join(',')}),(${_waLL.long.join(',')})`
+    : '$,$';
+  const site   = E(`IFCSITE(${G()},#${owH},'Site',$,$,#${sitePl},$,$,.ELEMENT.,${_llStr},$,$,$)`);
   const bldPl  = E(`IFCLOCALPLACEMENT(#${sitePl},#${wax})`);
   const bld    = E(`IFCBUILDING(${G()},#${owH},'Building',$,$,#${bldPl},$,$,.ELEMENT.,$,$,$)`);
   const stPl   = E(`IFCLOCALPLACEMENT(#${bldPl},#${wax})`);
