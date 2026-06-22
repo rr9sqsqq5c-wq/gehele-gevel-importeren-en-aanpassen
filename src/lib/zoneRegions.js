@@ -14,8 +14,20 @@
 // contour-/openings-gemaskeerde default-bond-dekking. We snijden zones daartegen.
 
 import { buildFacePattern } from './pattern.js';
+import { buildTruthRows } from './wildverbandKoppelstrip.js';
+import { isWildverbandKoppelstrip } from './featureFlags.js';
 
 function round2(v) { return Math.round(v * 100) / 100; }
+
+// Bond-rijen voor een zone-rechthoek (w×h, oorsprong 0). Wildverband → het vastgelegde
+// truth-verband (zelfde bron als de hoofdgroep, Fase 2) i.p.v. de tegelverband-degradatie
+// in buildFacePattern. Vlag UIT of ander verband → buildFacePattern (byte-identiek).
+function buildZoneBondRows(w, h, mat, verband) {
+  if (verband === 'wildverband' && isWildverbandKoppelstrip()) {
+    return buildTruthRows(w, h, mat, []).rows;
+  }
+  return buildFacePattern(w, h, mat, verband, 0);
+}
 
 // ── één bron voor de penant-/stripZone-predicaten ──
 // Een vlak is een "penant-vlak" zodra het >=1 penant of >=1 ENABLED zoneSetting heeft.
@@ -142,8 +154,8 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
     //  'planeOrigin'              → bond uitgelijnd op de vlak-oorsprong (0,0), zoals het default-verband.
     const anchor = zone.bondAnchor ?? 'zoneBottomLeft';
     const absRows = anchor === 'planeOrigin'
-      ? buildFacePattern(r.x1, r.y1, zoneMat, zoneVerband, 0) // abs coords, op vlak-oorsprong
-      : buildFacePattern(zW, zH, zoneMat, zoneVerband, 0).map((row) => ({
+      ? buildZoneBondRows(r.x1, r.y1, zoneMat, zoneVerband) // abs coords, op vlak-oorsprong
+      : buildZoneBondRows(zW, zH, zoneMat, zoneVerband).map((row) => ({
           y: row.y + r.y0,
           pieces: row.pieces.map((p) => ({ ...p, start: p.start + r.x0 })),
         }));
