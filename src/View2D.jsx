@@ -51,6 +51,14 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
   stripZonesRef.current = stripZones;
   onStripZonesChangeRef.current = onStripZonesChange;
 
+  // FASE 2c — penant-vlak: strip-zones zijn wederzijds uitsluitend met penanten.
+  // Tekenen blokkeren; getekende zones blijven inert (penanten winnen) + waarschuwing.
+  // BUGFIX (TDZ): penantFace MOET vóór de useEffect staan die 'm in body én deps-array
+  // leest — de deps-array `[penantFace]` wordt synchroon tijdens render geëvalueerd, dus
+  // een declaratie eronder gaf "Cannot access 'penantFace' before initialization"
+  // (View2D.jsx:61) zodra View2D met een groep rendert. Pure reorder, gedrag identiek.
+  const penantFace = hasPenants(groupSettings);
+
   // FASE 2c — op een penant-vlak kan niet getekend worden: forceer tekenmodus uit
   // (dekt het wisselen naar een penant-groep terwijl drawMode nog aan stond).
   useEffect(() => {
@@ -62,9 +70,6 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
 
   const mat = groupSettings?.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
   const verband = groupSettings?.verband ?? 'halfsteens';
-  // FASE 2c — penant-vlak: strip-zones zijn wederzijds uitsluitend met penanten.
-  // Tekenen blokkeren; getekende zones blijven inert (penanten winnen) + waarschuwing.
-  const penantFace = hasPenants(groupSettings);
   const activeZoneCount = (stripZones ?? []).filter((z) => z?.enabled === true).length;
   // FASE B — de hele stripZone-UI (teken-knop + zonelijst + anker-UI) staat achter de vlag.
   // Vlag UIT → geen toolbar; View2D exact terug naar de pre-feature staat.
