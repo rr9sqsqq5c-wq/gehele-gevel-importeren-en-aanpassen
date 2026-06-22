@@ -2,7 +2,7 @@ import { getOpeningPoly } from './pattern.js';
 import { STEENSTRIP_CATALOG } from './battens.js';
 import { SLIMFORT_DEFAULTS, getSlimFortDepths } from './slimfort.js';
 import { registerIfcContext, getProjectInfo, getLastConfidentUpAxis, setLastConfidentUpAxis, setGeometryDerivedRenderOrigin, getWorldAnchor } from './projectCoordinates.js';
-import { isUpAxisInheritFallback, isGeometryDerivedOrigin } from './featureFlags.js';
+import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly } from './featureFlags.js';
 let _api = null;
 let _loading = null;
 let _cachedModel = null;
@@ -1894,7 +1894,15 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
   const ctxAx  = _hasAnchorWcs
     ? E(`IFCAXIS2PLACEMENT3D(#${PT(_waC.x, _waC.y, _waC.z)},#${wcsAxisId},$)`)
     : wax;
-  const gCtx   = E(`IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#${ctxAx},$)`);
+  // TRUENORTH_METADATA_ONLY (FIX C): trueNorth verlaat de getoonde geometrie (buildProjectMatrix
+  // dropt Ry) en wordt HIER als IfcGeometricRepresentationContext.TrueNorth weggeschreven — een
+  // 2D-richting [sin,cos] uit worldAnchor.trueNorthDegrees (inverse van registerIfcContext'
+  // atan2(x,y)). Vlag UIT of geen anchor-hoek → TrueNorth = $ (byte-identiek aan vóór C).
+  const _waTNdeg = getWorldAnchor()?.trueNorthDegrees;
+  const _tnRef = (isTrueNorthMetadataOnly() && typeof _waTNdeg === 'number' && Math.abs(_waTNdeg) > 1e-6)
+    ? E(`IFCDIRECTION((${r(Math.sin(_waTNdeg * Math.PI / 180))},${r(Math.cos(_waTNdeg * Math.PI / 180))}))`)
+    : null;
+  const gCtx   = E(`IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#${ctxAx},${_tnRef ? '#' + _tnRef : '$'})`);
   const gSub   = E(`IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#${gCtx},$,.MODEL_VIEW.,$)`);
   const proj   = E(`IFCPROJECT(${G()},#${owH},'${(fileName || 'BrickslipExport').replace(/'/g,"\\'")}' ,$,$,$,$,(#${gCtx}),#${units})`);
   const sitePl = E(`IFCLOCALPLACEMENT($,#${wax})`);

@@ -13,7 +13,7 @@
  */
 
 import * as THREE from 'three';
-import { isGeometryDerivedOrigin } from './featureFlags.js';
+import { isGeometryDerivedOrigin, isTrueNorthMetadataOnly } from './featureFlags.js';
 
 // ─── Module-level state ───────────────────────────────────────────────────────
 // Wordt gezet door het eerste geladen IFC-bestand met een significante origin.
@@ -170,7 +170,12 @@ export function buildProjectMatrix() {
     : _upAxis === 'z_neg'
       ? new THREE.Matrix4().makeRotationX(Math.PI / 2)
       : new THREE.Matrix4().makeRotationX(-Math.PI / 2);
-  const Ry = new THREE.Matrix4().makeRotationY(_trueNorthAngle);
+  // TRUENORTH_METADATA_ONLY (FIX C): vlag AAN → géén trueNorth-rotatie in de scène (3D =
+  // project-noord, gelijk aan 2D/export); trueNorth leeft alleen als export-metadata. Vlag UIT →
+  // Ry(trueNorth) zoals voorheen (byte-identiek).
+  const Ry = isTrueNorthMetadataOnly()
+    ? new THREE.Matrix4() // identity — project-noord
+    : new THREE.Matrix4().makeRotationY(_trueNorthAngle);
 
   // M = Ry * Rx * T
   return new THREE.Matrix4()

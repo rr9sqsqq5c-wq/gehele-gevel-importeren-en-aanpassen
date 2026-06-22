@@ -145,3 +145,15 @@ export function isWildverbandKoppelstrip() {
 export function isFeatureZones() {
   return readFlag('featureZones', false);
 }
+
+// TRUENORTH_METADATA_ONLY (FIX C) — project-noord overal. GEEN pad past trueNorth toe op de
+// GETOONDE geometrie: vlag AAN → de Ry(trueNorth)-rotatie verlaat buildProjectMatrix
+// (projectCoordinates.js) zodat 3D = 2D = export allemaal in het project-noord-frame staan;
+// trueNorth leeft uitsluitend als export-metadata (IfcGeometricRepresentationContext.TrueNorth
+// uit worldAnchor, geschreven in exportGroupsToIfc). Per-element-geometrie/coursing (horizontaal
+// halfsteens) zit al in dat frame en blijft ongemoeid. Reële-noord-3D kan later als view-toggle.
+// DEFAULT = false → 3D past Ry(trueNorth) toe + export schrijft geen trueNorth (byte-identiek aan nu).
+// NOODREM: ?trueNorthMetadataOnly=0 (of localStorage 'trueNorthMetadataOnly'='0'/'false').
+export function isTrueNorthMetadataOnly() {
+  return readFlag('trueNorthMetadataOnly', false);
+}
