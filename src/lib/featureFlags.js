@@ -152,8 +152,11 @@ export function isFeatureZones() {
 // trueNorth leeft uitsluitend als export-metadata (IfcGeometricRepresentationContext.TrueNorth
 // uit worldAnchor, geschreven in exportGroupsToIfc). Per-element-geometrie/coursing (horizontaal
 // halfsteens) zit al in dat frame en blijft ongemoeid. Reële-noord-3D kan later als view-toggle.
-// DEFAULT = false → 3D past Ry(trueNorth) toe + export schrijft geen trueNorth (byte-identiek aan nu).
-// NOODREM: ?trueNorthMetadataOnly=0 (of localStorage 'trueNorthMetadataOnly'='0'/'false').
+// DEFAULT = true (gepromoveerd 2026-06-22, FIX C): 3D = 2D = export staan allemaal in project-
+// noord; geen 38°-scheefstand tussen 3D en de werktekeningen meer. trueNorth blijft als export-
+// metadata behouden (IfcGeometricRepresentationContext.TrueNorth). Node-gevalideerd; A-precedent.
+// NOODREM: ?trueNorthMetadataOnly=0 (of localStorage 'trueNorthMetadataOnly'='0'/'false') →
+// herstelt het oude gedrag exact (3D past Ry(trueNorth) toe, export schrijft geen trueNorth).
 export function isTrueNorthMetadataOnly() {
-  return readFlag('trueNorthMetadataOnly', false);
+  return readFlag('trueNorthMetadataOnly', true);
 }
