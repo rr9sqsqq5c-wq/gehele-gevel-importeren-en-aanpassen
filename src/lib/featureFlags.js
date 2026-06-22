@@ -99,10 +99,15 @@ export function isKeepEndExtension() {
 // SCOPE: alleen het parse-/import-pad + buildProjectMatrix-translatiebron + opslag-schema.
 // Het laad-/restore-pad wordt nergens geraakt: ontbreekt renderOrigin (oud project) →
 // buildProjectMatrix valt terug op het ongewijzigde #20-pad (byte-identiek).
-// DEFAULT = false → vlag-uit byte-identiek aan nu (translatie, schema én opgeslagen bytes).
-// Aanzetten: ?geometryDerivedOrigin=1 of localStorage 'geometryDerivedOrigin'='1'.
+// DEFAULT = true (gepromoveerd 2026-06-22, FIX A): nieuwe imports leiden de render-origin uit
+// de geometrie af en leggen #20+refLatLong+trueNorth+upAxis als worldAnchor vast → export
+// georefereert weer correct (BIL-MOO 485 km → 0 mm). Render/export lezen UITSLUITEND module-
+// state (renderOrigin/worldAnchor), nooit de vlag → opgeslagen projecten ongemoeid: een vlag-
+// UIT-geparset project heeft geen renderOrigin → buildProjectMatrix valt terug op het #20-pad.
+// NOODREM: ?geometryDerivedOrigin=0 (of localStorage 'geometryDerivedOrigin'='0'/'false')
+// herstelt het oude parse-gedrag exact.
 export function isGeometryDerivedOrigin() {
-  return readFlag('geometryDerivedOrigin', false);
+  return readFlag('geometryDerivedOrigin', true);
 }
 
 // RESTORE-UP-AS — bij het herstellen van een opgeslagen project (loadProjectState /
