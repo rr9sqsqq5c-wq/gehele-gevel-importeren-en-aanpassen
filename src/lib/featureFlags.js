@@ -126,13 +126,15 @@ export function isRestoreUpAxis() {
 // opgeknipt: de doorgesneden strip wordt een variabele-lengte KOPPELSTRIP (in-situ) die
 // de naad + paneelvoeg overbrugt. Startpaneel ligt links dicht, volgpanelen links open.
 // Vervangt het losse-module-per-paneel-pad (autoFillRow/buildFacadeFromCustomPanel).
-// SCOPE: uitsluitend het gevel-bouwpad in WildverbandPanel.jsx; de gewird 2D/3D/IFC-weg
-// (buildWildverbandPanelGrid) volgt in Fase 2.
-// DEFAULT = false → de planner is byte-identiek aan nu (oude buildFacade-paden).
-// Aanzetten: ?wildverbandKoppelstrip=1 of localStorage 'wildverbandKoppelstrip'='1'.
-// NOODREM: ?wildverbandKoppelstrip=0.
+// DEFAULT = true (gepromoveerd 2026-06-22): zonder dit degradeerde verband='wildverband' in
+// het standaard-patroonpad (pattern.js kent geen wildverband) stilletjes naar TEGELVERBAND.
+// Met de vlag aan voeden de truth-rows (buildTruthRows) álle output-paden uit één bron:
+// 2D (App.jsx:3290/View2D), 3D (Viewer3D), IFC-export (App.jsx:4872), werktekening
+// (Werktekening.jsx:340) én uittrekstaat (Uittrekstaat.jsx). buildBestFitFacadePattern levert
+// de groepsmaat; de rows worden vervangen.
+// NOODREM: ?wildverbandKoppelstrip=0 (of localStorage '0'/'false') → oude (tegelverband-)pad.
 export function isWildverbandKoppelstrip() {
-  return readFlag('wildverbandKoppelstrip', false);
+  return readFlag('wildverbandKoppelstrip', true);
 }
 
 // FASE 2 — maatgevoerde rechthoek-stripZones met eigen verband per gevelvlak.
