@@ -139,15 +139,15 @@ export function isWildverbandKoppelstrip() {
   return readFlag('wildverbandKoppelstrip', true);
 }
 
-// FASE 2 — maatgevoerde rechthoek-stripZones met eigen verband per gevelvlak.
-// Met de vlag UIT wordt de stripZone-regio-functie NOOIT aangeroepen: de generator leest
-// stripZones niet en de output is byte-identiek aan de nulmeting (scherm én export), ook
-// op een project dat al getekende zones bevat. DEFAULT = false.
-// Aanzetten: ?featureZones=1 of localStorage 'featureZones'='1'.
+// FASE 2 — maatgevoerde rechthoek-stripZones met eigen verband per gevelvlak (in 2D te
+// tekenen). DEFAULT = true (gepromoveerd 2026-06-22). Eén gedeelde regio-functie
+// buildStripZoneRegions (zoneRegions.js) voedt scherm/3D (App.jsx:3556) én export
+// (App.jsx:5300); wildverband-in-zone via de truth-rows (zoneRegions buildZoneBondRows).
 // Blast-radius: uitsluitend niet-penant-vlakken met >=1 ENABLED stripZone; penant-vlakken
-// en 0-zone-vlakken lopen het ongewijzigde (byte-identieke) pad.
+// en 0-zone-vlakken lopen het ongewijzigde pad. NOODREM: ?featureZones=0 (de regio-functie
+// wordt dan nooit aangeroepen → byte-identiek aan vóór, ook op projecten met getekende zones).
 export function isFeatureZones() {
-  return readFlag('featureZones', false);
+  return readFlag('featureZones', true);
 }
 
 // TRUENORTH_METADATA_ONLY (FIX C) — project-noord overal. GEEN pad past trueNorth toe op de
