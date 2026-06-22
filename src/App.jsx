@@ -1472,8 +1472,6 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
 
       {isFeatureZones() && (settings.stripZones ?? []).length > 0 && (() => {
         const szArr = settings.stripZones ?? [];
-        const selZoneStripId = (settings.steenstripsArtikelen ?? [])[0] ?? null;
-        const selZoneStripArt = selZoneStripId ? STEENSTRIP_CATALOG.find((a) => a.id === selZoneStripId) : null;
         const DEFAULT_ZONE_MAT = { ...DEFAULT_MATERIAL };
         const resolveZone = (sz) => ({ enabled: false, color: settings.color, verband: settings.verband, material: { ...DEFAULT_ZONE_MAT }, maxHoogte: null, zoneBackingType: null, zonePanelenEnabled: null, ...sz });
         const updZone = (id, patch) => {
@@ -1494,6 +1492,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
             {szArr.map((sz) => {
               const zs = resolveZone(sz);
               const zm = zs.material ?? DEFAULT_ZONE_MAT;
+              const zoneStripArt = sz.steenstripArtikelId ? STEENSTRIP_CATALOG.find((a) => a.id === sz.steenstripArtikelId) : null;
               const otherIds = szArr.filter((z) => z.id !== sz.id).map((z) => z.id);
               return (
                 <div key={sz.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4, padding: 6, marginBottom: 4 }}>
@@ -1550,16 +1549,29 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                           <option value="planeOrigin">Vlak-oorsprong</option>
                         </select>
                       </Field>
-                      {selZoneStripArt && (
+                      <Field label="Steenstrip-artikel" tip="Eigen steenstrip voor deze zone (mag afwijken van de groep). 'Groep-standaard' = volgt de groepskeuze.">
+                        <select value={sz.steenstripArtikelId ?? ''}
+                          onChange={(e) => {
+                            const id = e.target.value || null;
+                            const art = id ? STEENSTRIP_CATALOG.find((a) => a.id === id) : null;
+                            updZone(sz.id, { steenstripArtikelId: id, material: art ? { ...zm, steenL: art.steenL, steenH: art.steenH } : zm });
+                          }}
+                          style={inp}>
+                          <option value="">Groep-standaard</option>
+                          {STEENSTRIP_CATALOG.map((a) => (
+                            <option key={a.id} value={a.id}>{a.naam}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      {zoneStripArt && (
                         <div style={{ background: '#fdf4ff', border: '1px solid #d8b4fe', borderRadius: 4, padding: '4px 6px', fontSize: 9.5, marginBottom: 2 }}>
-                          <div style={{ fontSize: 9, color: '#7c3aed' }}>Uit artikelkeuze: <strong>{selZoneStripArt.naam}</strong></div>
-                          <div style={{ color: '#64748b', fontSize: 9 }}>{selZoneStripArt.steenL}×{selZoneStripArt.steenH}×{selZoneStripArt.dikte} mm · voeg {selZoneStripArt.lint}/{selZoneStripArt.stoot} mm</div>
+                          <div style={{ color: '#64748b', fontSize: 9 }}>{zoneStripArt.steenL}×{zoneStripArt.steenH}×{zoneStripArt.dikte} mm · voeg {zoneStripArt.lint}/{zoneStripArt.stoot} mm</div>
                         </div>
                       )}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
                         {[['Lengte mm', 'steenL', true], ['Hoogte mm', 'steenH', true], ['Lintvoeg mm', 'lint', false], ['Stootvoeg mm', 'stoot', false]].map(([lbl, key, fromArt]) => {
-                          const locked = !!selZoneStripArt && fromArt;
-                          const val = locked ? (selZoneStripArt[key] ?? DEFAULT_MATERIAL[key]) : (zm[key] ?? DEFAULT_MATERIAL[key]);
+                          const locked = !!zoneStripArt && fromArt;
+                          const val = locked ? (zoneStripArt[key] ?? DEFAULT_MATERIAL[key]) : (zm[key] ?? DEFAULT_MATERIAL[key]);
                           return (
                             <Field key={key} label={lbl}>
                               <input type="number" min={1} step={1} value={val}

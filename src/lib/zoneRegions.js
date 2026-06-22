@@ -143,7 +143,9 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
     const r = rects[i];
     const zoneVerband = zone.verband ?? defaultVerband;
     const zoneMatBase = { ...mat, ...(zone.material ?? {}) };
-    const zoneMat = applyArt(zoneMatBase);
+    // Eigen steenstrip-artikel per zone (de UI heeft zone.material al op die maten gezet)
+    // overschrijft de groep-stripArt; zonder eigen artikel volgt de zone de groep (applyArt).
+    const zoneMat = zone.steenstripArtikelId ? zoneMatBase : applyArt(zoneMatBase);
     const zoneColor = zone.color ?? defaultColor;
     const zRowH = bondRowH(zoneVerband, zoneMat);
     const zW = r.x1 - r.x0, zH = r.y1 - r.y0;
