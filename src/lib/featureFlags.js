@@ -150,6 +150,19 @@ export function isFeatureZones() {
   return readFlag('featureZones', true);
 }
 
+// REPROJECT_OPENING_POLYGON — in het best-fit-pad (handmatige groepen) behoudt
+// reprojectOpening (facadePlane.js) de OPENING-POLYGOON i.p.v. 'm tot z'n bounding box te
+// reduceren (polyPts:null). Lost op dat een concave/L-vormige opening (bv. wand 60148,
+// opening 64264, 6-punts L) het massieve stuk binnen de bbox-maar-buiten-de-polygoon
+// foutief wegknipt; daarna lopen 2D/3D/export gelijk met werktekening/uittrekstaat (die de
+// polygoon al behouden). DEGENERAAT-GUARD: > MAX_OPENING_POLY_PTS punten → bbox-fallback,
+// zodat een ontspoorde polygoon (expressID 10891, 99964 punten) de clipper niet plat legt.
+// DEFAULT = false → reprojectOpening blijft polyPts:null (byte-identiek; rechthoekige
+// openingen sowieso identiek). NOODREM: ?reprojectOpeningPolygon=0.
+export function isReprojectOpeningPolygon() {
+  return readFlag('reprojectOpeningPolygon', false);
+}
+
 // TRUENORTH_METADATA_ONLY (FIX C) — project-noord overal. GEEN pad past trueNorth toe op de
 // GETOONDE geometrie: vlag AAN → de Ry(trueNorth)-rotatie verlaat buildProjectMatrix
 // (projectCoordinates.js) zodat 3D = 2D = export allemaal in het project-noord-frame staan;

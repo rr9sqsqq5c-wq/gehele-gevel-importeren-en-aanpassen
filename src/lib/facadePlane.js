@@ -17,9 +17,22 @@
 
 import { buildFullGroupFacadePattern } from './pattern.js';
 import { getProjectInfo } from './projectCoordinates.js';
-import { isKeepEndExtension } from './featureFlags.js';
+import { isKeepEndExtension, isReprojectOpeningPolygon } from './featureFlags.js';
 
 const UP_AX = ['x', 'y', 'z'];
+// Boven deze drempel beschouwen we een opening-polygoon als gedegenereerd (bv. expressID
+// 10891 met 99964 punten) en vallen we terug op de bounding box — anders legt de per-rij
+// polyXRangesAtY-clip de generator plat. Echte openingen (raam/deur/L-hap) blijven ruim eronder.
+const MAX_OPENING_POLY_PTS = 64;
+// Een opening waarvan de polygoon een axis-aligned rechthoek is (== z'n bbox) reprojecteren
+// we NIET — dan blijft polyPts null en is de bbox-cut byte-identiek aan nu. Alleen echt
+// concave/scheve openingen (bv. de 6-punts L) krijgen hun polygoon mee.
+function isAxisAlignedRectPoly(pts) {
+  if (!Array.isArray(pts) || pts.length !== 4) return false;
+  const ls = pts.map((p) => p.l), hs = pts.map((p) => p.h);
+  const minL = Math.min(...ls), maxL = Math.max(...ls), minH = Math.min(...hs), maxH = Math.max(...hs);
+  return pts.every((p) => (Math.abs(p.l - minL) < 1 || Math.abs(p.l - maxL) < 1) && (Math.abs(p.h - minH) < 1 || Math.abs(p.h - maxH) < 1));
+}
 const RESIDUAL_TOL_MM = 50;      // diepte-tolerantie (≤ enkele cm)
 const COFACING_FRAC = 0.85;      // ≥85% van de leden moet dezelfde normaal-as delen
 // Echte smalle constructievoegen (bv. dakrand-plaat ↔ HSB-wand, gemeten ~40–45 mm)
@@ -131,11 +144,32 @@ function reprojectOpening(op, wo, plane, vLenStart, vHgtStart) {
   put(wo.lengthAxis, wo.lengthStart + (op.x ?? 0), wo.lengthStart + (op.x ?? 0) + (op.breedte ?? op.width ?? 0));
   put(wo.heightAxis, wo.heightStart + (op.y ?? 0), wo.heightStart + (op.y ?? 0) + (op.hoogte ?? op.height ?? 0));
   put(wo.thicknessAxis, wo.thicknessStart, wo.thicknessEnd ?? wo.thicknessStart);
+  // REPROJECT_OPENING_POLYGON (vlag, default UIT): behoud de opening-polygoon i.p.v. bbox.
+  // Elk punt via DEZELFDE wereld-as-transform als de bbox-hoeken hierboven (member-lokaal
+  // {l,h} → wereld via wo-assen → virtueel (tAxis,uAxis)-frame, minus vLenStart/vHgtStart),
+  // zodat de gereprojecteerde polyPts exact de vorm hebben die buildFullGroupFacadePattern/
+  // clipPiecesAgainstOpenings verwachten (virtuele-wand-lokaal, mm, polygoon-volgorde).
+  // Vlag UIT, geen/te-grote polygoon → null = bbox (huidig gedrag, byte-identiek).
+  let polyPts = null;
+  if (isReprojectOpeningPolygon() && Array.isArray(op.polyPts) && op.polyPts.length >= 3) {
+    if (op.polyPts.length > MAX_OPENING_POLY_PTS) {
+      console.warn(`[reprojectOpening] opening ${op.id ?? '?'}: polygoon ${op.polyPts.length} punten > ${MAX_OPENING_POLY_PTS} → bbox-fallback (gedegenereerd)`);
+    } else if (isAxisAlignedRectPoly(op.polyPts)) {
+      // rechthoekige opening: bbox == polygoon → polyPts null laten = bbox-cut zoals nu (byte-identiek).
+    } else {
+      polyPts = op.polyPts.map((p) => {
+        const w = {};
+        w[wo.lengthAxis] = wo.lengthStart + p.l;
+        w[wo.heightAxis] = wo.heightStart + p.h;
+        return { l: Math.round(w[plane.tAxis] - vLenStart), h: Math.round(w[plane.uAxis] - vHgtStart) };
+      });
+    }
+  }
   return {
     id: op.id, type: op.type ?? 'sparing',
     x: Math.round(lo[plane.tAxis] - vLenStart), y: Math.round(lo[plane.uAxis] - vHgtStart),
     breedte: Math.round(hi[plane.tAxis] - lo[plane.tAxis]), hoogte: Math.round(hi[plane.uAxis] - lo[plane.uAxis]),
-    polyPts: null, thicknessCenter: op.thicknessCenter ?? null,
+    polyPts, thicknessCenter: op.thicknessCenter ?? null,
   };
 }
 
