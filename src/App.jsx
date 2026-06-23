@@ -1473,6 +1473,8 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
       {isFeatureZones() && (settings.stripZones ?? []).length > 0 && (() => {
         const szArr = settings.stripZones ?? [];
         const DEFAULT_ZONE_MAT = { ...DEFAULT_MATERIAL };
+        const groupBacking = settings.backingType ?? 'hout';
+        const backingShort = (b) => b === 'hout' ? 'Hout' : b === 'aluminium' ? 'Aluminium U' : b === 'aluminium_slimfort' ? 'SlimFort' : b;
         const resolveZone = (sz) => ({ enabled: false, color: settings.color, verband: settings.verband, material: { ...DEFAULT_ZONE_MAT }, maxHoogte: null, zoneBackingType: null, zonePanelenEnabled: null, ...sz });
         const updZone = (id, patch) => {
           onUpdate({ stripZones: szArr.map((z) => z.id === id ? { ...resolveZone(z), ...patch } : z) });
@@ -1593,6 +1595,54 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                         )}
                         {zs.maxHoogte !== null && <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>}
                       </div>
+
+                      {/* ── Achterconstructie per zone ── */}
+                      <Field label="Achterconstructie" tip="Eigen achterconstructie voor deze zone. 'Groep-standaard' volgt de groepskeuze.">
+                        <select value={zs.zoneBackingType ?? ''} onChange={(e) => updZone(sz.id, { zoneBackingType: e.target.value || null })} style={inp}>
+                          <option value="">Groep-standaard ({backingShort(groupBacking)})</option>
+                          <option value="hout">Houten achterconstructie</option>
+                          <option value="aluminium">Aluminium U-profiel</option>
+                          <option value="aluminium_slimfort">SlimFort XT® 4.7</option>
+                        </select>
+                      </Field>
+                      {(zs.zoneBackingType || groupBacking) === 'hout' && (() => {
+                        const zLatArt = zs.zoneLattenArtikelId ? BATTEN_CATALOG.find((a) => a.id === zs.zoneLattenArtikelId) : null;
+                        const zPlaat = zs.zoneBasisplaatId ? BASISPLAAT_CATALOG.find((p) => p.id === zs.zoneBasisplaatId) : null;
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, padding: '5px 6px' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#334155', cursor: 'pointer' }}>
+                              <input type="checkbox" checked={zs.zoneLattenEnabled ?? false} onChange={(e) => updZone(sz.id, { zoneLattenEnabled: e.target.checked })} />
+                              Latten
+                            </label>
+                            {zs.zoneLattenEnabled && (
+                              <Field label="Latten-artikel" tip="Latten-artikel voor deze zone (Mulder's Houtimport).">
+                                <select value={zs.zoneLattenArtikelId ?? ''} onChange={(e) => updZone(sz.id, { zoneLattenArtikelId: e.target.value || null })} style={inp}>
+                                  <option value="">— kies artikel —</option>
+                                  {BATTEN_CATALOG.map((a) => (
+                                    <option key={a.id} value={a.id}>{a.naam}</option>
+                                  ))}
+                                </select>
+                              </Field>
+                            )}
+                            {zLatArt && <div style={{ fontSize: 9, color: '#64748b' }}>{zLatArt.afmetingen} · {zLatArt.brandklasse} · € {zLatArt.prijsM1.toFixed(3)}/m¹</div>}
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#334155', cursor: 'pointer' }}>
+                              <input type="checkbox" checked={zs.zonePanelenEnabled ?? false} onChange={(e) => updZone(sz.id, { zonePanelenEnabled: e.target.checked })} />
+                              Panelen (basisplaat)
+                            </label>
+                            {zs.zonePanelenEnabled && (
+                              <Field label="Basisplaat" tip="Basisplaat-artikel voor deze zone.">
+                                <select value={zs.zoneBasisplaatId ?? ''} onChange={(e) => updZone(sz.id, { zoneBasisplaatId: e.target.value || null })} style={inp}>
+                                  <option value="">— kies basisplaat —</option>
+                                  {BASISPLAAT_CATALOG.map((p) => (
+                                    <option key={p.id} value={p.id}>{p.naam ?? p.id}</option>
+                                  ))}
+                                </select>
+                              </Field>
+                            )}
+                            {zPlaat && <div style={{ fontSize: 9, color: '#64748b' }}>{zPlaat.dikteMM} mm · {zPlaat.gewichtM2} kg/m²</div>}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
