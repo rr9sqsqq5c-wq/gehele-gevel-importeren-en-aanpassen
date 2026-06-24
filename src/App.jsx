@@ -6194,7 +6194,18 @@ export default function App() {
                               if (!w) return null;
                               return (
                                 <div key={wid} style={{ padding: '4px 10px 4px 24px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
-                                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#334155' }}>{w.name}</span>
+                                  <span
+                                    style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#334155', cursor: 'pointer' }}
+                                    title={`Klik om de elementnaam te kopiëren (voor console-filter):\n${w.name}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const name = w.name ?? '';
+                                      try { navigator.clipboard?.writeText(name); } catch {}
+                                      const el = e.currentTarget; const orig = el.textContent;
+                                      el.textContent = '✓ gekopieerd'; el.style.color = '#16a34a';
+                                      setTimeout(() => { el.textContent = orig; el.style.color = '#334155'; }, 900);
+                                    }}
+                                  >{w.name}</span>
                                   <input
                                     type="number" min={1} step={10}
                                     title="Breedte overschrijven (mm) — openingen blijven op hun positie"
