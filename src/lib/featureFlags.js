@@ -157,10 +157,13 @@ export function isFeatureZones() {
 // foutief wegknipt; daarna lopen 2D/3D/export gelijk met werktekening/uittrekstaat (die de
 // polygoon al behouden). DEGENERAAT-GUARD: > MAX_OPENING_POLY_PTS punten → bbox-fallback,
 // zodat een ontspoorde polygoon (expressID 10891, 99964 punten) de clipper niet plat legt.
-// DEFAULT = false → reprojectOpening blijft polyPts:null (byte-identiek; rechthoekige
-// openingen sowieso identiek). NOODREM: ?reprojectOpeningPolygon=0.
+// DEFAULT = true (gepromoveerd 2026-06-23): de massieve hoek binnen-de-bbox-buiten-de-L
+// wordt nu correct bekleed in best-fit-groepen; 2D/3D/export lopen gelijk met werktekening/
+// uittrekstaat. Rechthoekige openingen blijven bbox (axis-aligned-rect-guard) → onveranderd;
+// degeneraat (> MAX_OPENING_POLY_PTS) → bbox-fallback. NOODREM: ?reprojectOpeningPolygon=0
+// (→ reprojectOpening polyPts:null, exact het oude gedrag).
 export function isReprojectOpeningPolygon() {
-  return readFlag('reprojectOpeningPolygon', false);
+  return readFlag('reprojectOpeningPolygon', true);
 }
 
 // TRUENORTH_METADATA_ONLY (FIX C) — project-noord overal. GEEN pad past trueNorth toe op de
