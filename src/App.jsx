@@ -6192,8 +6192,11 @@ export default function App() {
                             {g.wallIds.map((wid) => {
                               const w = wallMap[wid];
                               if (!w) return null;
+                              const wIsSel = selectedWallIds.has(wid);
                               return (
-                                <div key={wid} style={{ padding: '4px 10px 4px 24px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
+                                <div key={wid}
+                                  ref={(el) => { if (el && wIsSel) el.scrollIntoView({ block: 'nearest' }); }}
+                                  style={{ padding: '4px 10px 4px 24px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap', background: wIsSel ? '#dbeafe' : 'transparent' }}>
                                   <span
                                     style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#334155', cursor: 'pointer' }}
                                     title={`Klik om de elementnaam te kopiëren (voor console-filter):\n${w.name}`}
@@ -6295,7 +6298,12 @@ export default function App() {
                 groups={groups}
                 groupSettings={getSettings}
                 groupPatterns={allPatterns}
-                onSelectWall={toggleSelect}
+                onSelectWall={(id) => {
+                  toggleSelect(id);
+                  // zit het element in een groep? klap die groep uit zodat de oplichtende rij zichtbaar is.
+                  const gid = wallGroupMap[id];
+                  if (gid) setActiveGroupId(gid);
+                }}
                 onSelectMultiple={(ids) => setSelectedWallIds((prev) => {
                   const next = new Set(prev);
                   for (const id of ids) next.add(id);
