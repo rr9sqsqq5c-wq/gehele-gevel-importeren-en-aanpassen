@@ -6121,6 +6121,23 @@ export default function App() {
               <div>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
                 <div>Importeer een IFC-bestand om te beginnen</div>
+                {isSyntheticWall() && (
+                  <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>…of maak een calc-wand (zonder IFC):</div>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+                      {[['L', 'L'], ['H', 'H'], ['dikte', 'dikte']].map(([key, lbl]) => (
+                        <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11, color: '#475569' }}>
+                          {lbl}
+                          <input type="number" min={1} step={key === 'dikte' ? 0.5 : 10} value={synWallInput[key]}
+                            onChange={(e) => setSynWallInput((p) => ({ ...p, [key]: e.target.value }))}
+                            style={{ width: 60, fontSize: 11, padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: 3 }} />
+                        </label>
+                      ))}
+                      <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>
+                      <button onClick={addSyntheticWall} style={btn('#7c3aed')}>+ Wand (L×H)</button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : !leftCollapsed ? (
