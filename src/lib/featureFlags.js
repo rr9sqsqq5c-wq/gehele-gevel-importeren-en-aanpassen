@@ -149,6 +149,15 @@ export function isGroothuisWildverband() {
   return readFlag('groothuisWildverband', false);
 }
 
+// SYNTHETISCHE CALC-WAND — UI-control om een wand op te voeren door lengte × hoogte (mm) +
+// vaste dikte in te tikken, zonder IFC. De wand vervult het wand-contract en is als één-wand-
+// groep bekleedbaar (3D + 2D + uittrekstaat). SESSIE-ONLY (synthetic:true → uitgesloten van
+// persist), GEEN IFC-export, GEEN georef. DEFAULT = false → de control + alle synthetische
+// logica zijn inert en de app is byte-identiek. Aanzetten: ?syntheticWall=1. Noodrem =0.
+export function isSyntheticWall() {
+  return readFlag('syntheticWall', false);
+}
+
 // FASE 2 — maatgevoerde rechthoek-stripZones met eigen verband per gevelvlak (in 2D te
 // tekenen). DEFAULT = true (gepromoveerd 2026-06-22). Eén gedeelde regio-functie
 // buildStripZoneRegions (zoneRegions.js) voedt scherm/3D (App.jsx:3556) én export

@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isStableGroupCamera, isDropOversizedOpenings } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall } from './lib/featureFlags.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
 import { buildBestFitFacadePattern } from './lib/facadePlane.js';
@@ -16,6 +16,7 @@ import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/ba
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateCombinedMoldPrintHTML, getMoldTemplates, buildWildverbandPanelGrid } from './lib/panelization.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
+import { makeSyntheticWall } from './lib/syntheticWall.js';
 import { openingXRangesAtY, polyXRangesAtY } from './lib/geometry.js';
 import { SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, generateSlimFortGrid, generateSlimFortFaces, applyCornerTrimToSlimFort, computeFaceLongRanges, applyRangesToGrid, getSlimFortDepths } from './lib/slimfort.js';
 import { detectBuildingEnvelope, extractVisibleConcreteFaces, buildAutoSlimFortSettings } from './lib/envelope.js';
@@ -3197,6 +3198,7 @@ export default function App() {
   const [wallDimOverrides, setWallDimOverrides] = useState({});
   const [adjacencies, setAdjacencies] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [synWallInput, setSynWallInput] = useState({ L: 4000, H: 2870, dikte: 272.5 }); // synthetische calc-wand (vlag syntheticWall)
   const [groupsHistory, setGroupsHistory] = useState([]);
   const [selectedWallIds, setSelectedWallIds] = useState(new Set());
   const [activeGroupId, setActiveGroupId] = useState(null);
@@ -3251,6 +3253,7 @@ export default function App() {
   const _hydratedRef = useRef(false);
   const _saveTimerRef = useRef(null);
   const _mergeCounterRef = useRef(0);
+  const _synCounterRef = useRef(0);
   const newGid = useCallback(() => `G${_gidRef.current++}`, []);
   const syncGidRef = useCallback((loadedGroups, loadedSettingsMap) => {
     let maxN = _gidRef.current - 1;
@@ -4406,7 +4409,14 @@ export default function App() {
     if (!_hydratedRef.current) return;
     if (_saveTimerRef.current) clearTimeout(_saveTimerRef.current);
     _saveTimerRef.current = setTimeout(() => {
-      saveProjectState({ groups, groupLinks, cornerConfigs, settingsMap, ifcFileName, wallDimOverrides, allWalls }).catch(() => {});
+      // SESSIE-ONLY: synthetische calc-wanden (synthetic:true) + hun groepen/settings worden
+      // NIET gepersisteerd. Zonder synthetische wanden zijn de refs ongewijzigd → byte-identiek.
+      const _hasSyn = allWalls.some((w) => w.synthetic) || groups.some((g) => g.synthetic);
+      const _pWalls = _hasSyn ? allWalls.filter((w) => !w.synthetic) : allWalls;
+      const _pGroups = _hasSyn ? groups.filter((g) => !g.synthetic) : groups;
+      const _synGids = _hasSyn ? new Set(groups.filter((g) => g.synthetic).map((g) => g.id)) : null;
+      const _pSettings = _hasSyn ? Object.fromEntries(Object.entries(settingsMap).filter(([gid]) => !_synGids.has(gid))) : settingsMap;
+      saveProjectState({ groups: _pGroups, groupLinks, cornerConfigs, settingsMap: _pSettings, ifcFileName, wallDimOverrides, allWalls: _pWalls }).catch(() => {});
     }, 1500);
     return () => clearTimeout(_saveTimerRef.current);
   }, [groups, groupLinks, cornerConfigs, settingsMap, ifcFileName, wallDimOverrides, allWalls]);
@@ -4487,6 +4497,23 @@ export default function App() {
     setGroups(newGroups);
     setSelectedWallIds(new Set());
     setActiveGroupId(newGroups[0]?.id ?? null);
+  }
+
+  // SYNTHETISCHE CALC-WAND (vlag syntheticWall): voeg een wand toe uit L×H×dikte en maak er
+  // een één-wand-groep (manual:false → direct buildFullGroupFacadePattern). synthetic:true →
+  // sessie-only (uitgesloten van saveProjectState). Spiegelt createGroup().
+  function addSyntheticWall() {
+    const L = Number(synWallInput.L), H = Number(synWallInput.H), dikte = Number(synWallInput.dikte);
+    if (!(L > 0) || !(H > 0) || !(dikte > 0)) return; // valideer >0, geen NaN
+    pushHistory(groups);
+    const n = ++_synCounterRef.current;
+    const wall = makeSyntheticWall(L, H, dikte, n);
+    setAllWalls((prev) => [...prev, wall]);
+    const gid = newGid();
+    const color = nextColor();
+    forceInit(gid, color, `Calc-wand ${n}`);
+    setGroups((prev) => [...prev, { id: gid, wallIds: [wall.expressID], manual: false, synthetic: true }]);
+    setActiveGroupId(gid);
   }
 
   function createGroup() {
@@ -6117,6 +6144,20 @@ export default function App() {
                     🧭 Auto-groeperen per windrichting (N/O/Z/W)
                   </button>
                 </Tooltip>
+                {isSyntheticWall() && (
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', padding: '4px 0' }} title="Maak een synthetische calc-wand (geen IFC) uit lengte × hoogte × dikte (mm). Wordt een bekleedbare één-wand-groep. Sessie-only.">
+                    {[['L', 'L'], ['H', 'H'], ['dikte', 'dikte']].map(([key, lbl]) => (
+                      <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11, color: '#475569' }}>
+                        {lbl}
+                        <input type="number" min={1} step={key === 'dikte' ? 0.5 : 10} value={synWallInput[key]}
+                          onChange={(e) => setSynWallInput((p) => ({ ...p, [key]: e.target.value }))}
+                          style={{ width: 64, fontSize: 11, padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: 3 }} />
+                      </label>
+                    ))}
+                    <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>
+                    <button onClick={addSyntheticWall} style={btn('#7c3aed')}>+ Wand (L×H)</button>
+                  </div>
+                )}
                 {selectionHasUngrouped && (
                   <Tooltip block text={"Maakt een nieuwe groep van de geselecteerde elementen die nog niet in een groep zitten.\nSelecteer eerst elementen in de 3D-viewer door erop te klikken."}>
                     <button onClick={createGroup} style={btn('#0ea5e9')}>
