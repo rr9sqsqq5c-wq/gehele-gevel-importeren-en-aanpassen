@@ -2,7 +2,12 @@ import { getOpeningPoly } from './pattern.js';
 import { STEENSTRIP_CATALOG } from './battens.js';
 import { SLIMFORT_DEFAULTS, getSlimFortDepths } from './slimfort.js';
 import { registerIfcContext, getProjectInfo, getLastConfidentUpAxis, setLastConfidentUpAxis, setGeometryDerivedRenderOrigin, getWorldAnchor } from './projectCoordinates.js';
-import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly } from './featureFlags.js';
+import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly, isDropOversizedOpenings } from './featureFlags.js';
+// BRON-GUARD (dropOversizedOpenings): een void die via IfcRelVoidsElement aan een wand hangt maar
+// veel HOGER is dan die wand (bv. de 2520 mm venster-void die ook aan een 300 mm vloerband hangt)
+// levert in de browser — waar mesh-geometrie beschikbaar is — een te-hoge opening op. Die hoort er
+// niet en veroorzaakt downstream een merge die de L platslaat. We weigeren 'm hier bij de BRON.
+const OVERSIZED_OPENING_TOL = 100;
 let _api = null;
 let _loading = null;
 let _cachedModel = null;
@@ -1555,6 +1560,11 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
 
               const finalX = Math.max(0, oX);
               const finalY = Math.max(0, oY);
+              // BRON-GUARD: weiger een opening die boven z'n eigen wand uitsteekt (venster-void op
+              // een lage band). Vlag UIT → byte-identiek. In Node (geen mesh-geom) is de opening al
+              // overgeslagen vóór dit punt, dus dit raakt alleen het browser-pad met geometrie.
+              const _wallH = (wallOrigin.heightEnd ?? 0) - (wallOrigin.heightStart ?? 0);
+              if (isDropOversizedOpenings() && _wallH > 0 && (finalY + oHeight) > _wallH + OVERSIZED_OPENING_TOL) continue;
               const finalPolyPts = polyPts ?? [
                 { l: finalX,           h: finalY },
                 { l: finalX + oWidth,  h: finalY },

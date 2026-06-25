@@ -2,8 +2,13 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
 import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
-import { buildProjectMatrix, getTrueNorthAngle } from './lib/projectCoordinates.js';
+import { buildProjectMatrix, getTrueNorthAngle, getProjectInfo } from './lib/projectCoordinates.js';
 import { generateSlimFortGrid, SLIMFORT_DEFAULTS, getSlimFortDepths, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
+import { isStableGroupCamera } from './lib/featureFlags.js';
+
+// Wereld-up (three Y-up). STABLE_GROUP_CAMERA #1 lerpt camera.up hiernaartoe bij groep-focus
+// zodat de frontale blik niet gekanteld blijft van eerder orbiten.
+const _WORLD_UP = new THREE.Vector3(0, 1, 0);
 
 function checkWebGL() {
   try {
@@ -1305,11 +1310,18 @@ function CameraPresetController({ preset, center, span, onDone }) {
   return null;
 }
 
-function FocusGroupCamera({ activeGroupId, groups, walls, groupSettings, projectMatrix }) {
+function FocusGroupCamera({ activeGroupId, groups, walls, groupSettings, projectMatrix, focusSuppressRef }) {
   const { camera, controls } = useThree();
   const targetRef = useRef(null);
 
   useEffect(() => {
+    // STABLE_GROUP_CAMERA #3: een 3D-element-klik zette activeGroupId (om 'm in de lijst op te
+    // lichten) maar mag de camera NIET verplaatsen. De klik-handler vlagt dat via focusSuppressRef.
+    if (isStableGroupCamera() && focusSuppressRef?.current) {
+      focusSuppressRef.current = false;
+      targetRef.current = null;
+      return;
+    }
     if (!activeGroupId) return;
     const group = groups.find((g) => g.id === activeGroupId);
     if (!group) return;
@@ -1363,10 +1375,14 @@ function FocusGroupCamera({ activeGroupId, groups, walls, groupSettings, project
     const { pos, lookAt } = targetRef.current;
     camera.position.lerp(pos, 0.1);
     controls.target.lerp(lookAt, 0.1);
+    // STABLE_GROUP_CAMERA #1: kantel de horizon terug naar wereld-up zodat de focus strak
+    // frontaal staat (anders blijft een eerder-georbit-rolhoek hangen → 'niet recht op').
+    if (isStableGroupCamera()) camera.up.lerp(_WORLD_UP, 0.1);
     controls.update();
     if (camera.position.distanceTo(pos) < 0.01) {
       camera.position.copy(pos);
       controls.target.copy(lookAt);
+      if (isStableGroupCamera()) camera.up.copy(_WORLD_UP);
       controls.update();
       targetRef.current = null;
     }
@@ -1469,7 +1485,7 @@ const COMPASS = [
   { key: 'T',    label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
 ];
 
-export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData }) {
+export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData, focusSuppressRef }) {
   const [hoveredWallId, setHoveredWallId] = useState(null);
   const [preset, setPreset] = useState(null);
   const [boxSelectMode, setBoxSelectMode] = useState(false);
@@ -1501,8 +1517,13 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
   const rootGroupRef = useRef(null);
 
   // walls als dep: verandert altijd bij nieuwe import → matrix herberekend
-  // buildProjectMatrix() leest uitsluitend module-state (geen parameter)
-  const projectMatrix = useMemo(() => buildProjectMatrix(), [walls]);
+  // buildProjectMatrix() leest uitsluitend module-state (geen parameter).
+  // STABLE_GROUP_CAMERA #2: neem de model-up-as in de deps op zodat de matrix óók herberekent
+  // wanneer die ná restore wordt gezet (restoreUpAxisFromWalls draait pas ná de eerste render);
+  // anders blijft de camera-richting op een stale matrix hangen. Vlag UIT → dep == 0 (constant)
+  // → useMemo gedraagt zich exact als voorheen ([walls]).
+  const _upAxisSig = isStableGroupCamera() ? (getProjectInfo()?.upAxis ?? '') : 0;
+  const projectMatrix = useMemo(() => buildProjectMatrix(), [walls, _upAxisSig]);
 
   // Stel de matrix handmatig in via ref — betrouwbaarder dan de matrix-prop in R3F
   useEffect(() => {
@@ -1654,7 +1675,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
         <CameraAccessor cameraRef={cameraRef} />
         <CameraInit walls={walls} projectMatrix={projectMatrix} />
         <CameraPresetController preset={preset} center={center} span={span} onDone={() => setPreset(null)} />
-        <FocusGroupCamera activeGroupId={activeGroupId} groups={groups} walls={walls} groupSettings={groupSettings} projectMatrix={projectMatrix} />
+        <FocusGroupCamera activeGroupId={activeGroupId} groups={groups} walls={walls} groupSettings={groupSettings} projectMatrix={projectMatrix} focusSuppressRef={focusSuppressRef} />
         <SceneLights />
         <OrbitControls target={center} enableDamping dampingFactor={0.1} makeDefault enabled={!boxSelectMode} />
 
@@ -1724,34 +1745,8 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
 
         {walls.flatMap((wall) => {
           const group = wallGroupMap[wall.expressID];
-          if ((wall.openings?.length ?? 0) > 0) {
-            console.log('[OpeningVisibility]', {
-              wallId: wall.expressID,
-              openingCount: wall.openings.length,
-              inGroup: !!group,
-              groupHidden: group ? hiddenGroupIds.has(group.id) : false,
-              hideUngrouped,
-              hasWallOrigin: !!wall.wallOrigin,
-            });
-          }
           if (group && hiddenGroupIds.has(group.id)) return [];
           if (!group && hideUngrouped) return [];
-          console.log('[OpeningData]', {
-            wallId: wall.expressID,
-            ifcExpressId: wall.expressID,
-            idSource: 'WebIFC.GetLineIDsWithType — wallId IS the raw IFC expressId, no transform',
-            wallName: wall.name,
-            typeName: wall.typeName ?? null,
-            openingCount: wall.openings?.length ?? 0,
-            openings: wall.openings,
-            groupId: group?.id ?? null,
-            groupWallIds: group?.wallIds ?? null,
-            planeId: wall.planeId ?? null,
-            sourceMeshIds: wall.sourceMeshIds ?? null,
-            wallOriginAxes: wall.wallOrigin
-              ? { length: wall.wallOrigin.lengthAxis, height: wall.wallOrigin.heightAxis, thickness: wall.wallOrigin.thicknessAxis }
-              : null,
-          });
           return (wall.openings ?? []).map((op) => (
             <OpeningMesh key={`${wall.expressID}-${op.id}`} wall={wall} opening={op} />
           ));

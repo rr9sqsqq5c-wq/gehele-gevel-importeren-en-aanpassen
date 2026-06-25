@@ -1,6 +1,6 @@
 import { adaptWallPlanesToBrickBoard } from './ifcAdapter.js';
 import { parseIfc } from './ifc.js';
-import { isNewOpeningDerivation } from './featureFlags.js';
+import { isNewOpeningDerivation, isDropOversizedOpenings } from './featureFlags.js';
 import { deriveWallsWithProjection } from './openingDerivation.js';
 
 export async function runNewEngine(_file, _options) {
@@ -182,9 +182,16 @@ export function inheritOpeningsForWalls(walls) {
     const usedStorey = wall.storeyID && bestHost.storeyID === wall.storeyID;
     if (usedStorey) storeyMatchCount++; else positionMatchCount++;
 
+    const _wallH = wall.height ?? ((wall.wallOrigin?.heightEnd ?? 0) - (wall.wallOrigin?.heightStart ?? 0));
     const inheritedOpenings = (bestHost.openings ?? [])
       .map((op) => _adjustOpening(op, bestHost, wall, usedStorey))
-      .filter(Boolean);
+      .filter(Boolean)
+      // BRON-GUARD (dropOversizedOpenings): erf geen opening die boven de wand uitsteekt
+      // (bv. een 2520 mm venster-opening op een 300 mm vloerband). Vlag UIT → byte-identiek.
+      .filter((op) => {
+        if (!isDropOversizedOpenings() || !(_wallH > 0)) return true;
+        return ((op.y ?? 0) + (op.hoogte ?? op.height ?? 0)) <= _wallH + 100;
+      });
 
     if (inheritedOpenings.length === 0) return wall;
 

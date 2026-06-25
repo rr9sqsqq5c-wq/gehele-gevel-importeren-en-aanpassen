@@ -14,7 +14,14 @@
 //  - De kernfuncties krijgen (api, IFC, modelID) en zijn dus ook headless testbaar.
 
 import { parseIfc, getApi, resolveOutsideDirections } from './ifc.js';
-import { isOpeningUpAxisFix } from './featureFlags.js';
+import { isOpeningUpAxisFix, isDropOversizedOpenings } from './featureFlags.js';
+
+// BRON-GUARD (dropOversizedOpenings): de mesh-projectie kan de void van een raam ook op een
+// AANGRENZENDE, veel lagere wand leggen (bv. de 2520 mm venster-L op een 300 mm vloerband).
+// Zo'n opening hoort er niet en veroorzaakt downstream een merge die de L platslaat. We weigeren
+// 'm hier bij de BRON (w.openings) zodat import-view/groepen/cladding allemaal schoon zijn.
+// Een echte opening past binnen z'n wand; de tolerantie vangt rounding/modelruis.
+const OVERSIZED_OPENING_TOL = 100;
 
 // Eén bron van waarheid voor de up-as: lees de model-up-as af uit het WAND-SKELET zelf
 // (wallOrigin.heightAxis = uitkomst van detectModelUpAxis in parseIfc), i.p.v. 'm in de
@@ -378,7 +385,14 @@ export async function applyProjectedOpenings(file, walls, onProgress) {
         }
         delete o._worldAABB; delete o._thkMm;
       }
-      w.openings = ops;
+      // BRON-GUARD: weiger een geprojecteerde opening die boven z'n eigen wand uitsteekt
+      // (venster-void op een lagere band). Vlag UIT → byte-identiek (geen filter).
+      let finalOps = ops;
+      if (isDropOversizedOpenings()) {
+        const wallH = w.height ?? ((wo?.heightEnd ?? 0) - (wo?.heightStart ?? 0));
+        if (wallH > 0) finalOps = ops.filter((o) => ((o.y ?? 0) + (o.hoogte ?? o.height ?? 0)) <= wallH + OVERSIZED_OPENING_TOL);
+      }
+      w.openings = finalOps;
       const nl = classifyNlsfbExterior(w.typeName);
       if (w.wallOrigin) { w.wallOrigin.nlsfbCode = nl.code; w.wallOrigin.nlsfbExterior = nl.isExterior; w.wallOrigin.nlsfbSource = nl.source; }
     }

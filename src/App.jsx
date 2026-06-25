@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isStableGroupCamera, isDropOversizedOpenings } from './lib/featureFlags.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
 import { buildBestFitFacadePattern } from './lib/facadePlane.js';
@@ -15,6 +15,7 @@ import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCe
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateCombinedMoldPrintHTML, getMoldTemplates, buildWildverbandPanelGrid } from './lib/panelization.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
+import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { openingXRangesAtY, polyXRangesAtY } from './lib/geometry.js';
 import { SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, generateSlimFortGrid, generateSlimFortFaces, applyCornerTrimToSlimFort, computeFaceLongRanges, applyRangesToGrid, getSlimFortDepths } from './lib/slimfort.js';
 import { detectBuildingEnvelope, extractVisibleConcreteFaces, buildAutoSlimFortSettings } from './lib/envelope.js';
@@ -949,6 +950,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
             <option value="tegelverband">Tegelverband</option>
             <option value="staand_tegelverband">Staand tegelverband</option>
             <option value="wildverband">Wildverband</option>
+            {isGroothuisWildverband() && <option value="groothuis_wildverband">Groothuis wildverband</option>}
           </select>
         </Field>
       )}
@@ -1428,6 +1430,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                           <option value="tegelverband">Tegelverband</option>
                           <option value="staand_tegelverband">Staand tegelverband</option>
                           <option value="wildverband">Wildverband</option>
+                          {isGroothuisWildverband() && <option value="groothuis_wildverband">Groothuis wildverband</option>}
                         </select>
                       </Field>
                       {selZoneStripArt && (
@@ -3197,6 +3200,9 @@ export default function App() {
   const [groupsHistory, setGroupsHistory] = useState([]);
   const [selectedWallIds, setSelectedWallIds] = useState(new Set());
   const [activeGroupId, setActiveGroupId] = useState(null);
+  // STABLE_GROUP_CAMERA #3: gevlagd door een 3D-element-klik zodat FocusGroupCamera die ene
+  // activeGroupId-wijziging NIET als camera-focus uitvoert (lijst-highlight zonder camera-sprong).
+  const skipGroupCameraFocusRef = useRef(false);
   const [loadStatus, setLoadStatus] = useState('idle');
   const [loadProgress, setLoadProgress] = useState({ current: 0, total: 0 });
   const [loadLogs, setLoadLogs] = useState([]);
@@ -3338,6 +3344,11 @@ export default function App() {
       if (facadeData && (s.verband ?? DEFAULT_VERBAND) === 'wildverband' && isWildverbandKoppelstrip()) {
         const _tr = buildTruthRows(facadeData.groupWidth, facadeData.groupHeight, effectiveMat3d, facadeData.groupOpenings ?? []);
         facadeData = { ...facadeData, rows: _tr.rows, wildverbandBoardEdges: _tr.boardEdges };
+      }
+      // GROOTHUIS WILDVERBAND — generatief verband, eigen rows-bron (panelen vol met 2500 + rest).
+      if (facadeData && (s.verband ?? DEFAULT_VERBAND) === 'groothuis_wildverband' && isGroothuisWildverband()) {
+        const _gr = buildGroothuisRows(facadeData.groupWidth, facadeData.groupHeight, effectiveMat3d, facadeData.groupOpenings ?? []);
+        facadeData = { ...facadeData, rows: _gr.rows, groothuisBoardEdges: _gr.boardEdges };
       }
       if (!facadeData) {
         const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
@@ -4006,7 +4017,7 @@ export default function App() {
     addLog(`Bestand: ${pendingFile.name} (${(pendingFile.size / 1024 / 1024).toFixed(1)} MB)`);
     try {
       const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
-      const CACHE_SCHEMA_V = 13; // v13: up-as-fix (correcte verticaal per-wand + globale scène-oriëntatie)
+      const CACHE_SCHEMA_V = 14; // v14: dropOversizedOpenings — band-wand erft geen te-hoge venster-opening meer
       const pathTag = isNewOpeningDerivation() ? 'newOpenings' : 'legacy';
       const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}|${pathTag}`;
 
@@ -4219,11 +4230,16 @@ export default function App() {
             const dL = swo.lengthStart - wo.lengthStart;
             const dH = swo.heightStart - wo.heightStart;
             for (const op of (sw.openings ?? [])) {
+              const _newY = (op.y ?? 0) + dH;
+              const _newH = op.hoogte ?? op.height ?? 0;
+              // BRON-GUARD (dropOversizedOpenings): kopieer geen opening die boven het zone-element
+              // uitsteekt (bv. een 2520 mm venster-void op een 300 mm vloerband). Vlag UIT → byte-identiek.
+              if (isDropOversizedOpenings() && (zEl.height ?? 0) > 0 && (_newY + _newH) > (zEl.height ?? 0) + 100) continue;
               zEl.openings.push({
                 ...op,
                 id: `${op.id}_z${zEl.expressID}`,
                 x: op.x + dL,
-                y: op.y + dH,
+                y: _newY,
                 polyPts: op.polyPts?.map(pt => ({ l: pt.l + dL, h: pt.h + dH })) ?? null,
               });
               openingsCopied++;
@@ -4920,6 +4936,10 @@ export default function App() {
       if (facadeData && (s.verband ?? DEFAULT_VERBAND) === 'wildverband' && isWildverbandKoppelstrip()) {
         const _tr = buildTruthRows(facadeData.groupWidth, facadeData.groupHeight, mat, facadeData.groupOpenings ?? []);
         facadeData = { ...facadeData, rows: _tr.rows };
+      }
+      if (facadeData && (s.verband ?? DEFAULT_VERBAND) === 'groothuis_wildverband' && isGroothuisWildverband()) {
+        const _gr = buildGroothuisRows(facadeData.groupWidth, facadeData.groupHeight, mat, facadeData.groupOpenings ?? []);
+        facadeData = { ...facadeData, rows: _gr.rows };
       }
 
       let panels = [];
@@ -6302,7 +6322,11 @@ export default function App() {
                   toggleSelect(id);
                   // zit het element in een groep? klap die groep uit zodat de oplichtende rij zichtbaar is.
                   const gid = wallGroupMap[id];
-                  if (gid) setActiveGroupId(gid);
+                  if (gid) {
+                    // STABLE_GROUP_CAMERA #3: wel uitklappen/oplichten, géén camera-sprong.
+                    if (isStableGroupCamera()) skipGroupCameraFocusRef.current = true;
+                    setActiveGroupId(gid);
+                  }
                 }}
                 onSelectMultiple={(ids) => setSelectedWallIds((prev) => {
                   const next = new Set(prev);
@@ -6313,6 +6337,7 @@ export default function App() {
                 hiddenGroupIds={hiddenGroupIds}
                 onHiddenGroupIdsChange={setHiddenGroupIds}
                 buildingEnvelopeData={buildingEnvelopeData}
+                focusSuppressRef={skipGroupCameraFocusRef}
               />
 
               {allWalls.length === 0 && (

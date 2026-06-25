@@ -1,4 +1,10 @@
 import { polyXRangesAtY } from './geometry.js';
+import { isDropOversizedOpenings } from './featureFlags.js';
+
+// Een opening mag z'n eigen wand niet (ver) boven uitsteken. Tolerantie vangt rounding/
+// kleine modelafwijkingen; een echte opening past binnen z'n wand, een corrupte (venster-L
+// op een 300 mm band) overschrijdt dit ruim. Zie isDropOversizedOpenings (featureFlags.js).
+const OVERSIZED_OPENING_TOL = 100;
 
 function round2(v) {
   return Math.round(v * 100) / 100;
@@ -333,6 +339,12 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       const ow = op.breedte ?? op.width ?? 0;
       const oh = op.hoogte ?? op.height ?? 0;
       if (ow < 50 || oh < 50) continue;
+      // BRON-GUARD: weiger een opening die boven z'n eigen wand uitsteekt (bv. een 2520 mm
+      // venster-L die op een 300 mm vloerband is blijven plakken in oude/corrupte opgeslagen
+      // data) — anders merget die na omzetting met de vensteropening erboven en mergeTwo slaat
+      // de L plat tot een rechthoek → massieve hoek over-geknipt. Vlag UIT → byte-identiek.
+      const wallH = w.height ?? ((w.wallOrigin.heightEnd ?? 0) - (w.wallOrigin.heightStart ?? 0));
+      if (isDropOversizedOpenings() && wallH > 0 && ((op.y ?? 0) + oh) > wallH + OVERSIZED_OPENING_TOL) continue;
       const isNamedOpening = op.type === 'raam' || op.type === 'deur';
       if (!isNamedOpening) continue;
       const groupPolyPts = op.polyPts

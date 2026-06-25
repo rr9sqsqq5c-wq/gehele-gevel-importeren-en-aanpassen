@@ -139,6 +139,16 @@ export function isWildverbandKoppelstrip() {
   return readFlag('wildverbandKoppelstrip', true);
 }
 
+// GROOTHUIS WILDVERBAND — nieuw GENERATIEF verband (src/lib/groothuisWildverband.js), NÁÁST
+// het bestaande wildverband. Selecteerbaar als verband 'groothuis_wildverband'. Per
+// groep-materiaal rolt een 6-rij module uit de regels (om-en-om D/K-start + strek, midden vrij,
+// max 4 strek / max 2 kop / max 1× 2-koppen, wild, sluit-drieklezoor); panelen vol met 2500 +
+// 1 restpaneel. DEFAULT = false → de optie/het pad bestaan alleen met de vlag aan.
+// Aanzetten: ?groothuisWildverband=1 of localStorage 'groothuisWildverband'='1'.
+export function isGroothuisWildverband() {
+  return readFlag('groothuisWildverband', false);
+}
+
 // FASE 2 — maatgevoerde rechthoek-stripZones met eigen verband per gevelvlak (in 2D te
 // tekenen). DEFAULT = true (gepromoveerd 2026-06-22). Eén gedeelde regio-functie
 // buildStripZoneRegions (zoneRegions.js) voedt scherm/3D (App.jsx:3556) én export
@@ -179,4 +189,37 @@ export function isReprojectOpeningPolygon() {
 // herstelt het oude gedrag exact (3D past Ry(trueNorth) toe, export schrijft geen trueNorth).
 export function isTrueNorthMetadataOnly() {
   return readFlag('trueNorthMetadataOnly', true);
+}
+
+// DROP_OVERSIZED_OPENINGS (bron-guard) — een opening die HOGER is dan z'n eigen wand
+// (op.y + hoogte > wandhoogte + tolerantie) wordt geweigerd in buildFullGroupFacadePattern
+// (de plek waar openingen de bekledings-pijplijn in komen). Lost de stale/corrupte opgeslagen
+// data op waarin een volledige venster-L (2520 mm) op een 300 mm hoge vloerband is blijven
+// plakken: zo'n opening valt, naar groep-coördinaten omgezet, samen met de vensteropening van
+// de verdieping erboven → shouldMerge merget → mergeTwo slaat die L plat tot een RECHTHOEK →
+// de massieve hoek wordt over-geknipt (bgg overleeft want heeft geen band eronder, daarboven
+// niet). Weigeren = exact wat een VERSE parse al doet (band krijgt geen opening). Vangt zowel
+// het direct- als het best-fit-pad (best-fit voert virtuele wanden door dezelfde functie), dus
+// 2D/3D/staat/werktekening/groothuis/wildverband ineens. Openingen die in hun wand passen
+// blijven ONGEMOEID → byte-identiek. DEFAULT = true (terugdraaibaar).
+// NOODREM: ?dropOversizedOpenings=0 (of localStorage 'dropOversizedOpenings'='0'/'false') →
+// check uit, exact het oude gedrag (de te-hoge opening blijft staan en merget weer).
+export function isDropOversizedOpenings() {
+  return readFlag('dropOversizedOpenings', true);
+}
+
+// STABLE_GROUP_CAMERA — robuuste groep-camera, los van laad-/herbereken-timing:
+//  (1) FocusGroupCamera lerpt camera.up naar wereld-up → de focus staat altijd recht/horizontaal
+//      (geen kanteling die overbleef van eerder orbiten).
+//  (2) projectMatrix (Viewer3D) herberekent óók wanneer de model-up-as wijzigt (niet alleen bij
+//      een walls-wissel) → de camera-richting kan niet op een stale matrix blijven hangen na restore.
+//  (3) klikken op een 3D-element licht 'm op in de lijst ZONDER de camera te verplaatsen (de
+//      b976e70-sprong eruit); klikken op een groep in de lijst focust de camera wél nog.
+// Verklaart waarom 'groothuisWildverband aan' de camera 'goed' leek: dat forceerde een extra
+// recompute waardoor projectMatrix toevallig op het juiste moment opnieuw werd opgebouwd.
+// DEFAULT = true (terugdraaibaar). Vlag UIT → byte-identiek: (1) geen up-reset, (2) dep == [walls],
+// (3) 3D-klik zet weer activeGroupId → camera springt zoals voorheen.
+// NOODREM: ?stableGroupCamera=0 (of localStorage 'stableGroupCamera'='0'/'false').
+export function isStableGroupCamera() {
+  return readFlag('stableGroupCamera', true);
 }
