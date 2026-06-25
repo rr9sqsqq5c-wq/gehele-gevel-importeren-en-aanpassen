@@ -73,6 +73,17 @@ const w = makeSyntheticWall(4000, 2870, 272.5, 1);
   ok('Persist byte-identiek zonder synthetisch (zelfde refs)', !hasSyn2 && (hasSyn2 ? allIfc.filter(() => true) : allIfc) === allIfc);
 }
 
+// 5. live maat-editor: muteer de wand (zelfde logica als App.updateSyntheticWall) → bekleding volgt
+{
+  const w0 = makeSyntheticWall(4000, 2870, 272.5, 1);
+  const L = 6000, H = 3200, dikte = 200, wo = w0.wallOrigin;
+  const w1 = { ...w0, length: L, height: H, wallOrigin: { ...wo, lengthEnd: wo.lengthStart + L, heightEnd: wo.heightStart + H, thicknessEnd: wo.thicknessStart + dikte } };
+  const fd0 = buildFullGroupFacadePattern([w0], mat, 'halfsteens', null, null, null, null, 0, 0);
+  const fd1 = buildFullGroupFacadePattern([w1], mat, 'halfsteens', null, null, null, null, 0, 0);
+  ok('Maat-editor: bekleding volgt nieuwe maten', !!fd1 && Math.abs(fd1.groupWidth - 6000) < 2 && Math.abs(fd1.groupHeight - 3200) < 2 && fd1.groupWidth !== fd0.groupWidth,
+    `${fd0.groupWidth}×${fd0.groupHeight} → ${fd1.groupWidth}×${fd1.groupHeight}`);
+}
+
 console.log('\n=== SYNTHETISCHE CALC-WAND — spike ===\n');
 let allPass = true;
 for (const { label, pass, extra } of results) { if (!pass) allPass = false; console.log(`${pass ? '🟢' : '🔴'} ${label}${extra ? `  —  ${extra}` : ''}`); }

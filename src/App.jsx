@@ -3278,6 +3278,13 @@ export default function App() {
     return ov ? { ...w, ...ov } : w;
   }), [allWalls, wallDimOverrides]);
   const wallMap = useMemo(() => Object.fromEntries(effectiveWalls.map((w) => [w.expressID, w])), [effectiveWalls]);
+  // Actieve synthetische calc-wand (voor de live maat-editor). Bewerken muteert allWalls →
+  // effectiveWalls → wallMap → allPatterns → 3D/2D/uittrekstaat/IFC-export volgen vanzelf.
+  const activeSynWall = useMemo(() => {
+    const g = groups.find((gg) => gg.id === activeGroupId);
+    if (!g || !g.synthetic) return null;
+    return (g.wallIds ?? []).map((id) => wallMap[id]).find((w) => w && w.synthetic) ?? null;
+  }, [groups, activeGroupId, wallMap]);
 
   const wallGroupMap = useMemo(() => {
     const m = {};
@@ -4514,6 +4521,20 @@ export default function App() {
     forceInit(gid, color, `Calc-wand ${n}`);
     setGroups((prev) => [...prev, { id: gid, wallIds: [wall.expressID], manual: false, synthetic: true }]);
     setActiveGroupId(gid);
+  }
+
+  // Pas de maten van een synthetische calc-wand aan (length/height + dikte in wallOrigin).
+  // Ongeldige (≤0/NaN) waarden laten de betreffende maat ongemoeid. De mutatie van allWalls
+  // laat de bekleding in 3D/2D/uittrekstaat/IFC-export meebewegen.
+  function updateSyntheticWall(expressID, L, H, dikte) {
+    setAllWalls((prev) => prev.map((w) => {
+      if (w.expressID !== expressID || !w.synthetic) return w;
+      const length = L > 0 ? Math.round(L) : w.length;
+      const height = H > 0 ? Math.round(H) : w.height;
+      const wo = w.wallOrigin;
+      const thickness = dikte > 0 ? Math.round(dikte) : Math.abs((wo.thicknessEnd ?? 0) - (wo.thicknessStart ?? 0));
+      return { ...w, length, height, wallOrigin: { ...wo, lengthEnd: wo.lengthStart + length, heightEnd: wo.heightStart + height, thicknessEnd: wo.thicknessStart + thickness } };
+    }));
   }
 
   function createGroup() {
@@ -6175,6 +6196,29 @@ export default function App() {
                     <button onClick={addSyntheticWall} style={btn('#7c3aed')}>+ Wand (L×H)</button>
                   </div>
                 )}
+                {isSyntheticWall() && activeSynWall && (() => {
+                  const wo = activeSynWall.wallOrigin;
+                  const curDikte = Math.abs((wo.thicknessEnd ?? 0) - (wo.thicknessStart ?? 0));
+                  const fields = [
+                    ['L', activeSynWall.length, (v) => updateSyntheticWall(activeSynWall.expressID, v, activeSynWall.height, curDikte)],
+                    ['H', activeSynWall.height, (v) => updateSyntheticWall(activeSynWall.expressID, activeSynWall.length, v, curDikte)],
+                    ['dikte', curDikte, (v) => updateSyntheticWall(activeSynWall.expressID, activeSynWall.length, activeSynWall.height, v)],
+                  ];
+                  return (
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', padding: '4px 8px', background: '#faf5ff', borderBottom: '1px solid #e9d5ff' }} title="Pas de maten van de geselecteerde calc-wand aan; 3D / 2D / uittrekstaat / IFC-export volgen direct.">
+                      <span style={{ fontSize: 11, color: '#7c3aed', fontWeight: 600 }}>✏️ {activeSynWall.name}:</span>
+                      {fields.map(([lbl, cur, apply]) => (
+                        <label key={lbl} style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11, color: '#475569' }}>
+                          {lbl}
+                          <input type="number" min={1} step={lbl === 'dikte' ? 0.5 : 10} defaultValue={cur} key={activeSynWall.expressID + lbl}
+                            onChange={(e) => apply(Number(e.target.value))}
+                            style={{ width: 60, fontSize: 11, padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: 3 }} />
+                        </label>
+                      ))}
+                      <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>
+                    </div>
+                  );
+                })()}
                 {selectionHasUngrouped && (
                   <Tooltip block text={"Maakt een nieuwe groep van de geselecteerde elementen die nog niet in een groep zitten.\nSelecteer eerst elementen in de 3D-viewer door erop te klikken."}>
                     <button onClick={createGroup} style={btn('#0ea5e9')}>
