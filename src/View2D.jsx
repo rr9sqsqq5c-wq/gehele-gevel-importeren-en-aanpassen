@@ -5,7 +5,7 @@ import { brickColor, isTooSmall, polyXRangesAtY } from './lib/geometry.js';
 import { hasPenants } from './lib/zoneRegions.js';
 import { isFeatureZones } from './lib/featureFlags.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2 } from './lib/featureFlags.js';
 import { generateSlimFortGrid, generateSlimFortFaces, SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
 
 function hexToRgba(hex, alpha = 1) {
@@ -89,6 +89,10 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
   const allPanels = useMemo(() => {
     if (!facadeData) return [];
     const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
+    // GROOTHUIS WILDVERBAND: komt uit facadeData.rows (generatief, panelen vol met 2500 + rest)
+    // → geen panel-grid; de rows-tak rendert het.
+    if (verband === 'groothuis_wildverband' && isGroothuisWildverband()) return [];
+    if (verband === 'groothuis_wildverband_2' && isGroothuisWildverband2()) return [];
     if (verband === 'wildverband') {
       // FASE 2: met de vlag aan komt het wildverband uit facadeData.rows (gedeelde bron,
       // koppelstrip-tegelverband) → geen aparte panel-grid; de rows-tak hieronder rendert het.

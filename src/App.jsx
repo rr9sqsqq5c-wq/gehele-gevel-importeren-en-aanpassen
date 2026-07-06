@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall } from './lib/featureFlags.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
 import { buildBestFitFacadePattern } from './lib/facadePlane.js';
@@ -16,6 +16,7 @@ import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/ba
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateCombinedMoldPrintHTML, getMoldTemplates, buildWildverbandPanelGrid } from './lib/panelization.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
+import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
 import { makeSyntheticWall } from './lib/syntheticWall.js';
 import { openingXRangesAtY, polyXRangesAtY } from './lib/geometry.js';
 import { SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, generateSlimFortGrid, generateSlimFortFaces, applyCornerTrimToSlimFort, computeFaceLongRanges, applyRangesToGrid, getSlimFortDepths } from './lib/slimfort.js';
@@ -952,6 +953,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
             <option value="staand_tegelverband">Staand tegelverband</option>
             <option value="wildverband">Wildverband</option>
             {isGroothuisWildverband() && <option value="groothuis_wildverband">Groothuis wildverband</option>}
+            {isGroothuisWildverband2() && <option value="groothuis_wildverband_2">Groothuis wildverband 2</option>}
           </select>
         </Field>
       )}
@@ -1432,6 +1434,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                           <option value="staand_tegelverband">Staand tegelverband</option>
                           <option value="wildverband">Wildverband</option>
                           {isGroothuisWildverband() && <option value="groothuis_wildverband">Groothuis wildverband</option>}
+                          {isGroothuisWildverband2() && <option value="groothuis_wildverband_2">Groothuis wildverband 2</option>}
                         </select>
                       </Field>
                       {selZoneStripArt && (
@@ -3360,6 +3363,11 @@ export default function App() {
         const _gr = buildGroothuisRows(facadeData.groupWidth, facadeData.groupHeight, effectiveMat3d, facadeData.groupOpenings ?? []);
         facadeData = { ...facadeData, rows: _gr.rows, groothuisBoardEdges: _gr.boardEdges };
       }
+      // GROOTHUIS WILDVERBAND 2 — vaste 6-rij mal, eigen rows-bron (panelen vol met 2500 + rest).
+      if (facadeData && (s.verband ?? DEFAULT_VERBAND) === 'groothuis_wildverband_2' && isGroothuisWildverband2()) {
+        const _gr = buildGroothuis2Rows(facadeData.groupWidth, facadeData.groupHeight, effectiveMat3d, facadeData.groupOpenings ?? []);
+        facadeData = { ...facadeData, rows: _gr.rows, groothuisBoardEdges: _gr.boardEdges };
+      }
       if (!facadeData) {
         const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
         if (!refWall) continue;
@@ -4987,6 +4995,10 @@ export default function App() {
       }
       if (facadeData && (s.verband ?? DEFAULT_VERBAND) === 'groothuis_wildverband' && isGroothuisWildverband()) {
         const _gr = buildGroothuisRows(facadeData.groupWidth, facadeData.groupHeight, mat, facadeData.groupOpenings ?? []);
+        facadeData = { ...facadeData, rows: _gr.rows };
+      }
+      if (facadeData && (s.verband ?? DEFAULT_VERBAND) === 'groothuis_wildverband_2' && isGroothuisWildverband2()) {
+        const _gr = buildGroothuis2Rows(facadeData.groupWidth, facadeData.groupHeight, mat, facadeData.groupOpenings ?? []);
         facadeData = { ...facadeData, rows: _gr.rows };
       }
 

@@ -3,8 +3,10 @@ import { buildFullGroupFacadePattern, buildFacePattern, buildMirroredFacePattern
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG, clipPanelToFacadePolys, detectKoppelstrippen, PANEL_GAP, buildWildverbandPanelGrid, computeHorizontalLatten } from './lib/panelization.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2 } from './lib/featureFlags.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
+import { buildGroothuisRows } from './lib/groothuisWildverband.js';
+import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
 
 function generatePaneelId(entity, projectNr, level, stramienStart, stramienEnd, seqNr, panelType) {
   const e  = ((entity ?? 'P') + '').slice(0, 1).toUpperCase();
@@ -103,8 +105,8 @@ function getPanelStripsAnnotated(panel, facadeRows, verband, mat, koppelstripSet
         strips.push({ x: strip.x, y: row.y - panel.y, width: strip.width, height: rowH, label: strip.label, koppelstrip: !!strip.koppelstrip });
       }
     }
-  } else if (verband === 'wildverband') {
-    // FASE 2: board-paneel zonder eigen rows → clip de gedeelde truth-rijen (facadeRows)
+  } else if (verband === 'wildverband' || verband === 'groothuis_wildverband' || verband === 'groothuis_wildverband_2') {
+    // FASE 2: board-paneel zonder eigen rows → clip de gedeelde rijen (facadeRows)
     // naar dit paneel; behoud label + koppelstrip (géén halfsteens-edge-fixups).
     for (const row of facadeRows) {
       if (row.y + stripH <= panel.y + 0.5 || row.y >= panel.y + panel.height - 0.5) continue;
@@ -341,6 +343,14 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
       const _tr = buildTruthRows(fd.groupWidth, fd.groupHeight, mat, fd.groupOpenings ?? []);
       return { ...fd, rows: _tr.rows };
     }
+    if (fd && verband === 'groothuis_wildverband' && isGroothuisWildverband()) {
+      const _gr = buildGroothuisRows(fd.groupWidth, fd.groupHeight, mat, fd.groupOpenings ?? []);
+      return { ...fd, rows: _gr.rows };
+    }
+    if (fd && verband === 'groothuis_wildverband_2' && isGroothuisWildverband2()) {
+      const _gr = buildGroothuis2Rows(fd.groupWidth, fd.groupHeight, mat, fd.groupOpenings ?? []);
+      return { ...fd, rows: _gr.rows };
+    }
     return fd;
   }, [walls, mat, verband, maxH, zetwerk, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight]);
 
@@ -379,6 +389,30 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
         for (let py = 0; py < groupHeight - 0.5; py += panelH) {
           const h = Math.min(panelH, groupHeight - py);
           panels.push({ id: `wv_${Math.round(px)}_${Math.round(py)}`, x: px, y: py, width: w, height: h, type: px < 0.5 ? 'start' : 'volg', rowBase: Math.round(py / _tr.lagenmaat) });
+        }
+      }
+    } else if (verband === 'groothuis_wildverband' && isGroothuisWildverband()) {
+      // board-panelen op de groothuis-layout (vol met 2500 + restpaneel), zonder eigen .rows →
+      // getPanelStripsAnnotated vult ze met de gedeelde groothuis-rijen (facadeData.rows).
+      const _gr = buildGroothuisRows(groupWidth, groupHeight, mat, groupOpenings);
+      const rowsPerPanel = Math.max(1, Math.floor(2500 / _gr.lagenmaat));
+      const panelH = rowsPerPanel * _gr.lagenmaat;
+      for (const gp of _gr.panels) {
+        for (let py = 0; py < groupHeight - 0.5; py += panelH) {
+          const h = Math.min(panelH, groupHeight - py);
+          panels.push({ id: `gh_${Math.round(gp.x)}_${Math.round(py)}`, x: gp.x, y: py, width: gp.w, height: h, type: 'groothuis' });
+        }
+      }
+    } else if (verband === 'groothuis_wildverband_2' && isGroothuisWildverband2()) {
+      // board-panelen op de groothuis-2-layout (vol met 2500 + restpaneel), zonder eigen .rows →
+      // getPanelStripsAnnotated vult ze met de gedeelde groothuis-2-rijen (facadeData.rows).
+      const _gr = buildGroothuis2Rows(groupWidth, groupHeight, mat, groupOpenings);
+      const rowsPerPanel = Math.max(1, Math.floor(2500 / _gr.lagenmaat));
+      const panelH = rowsPerPanel * _gr.lagenmaat;
+      for (const gp of _gr.panels) {
+        for (let py = 0; py < groupHeight - 0.5; py += panelH) {
+          const h = Math.min(panelH, groupHeight - py);
+          panels.push({ id: `gh2_${Math.round(gp.x)}_${Math.round(py)}`, x: gp.x, y: py, width: gp.w, height: h, type: 'groothuis' });
         }
       }
     } else if (verband === 'wildverband') {

@@ -1,7 +1,9 @@
 import { polyXRangesAtY, openingCoversX, openingXCoordsAtY } from './geometry.js';
 import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth, getWildverbandPanelBoundary } from './pattern.js';
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
-import { isWildverbandKoppelstrip } from './featureFlags.js';
+import { buildGroothuisModule } from './groothuisWildverband.js';
+import { buildGroothuis2Module } from './groothuisWildverband2.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2 } from './featureFlags.js';
 
 function round2(v) {
   return Math.round(v * 100) / 100;
@@ -761,20 +763,32 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   // FASE 2 — truth-wildverband: 2 panelen (start+volg), echte strip-lijst per mal-rij.
   // MAL 'A' = rij 1-3, MAL 'B' = rij 4-6; koppelstrip blijft meegelegd. Vlag UIT → oud model.
   const isTruthWild = verband === 'wildverband' && isWildverbandKoppelstrip();
-  let truthByRow = null;
+  const isGroothuis = verband === 'groothuis_wildverband' && isGroothuisWildverband();
+  const isGroothuis2 = verband === 'groothuis_wildverband_2' && isGroothuisWildverband2();
+  const isWild = isTruthWild || isGroothuis || isGroothuis2;
+  let wildByRow = null;
   if (isTruthWild) {
     const pitch = getModuleWidth(mat);
     const fac = buildTruthFacade(2 * pitch, 6 * lagenmaat, mat, []);
-    truthByRow = new Map();
+    wildByRow = new Map();
     for (const b of fac.bricks) {
       if (b.panelIndex > 1) continue;
       const ri = Math.round(b.y / lagenmaat);
-      if (!truthByRow.has(ri)) truthByRow.set(ri, []);
-      truthByRow.get(ri).push({ x: b.x, w: b.width, label: b.type, koppelstrip: !!b.koppelstrip });
+      if (!wildByRow.has(ri)) wildByRow.set(ri, []);
+      wildByRow.get(ri).push({ x: b.x, w: b.width, label: b.type, koppelstrip: !!b.koppelstrip });
     }
+  } else if (isGroothuis) {
+    // groothuis: 1 paneel van 2500 mm per mal (2 panelen passen niet in een 3400-mal).
+    const FULL = { S: 'Strek', K: 'Kop', D: 'Drieklezoor' };
+    buildGroothuisModule(2500, mat).forEach((codes, ri) => {
+      if (!wildByRow) wildByRow = new Map();
+      let x = 0; const arr = [];
+      for (const c of codes) { arr.push({ x, w: c.w, label: FULL[c.t], koppelstrip: false }); x = Math.round((x + c.w + stoot) * 10) / 10; }
+      wildByRow.set(ri, arr);
+    });
   }
   const globalRowBase = verband === 'halfsteens' ? moldIdx % 2
-    : isTruthWild ? (moldId === 'B' ? 1 : 0) * rowsPerMold
+    : isWild ? (moldId === 'B' ? 1 : 0) * rowsPerMold
     : moldIdx * rowsPerMold;
   const kopW  = isStaand ? 0 : Math.round((steenL - stoot) / 2);
   const drieKW = isStaand ? 0 : Math.round((steenL + stoot) * 0.75 - stoot);
@@ -795,7 +809,7 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
 
   function bricksInRow(localRow) {
     const globalRow = globalRowBase + localRow;
-    if (isTruthWild) return (truthByRow.get(globalRow) ?? []).slice().sort((a, b) => a.x - b.x);
+    if (isWild) return (wildByRow.get(globalRow) ?? []).slice().sort((a, b) => a.x - b.x);
     const off = rowOffset(localRow);
     const bricks = [];
 
@@ -1262,6 +1276,53 @@ export function getMoldTemplates(verband, mat, moldDims) {
       verband, molds: 2, rowsPerMold: 3, lagenmaat, brickW, brickH, colStep,
       cycleLength: 6, rotated: false, moldW, moldH, frame: frameH, innerH,
       wildverband: true, panelPitch: pitch, twoPanelWidth: 2 * pitch, templates,
+    };
+  }
+
+  // GROOTHUIS WILDVERBAND: 1 paneel van 2500 mm per mal → MAL-A = rij 1-3, MAL-B = rij 4-6.
+  if (verband === 'groothuis_wildverband' && isGroothuisWildverband()) {
+    const FULL = { S: 'Strek', K: 'Kop', D: 'Drieklezoor' };
+    const byRow = new Map();
+    buildGroothuisModule(2500, mat).forEach((codes, ri) => {
+      let x = 0; const arr = [];
+      for (const c of codes) { arr.push({ x: Math.round(x * 10) / 10, width: c.w, type: FULL[c.t], koppelstrip: false }); x = Math.round((x + c.w + stoot) * 10) / 10; }
+      byRow.set(ri, arr);
+    });
+    const ranges = [[0, 1, 2], [3, 4, 5]];
+    const templates = ranges.map((range, mi) => ({
+      id: ['A', 'B'][mi],
+      rowsPerMold: range.length,
+      lagenmaat, brickW, brickH, colStep, frame: frameH, innerH, rotated: false, wildverband: true,
+      rows: range.map((ri, lr) => ({ globalRow: ri, localRow: lr, strips: byRow.get(ri) ?? [], label: `Rij ${ri + 1}` })),
+    }));
+    return {
+      verband, molds: 2, rowsPerMold: 3, lagenmaat, brickW, brickH, colStep,
+      cycleLength: 6, rotated: false, moldW, moldH, frame: frameH, innerH,
+      wildverband: true, panelPitch: 2500, twoPanelWidth: 2500, templates,
+    };
+  }
+
+  // GROOTHUIS WILDVERBAND 2: 1 paneel van 2500 mm per mal → MAL-A = rij 1-3 (drieklezoor-start),
+  // MAL-B = rij 4-6 (kop-start). Vaste 6-rij mal (buildGroothuis2Module).
+  if (verband === 'groothuis_wildverband_2' && isGroothuisWildverband2()) {
+    const FULL = { S: 'Strek', K: 'Kop', D: 'Drieklezoor' };
+    const byRow = new Map();
+    buildGroothuis2Module(mat).forEach((codes, ri) => {
+      let x = 0; const arr = [];
+      for (const c of codes) { arr.push({ x: Math.round(x * 10) / 10, width: c.w, type: FULL[c.t], koppelstrip: false }); x = Math.round((x + c.w + stoot) * 10) / 10; }
+      byRow.set(ri, arr);
+    });
+    const ranges = [[0, 1, 2], [3, 4, 5]];
+    const templates = ranges.map((range, mi) => ({
+      id: ['A', 'B'][mi],
+      rowsPerMold: range.length,
+      lagenmaat, brickW, brickH, colStep, frame: frameH, innerH, rotated: false, wildverband: true,
+      rows: range.map((ri, lr) => ({ globalRow: ri, localRow: lr, strips: byRow.get(ri) ?? [], label: `Rij ${ri + 1}` })),
+    }));
+    return {
+      verband, molds: 2, rowsPerMold: 3, lagenmaat, brickW, brickH, colStep,
+      cycleLength: 6, rotated: false, moldW, moldH, frame: frameH, innerH,
+      wildverband: true, panelPitch: 2500, twoPanelWidth: 2500, templates,
     };
   }
 

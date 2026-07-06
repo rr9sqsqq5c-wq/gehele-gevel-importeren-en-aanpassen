@@ -3,8 +3,10 @@ import { buildFullGroupFacadePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions } from './lib/panelization.js';
 import { openingXRangesAtY } from './lib/geometry.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2 } from './lib/featureFlags.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
+import { buildGroothuisRows } from './lib/groothuisWildverband.js';
+import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
 
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 
@@ -40,6 +42,14 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
   if (verband === 'wildverband' && isWildverbandKoppelstrip()) {
     const _tr = buildTruthRows(facadeData.groupWidth, facadeData.groupHeight, mat, facadeData.groupOpenings ?? []);
     facadeData = { ...facadeData, rows: _tr.rows };
+  }
+  if (verband === 'groothuis_wildverband' && isGroothuisWildverband()) {
+    const _gr = buildGroothuisRows(facadeData.groupWidth, facadeData.groupHeight, mat, facadeData.groupOpenings ?? []);
+    facadeData = { ...facadeData, rows: _gr.rows };
+  }
+  if (verband === 'groothuis_wildverband_2' && isGroothuisWildverband2()) {
+    const _gr = buildGroothuis2Rows(facadeData.groupWidth, facadeData.groupHeight, mat, facadeData.groupOpenings ?? []);
+    facadeData = { ...facadeData, rows: _gr.rows };
   }
 
   const { groupWidth, groupHeight, groupOpenings, rows } = facadeData;
