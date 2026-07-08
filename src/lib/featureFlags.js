@@ -149,14 +149,16 @@ export function isGroothuisWildverband() {
   return readFlag('groothuisWildverband', false);
 }
 
-// GROOTHUIS WILDVERBAND 2 — VAST 6-rij mal (productiemal, src/lib/groothuisWildverband2.js), NÁÁST
-// groothuis 1. Selecteerbaar als verband 'groothuis_wildverband_2'. Twee tripletten (3 drieklezoor-
-// start + 3 kop-start); om-en-om d/k, sluitsteen-regel, max 4 strek, geen volle-strek-stapel,
-// muizentrap ≤4; besturing (backtracking) kiest per laag welke rij. Panelen vol met 2500 + rest.
-// DEFAULT = false → de optie/het pad bestaan alleen met de vlag aan (vlag-uit byte-identiek).
-// Aanzetten: ?groothuisWildverband2=1 of localStorage 'groothuisWildverband2'='1'. Noodrem =0.
+// GROOTHUIS WILDVERBAND 2 — VASTE 6-rij mal (productiemal, src/lib/groothuisWildverband2.js), NÁÁST
+// groothuis 1. Selecteerbaar als verband 'groothuis_wildverband_2'. Klant heeft de 6 rijen handmatig
+// vastgelegd (rij 1 onder): om-en-om drieklezoor/kop begin+eind, max 5 strek, geen twee koppen pal
+// boven elkaar, muizentrap 6; elke rij 2511 mm → rechthoekige tegel, verticaal period-6 herhaald.
+// DEFAULT = true (gepromoveerd 2026-07-01 op klantverzoek): de optie staat standaard in het verband-
+// menu. Alle groothuis-2-code zit achter deze vlag; verband 'groothuis_wildverband_2' wordt alleen
+// aangeboden/gebruikt als 'ie AAN is. NOODREM: ?groothuisWildverband2=0 (of localStorage '0'/'false')
+// verbergt de optie weer en herstelt het gedrag van vóór (bestaande projecten kiezen dit verband niet).
 export function isGroothuisWildverband2() {
-  return readFlag('groothuisWildverband2', false);
+  return readFlag('groothuisWildverband2', true);
 }
 
 // SYNTHETISCHE CALC-WAND — UI-control om een wand op te voeren door lengte × hoogte (mm) +
