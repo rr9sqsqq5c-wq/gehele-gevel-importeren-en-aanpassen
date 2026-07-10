@@ -1100,7 +1100,9 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   // ── Strip slots (colour-coded by brick type, tolerance-based dimensions) ──
   const slotFill = { Strek: '#ffffff', Kop: '#fef3c7', Drieklezoor: '#dbeafe', Rest: '#fee2e2' };
   for (const row of rows) {
-    const sTop = r2(oy + row.yRow);          // row.yRow = top of slot
+    // Rij 1 (laagste globalRow) ONDER in de tekening, oplopend naar boven — gelijk aan het DXF-
+    // snijbestand (y-omhoog). De SVG-y loopt omlaag, dus spiegelen we binnen [0, moldH].
+    const sTop = r2(oy + moldH - row.yRow - slotH);
     const sH   = r2(slotH);                   // = steenstrip-hoogte + 3 mm
     for (const b of row.bricks) {
       const sLeft = r2(ox + frameLeft + b.x); // tolerantie rechts weggewerkt: linkerrand op nominaal
@@ -1111,8 +1113,8 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
         parts.push(`<text x="${r2(Number(sLeft) + Number(sW)/2)}" y="${r2(Number(sTop) + Number(sH)/2 + 2.5)}" text-anchor="middle" font-size="5" fill="${b.koppelstrip ? '#7c2d12' : '#475569'}">${b.label[0]}</text>`);
       }
     }
-    // Row label inside mold on the left
-    const labelY = r2(oy + row.yRow + slotH / 2 + 2.5);
+    // Row label inside mold on the left (gespiegeld mee met de slots: rij 1 onder)
+    const labelY = r2(oy + moldH - row.yRow - slotH / 2 + 2.5);
     parts.push(`<text x="${r2(ox + frameLeft + 2)}" y="${labelY}" font-size="6" fill="#475569">R${row.globalRow + 1}</text>`);
   }
 
@@ -1516,7 +1518,8 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
     out.push(`<line x1="${hcx}" y1="${r2(oy + moldH / 2 - 6)}" x2="${hcx}" y2="${r2(oy + moldH / 2 + 6)}" stroke="#666" stroke-width="0.5"/>`);
     // slots
     for (const row of g.rows) {
-      const sTop = r2(oy + row.yRow);
+      // Rij 1 (laagste globalRow) ONDER, oplopend naar boven — gelijk aan het DXF-snijbestand.
+      const sTop = r2(oy + moldH - row.yRow - slotH);
       const sH   = r2(slotH);
       for (const b of row.bricks) {
         const sLeft = r2(ox + frameLeft + b.x); // tolerantie rechts weggewerkt: linkerrand op nominaal
@@ -1526,7 +1529,7 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
         if ((b.koppelstrip || b.label !== 'Strek') && sW > 12)
           out.push(`<text x="${r2(Number(sLeft) + Number(sW)/2)}" y="${r2(Number(sTop) + Number(sH)/2 + 2.5)}" text-anchor="middle" font-size="5" fill="${b.koppelstrip ? '#7c2d12' : '#475569'}">${b.label[0]}</text>`);
       }
-      const labelY = r2(oy + row.yRow + slotH / 2 + 2.5);
+      const labelY = r2(oy + moldH - row.yRow - slotH / 2 + 2.5);
       out.push(`<text x="${r2(ox + frameLeft + 2)}" y="${labelY}" font-size="6" fill="#475569">R${row.globalRow + 1}</text>`);
     }
     // header banner
