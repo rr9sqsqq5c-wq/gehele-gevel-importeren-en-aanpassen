@@ -1448,6 +1448,8 @@ export function getMoldTemplates(verband, mat, moldDims) {
     rotated: isStaand,
     moldW,
     moldH,
+    frame: frameH,
+    innerH,
     templates,
   };
 }
