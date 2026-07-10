@@ -1366,6 +1366,10 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
 
     const openingType = {};
     const fillerExpressID = {};
+    // KOZIJNEN — raam/deur-bboxen, ALLEEN van de geparste (geselecteerde) wanden. Verzameld in de
+    // opening-lus hieronder (per wand), achter vlag showKozijnen. Rijdt mee op projectInfo.
+    const kozijnen = [];
+    const _collectKozijnen = isShowKozijnen();
     const relFillsVec = api.GetLineIDsWithType(modelID, IFC.IFCRELFILLSELEMENT);
     for (let i = 0; i < relFillsVec.size(); i++) {
       try {
@@ -1664,7 +1668,8 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
               let oThicknessCenter = null;
               // Voor thicknessCenter: filler (raam/deur) prefereren boven opening-element,
               // want IfcOpeningElement omvat altijd de volledige wanddikte en geeft geen zijde-info.
-              const oBB_forThickness = (fillID ? getBBox(api, modelID, fillID) : null) ?? oBB;
+              const fillBB = fillID ? getBBox(api, modelID, fillID) : null;
+              const oBB_forThickness = fillBB ?? oBB;
               if (oBB_forThickness) {
                 const oTMin = oBB_forThickness[`min${thicknessAxis.toUpperCase()}`] * 1000;
                 const oTMax = oBB_forThickness[`max${thicknessAxis.toUpperCase()}`] * 1000;
@@ -1694,6 +1699,15 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
                 polyPts: finalPolyPts,
                 thicknessCenter: oThicknessCenter,
               });
+
+              // KOZIJN — verzamel de echte raam/deur-bbox (× 1000 → mm) van DEZE geparste wand.
+              if (_collectKozijnen && fillBB && (openingType[oID] === 'raam' || openingType[oID] === 'deur')) {
+                kozijnen.push({ expressID: fillID, type: openingType[oID], bbox: {
+                  minX: Math.round(fillBB.minX * 1000), maxX: Math.round(fillBB.maxX * 1000),
+                  minY: Math.round(fillBB.minY * 1000), maxY: Math.round(fillBB.maxY * 1000),
+                  minZ: Math.round(fillBB.minZ * 1000), maxZ: Math.round(fillBB.maxZ * 1000),
+                } });
+              }
             } catch { }
           }
 
@@ -1824,25 +1838,6 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
         upAxis: _upAxis,
       };
       setGeometryDerivedRenderOrigin(renderOrigin, worldAnchor);
-    }
-
-    // KOZIJNEN — verzamel de WERELD-bbox van alle ramen/deuren (× 1000 → mm, zoals de wanden) voor
-    // 3D-visualisatie (KozijnBoxes3D, vlag showKozijnen). Onafhankelijk van de opening-afleiding.
-    // Rijdt mee op projectInfo → wordt automatisch gecachet met de geparsede wanden.
-    const kozijnen = [];
-    if (isShowKozijnen()) for (const [code, type] of [[IFC.IFCWINDOW, 'raam'], [IFC.IFCDOOR, 'deur']]) {
-      if (code === undefined) continue;
-      let vec; try { vec = api.GetLineIDsWithType(modelID, code); } catch { continue; }
-      for (let i = 0; i < vec.size(); i++) {
-        const eID = vec.get(i);
-        const b = getBBox(api, modelID, eID);
-        if (!b) continue;
-        kozijnen.push({ expressID: eID, type, bbox: {
-          minX: Math.round(b.minX * 1000), maxX: Math.round(b.maxX * 1000),
-          minY: Math.round(b.minY * 1000), maxY: Math.round(b.maxY * 1000),
-          minZ: Math.round(b.minZ * 1000), maxZ: Math.round(b.maxZ * 1000),
-        } });
-      }
     }
 
     walls.projectInfo = { ...(getProjectInfo() ?? {}), kozijnen };
