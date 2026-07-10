@@ -885,6 +885,15 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   return { moldW, moldH, frame, frameH, frameLeft, innerW, innerH, brickW, brickH, colStep, stoot, lagenmaat, slotH, rowsPerMold, globalRowBase, rows, pinYs, pinStepX, notchXs, notchWs };
 }
 
+// Identificatie-string van een mal: mal-letter (Links→A, Rechts→B; wild/groothuis al A/B) +
+// strip-lengte/hoogte + stootvoeg (S) + lintvoeg (L), bv. "Mal A 210/51/S6/L10". Eén bron voor
+// zowel de tekst óp de DXF als de DXF-bestandsnaam, zodat die twee nooit uit elkaar lopen.
+export function moldIdLabel(mat, moldId) {
+  const letter = ({ Links: 'A', Rechts: 'B' })[moldId] ?? moldId;
+  const L = mat?.steenL ?? 210, H = mat?.steenH ?? 50, S = mat?.stoot ?? 10, Li = mat?.lint ?? 12;
+  return `Mal ${letter} ${L}/${H}/S${S}/L${Li}`;
+}
+
 export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   const g = _moldGeometry(mat, verband, moldDims, moldId);
   const { moldW, moldH, frameH, frameLeft, innerW, innerH, slotH, stoot, rows, notchXs, notchWs } = g;
@@ -940,12 +949,10 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   // Alignment hole — Ø8mm, 11mm from left edge, vertically centred
   addCircle(11, r2(moldH / 2), 4, 'HOLES', 1);
 
-  // Identificatie die mee het staal in gesneden wordt: mal-letter + strip-lengte/hoogte + beide voegen
-  // gelabeld (S=stootvoeg, L=lintvoeg) om vergissingen te voorkomen, bv. "Mal A 210/51/S6/L10".
+  // Identificatie die mee het staal in gesneden wordt (zelfde bron als de DXF-bestandsnaam):
+  // mal-letter + strip-lengte/hoogte + stootvoeg (S) + lintvoeg (L), bv. "Mal A 210/51/S6/L10".
   // Verder niets — geen rij-labels, geen verband/afmeting/rijen-tekst.
-  const malLetter = ({ Links: 'A', Rechts: 'B' })[moldId] ?? moldId;
-  const idL = mat?.steenL ?? 210, idH = mat?.steenH ?? 50, idStoot = mat?.stoot ?? 10, idLint = mat?.lint ?? 12;
-  addText(frameH, -18, 8, `Mal ${malLetter} ${idL}/${idH}/S${idStoot}/L${idLint}`, 'TITLE');
+  addText(frameH, -18, 8, moldIdLabel(mat, moldId), 'TITLE');
 
   const header = [
     '0', 'SECTION', '2', 'HEADER',
