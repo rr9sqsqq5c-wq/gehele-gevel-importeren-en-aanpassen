@@ -279,3 +279,12 @@ export function isPlanBridge() {
 export function isSparingElementen() {
   return readFlag('sparingElementen', false);
 }
+
+// OPENING_FROM_KOZIJN — de opening-rechthoek die uit de bekleding wordt geknipt volgt het RAAM/DEUR
+// (IfcWindow/IfcDoor = het kozijn) i.p.v. de ruwe structurele opening (IfcOpeningElement/void). Zo
+// wordt "gerekend vanaf rand kozijn" i.p.v. rand opening. Werkt alleen als er een fill-relatie
+// (IfcRelFillsElement) tussen opening en raam/deur bestaat; anders valt het terug op de void.
+// DEFAULT = false → void eerst (byte-identiek). Aanzetten: ?openingFromKozijn=1.
+export function isOpeningFromKozijn() {
+  return readFlag('openingFromKozijn', false);
+}

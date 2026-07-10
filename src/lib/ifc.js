@@ -2,7 +2,7 @@ import { getOpeningPoly } from './pattern.js';
 import { STEENSTRIP_CATALOG } from './battens.js';
 import { SLIMFORT_DEFAULTS, getSlimFortDepths } from './slimfort.js';
 import { registerIfcContext, getProjectInfo, getLastConfidentUpAxis, setLastConfidentUpAxis, setGeometryDerivedRenderOrigin, getWorldAnchor } from './projectCoordinates.js';
-import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly, isDropOversizedOpenings } from './featureFlags.js';
+import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly, isDropOversizedOpenings, isOpeningFromKozijn } from './featureFlags.js';
 // BRON-GUARD (dropOversizedOpenings): een void die via IfcRelVoidsElement aan een wand hangt maar
 // veel HOGER is dan die wand (bv. de 2520 mm venster-void die ook aan een 300 mm vloerband hangt)
 // levert in de browser — waar mesh-geometrie beschikbaar is — een te-hoge opening op. Die hoort er
@@ -1583,14 +1583,17 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
             try {
               const fillID = fillerExpressID[oID];
 
-              let polygon = getFacadePolygon(api, modelID, oID, lengthAxis, heightAxis, wallBB);
-              const polyFromOID = !!polygon;
-              if (!polygon && fillID) {
-                polygon = getFacadePolygon(api, modelID, fillID, lengthAxis, heightAxis, wallBB);
-              }
+              // KOZIJN-modus (vlag openingFromKozijn, default UIT): de opening-rechthoek volgt het
+              // RAAM/DEUR (fill = kozijn-rand) i.p.v. de ruwe void (opening-rand). Vlag UIT → void
+              // eerst met fill als fallback = byte-identiek aan het oude gedrag.
+              const _kozijnMode = isOpeningFromKozijn() && !!fillID;
+              const _polyOID  = () => getFacadePolygon(api, modelID, oID, lengthAxis, heightAxis, wallBB);
+              const _polyFill = () => (fillID ? getFacadePolygon(api, modelID, fillID, lengthAxis, heightAxis, wallBB) : null);
+              let polygon = _kozijnMode ? (_polyFill() ?? _polyOID()) : (_polyOID() ?? _polyFill());
 
-
-              const oBB = getBBox(api, modelID, oID) ?? (fillID ? getBBox(api, modelID, fillID) : null);
+              const oBB = _kozijnMode
+                ? (getBBox(api, modelID, fillID) ?? getBBox(api, modelID, oID))
+                : (getBBox(api, modelID, oID) ?? (fillID ? getBBox(api, modelID, fillID) : null));
 
               // TIJDELIJK DEBUG — verwijder na gebruik
               if (_isDebugWall) {
