@@ -1177,30 +1177,22 @@ function WallMesh({ wall, isSelected, isHovered, groupColor, onSelect, onHover }
   );
 }
 
-// KOZIJN-weergave (vlag showKozijnen) — toont elk raam/deur als een transparante doos met diepte,
-// ter visuele controle. De doos volgt de opening-rechthoek (met openingFromKozijn=1 = de kozijn-rand).
-function KozijnMesh({ wall, opening }) {
-  const wo = wall.wallOrigin;
-  if (!wo || (opening.type !== 'raam' && opening.type !== 'deur')) return null;
-  const ox = opening.x ?? 0, oy = opening.y ?? 0, ow = opening.breedte ?? 0, oh = opening.hoogte ?? 0;
-  if (ow < 20 || oh < 20) return null;
-  const KOZ_DEPTH = 100; // visuele kozijn-diepte (mm)
-  const { outsidePos, outsideDir } = getOutsideFaceInfo(wo, null);
-  const ifc = { x: 0, y: 0, z: 0 };
-  ifc[wo.lengthAxis] = wo.lengthStart + ox + ow / 2;
-  ifc[wo.heightAxis] = wo.heightStart + oy + oh / 2;
-  ifc[wo.thicknessAxis] = outsidePos - outsideDir * (KOZ_DEPTH / 2);
-  const pos = ifcToThree(ifc.x, ifc.y, ifc.z);
-  const dims = { x: 0, y: 0, z: 0 };
-  dims[wo.lengthAxis] = ow; dims[wo.heightAxis] = oh; dims[wo.thicknessAxis] = KOZ_DEPTH;
-  const size = ifcToThree(dims.x, dims.y, dims.z).map(Math.abs);
-  const isRaam = opening.type === 'raam';
-  return (
-    <mesh position={pos} renderOrder={15}>
-      <boxGeometry args={size} />
-      <meshStandardMaterial color={isRaam ? '#0e7490' : '#7c3aed'} transparent opacity={0.5} />
-    </mesh>
-  );
+// KOZIJN-weergave (vlag showKozijnen) — toont de ECHTE geparsede raam/deur-geometrie (wereld-bbox
+// uit parseIfc) als transparante doos, ter visuele controle t.o.v. de bekleding/openingen. Cyaan =
+// raam, paars = deur. Zelfde coördinaat-conventie als getWallBox/SparingElements3D.
+function KozijnBoxes3D({ kozijnen }) {
+  if (!kozijnen?.length) return null;
+  return kozijnen.map((k, i) => {
+    const b = k?.bbox; if (!b) return null;
+    const pos = ifcToThree((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2);
+    const size = ifcToThree(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ).map((v) => Math.max(Math.abs(v), 0.02));
+    return (
+      <mesh key={k.expressID ?? i} position={pos} renderOrder={15}>
+        <boxGeometry args={size} />
+        <meshStandardMaterial color={k.type === 'deur' ? '#7c3aed' : '#0e7490'} transparent opacity={0.5} depthTest={false} />
+      </mesh>
+    );
+  });
 }
 
 function OpeningMesh({ wall, opening }) {
@@ -1516,7 +1508,7 @@ const COMPASS = [
   { key: 'T',    label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
 ];
 
-export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData, focusSuppressRef, sparingElements = [] }) {
+export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData, focusSuppressRef, sparingElements = [], kozijnen = [] }) {
   const [hoveredWallId, setHoveredWallId] = useState(null);
   const [preset, setPreset] = useState(null);
   const [boxSelectMode, setBoxSelectMode] = useState(false);
@@ -1784,14 +1776,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           ));
         })}
 
-        {isShowKozijnen() && walls.flatMap((wall) => {
-          const group = wallGroupMap[wall.expressID];
-          if (group && hiddenGroupIds.has(group.id)) return [];
-          if (!group && hideUngrouped) return [];
-          return (wall.openings ?? []).map((op) => (
-            <KozijnMesh key={`koz-${wall.expressID}-${op.id}`} wall={wall} opening={op} />
-          ));
-        })}
+        {isShowKozijnen() && <KozijnBoxes3D kozijnen={kozijnen} />}
 
         {groups.flatMap((group) => {
           if (hiddenGroupIds.has(group.id)) return [];

@@ -2,7 +2,7 @@ import { getOpeningPoly } from './pattern.js';
 import { STEENSTRIP_CATALOG } from './battens.js';
 import { SLIMFORT_DEFAULTS, getSlimFortDepths } from './slimfort.js';
 import { registerIfcContext, getProjectInfo, getLastConfidentUpAxis, setLastConfidentUpAxis, setGeometryDerivedRenderOrigin, getWorldAnchor } from './projectCoordinates.js';
-import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly, isDropOversizedOpenings, isOpeningFromKozijn } from './featureFlags.js';
+import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly, isDropOversizedOpenings, isOpeningFromKozijn, isShowKozijnen } from './featureFlags.js';
 // BRON-GUARD (dropOversizedOpenings): een void die via IfcRelVoidsElement aan een wand hangt maar
 // veel HOGER is dan die wand (bv. de 2520 mm venster-void die ook aan een 300 mm vloerband hangt)
 // levert in de browser — waar mesh-geometrie beschikbaar is — een te-hoge opening op. Die hoort er
@@ -1826,7 +1826,26 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
       setGeometryDerivedRenderOrigin(renderOrigin, worldAnchor);
     }
 
-    walls.projectInfo = getProjectInfo();
+    // KOZIJNEN — verzamel de WERELD-bbox van alle ramen/deuren (× 1000 → mm, zoals de wanden) voor
+    // 3D-visualisatie (KozijnBoxes3D, vlag showKozijnen). Onafhankelijk van de opening-afleiding.
+    // Rijdt mee op projectInfo → wordt automatisch gecachet met de geparsede wanden.
+    const kozijnen = [];
+    if (isShowKozijnen()) for (const [code, type] of [[IFC.IFCWINDOW, 'raam'], [IFC.IFCDOOR, 'deur']]) {
+      if (code === undefined) continue;
+      let vec; try { vec = api.GetLineIDsWithType(modelID, code); } catch { continue; }
+      for (let i = 0; i < vec.size(); i++) {
+        const eID = vec.get(i);
+        const b = getBBox(api, modelID, eID);
+        if (!b) continue;
+        kozijnen.push({ expressID: eID, type, bbox: {
+          minX: Math.round(b.minX * 1000), maxX: Math.round(b.maxX * 1000),
+          minY: Math.round(b.minY * 1000), maxY: Math.round(b.maxY * 1000),
+          minZ: Math.round(b.minZ * 1000), maxZ: Math.round(b.maxZ * 1000),
+        } });
+      }
+    }
+
+    walls.projectInfo = { ...(getProjectInfo() ?? {}), kozijnen };
     return walls;
   } finally {
     if (ownModel) {

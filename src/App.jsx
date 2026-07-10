@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, parseIfcSparingElements, scanIfcSparingTypes, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -3246,6 +3246,7 @@ export default function App() {
   const [sparingElements, setSparingElements] = useState([]);
   const [sparingOffset, setSparingOffset] = useState(10);
   const [sparingScan, setSparingScan] = useState(null); // { file, types:[{ifcEntityType,count}], selected:Set, busy }
+  const [kozijnen, setKozijnen] = useState([]); // raam/deur-bboxen (uit parseIfc via projectInfo) voor 3D-weergave
   const forceOrientation = 'AUTO';
   // projectInfo React state vervalt — module-state in projectCoordinates.js is de enige bron
   const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
@@ -3974,6 +3975,7 @@ export default function App() {
     clearProjectState().catch(() => {});
     clearParsedWalls().catch(() => {});
     setAllWalls([]);
+    setKozijnen([]);
     setWallDimOverrides({});
     setAdjacencies([]);
     setGroups([]);
@@ -4080,9 +4082,9 @@ export default function App() {
     addLog(`Bestand: ${pendingFile.name} (${(pendingFile.size / 1024 / 1024).toFixed(1)} MB)`);
     try {
       const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
-      const CACHE_SCHEMA_V = 14; // v14: dropOversizedOpenings — band-wand erft geen te-hoge venster-opening meer
+      const CACHE_SCHEMA_V = 15; // v15: kozijnen (raam/deur-bboxen) meegeparsed op projectInfo
       const pathTag = isNewOpeningDerivation() ? 'newOpenings' : 'legacy';
-      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}|${pathTag}`;
+      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}|${pathTag}|koz${isShowKozijnen() ? 1 : 0}`;
 
       addLog(filter ? `Filter: ${[...filter].join(', ')}` : 'Alle wandtypen worden geladen');
       addLog('Cache controleren…');
@@ -4121,6 +4123,7 @@ export default function App() {
       });
       addLog(`✓ Klaar — ${walls.length} wanden, ${adj.length} adjacenties`);
       setAllWalls(walls);
+      setKozijnen((walls.projectInfo ?? cachedProjectInfo)?.kozijnen ?? []);
       setAdjacencies(adj);
       setGroups([]);
       setSelectedWallIds(new Set());
@@ -6683,6 +6686,7 @@ export default function App() {
                 buildingEnvelopeData={buildingEnvelopeData}
                 focusSuppressRef={skipGroupCameraFocusRef}
                 sparingElements={isSparingElementen() ? sparingElements : []}
+                kozijnen={kozijnen}
               />
 
               {allWalls.length === 0 && (
