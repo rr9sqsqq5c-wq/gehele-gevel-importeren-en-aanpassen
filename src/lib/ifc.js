@@ -509,30 +509,40 @@ export async function scanIfcSparingTypes(file) {
   return out;
 }
 
-export async function parseIfcSparingElements(file, entityTypeNames) {
+export async function parseIfcSparingElements(file, entityTypeNames, onProgress = null) {
   const { IFC, api } = await getApi();
+  onProgress?.({ phase: 'open', log: 'IFC-model openen…' });
   const modelID = api.OpenModel(new Uint8Array(await file.arrayBuffer()), {});
   const out = [];
   try {
-    for (const entityName of (entityTypeNames ?? [])) {
-      const code = IFC[String(entityName).toUpperCase()];
-      if (code === undefined) continue;
+    const names = (entityTypeNames ?? []).map((n) => String(n).toUpperCase());
+    for (let ti = 0; ti < names.length; ti++) {
+      const entityName = names[ti];
+      const code = IFC[entityName];
+      if (code === undefined) { onProgress?.({ phase: 'type', log: `${entityName}: onbekend in schema, overslaan` }); continue; }
       let vec; try { vec = api.GetLineIDsWithType(modelID, code); } catch { continue; }
-      for (let i = 0; i < vec.size(); i++) {
+      const nTot = vec.size();
+      onProgress?.({ phase: 'type', type: entityName, typeIndex: ti + 1, typeTotal: names.length, typeCount: nTot, count: out.length,
+        log: `${entityName.replace(/^IFC/, '')} (${ti + 1}/${names.length}): ${nTot} stuks…` });
+      let skipped = 0;
+      for (let i = 0; i < nTot; i++) {
         const eID = vec.get(i);
         const b = getBBox(api, modelID, eID);
-        if (!b) continue;
+        if (!b) { skipped++; continue; }
         let name = null;
         try { name = api.GetLine(modelID, eID, false)?.Name?.value ?? null; } catch {}
         out.push({
-          expressID: eID, name, ifcEntityType: String(entityName).toUpperCase(),
+          expressID: eID, name, ifcEntityType: entityName,
           bbox: { minX: b.minX, maxX: b.maxX, minY: b.minY, maxY: b.maxY, minZ: b.minZ, maxZ: b.maxZ },
         });
+        if (out.length % 200 === 0) onProgress?.({ phase: 'progress', count: out.length, log: `${out.length} onderdelen met geometrie…` });
       }
+      if (skipped) onProgress?.({ phase: 'type', log: `${entityName.replace(/^IFC/, '')}: ${skipped} zonder geometrie overgeslagen` });
     }
   } finally {
     try { api.CloseModel(modelID); } catch {}
   }
+  onProgress?.({ phase: 'done', count: out.length, log: `Klaar: ${out.length} onderdelen met geometrie geïmporteerd.` });
   return out;
 }
 

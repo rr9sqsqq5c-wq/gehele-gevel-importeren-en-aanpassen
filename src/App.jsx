@@ -3859,6 +3859,31 @@ export default function App() {
     return result;
   }, [groups, getSettings, wallMap, showPattern, viewMode, adjacencies, cornerConfigs, settingsMap, groupEnvelopeVisibility, sparingElements, sparingOffset]);
 
+  // SPARING-ELEMENTEN debug/voortgangs-controle — per groep hoeveel sparing-rechthoeken daadwerkelijk
+  // uit de bekleding zijn geknipt (uit allPatterns). 0 → coördinaten sluiten niet aan of diepte-check faalt.
+  const sparingDebug = useMemo(() => {
+    if (!isSparingElementen() || !sparingElements.length) return null;
+    const perGroup = groups.map((g) => {
+      const fd = allPatterns[g.id]?.facadeData;
+      const rwo = fd?.refWallOrigin;
+      return {
+        name: getSettings(g.id).name ?? g.id,
+        rects: fd?.sparingRects?.length ?? 0,
+        gw: Math.round(fd?.groupWidth ?? 0), gh: Math.round(fd?.groupHeight ?? 0),
+        assen: rwo ? `${rwo.lengthAxis}/${rwo.heightAxis}/${rwo.thicknessAxis}` : '—',
+        minXH: rwo ? `${Math.round(fd.groupMinX)},${Math.round(fd.groupMinH)}` : '—',
+      };
+    });
+    return { total: sparingElements.length, totalRects: perGroup.reduce((s, g) => s + g.rects, 0), groupsHit: perGroup.filter((g) => g.rects > 0).length, perGroup };
+  }, [sparingElements, allPatterns, groups, getSettings]);
+
+  useEffect(() => {
+    if (!sparingDebug) return;
+    console.log(`%c[sparingen] geknipt in ${sparingDebug.groupsHit}/${sparingDebug.perGroup.length} groepen · ${sparingDebug.totalRects} rechthoeken totaal (offset ${sparingOffset}mm)`, 'color:#f97316;font-weight:bold');
+    if (sparingDebug.totalRects === 0) console.warn('[sparingen] 0 sparingen geknipt — controleer: (1) onderdelen-IFC zelfde projectnulpunt als de wanden (zie wereld-bbox in het import-rapport vs. de gevel-min hieronder), (2) onderdelen vallen binnen het dikte-bereik van een gevelvlak (± ~300mm), (3) de vlag staat aan.');
+    console.table(sparingDebug.perGroup.map((g) => ({ groep: g.name, 'gevel BxH': `${g.gw}×${g.gh}`, sparingen: g.rects, 'assen L/H/D': g.assen, 'gevel-min X,H': g.minXH })));
+  }, [sparingDebug, sparingOffset]);
+
   async function startScan(file, handle, isMerge = false) {
     setMergeMode(isMerge);
     setLoadStatus('scanning');
@@ -4988,24 +5013,44 @@ export default function App() {
   // SPARING-ELEMENTEN — laad een IFC, scan de niet-wand kandidaat-types, importeer de gekozen types.
   async function handleSparingFile(file) {
     if (!file) return;
-    setSparingScan({ file, types: [], selected: new Set(), busy: true });
+    console.log('[sparingen] scan gestart:', file.name, `(${(file.size / 1048576).toFixed(1)} MB)`);
+    setSparingScan({ file, types: [], selected: new Set(), busy: true, progress: 'Bestand scannen…' });
     try {
       const types = await scanIfcSparingTypes(file);
-      if (!types.length) { alert('Geen sparing-kandidaat-onderdelen (proxy/leiding/kanaal/…) in dit bestand gevonden.'); setSparingScan(null); return; }
+      console.log('[sparingen] scan klaar — types met geometrie:', types.map((t) => `${t.ifcEntityType.replace(/^IFC/, '')}×${t.count}`).join(', ') || '(geen)');
+      if (!types.length) { alert('Geen fysieke onderdelen (met geometrie) in dit bestand gevonden.'); setSparingScan(null); return; }
       setSparingScan({ file, types, selected: new Set(), busy: false });
-    } catch (e) { alert('Scannen mislukt: ' + (e?.message ?? e)); setSparingScan(null); }
+    } catch (e) { console.error('[sparingen] scan mislukt:', e); alert('Scannen mislukt: ' + (e?.message ?? e)); setSparingScan(null); }
   }
   async function handleSparingImport() {
     if (!sparingScan?.file) return;
     const sel = [...(sparingScan.selected ?? [])];
     if (!sel.length) { alert('Selecteer minstens één type.'); return; }
-    setSparingScan((s) => (s ? { ...s, busy: true } : s));
+    setSparingScan((s) => (s ? { ...s, busy: true, progress: 'Importeren…' } : s));
     try {
-      const els = await parseIfcSparingElements(sparingScan.file, sel);
+      const els = await parseIfcSparingElements(sparingScan.file, sel, (p) => {
+        if (p?.log) console.log('[sparingen]', p.log);
+        setSparingScan((s) => (s ? { ...s, busy: true, progress: p?.log ?? s.progress } : s));
+      });
+      // DEBUG-RAPPORT na afloop: aantal + wereld-bbox + eerste onderdelen (zie ook de per-groep-knip-log).
+      console.group('%c[sparingen] import-rapport', 'color:#f97316;font-weight:bold');
+      console.log(`${els.length} onderdelen geïmporteerd — types: ${sel.join(', ')}`);
+      if (els.length) {
+        const r = Math.round;
+        const E = els.reduce((a, e) => ({
+          minX: Math.min(a.minX, e.bbox.minX), maxX: Math.max(a.maxX, e.bbox.maxX),
+          minY: Math.min(a.minY, e.bbox.minY), maxY: Math.max(a.maxY, e.bbox.maxY),
+          minZ: Math.min(a.minZ, e.bbox.minZ), maxZ: Math.max(a.maxZ, e.bbox.maxZ),
+        }), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity });
+        console.log(`wereld-bbox (mm): X[${r(E.minX)}..${r(E.maxX)}]  Y[${r(E.minY)}..${r(E.maxY)}]  Z[${r(E.minZ)}..${r(E.maxZ)}]`);
+        console.table(els.slice(0, 30).map((e) => ({ type: e.ifcEntityType.replace(/^IFC/, ''), name: e.name, minX: r(e.bbox.minX), maxX: r(e.bbox.maxX), minY: r(e.bbox.minY), maxY: r(e.bbox.maxY), minZ: r(e.bbox.minZ), maxZ: r(e.bbox.maxZ) })));
+        if (els.length > 30) console.log(`… en nog ${els.length - 30} meer (zie sparingElements-state)`);
+      }
+      console.groupEnd();
       setSparingElements(els);
       setSparingScan(null);
       if (!els.length) alert('Geen geometrie gevonden voor de gekozen types.');
-    } catch (e) { alert('Import mislukt: ' + (e?.message ?? e)); setSparingScan((s) => (s ? { ...s, busy: false } : null)); }
+    } catch (e) { console.error('[sparingen] import mislukt:', e); alert('Import mislukt: ' + (e?.message ?? e)); setSparingScan((s) => (s ? { ...s, busy: false } : null)); }
   }
 
   function handleExportMallen() {
@@ -6291,8 +6336,10 @@ export default function App() {
                   style={{ width: 52, fontSize: 11, padding: '2px 4px', border: '1px solid #334155', borderRadius: 4, background: '#0f172a', color: '#e2e8f0', outline: 'none' }} />
                 <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>
                 {sparingElements.length > 0 && (
-                  <span style={{ fontSize: 10, color: '#f97316', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: 10, color: '#f97316', whiteSpace: 'nowrap' }}
+                    title="Aantal geïmporteerde onderdelen · hoeveel er uit de bekleding zijn geknipt (in hoeveel groepen). Details in de browser-console (F12).">
                     {sparingElements.length} onderdeel{sparingElements.length !== 1 ? 'en' : ''}
+                    {sparingDebug ? ` · ${sparingDebug.totalRects} geknipt (${sparingDebug.groupsHit} groep${sparingDebug.groupsHit !== 1 ? 'en' : ''})` : ''}
                     <button onClick={() => setSparingElements([])} title="Sparingen wissen"
                       style={{ marginLeft: 4, background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 11 }}>✕</button>
                   </span>
@@ -6306,7 +6353,7 @@ export default function App() {
       {isSparingElementen() && sparingScan && (
         <div style={{ position: 'fixed', top: 84, right: 20, zIndex: 1000, background: '#1e293b', border: '1px solid #334155', borderRadius: 6, padding: 12, width: 300, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0', marginBottom: 8 }}>Sparing-onderdelen importeren</div>
-          {sparingScan.busy && <div style={{ fontSize: 11, color: '#94a3b8' }}>Bezig…</div>}
+          {sparingScan.busy && <div style={{ fontSize: 11, color: '#38bdf8' }}>⏳ {sparingScan.progress ?? 'Bezig…'}</div>}
           {!sparingScan.busy && (sparingScan.types ?? []).map((t) => (
             <label key={t.ifcEntityType} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#cbd5e1', padding: '2px 0', cursor: 'pointer' }}>
               <input type="checkbox" checked={sparingScan.selected.has(t.ifcEntityType)}
