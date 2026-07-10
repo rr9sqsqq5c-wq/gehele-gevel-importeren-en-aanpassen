@@ -924,7 +924,9 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
     pts.push([0, moldH]);
     addPolyline(pts, 'FRAME', 7);
   }
-  addPolyRect(frameLeft, frameH, innerW, innerH, 'GUIDE', 8);
+  // (Geen GUIDE-hulprechthoek in de DXF — dat is een referentielijn die de zetterij anders zou
+  // meesnijden. Het snijbestand bevat alleen FRAME (contour) + SLOTS + HOLES. De gestippelde
+  // guide blijft wél in de SVG-schermtekening als visuele hulp.)
 
   for (const row of rows) {
     for (const b of row.bricks) {
@@ -948,9 +950,8 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
     '9', '$LUNITS', '70', '2',
     '0', 'ENDSEC',
     '0', 'SECTION', '2', 'TABLES',
-    '0', 'TABLE', '2', 'LAYER', '70', '6',
+    '0', 'TABLE', '2', 'LAYER', '70', '5',
     '0', 'LAYER', '2', 'FRAME',  '70', '0', '62', '7', '6', 'CONTINUOUS',
-    '0', 'LAYER', '2', 'GUIDE',  '70', '0', '62', '8', '6', 'CONTINUOUS',
     '0', 'LAYER', '2', 'SLOTS',  '70', '0', '62', '2', '6', 'CONTINUOUS',
     '0', 'LAYER', '2', 'HOLES',  '70', '0', '62', '1', '6', 'CONTINUOUS',
     '0', 'LAYER', '2', 'LABELS', '70', '0', '62', '3', '6', 'CONTINUOUS',
