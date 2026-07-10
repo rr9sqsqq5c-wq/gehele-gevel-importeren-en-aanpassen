@@ -4966,9 +4966,15 @@ export default function App() {
   }
 
   function handleExportMallen() {
-    const firstGroup = groups.find((g) => getSettings(g.id).panelen?.enabled);
-    if (!firstGroup) { alert('Schakel panelen in voor ten minste één groep.'); return; }
-    const s = getSettings(firstGroup.id);
+    // Exporteer de mal van de groep die je IN BEELD hebt in de panelisatie (activeGroup), niet zomaar
+    // de eerste panelen-groep — anders krijg je bv. een halfsteens-mal terwijl je een staand verband
+    // bekijkt. Val alleen terug op de eerste panelen-groep als er geen (geschikte) actieve groep is.
+    const active = groups.find((g) => g.id === activeGroupId);
+    const useGroup = (active && getSettings(active.id).panelen?.enabled)
+      ? active
+      : groups.find((g) => getSettings(g.id).panelen?.enabled);
+    if (!useGroup) { alert('Schakel panelen in voor ten minste één groep.'); return; }
+    const s = getSettings(useGroup.id);
     const mat = s.material ?? DEFAULT_MATERIAL;
     const verband = s.verband ?? DEFAULT_VERBAND;
     const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400, offsetX: s.panelen.malOffsetX ?? 0 };
