@@ -820,6 +820,15 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   function bricksInRow(localRow) {
     const globalRow = globalRowBase + localRow;
     if (isWild) return (wildByRow.get(globalRow) ?? []).slice().sort((a, b) => a.x - b.x);
+    if (isStaand) {
+      // Staand tegelverband: de mal krijgt UITSLUITEND hele-strip-slots, van begin tot eind.
+      // We starten altijd met een hele strip (x=0); de facade eindigt soms met een gezaagde strip,
+      // maar die past altijd in een vol slot. Dus GEEN geclipte deel-/'Rest'-slots — alleen slots
+      // die volledig binnen de malopening (innerW) passen.
+      const bricks = [];
+      for (let x = 0; x + brickW <= innerW + 0.5; x += colStep) bricks.push({ x, w: brickW, label: 'Strek' });
+      return bricks;
+    }
     const off = rowOffset(localRow);
     const bricks = [];
 
