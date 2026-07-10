@@ -888,7 +888,6 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
 export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   const g = _moldGeometry(mat, verband, moldDims, moldId);
   const { moldW, moldH, frameH, frameLeft, innerW, innerH, slotH, stoot, rows, notchXs, notchWs } = g;
-  const extraOffsetX = moldDims?.offsetX ?? 0;
   const r2 = (v) => Math.round(v * 100) / 100;
   const lines = [];
 
@@ -935,15 +934,17 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
       // op de nominale positie (= guide-lijn frameLeft voor de startslot); speling altijd rechts.
       addPolyRect(r2(frameLeft + b.x), r2(row.yRow), r2(b.w + stoot - 2), r2(slotH), 'SLOTS', 2);
     }
-    addText(frameLeft, row.yRow - 10, 6, `Rij ${row.globalRow + 1}  off=${row.off}mm`, 'LABELS');
   }
   // Het raster fixeergaten (pinYs × pinStepX, ~40 stuks) is bewust VERWIJDERD (klantverzoek):
   // de mal wordt met één gat vastgezet. Alleen het uitlijngat hieronder blijft.
   // Alignment hole — Ø8mm, 11mm from left edge, vertically centred
   addCircle(11, r2(moldH / 2), 4, 'HOLES', 1);
 
-  addText(frameH, -18, 8,
-    `MAL ${moldId} | ${verband} | ${moldW}x${moldH}mm | ${g.rowsPerMold} rijen/doorgang${extraOffsetX ? ` | x-offset ${extraOffsetX}mm` : ''} | Staal 2mm`, 'TITLE');
+  // Identificatie die mee het staal in gesneden wordt: mal-letter + strip-lengte/hoogte/voegmaat
+  // (bv. "Mal A 210/51/6"). Verder niets — geen rij-labels, geen verband/afmeting/rijen-tekst.
+  const malLetter = ({ Links: 'A', Rechts: 'B' })[moldId] ?? moldId;
+  const idL = mat?.steenL ?? 210, idH = mat?.steenH ?? 50, idV = mat?.stoot ?? 10;
+  addText(frameH, -18, 8, `Mal ${malLetter} ${idL}/${idH}/${idV}`, 'TITLE');
 
   const header = [
     '0', 'SECTION', '2', 'HEADER',
@@ -953,11 +954,10 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
     '9', '$LUNITS', '70', '2',
     '0', 'ENDSEC',
     '0', 'SECTION', '2', 'TABLES',
-    '0', 'TABLE', '2', 'LAYER', '70', '5',
+    '0', 'TABLE', '2', 'LAYER', '70', '4',
     '0', 'LAYER', '2', 'FRAME',  '70', '0', '62', '7', '6', 'CONTINUOUS',
     '0', 'LAYER', '2', 'SLOTS',  '70', '0', '62', '2', '6', 'CONTINUOUS',
     '0', 'LAYER', '2', 'HOLES',  '70', '0', '62', '1', '6', 'CONTINUOUS',
-    '0', 'LAYER', '2', 'LABELS', '70', '0', '62', '3', '6', 'CONTINUOUS',
     '0', 'LAYER', '2', 'TITLE',  '70', '0', '62', '7', '6', 'CONTINUOUS',
     '0', 'ENDTAB', '0', 'ENDSEC',
   ].join('\n');
