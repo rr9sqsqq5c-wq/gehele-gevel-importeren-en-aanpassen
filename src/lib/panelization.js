@@ -894,6 +894,37 @@ export function moldIdLabel(mat, moldId) {
   return `Mal ${letter} ${L}/${H}/S${S}/L${Li}`;
 }
 
+// ── Handmatige einduiteinde-extensie (endExtensions) ────────────────────────────────────────
+// Verleng het BUITENSTE paneel/de buitenste latte aan een gevelrand voorbij de wandgrens, zodat
+// de bekleding aansluit op de aangrenzende gevel (stompe hoek). eL/eR in mm. Alleen het element
+// dat de linker- (x≈0) resp. rechterrand (x+breedte≈groupWidth) raakt schuift mee; interne
+// elementen blijven ongemoeid. Byte-identiek als eL=eR=0 (input onveranderd terug). Zelfde logica
+// als _applyCornerToPanels/_applyCornerToLats in de IFC-export, nu gedeeld met de 2D-view.
+export function extendPanelsAtEnds(panels, groupWidth, eL = 0, eR = 0) {
+  if (!(eL > 0) && !(eR > 0)) return panels;
+  return panels.map((p) => {
+    let x = p.x, right = p.x + p.width;
+    if (eL > 0 && p.x <= 0.5) x -= eL;
+    if (eR > 0 && p.x + p.width >= groupWidth - 0.5) right += eR;
+    const width = right - x;
+    return width === p.width ? p : { ...p, x, width };
+  });
+}
+
+// Idem voor latten. Alleen HORIZONTALE latten lopen over de breedte en worden verlengd; verticale
+// latten staan op een vaste x en blijven ongemoeid (gelijk aan _applyCornerToLats in de export).
+export function extendLattenAtEnds(latten, groupWidth, eL = 0, eR = 0) {
+  if (!(eL > 0) && !(eR > 0)) return latten;
+  return latten.map((lat) => {
+    if (lat.richting && lat.richting !== 'horizontaal') return lat;
+    let x = lat.x, right = lat.x + lat.width;
+    if (eL > 0 && lat.x <= 0.5) x -= eL;
+    if (eR > 0 && lat.x + lat.width >= groupWidth - 0.5) right += eR;
+    const width = right - x;
+    return width === lat.width ? lat : { ...lat, x, width };
+  });
+}
+
 export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   const g = _moldGeometry(mat, verband, moldDims, moldId);
   const { moldW, moldH, frameH, frameLeft, innerW, innerH, slotH, stoot, rows, notchXs, notchWs } = g;

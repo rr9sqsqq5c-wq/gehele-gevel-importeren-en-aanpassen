@@ -1,11 +1,11 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { buildFullGroupFacadePattern, getOpeningPoly } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten, extendPanelsAtEnds, extendLattenAtEnds } from './lib/panelization.js';
 import { brickColor, isTooSmall, polyXRangesAtY } from './lib/geometry.js';
 import { hasPenants } from './lib/zoneRegions.js';
 import { isFeatureZones } from './lib/featureFlags.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2 } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isKeepEndExtension } from './lib/featureFlags.js';
 import { generateSlimFortGrid, generateSlimFortFaces, SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
 
 function hexToRgba(hex, alpha = 1) {
@@ -159,12 +159,17 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       }
       return false;
     });
+    // Handmatige einduiteinde-extensie: buitenste paneel loopt door voorbij de gevelrand (hoek-aansluiting).
+    if (isKeepEndExtension()) {
+      const _eeP = endExtensions ?? {};
+      panels = extendPanelsAtEnds(panels, groupWidth, Math.max(0, _eeP.left?.panels ?? 0), Math.max(0, _eeP.right?.panels ?? 0));
+    }
     if (startLijn != null && startLijn < 0 && panels.length > 0) {
       const minY = Math.min(...panels.map((p) => p.y));
       return panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: startLijn, height: p.height + p.y - startLijn } : p);
     }
     return panels;
-  }, [facadeData, panelen, latten, effectiveMat, groupSettings, startLijn, zetwerk, verband]);
+  }, [facadeData, panelen, latten, effectiveMat, groupSettings, startLijn, zetwerk, verband, endExtensions]);
 
   const allLatten = useMemo(() => {
     const _bt = groupSettings?.backingType ?? 'hout';
@@ -174,7 +179,13 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
     const latBreedte = Math.max(5, latten.breedte ?? 50);
 
     if (richting === 'horizontaal') {
-      return computeHorizontalLatten({ facadeData, latten, mat: effectiveMat, panelen, zetwerk, startLijn, backingType: _bt });
+      const _hl = computeHorizontalLatten({ facadeData, latten, mat: effectiveMat, panelen, zetwerk, startLijn, backingType: _bt });
+      // Handmatige einduiteinde-extensie: buitenste horizontale latte loopt door voorbij de gevelrand.
+      if (isKeepEndExtension()) {
+        const _eeL = endExtensions ?? {};
+        return extendLattenAtEnds(_hl, groupWidth, Math.max(0, _eeL.left?.battens ?? 0), Math.max(0, _eeL.right?.battens ?? 0));
+      }
+      return _hl;
     } else {
       const xPositions = new Set();
       xPositions.add(0);
@@ -196,7 +207,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
           forced: false,
         }));
     }
-  }, [facadeData, latten, allPanels, effectiveMat, zetwerk, startLijn, panelen, groupSettings]);
+  }, [facadeData, latten, allPanels, effectiveMat, zetwerk, startLijn, panelen, groupSettings, endExtensions]);
 
   const allUProfiles = useMemo(() => {
     if ((groupSettings?.backingType ?? 'hout') !== 'aluminium') return [];
@@ -285,8 +296,14 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
   const bounds = useMemo(() => {
     if (!facadeData) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
     const maxX = sfFaceLayout ? sfFaceLayout.totalWidth : facadeData.groupWidth;
-    return { minX: 0, maxX, minY: Math.min(0, startLijn ?? 0), maxY: facadeData.groupHeight };
-  }, [facadeData, startLijn, sfFaceLayout]);
+    // Verlengde bekleding (endExtensions) valt buiten [0, groupWidth]; verbreed de viewBox zodat
+    // strips/latten/panelen die voorbij de rand doorlopen ook in beeld komen.
+    const _ee = endExtensions ?? {};
+    const _ex = isKeepEndExtension();
+    const exL = _ex ? Math.max(0, _ee.left?.strips ?? 0, _ee.left?.battens ?? 0, _ee.left?.panels ?? 0) : 0;
+    const exR = _ex ? Math.max(0, _ee.right?.strips ?? 0, _ee.right?.battens ?? 0, _ee.right?.panels ?? 0) : 0;
+    return { minX: -exL, maxX: maxX + exR, minY: Math.min(0, startLijn ?? 0), maxY: facadeData.groupHeight };
+  }, [facadeData, startLijn, sfFaceLayout, endExtensions]);
 
   const fitToView = useCallback(() => {
     const canvas = canvasRef.current;
@@ -373,6 +390,10 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
     const [faceSx, faceSy] = toScreen(0, groupHeight);
     const faceW = groupWidth * scale * 0.001;
     const faceH = groupHeight * scale * 0.001;
+    // Clip-extent voor strips/latten/panelen volgt de (verbrede) bounds, zodat handmatig verlengde
+    // bekleding voorbij de gevelrand niet wordt weggeknipt. Zonder extensie == faceSx/faceW.
+    const [clipSx] = toScreen(bounds.minX, 0);
+    const clipW = (bounds.maxX - bounds.minX) * scale * 0.001;
 
     // Compute wall polygon shapes in group-local coords (group origin = bottom-left of bounding box)
     const groupMinL = walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.lengthStart ?? 0)) : 0;
@@ -384,7 +405,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       return w.facadePoly.map(pt => ({ l: pt.l + offL, h: pt.h + offH }));
     }).filter(Boolean);
     const wallGroupPolys = rawWallPolys.length
-      ? [[ { l: 0, h: 0 }, { l: groupWidth, h: 0 }, { l: groupWidth, h: groupHeight }, { l: 0, h: groupHeight } ]]
+      ? [[ { l: bounds.minX, h: 0 }, { l: bounds.maxX, h: 0 }, { l: bounds.maxX, h: groupHeight }, { l: bounds.minX, h: groupHeight } ]]
       : [];
     const hasWallPolys = wallGroupPolys.length > 0;
 
@@ -398,7 +419,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
           ctx.closePath();
         }
       } else {
-        ctx.rect(faceSx - 1, faceSy - 1, faceW + 2, faceH + 2);
+        ctx.rect(clipSx - 1, faceSy - 1, clipW + 2, faceH + 2);
       }
     };
 
@@ -415,9 +436,9 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       ctx.beginPath();
       traceFacadePath();
       if (startLijn != null && startLijn < 0) {
-        const [bx, byPeil] = toScreen(0, 0);
+        const [, byPeil] = toScreen(0, 0);
         const [, byStart] = toScreen(0, startLijn);
-        ctx.rect(bx - 1, byPeil, faceW + 2, byStart - byPeil + 1);
+        ctx.rect(clipSx - 1, byPeil, clipW + 2, byStart - byPeil + 1);
       }
       for (const op of groupOpenings) {
         const poly = getOpeningPoly(op);
@@ -1239,11 +1260,11 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       const hasZones = stripZones.length > 0;
       ctx.save();
       ctx.beginPath();
-      ctx.rect(faceSx - 1, faceSy - 1, faceW + 2, faceH + 2);
+      ctx.rect(clipSx - 1, faceSy - 1, clipW + 2, faceH + 2);
       if (startLijn != null && startLijn < 0) {
-        const [bx, byPeil] = toScreen(0, 0);
+        const [, byPeil] = toScreen(0, 0);
         const [, byStart] = toScreen(0, startLijn);
-        ctx.rect(bx - 1, byPeil + 1, faceW + 2, byStart - byPeil);
+        ctx.rect(clipSx - 1, byPeil + 1, clipW + 2, byStart - byPeil);
       }
       if (penantFaceData?.length) {
         const STRIP_LAT_GAP = 5;
