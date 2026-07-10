@@ -221,10 +221,14 @@ function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft
     // Een echte opening (≥ ~200 mm) overschrijdt de drempel en blijft dus open.
     const merged = [ivs[0].slice()];
     for (let i = 1; i < ivs.length; i++) { const last = merged[merged.length - 1]; if (ivs[i][0] <= last[1] + SEAM_MERGE_TOL) last[1] = Math.max(last[1], ivs[i][1]); else merged.push(ivs[i].slice()); }
-    // Vlag AAN: rek alleen de buitenste interval-rand op die de groep-extreme raakt.
+    // Vlag AAN: rek de BUITENSTE rand van ELKE rij op naar de globale gevel-extreme ± extensie
+    // (Math.min/max → uitsluitend naar buiten). Zo loopt de hele linker-/rechterrand van de gevel
+    // door voorbij de rand — óók bij een multi-wand groep met smallere/terugliggende wanden. De
+    // vorige conditie (merged[0][0] ≈ gT0) verlengde alleen de volle-breedte-rijen, waardoor de
+    // verlenging onzichtbaar bleef voor de overige lagen. Interne voegen/openingen blijven ongemoeid.
     if (keepExt) {
-      if (extendLeft  > 0 && Math.abs(merged[0][0]                 - gT0) < 0.5) merged[0][0]                 = gT0 - extendLeft;
-      if (extendRight > 0 && Math.abs(merged[merged.length - 1][1] - gT1) < 0.5) merged[merged.length - 1][1] = gT1 + extendRight;
+      if (extendLeft  > 0) merged[0][0]                 = Math.min(merged[0][0],                 gT0 - extendLeft);
+      if (extendRight > 0) merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], gT1 + extendRight);
     }
     const pieces = [];
     for (const p of row.pieces) {
