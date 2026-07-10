@@ -471,46 +471,41 @@ function getBBox(api, modelID, expressID) {
 // gebruikt om de steenstripgevel rondom deze onderdelen weg te knippen. entityTypeNames = array
 // van IFC-entity-namen (bv. ['IFCBUILDINGELEMENTPROXY','IFCPIPESEGMENT']). Retourneert
 // [{ expressID, name, ifcEntityType, bbox:{minX,maxX,minY,maxY,minZ,maxZ} }].
-// Kandidaat niet-wand entity-types voor de sparing-feature (proxies + veelvoorkomende bouw/MEP/
-// installatie-onderdelen). Namen die in dit web-ifc-schema niet bestaan (IFC[name] === undefined)
-// worden bij het scannen vanzelf overgeslagen, dus een ruime lijst is veilig (IFC2X3 + IFC4).
-export const SPARING_CANDIDATE_TYPES = [
-  // generiek / bouwkundig
-  'IFCBUILDINGELEMENTPROXY', 'IFCSLAB', 'IFCCOVERING', 'IFCPLATE', 'IFCMEMBER', 'IFCBEAM', 'IFCCOLUMN',
-  'IFCRAILING', 'IFCROOF', 'IFCSTAIR', 'IFCRAMP', 'IFCFOOTING', 'IFCPILE', 'IFCCHIMNEY',
-  'IFCBUILDINGELEMENTPART', 'IFCELEMENTASSEMBLY', 'IFCELEMENTCOMPONENT',
-  // bevestigers
-  'IFCDISCRETEACCESSORY', 'IFCMECHANICALFASTENER', 'IFCFASTENER',
-  // MEP generiek
-  'IFCDISTRIBUTIONELEMENT', 'IFCDISTRIBUTIONFLOWELEMENT', 'IFCDISTRIBUTIONCONTROLELEMENT',
-  'IFCFLOWSEGMENT', 'IFCFLOWFITTING', 'IFCFLOWTERMINAL', 'IFCFLOWCONTROLLER', 'IFCFLOWMOVINGDEVICE',
-  'IFCFLOWSTORAGEDEVICE', 'IFCFLOWTREATMENTDEVICE', 'IFCENERGYCONVERSIONDEVICE',
-  // leidingen / kanalen
-  'IFCPIPESEGMENT', 'IFCPIPEFITTING', 'IFCDUCTSEGMENT', 'IFCDUCTFITTING', 'IFCDUCTSILENCER',
-  'IFCVALVE', 'IFCPUMP', 'IFCFAN', 'IFCTANK', 'IFCBOILER', 'IFCCHILLER', 'IFCCOIL', 'IFCFILTER',
-  'IFCHEATEXCHANGER', 'IFCAIRTERMINAL', 'IFCAIRTERMINALBOX', 'IFCSANITARYTERMINAL', 'IFCSPACEHEATER',
-  'IFCWASTETERMINAL', 'IFCSTACKTERMINAL', 'IFCFIRESUPPRESSIONTERMINAL', 'IFCMEDICALDEVICE',
-  // elektro
-  'IFCCABLECARRIERSEGMENT', 'IFCCABLECARRIERFITTING', 'IFCCABLESEGMENT', 'IFCCABLEFITTING',
-  'IFCJUNCTIONBOX', 'IFCLIGHTFIXTURE', 'IFCELECTRICAPPLIANCE', 'IFCOUTLET', 'IFCSWITCHINGDEVICE',
-  'IFCPROTECTIVEDEVICE', 'IFCSENSOR', 'IFCACTUATOR', 'IFCALARM', 'IFCCONTROLLER',
-  // meubilair / overig
-  'IFCFURNISHINGELEMENT', 'IFCFURNITURE', 'IFCSYSTEMFURNITUREELEMENT',
-];
-
-// Scant een IFC op de aanwezige sparing-kandidaat-types → [{ ifcEntityType, count }] (alleen >0).
+// Scant een IFC DYNAMISCH op ALLE aanwezige fysieke element-types: elk entity-type dat in de
+// DATA-sectie als instantie voorkomt, dat web-ifc kent, én dat mesh-geometrie heeft (bounding box).
+// Data-entiteiten (punten/vlakken/relaties/eigenschappen/units/stijlen) én type-DEFINITIES (…TYPE)
+// vallen vanzelf af — ze hebben geen mesh. Zo kan de gebruiker élk onderdeel dat écht in het bestand
+// zit kiezen. Retourneert [{ ifcEntityType, count }] (aflopend op aantal).
 export async function scanIfcSparingTypes(file) {
   const { IFC, api } = await getApi();
-  const modelID = api.OpenModel(new Uint8Array(await file.arrayBuffer()), {});
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  // 1. verzamel de entity-type-namen die als instantie voorkomen (#N= IFCxxx(...)); latin1 dekt elke byte.
+  const text = new TextDecoder('latin1').decode(bytes);
+  const di = text.indexOf('DATA;');
+  const body = di >= 0 ? text.slice(di) : text;
+  const present = new Set();
+  const re = /=\s*(IFC[A-Z0-9]+)/gi;
+  let m;
+  while ((m = re.exec(body)) !== null) {
+    const t = m[1].toUpperCase();
+    if (!t.endsWith('TYPE')) present.add(t);  // sla type-DEFINITIES over (IFCSLABTYPE e.d.)
+  }
+  // 2. houd alleen types die web-ifc kent én die mesh-geometrie hebben (= fysieke onderdelen).
+  const modelID = api.OpenModel(bytes, {});
   const out = [];
   try {
-    for (const name of SPARING_CANDIDATE_TYPES) {
+    for (const name of present) {
       const code = IFC[name];
-      if (code === undefined) continue;
-      let n = 0; try { n = api.GetLineIDsWithType(modelID, code).size(); } catch {}
-      if (n > 0) out.push({ ifcEntityType: name, count: n });
+      if (code === undefined) continue;                    // onbekend in dit web-ifc-schema
+      let vec; try { vec = api.GetLineIDsWithType(modelID, code); } catch { continue; }
+      const n = vec.size();
+      if (n === 0) continue;
+      let hasGeom = false;
+      for (let i = 0; i < Math.min(n, 3) && !hasGeom; i++) { if (getBBox(api, modelID, vec.get(i))) hasGeom = true; }
+      if (hasGeom) out.push({ ifcEntityType: name, count: n });
     }
   } finally { try { api.CloseModel(modelID); } catch {} }
+  out.sort((a, b) => b.count - a.count);
   return out;
 }
 
