@@ -745,14 +745,15 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   const colStep = brickW + stoot;
   const moldW = moldDims?.lengte ?? 3400;
   const moldH = moldDims?.hoogte ?? 270;
-  const tolerantieL = moldDims?.tolerantieL ?? 1;  // mm extra per zijde (horizontaal)
-  const tolerantieH = moldDims?.tolerantieH ?? 1;  // mm extra per zijde (verticaal)
+  // HARDE WAARHEID mal-slots (geen instelbare tolerantie meer): de steek van slotrand tot slotrand
+  // = steen + stootvoeg (colStep); de slot-LENGTE is 2 mm korter (b.w + stoot − 2) → 2 mm steg;
+  // de slot-HOOGTE = steenstrip-hoogte + 3 mm. Linkerrand op nominaal (speling altijd rechts).
   const frameH    = 30;  // top + bottom margin from outer edge (min 20mm)
   const frameLeft = 40;  // left start, aligned with first notch
   const frame = frameH;  // alias kept for pin-hole logic
   const innerW = moldW - 2 * frameLeft;
   const innerH = moldH - 2 * frameH;
-  const slotH = brickH + 2 * tolerantieH;   // actual slot height including tolerance
+  const slotH = brickH + 3;   // slot-hoogte = steenstrip-hoogte + 3 mm
   const minRowGap = 10;                       // minimum gap between row slots (independent of lintvoeg)
   const rowsPerMold = Math.min(3, Math.max(1, Math.floor((innerH + minRowGap) / (slotH + minRowGap))));
   const extraOffsetX = moldDims?.offsetX ?? 0;
@@ -881,12 +882,12 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
   }
   const { notchXs, notchWs } = calcNotchXs();
 
-  return { moldW, moldH, frame, frameH, frameLeft, innerW, innerH, brickW, brickH, colStep, lagenmaat, slotH, tolerantieL, tolerantieH, rowsPerMold, globalRowBase, rows, pinYs, pinStepX, notchXs, notchWs };
+  return { moldW, moldH, frame, frameH, frameLeft, innerW, innerH, brickW, brickH, colStep, stoot, lagenmaat, slotH, rowsPerMold, globalRowBase, rows, pinYs, pinStepX, notchXs, notchWs };
 }
 
 export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   const g = _moldGeometry(mat, verband, moldDims, moldId);
-  const { moldW, moldH, frameH, frameLeft, innerW, innerH, slotH, tolerantieL, rows, notchXs, notchWs } = g;
+  const { moldW, moldH, frameH, frameLeft, innerW, innerH, slotH, stoot, rows, notchXs, notchWs } = g;
   const extraOffsetX = moldDims?.offsetX ?? 0;
   const r2 = (v) => Math.round(v * 100) / 100;
   const lines = [];
@@ -930,11 +931,11 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
 
   for (const row of rows) {
     for (const b of row.bricks) {
-      // Tolerantie wordt altijd RECHTS weggewerkt: linkerrand op de nominale positie (= guide-lijn
-      // frameLeft voor de startslot), volledige speling (2·tolerantieL) aan de rechterkant.
-      addPolyRect(r2(frameLeft + b.x), r2(row.yRow), r2(b.w + 2 * tolerantieL), r2(slotH), 'SLOTS', 2);
+      // Slot-lengte = b.w + stoot − 2 (2 mm korter dan de steek b.w+stoot → 2 mm steg). Linkerrand
+      // op de nominale positie (= guide-lijn frameLeft voor de startslot); speling altijd rechts.
+      addPolyRect(r2(frameLeft + b.x), r2(row.yRow), r2(b.w + stoot - 2), r2(slotH), 'SLOTS', 2);
     }
-    addText(frameLeft, row.yRow - 10, 6, `Rij ${row.globalRow + 1}  off=${row.off}mm  tol±${tolerantieL}x${g.tolerantieH}mm`, 'LABELS');
+    addText(frameLeft, row.yRow - 10, 6, `Rij ${row.globalRow + 1}  off=${row.off}mm`, 'LABELS');
   }
   // Het raster fixeergaten (pinYs × pinStepX, ~40 stuks) is bewust VERWIJDERD (klantverzoek):
   // de mal wordt met één gat vastgezet. Alleen het uitlijngat hieronder blijft.
@@ -966,7 +967,7 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
 
 export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const g = _moldGeometry(mat, verband, moldDims, moldId);
-  const { moldW, moldH, frameH, frameLeft, innerW, innerH, brickH, slotH, tolerantieL, tolerantieH, rows, rowsPerMold, globalRowBase, notchXs, notchWs } = g;
+  const { moldW, moldH, frameH, frameLeft, innerW, innerH, brickH, slotH, stoot, rows, rowsPerMold, globalRowBase, notchXs, notchWs } = g;
   const extraOffsetX = moldDims?.offsetX ?? 0;
   const isStaand = verband === 'staand_tegelverband';
   // After 90° CW rotation: long side (steenL) is horizontal in mold, short side (steenH) vertical
@@ -1061,10 +1062,10 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   const slotFill = { Strek: '#ffffff', Kop: '#fef3c7', Drieklezoor: '#dbeafe', Rest: '#fee2e2' };
   for (const row of rows) {
     const sTop = r2(oy + row.yRow);          // row.yRow = top of slot
-    const sH   = r2(slotH);                   // = brickH + 2*tolerantieH
+    const sH   = r2(slotH);                   // = steenstrip-hoogte + 3 mm
     for (const b of row.bricks) {
       const sLeft = r2(ox + frameLeft + b.x); // tolerantie rechts weggewerkt: linkerrand op nominaal
-      const sW    = r2(b.w + 2 * tolerantieL);
+      const sW    = r2(b.w + stoot - 2);
       const fill  = b.koppelstrip ? '#fb923c' : (slotFill[b.label] ?? '#ffffff');
       parts.push(`<rect x="${sLeft}" y="${sTop}" width="${sW}" height="${sH}" fill="${fill}" stroke="#334155" stroke-width="1" rx="1"/>`);
       if ((b.koppelstrip || b.label !== 'Strek') && sW > 12) {
@@ -1077,7 +1078,7 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
   }
 
   // Strip size label — top-left inside mold
-  parts.push(`<text x="${r2(ox + frameLeft + 30)}" y="${r2(oy + frameH + 11)}" font-size="8" fill="#1e293b" font-weight="bold">${displayBrickW}×${displayBrickH}mm${displayNote}  tol L±${tolerantieL} H±${tolerantieH}mm</text>`);
+  parts.push(`<text x="${r2(ox + frameLeft + 30)}" y="${r2(oy + frameH + 11)}" font-size="8" fill="#1e293b" font-weight="bold">${displayBrickW}×${displayBrickH}mm${displayNote}</text>`);
 
   // ── Dimension area baseline (just below mold) ──
   const dimBase = oy + moldH + 6;
@@ -1265,10 +1266,9 @@ export function getMoldTemplates(verband, mat, moldDims) {
 
   const moldW = moldDims?.lengte    ?? 3400;
   const moldH = moldDims?.hoogte    ?? 270;
-  const tolerantieH = moldDims?.tolerantieH ?? 1;
   const frameH = 30;
   const innerH = moldH - 2 * frameH;
-  const slotH_tmpl = brickH + 2 * tolerantieH;
+  const slotH_tmpl = brickH + 3;   // slot-hoogte = steenstrip-hoogte + 3 mm (harde waarheid)
   const minRowGap = 10;
   const rowsPerMold = Math.min(3, Math.max(1, Math.floor((innerH + minRowGap) / (slotH_tmpl + minRowGap))));
 
@@ -1415,7 +1415,7 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
   const gA = _moldGeometry(mat, verband, moldDims, moldIds[0] ?? 'Links');
   const gB = _moldGeometry(mat, verband, moldDims, moldIds[1] ?? 'Rechts');
 
-  const { moldW, moldH, frameH, frameLeft, innerW, innerH, slotH, tolerantieL, tolerantieH, notchXs, notchWs } = gA;
+  const { moldW, moldH, frameH, frameLeft, innerW, innerH, slotH, stoot, notchXs, notchWs } = gA;
   const isStaand = verband === 'staand_tegelverband';
   // After 90° CW rotation: long side (steenL) is horizontal in mold, short side (steenH) vertical
   const displayBrickW = mat?.steenL ?? 210;
@@ -1478,7 +1478,7 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
       const sH   = r2(slotH);
       for (const b of row.bricks) {
         const sLeft = r2(ox + frameLeft + b.x); // tolerantie rechts weggewerkt: linkerrand op nominaal
-        const sW    = r2(b.w + 2 * tolerantieL);
+        const sW    = r2(b.w + stoot - 2);
         const fill  = b.koppelstrip ? '#fb923c' : (slotFill[b.label] ?? '#ffffff');
         out.push(`<rect x="${sLeft}" y="${sTop}" width="${sW}" height="${sH}" fill="${fill}" stroke="#334155" stroke-width="1" rx="1"/>`);
         if ((b.koppelstrip || b.label !== 'Strek') && sW > 12)
@@ -1491,7 +1491,7 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
     out.push(`<rect x="${r2(ox + frameLeft)}" y="${r2(oy + 1)}" width="${r2(Math.min(220, innerW))}" height="16" fill="${headerColor}" rx="2" opacity="0.85"/>`);
     out.push(`<text x="${r2(ox + frameLeft + 6)}" y="${r2(oy + 12)}" font-size="9" fill="#ffffff" font-weight="bold">MAL ${moldId} — Rijen ${g.rows.map((r) => r.globalRow + 1).join(' + ')}</text>`);
     // strip size info (top right of mold)
-    out.push(`<text x="${r2(ox + frameLeft + 30)}" y="${r2(oy + frameH + 11)}" font-size="7" fill="#1e293b" font-weight="bold">${displayBrickW}×${displayBrickH}mm${displayNote}  tol L±${tolerantieL} H±${tolerantieH}mm</text>`);
+    out.push(`<text x="${r2(ox + frameLeft + 30)}" y="${r2(oy + frameH + 11)}" font-size="7" fill="#1e293b" font-weight="bold">${displayBrickW}×${displayBrickH}mm${displayNote}</text>`);
     return out.join('\n');
   }
 

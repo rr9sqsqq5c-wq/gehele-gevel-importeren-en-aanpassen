@@ -1728,14 +1728,12 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               const lagenmaat = verband === 'staand_tegelverband' ? steenL + lint : steenH + lint;
               const malLengte = pan.malLengte ?? 3400;
               const malBreedte = pan.malBreedte ?? 270;
-              const tolL = pan.tolerantieL ?? 1;
-              const tolH = pan.tolerantieH ?? 1;
               const FRAME_H = 30;
               const FRAME_LEFT = 40;
               const malInnerW = malLengte - 2 * FRAME_LEFT;
               const malInnerH = malBreedte - 2 * FRAME_H;
               const brickH_local = verband === 'staand_tegelverband' ? steenL : steenH;
-              const slotH_local = brickH_local + 2 * tolH;
+              const slotH_local = brickH_local + 3;   // slot-hoogte = steenstrip-hoogte + 3 mm
               const minRowGap = 10;
               const rowsPerMold = Math.min(3, Math.max(1, Math.floor((malInnerH + minRowGap) / (slotH_local + minRowGap))));
               const panelBreedte = pan.breedte ?? 3005;
@@ -1828,16 +1826,6 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                         onChange={(e) => upd({ malBreedte: Number(e.target.value) })}
                         style={{ ...inp, width: '100%' }} />
                     </Field>
-                    <Field label="Tolerantie strip lengte mm" tip="Extra ruimte (mm) per zijde in de malopening in de lengterichting. Verkleint de stootvoeg in de mal (min. 2 mm vrij). Standaard 1 mm.">
-                      <input type="number" min={0} max={10} step={0.5} value={pan.tolerantieL ?? 1}
-                        onChange={(e) => upd({ tolerantieL: Number(e.target.value) })}
-                        style={{ ...inp, width: '100%' }} />
-                    </Field>
-                    <Field label="Tolerantie strip hoogte mm" tip="Extra ruimte (mm) per zijde in de malopening in de hoogterichting. Vergroot de slothoogte met 2× tolerantie. Standaard 1 mm.">
-                      <input type="number" min={0} max={10} step={0.5} value={pan.tolerantieH ?? 1}
-                        onChange={(e) => upd({ tolerantieH: Number(e.target.value) })}
-                        style={{ ...inp, width: '100%' }} />
-                    </Field>
                     <Field label="Mal offset X mm" tip="Horizontale startoffset van het steenstrippatroon binnen de mal (mm). Verschuift het patroon naar rechts binnen de malopening. Gebruik dit om de malindeling af te stemmen op de gevelindeling.">
                       <input type="number" min={0} step={1} value={pan.malOffsetX ?? 0}
                         onChange={(e) => upd({ malOffsetX: Number(e.target.value) })}
@@ -1882,7 +1870,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
 
                   {/* Mold template preview per verband */}
                   {(() => {
-                    const moldDimsLocal = { hoogte: pan.malBreedte ?? 270, lengte: pan.malLengte ?? 3400, tolerantieL: pan.tolerantieL ?? 1, tolerantieH: pan.tolerantieH ?? 1, offsetX: pan.malOffsetX ?? 0 };
+                    const moldDimsLocal = { hoogte: pan.malBreedte ?? 270, lengte: pan.malLengte ?? 3400, offsetX: pan.malOffsetX ?? 0 };
                     const tpl = getMoldTemplates(verband, mat, moldDimsLocal);
                     const previewW = 240;
                     const scale = previewW / moldDimsLocal.lengte;
@@ -4956,7 +4944,7 @@ export default function App() {
         }).filter(Boolean);
       }
 
-      const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400, tolerantieL: s.panelen.tolerantieL ?? 1, tolerantieH: s.panelen.tolerantieH ?? 1, offsetX: s.panelen.malOffsetX ?? 0 };
+      const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400, offsetX: s.panelen.malOffsetX ?? 0 };
       const groupLabel = group.name ?? group.id;
       const recipeRows = generateMoldRecipe(panels, mat, verband, s.panelen.dikte ?? 8, moldDims, groupLabel);
       allRows.push(...recipeRows);
@@ -4983,7 +4971,7 @@ export default function App() {
     const s = getSettings(firstGroup.id);
     const mat = s.material ?? DEFAULT_MATERIAL;
     const verband = s.verband ?? DEFAULT_VERBAND;
-    const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400, tolerantieL: s.panelen.tolerantieL ?? 1, tolerantieH: s.panelen.tolerantieH ?? 1, offsetX: s.panelen.malOffsetX ?? 0 };
+    const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400, offsetX: s.panelen.malOffsetX ?? 0 };
     const tpl = getMoldTemplates(verband, mat, moldDims);
     // Downloads SERIEEL (met tussenpoos) — meerdere <a download>-klikken vlak na elkaar worden door de
     // browser geblokkeerd na de eerste, waardoor eerder alleen MAL-A landde. Spreiden lost dat op.
