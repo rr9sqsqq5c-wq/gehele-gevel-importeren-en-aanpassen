@@ -940,11 +940,12 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   // Alignment hole — Ø8mm, 11mm from left edge, vertically centred
   addCircle(11, r2(moldH / 2), 4, 'HOLES', 1);
 
-  // Identificatie die mee het staal in gesneden wordt: mal-letter + strip-lengte/hoogte/voegmaat
-  // (bv. "Mal A 210/51/6"). Verder niets — geen rij-labels, geen verband/afmeting/rijen-tekst.
+  // Identificatie die mee het staal in gesneden wordt: mal-letter + strip-lengte/hoogte + beide voegen
+  // gelabeld (S=stootvoeg, L=lintvoeg) om vergissingen te voorkomen, bv. "Mal A 210/51/S6/L10".
+  // Verder niets — geen rij-labels, geen verband/afmeting/rijen-tekst.
   const malLetter = ({ Links: 'A', Rechts: 'B' })[moldId] ?? moldId;
-  const idL = mat?.steenL ?? 210, idH = mat?.steenH ?? 50, idV = mat?.stoot ?? 10;
-  addText(frameH, -18, 8, `Mal ${malLetter} ${idL}/${idH}/${idV}`, 'TITLE');
+  const idL = mat?.steenL ?? 210, idH = mat?.steenH ?? 50, idStoot = mat?.stoot ?? 10, idLint = mat?.lint ?? 12;
+  addText(frameH, -18, 8, `Mal ${malLetter} ${idL}/${idH}/S${idStoot}/L${idLint}`, 'TITLE');
 
   const header = [
     '0', 'SECTION', '2', 'HEADER',
