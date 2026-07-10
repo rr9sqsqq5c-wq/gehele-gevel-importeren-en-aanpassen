@@ -786,6 +786,16 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
       for (const c of codes) { arr.push({ x, w: c.w, label: FULL[c.t], koppelstrip: false }); x = Math.round((x + c.w + stoot) * 10) / 10; }
       wildByRow.set(ri, arr);
     });
+  } else if (isGroothuis2) {
+    // groothuis 2 — VASTE 6-rij mal (rij 0 = onder). Elke rij is de handgelegde codelijst
+    // (S/K/D) met nominale breedtes; MAL 'A' = rij 1-3, MAL 'B' = rij 4-6 via globalRowBase.
+    const FULL = { S: 'Strek', K: 'Kop', D: 'Drieklezoor' };
+    buildGroothuis2Module(mat).forEach((codes, ri) => {
+      if (!wildByRow) wildByRow = new Map();
+      let x = 0; const arr = [];
+      for (const c of codes) { arr.push({ x, w: c.w, label: FULL[c.t], koppelstrip: false }); x = Math.round((x + c.w + stoot) * 10) / 10; }
+      wildByRow.set(ri, arr);
+    });
   }
   const globalRowBase = verband === 'halfsteens' ? moldIdx % 2
     : isWild ? (moldId === 'B' ? 1 : 0) * rowsPerMold
@@ -872,10 +882,16 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   const r2 = (v) => Math.round(v * 100) / 100;
   const lines = [];
 
+  // R12-compatibele gesloten polylijn: POLYLINE (66/1 = vertices volgen, 70/1 = gesloten) met losse
+  // VERTEX-entiteiten + SEQEND. LWPOLYLINE bestaat pas vanaf R14 (AC1014); onder $ACADVER=AC1009 (R12)
+  // maakte dat een ongeldig bestand ("missing 'AcDbPolyline' subclass"). CIRCLE/TEXT zijn R12-geldig.
+  function addPolyline(pts, layer, color) {
+    lines.push('0', 'POLYLINE', '8', layer, '62', String(color), '66', '1', '70', '1');
+    for (const [px, py] of pts) lines.push('0', 'VERTEX', '8', layer, '10', String(r2(px)), '20', String(r2(py)));
+    lines.push('0', 'SEQEND', '8', layer);
+  }
   function addPolyRect(x1, y1, w, h, layer, color) {
-    lines.push('0', 'LWPOLYLINE', '8', layer, '62', String(color), '70', '1', '90', '4');
-    for (const [px, py] of [[x1, y1], [x1 + w, y1], [x1 + w, y1 + h], [x1, y1 + h]])
-      lines.push('10', String(r2(px)), '20', String(r2(py)));
+    addPolyline([[x1, y1], [x1 + w, y1], [x1 + w, y1 + h], [x1, y1 + h]], layer, color);
   }
   function addCircle(cx, cy, radius, layer, color) {
     lines.push('0', 'CIRCLE', '8', layer, '62', String(color),
@@ -897,8 +913,7 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
       pts.push([notchXs[i] + notchWs[i], moldH], [notchXs[i] + notchWs[i], moldH - notchDepth], [notchXs[i], moldH - notchDepth], [notchXs[i], moldH]);
     }
     pts.push([0, moldH]);
-    lines.push('0', 'LWPOLYLINE', '8', 'FRAME', '62', '7', '70', '1', '90', String(pts.length));
-    for (const [px, py] of pts) lines.push('10', String(r2(px)), '20', String(r2(py)));
+    addPolyline(pts, 'FRAME', 7);
   }
   addPolyRect(frameLeft, frameH, innerW, innerH, 'GUIDE', 8);
 
@@ -923,7 +938,7 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
     '9', '$ACADVER', '1', 'AC1009',
     '9', '$EXTMIN', '10', '0.0', '20', '-30', '30', '0.0',
     '9', '$EXTMAX', '10', String(moldW), '20', String(moldH + 30), '30', '0.0',
-    '9', '$LUNITS', '70', '4',
+    '9', '$LUNITS', '70', '2',
     '0', 'ENDSEC',
     '0', 'SECTION', '2', 'TABLES',
     '0', 'TABLE', '2', 'LAYER', '70', '6',

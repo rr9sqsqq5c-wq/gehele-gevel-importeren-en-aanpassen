@@ -2,7 +2,8 @@ import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Frag
 import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge } from './lib/featureFlags.js';
+import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
 import { buildBestFitFacadePattern } from './lib/facadePlane.js';
@@ -1107,6 +1108,14 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
 
       <CollapsibleSection title="Penanten" tip={"Een penant is een uitstekende verticale lijst in de gevel.\nGeef de X-positie, breedte, diepte en hoogte op in mm.\n· X positie = afstand van de linker groepsrand\n· Breedte = breedte van het penant\n· Diepte = uitsteek t.o.v. het gevelvlak\n· Hoogte = hoogte van het penant\n· Steenstrips starten symmetrisch vanuit het midden van de voorzijde"} isOpen={isOpen('penanten')} onToggle={() => toggle('penanten')} badge={(settings.penanten ?? []).length > 0 ? `${(settings.penanten ?? []).length}` : null} extra={(() => { const _szBlocked = (settings.stripZones ?? []).some((z) => z?.enabled === true); return <button disabled={_szBlocked} title={_szBlocked ? 'Dit vlak heeft actieve strip-zones — penanten zijn hier uitgesloten (wederzijds). Zet de zones uit om penanten te gebruiken.' : undefined} onClick={() => { if (_szBlocked) return; onUpdate({ penanten: [...(settings.penanten ?? []), { id: Date.now(), x: 500, breedte: 400, diepte: 150, hoogte: 2000, hoekprofiel: { enabled: true, dikte: 2, breedteZijkant: 40, breedteVoorkant: 40 } }] }); }} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '2px 8px', cursor: _szBlocked ? 'not-allowed' : 'pointer', opacity: _szBlocked ? 0.5 : 1 }}>+ Toevoegen</button>; })()}>
         <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #e2e8f0' }}>
+          <input type="checkbox" id="penant-startlijn-enable"
+            checked={settings.startLijn !== null}
+            onChange={(e) => onUpdate({ startLijn: e.target.checked ? 0 : null })} />
+          <label htmlFor="penant-startlijn-enable" title="Schakelt de startlijn (t.o.v. peil = 0) voor deze groep in/uit — dezelfde instelling als in de sectie 'Startlijn t.o.v. peil = 0'." style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>
+            Startlijn inschakelen voor deze groep
+          </label>
+        </div>
         {(settings.penanten ?? []).length === 0 && (
           <div style={{ fontSize: 11, color: '#94a3b8' }}>Geen penanten</div>
         )}
@@ -3655,7 +3664,10 @@ export default function App() {
         const penStoot = pen.stoot ?? mat.stoot ?? 10;
         const penShift = panelDikte + brickD3d + penStoot + pDmax3;
         const depthFromFace = latD + penShift + brickD3d / 2;
-        const faceRows = buildCenteredFacePattern(pB, pH, effectiveMat3d, groupVerband3d);
+        const penSL3 = Math.max(0, s.startLijn ?? 0);   // penant-strips volgen de groep-startlijn
+        const penEffPH3 = pH - penSL3;                   // zichtbare penant-hoogte boven de startlijn (top blijft op pH)
+        const shiftPenY3 = (rows) => penSL3 > 0 ? rows.map((row) => ({ ...row, y: Math.round((row.y + penSL3) * 100) / 100 })) : rows;
+        const faceRows = shiftPenY3(buildCenteredFacePattern(pB, penEffPH3, effectiveMat3d, groupVerband3d));
         if (!faceRows.length) continue;
         const offsetRows = faceRows.map((row) => ({
           ...row,
@@ -3680,8 +3692,8 @@ export default function App() {
         };
         const leftArmDepth = Math.max(1, pDL3 - 6);
         const rightArmDepth = Math.max(1, pDR3 - 6);
-        const leftRows = clipSideFront(buildFacePattern(leftArmDepth, pH, effectiveMat3d, groupVerband3d), leftArmDepth);
-        const rightRows = clipSideFront(buildFacePattern(rightArmDepth, pH, effectiveMat3d, groupVerband3d), rightArmDepth);
+        const leftRows = clipSideFront(shiftPenY3(buildFacePattern(leftArmDepth, penEffPH3, effectiveMat3d, groupVerband3d)), leftArmDepth);
+        const rightRows = clipSideFront(shiftPenY3(buildFacePattern(rightArmDepth, penEffPH3, effectiveMat3d, groupVerband3d)), rightArmDepth);
         if (leftRows.length) batches.push({ rows: leftRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, sideType: 'left', penantX: pX, penantB: pB, sideDepthOffset: sideDepthOffsetLeft });
         if (rightRows.length) batches.push({ rows: rightRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, sideType: 'right', penantX: pX, penantB: pB, sideDepthOffset: sideDepthOffsetRight });
       }
@@ -4436,6 +4448,76 @@ export default function App() {
     return () => clearTimeout(_saveTimerRef.current);
   }, [groups, groupLinks, cornerConfigs, settingsMap, ifcFileName, wallDimOverrides, allWalls]);
 
+  // --- PLAN_BRIDGE (achter isPlanBridge(), default UIT) — engineering-samenvatting voor de planner ---
+  // Volledig ADDITIEF: met de vlag uit registreert de useEffect hieronder niets en wordt
+  // buildEngineeringPayload nooit aangeroepen → byte-identiek gedrag. De payload leest dezelfde
+  // gevelvlak-bron als het scherm (buildFullGroupFacadePattern) en raakt geen bestaand codepad.
+  // NB (fast-follow): paneelaantallen + fijne strip/latten-uitsplitsing komen uit de panelisatie in
+  // handleExport/Uittrekstaat en volgen in een aparte, byte-identiek geverifieerde stap.
+  const _engPayloadRef = useRef(null);
+  const _planContextRef = useRef(null);
+  const buildEngineeringPayload = () => {
+    const visGroups = groups.filter((g) => !hiddenGroupIds.has(g.id));
+    const outGroups = visGroups.map((group) => {
+      const s = getSettings(group.id);
+      const walls = (group.wallIds || []).map((id) => wallMap[id]).filter(Boolean);
+      const mat = s.material ?? DEFAULT_MATERIAL;
+      const ctrims = endExtensionsToTrims(s.endExtensions);
+      let facadeData = null;
+      try {
+        facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrims.extendLeft, ctrims.extendRight);
+      } catch { facadeData = null; }
+      const gw = facadeData?.groupWidth ?? 0;
+      const gh = facadeData?.groupHeight ?? 0;
+      const openings = facadeData?.groupOpenings ?? [];
+      const openingAreaMM2 = openings.reduce((a, op) => a + Math.max(0, op.width ?? 0) * Math.max(0, op.height ?? 0), 0);
+      const grossMM2 = Math.max(0, gw * gh);
+      const netMM2 = Math.max(0, grossMM2 - openingAreaMM2);
+      const cornerAssemblies = Object.values(cornerConfigs).filter((cfg) => cfg && cfg.mainGroupId === group.id).length;
+      const stripArtId = (s.steenstripsArtikelen ?? [])[0] ?? null;
+      const stripArt = stripArtId ? STEENSTRIP_CATALOG.find((a) => a.id === stripArtId) : null;
+      const r2 = (mm2) => Math.round(mm2 / 1e6 * 100) / 100;
+      return {
+        id: group.id,
+        name: s.name ?? group.name ?? group.id,
+        wallCount: walls.length,
+        facadeAreaM2: r2(netMM2),
+        facadeGrossM2: r2(grossMM2),
+        openingCount: openings.length,
+        openingAreaM2: r2(openingAreaMM2),
+        cornerAssemblies,
+        verband: s.verband ?? DEFAULT_VERBAND,
+        backingType: s.backingType ?? 'hout',
+        stripArticle: stripArt ? (stripArt.naam ?? stripArt.name ?? stripArt.id) : (stripArtId || null),
+        stripDims: (mat && (mat.steenL || mat.steenH)) ? { steenL: mat.steenL ?? null, steenH: mat.steenH ?? null } : null,
+      };
+    });
+    const sum = (sel) => outGroups.reduce((a, g) => a + (sel(g) || 0), 0);
+    return {
+      source: 'brickboard', version: 1,
+      generatedAt: new Date().toISOString(),
+      projectName: ifcFileName ?? null,
+      context: _planContextRef.current ?? null,
+      groups: outGroups,
+      summary: {
+        groupCount: outGroups.length,
+        totalFacadeAreaM2: Math.round(sum((g) => g.facadeAreaM2) * 100) / 100,
+        totalCornerAssemblies: sum((g) => g.cornerAssemblies),
+        totalWallCount: sum((g) => g.wallCount),
+      },
+      note: 'Paneelaantallen + fijne strip/latten-uitsplitsing volgen in een latere versie van de brug.',
+    };
+  };
+  _engPayloadRef.current = buildEngineeringPayload;
+  useEffect(() => {
+    if (!isPlanBridge()) return; // vlag UIT → geen listener/handshake, byte-identiek
+    const bridge = createPlanBridge({
+      getEngineering: () => (_engPayloadRef.current ? _engPayloadRef.current() : null),
+      onContext: (ctx) => { _planContextRef.current = ctx; },
+    });
+    return () => bridge.destroy();
+  }, []);
+
   function pushHistory(currentGroups) {
     setGroupsHistory((h) => [...h.slice(-19), currentGroups]);
   }
@@ -4799,6 +4881,8 @@ export default function App() {
     e.target.value = '';
   }
 
+  // WIP: rijtelling wijkt af van facadeData.rows (zie spike/diagnose/formule-audit.md);
+  // formaat komt niet overeen met het machine-CSV. Achter ?malRecept=1 tot MOLD_FROM_CANONICAL.
   function handleExportMalRecept() {
     const CSV_HEADER = ['Groep', 'Zone', 'Paneel', 'Breedte mm', 'Hoogte mm', 'Dikte mm', 'Rijen totaal', 'Rijen per mal', 'Mal-doorgang', 'Doorgangen totaal', 'Lagenmaat mm', 'Slede posities in mal (mm)'];
     const allRows = [CSV_HEADER];
@@ -4901,17 +4985,21 @@ export default function App() {
     const verband = s.verband ?? DEFAULT_VERBAND;
     const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400, tolerantieL: s.panelen.tolerantieL ?? 1, tolerantieH: s.panelen.tolerantieH ?? 1, offsetX: s.panelen.malOffsetX ?? 0 };
     const tpl = getMoldTemplates(verband, mat, moldDims);
-    tpl.templates.forEach((tmpl) => {
-      const dxf = generateMoldDXF(mat, verband, moldDims, tmpl.id);
-      const blob = new Blob([dxf], { type: 'application/dxf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `MAL-${tmpl.id}-${verband}.dxf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    // Downloads SERIEEL (met tussenpoos) — meerdere <a download>-klikken vlak na elkaar worden door de
+    // browser geblokkeerd na de eerste, waardoor eerder alleen MAL-A landde. Spreiden lost dat op.
+    tpl.templates.forEach((tmpl, i) => {
+      setTimeout(() => {
+        const dxf = generateMoldDXF(mat, verband, moldDims, tmpl.id);
+        const blob = new Blob([dxf], { type: 'application/dxf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `MAL-${tmpl.id}-${verband}.dxf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }, i * 400);
     });
     const html = generateCombinedMoldPrintHTML(mat, verband, moldDims);
     const win = window.open('', 'MAL-Links-Rechts');
@@ -5325,9 +5413,12 @@ export default function App() {
         const sideDepthL = Math.max(1, pDL2 - 6);
         const sideDepthR = Math.max(1, pDR2 - 6);
         const clipOff = Math.max(stoot, panelDikteP);
-        const frontRows = buildCenteredFacePattern(pB, pH, mat, s.verband ?? DEFAULT_VERBAND);
-        const rawLeft = buildFacePattern(sideDepthL, pH, mat, s.verband ?? DEFAULT_VERBAND);
-        const rawRight = buildFacePattern(sideDepthR, pH, mat, s.verband ?? DEFAULT_VERBAND);
+        const penSL2 = Math.max(0, s.startLijn ?? 0);   // penant-strips volgen de groep-startlijn
+        const penEffPH2 = pH - penSL2;
+        const shiftPenY2 = (rows) => penSL2 > 0 ? rows.map((row) => ({ ...row, y: Math.round((row.y + penSL2) * 100) / 100 })) : rows;
+        const frontRows = shiftPenY2(buildCenteredFacePattern(pB, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND));
+        const rawLeft = shiftPenY2(buildFacePattern(sideDepthL, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND));
+        const rawRight = shiftPenY2(buildFacePattern(sideDepthR, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND));
         const clipSideFront = (rawRows, armDepth) => {
           const clipEnd = armDepth - clipOff;
           return rawRows.map((row) => ({
@@ -5601,7 +5692,10 @@ export default function App() {
       const pDL = Math.max(1, p.diepteLinks  ?? p.diepte ?? 150);
       const pDR = Math.max(1, p.diepteRechts ?? p.diepte ?? 150);
       const pH = Math.max(1, p.hoogte ?? 2000);
-      const frontRows = buildCenteredFacePattern(pB, pH, mat, verband);
+      const penSL = Math.max(0, s.startLijn ?? 0);   // penant-strips volgen de groep-startlijn
+      const penEffPH = pH - penSL;
+      const shiftPenY = (rows) => penSL > 0 ? rows.map((row) => ({ ...row, y: Math.round((row.y + penSL) * 100) / 100 })) : rows;
+      const frontRows = shiftPenY(buildCenteredFacePattern(pB, penEffPH, mat, verband));
 
       const brickDepth = s.brickDepth ?? 20;
       const panelDikte = s.panelen?.dikte ?? 8;
@@ -5627,8 +5721,8 @@ export default function App() {
           return [{ ...pc, start: newStart, length: Math.round((pc.start + pc.length - newStart) * 100) / 100 }];
         }),
       })).filter((row) => row.pieces.length > 0);
-      const leftRows = clipLeft(buildFacePattern(panelDepthL, pH, mat, verband), panelDepthL);
-      const rightRows = clipRight(buildFacePattern(panelDepthR, pH, mat, verband));
+      const leftRows = clipLeft(shiftPenY(buildFacePattern(panelDepthL, penEffPH, mat, verband)), panelDepthL);
+      const rightRows = clipRight(shiftPenY(buildFacePattern(panelDepthR, penEffPH, mat, verband)));
       return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: pH, groupMinH, sideClipOffset, panelDepthL, panelDepthR, pDL, pDR };
     });
   }, [activeGroup, getSettings, wallMap, adjacencies]);
@@ -6122,12 +6216,16 @@ export default function App() {
             )}
             {groups.some((g) => getSettings(g.id).panelen?.enabled) && (
               <>
-                <div style={{ width: 1, height: 16, background: '#334155' }} />
-                <Tooltip text={"Exporteert een productie-recept CSV per paneel.\nBevat: paneel-afmetingen, rijen per maldoorgang, slede-posities.\nOpenen in Excel met puntkomma als scheidingsteken."}>
-                  <button onClick={handleExportMalRecept} style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    ⬇ Mal recept CSV
-                  </button>
-                </Tooltip>
+                {isMalRecept() && (
+                  <>
+                    <div style={{ width: 1, height: 16, background: '#334155' }} />
+                    <Tooltip text={"Exporteert een productie-recept CSV per paneel.\nBevat: paneel-afmetingen, rijen per maldoorgang, slede-posities.\nOpenen in Excel met puntkomma als scheidingsteken."}>
+                      <button onClick={handleExportMalRecept} style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        ⬇ Mal recept CSV
+                      </button>
+                    </Tooltip>
+                  </>
+                )}
                 <div style={{ width: 1, height: 16, background: '#334155' }} />
                 <Tooltip text={"Downloadt DXF voor MAL Links + MAL Rechts naar de downloadmap.\nOpent tegelijk één gecombineerde printtekening (A0) met beide mallen."}>
                   <button onClick={handleExportMallen} style={{ background: '#0f766e', color: '#fff', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
