@@ -930,7 +930,9 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
 
   for (const row of rows) {
     for (const b of row.bricks) {
-      addPolyRect(r2(frameLeft + b.x - tolerantieL), r2(row.yRow), r2(b.w + 2 * tolerantieL), r2(slotH), 'SLOTS', 2);
+      // Tolerantie wordt altijd RECHTS weggewerkt: linkerrand op de nominale positie (= guide-lijn
+      // frameLeft voor de startslot), volledige speling (2·tolerantieL) aan de rechterkant.
+      addPolyRect(r2(frameLeft + b.x), r2(row.yRow), r2(b.w + 2 * tolerantieL), r2(slotH), 'SLOTS', 2);
     }
     addText(frameLeft, row.yRow - 10, 6, `Rij ${row.globalRow + 1}  off=${row.off}mm  tol±${tolerantieL}x${g.tolerantieH}mm`, 'LABELS');
   }
@@ -1061,7 +1063,7 @@ export function generateMoldSVG(mat, verband, moldDims, moldId = 'A') {
     const sTop = r2(oy + row.yRow);          // row.yRow = top of slot
     const sH   = r2(slotH);                   // = brickH + 2*tolerantieH
     for (const b of row.bricks) {
-      const sLeft = r2(ox + frameLeft + b.x - tolerantieL);
+      const sLeft = r2(ox + frameLeft + b.x); // tolerantie rechts weggewerkt: linkerrand op nominaal
       const sW    = r2(b.w + 2 * tolerantieL);
       const fill  = b.koppelstrip ? '#fb923c' : (slotFill[b.label] ?? '#ffffff');
       parts.push(`<rect x="${sLeft}" y="${sTop}" width="${sW}" height="${sH}" fill="${fill}" stroke="#334155" stroke-width="1" rx="1"/>`);
@@ -1475,7 +1477,7 @@ export function generateCombinedMoldSVG(mat, verband, moldDims) {
       const sTop = r2(oy + row.yRow);
       const sH   = r2(slotH);
       for (const b of row.bricks) {
-        const sLeft = r2(ox + frameLeft + b.x - tolerantieL);
+        const sLeft = r2(ox + frameLeft + b.x); // tolerantie rechts weggewerkt: linkerrand op nominaal
         const sW    = r2(b.w + 2 * tolerantieL);
         const fill  = b.koppelstrip ? '#fb923c' : (slotFill[b.label] ?? '#ffffff');
         out.push(`<rect x="${sLeft}" y="${sTop}" width="${sW}" height="${sH}" fill="${fill}" stroke="#334155" stroke-width="1" rx="1"/>`);
