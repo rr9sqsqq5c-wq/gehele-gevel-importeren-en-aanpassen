@@ -288,3 +288,11 @@ export function isSparingElementen() {
 export function isOpeningFromKozijn() {
   return readFlag('openingFromKozijn', false);
 }
+
+// SHOW_KOZIJNEN — toont raam/deur-openingen ook als 3D-doos (kozijn) in de viewer, ter visuele
+// controle van de openingen t.o.v. de bekleding. De doos volgt de opening-rechthoek (die met
+// openingFromKozijn=1 de kozijn-rand volgt). DEFAULT = false → geen extra 3D-geometrie (byte-
+// identiek). Aanzetten: ?showKozijnen=1.
+export function isShowKozijnen() {
+  return readFlag('showKozijnen', false);
+}

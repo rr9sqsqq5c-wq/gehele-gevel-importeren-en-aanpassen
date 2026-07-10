@@ -4,7 +4,7 @@ import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { buildProjectMatrix, getTrueNorthAngle, getProjectInfo } from './lib/projectCoordinates.js';
 import { generateSlimFortGrid, SLIMFORT_DEFAULTS, getSlimFortDepths, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
-import { isStableGroupCamera } from './lib/featureFlags.js';
+import { isStableGroupCamera, isShowKozijnen } from './lib/featureFlags.js';
 
 // Wereld-up (three Y-up). STABLE_GROUP_CAMERA #1 lerpt camera.up hiernaartoe bij groep-focus
 // zodat de frontale blik niet gekanteld blijft van eerder orbiten.
@@ -1177,6 +1177,32 @@ function WallMesh({ wall, isSelected, isHovered, groupColor, onSelect, onHover }
   );
 }
 
+// KOZIJN-weergave (vlag showKozijnen) — toont elk raam/deur als een transparante doos met diepte,
+// ter visuele controle. De doos volgt de opening-rechthoek (met openingFromKozijn=1 = de kozijn-rand).
+function KozijnMesh({ wall, opening }) {
+  const wo = wall.wallOrigin;
+  if (!wo || (opening.type !== 'raam' && opening.type !== 'deur')) return null;
+  const ox = opening.x ?? 0, oy = opening.y ?? 0, ow = opening.breedte ?? 0, oh = opening.hoogte ?? 0;
+  if (ow < 20 || oh < 20) return null;
+  const KOZ_DEPTH = 100; // visuele kozijn-diepte (mm)
+  const { outsidePos, outsideDir } = getOutsideFaceInfo(wo, null);
+  const ifc = { x: 0, y: 0, z: 0 };
+  ifc[wo.lengthAxis] = wo.lengthStart + ox + ow / 2;
+  ifc[wo.heightAxis] = wo.heightStart + oy + oh / 2;
+  ifc[wo.thicknessAxis] = outsidePos - outsideDir * (KOZ_DEPTH / 2);
+  const pos = ifcToThree(ifc.x, ifc.y, ifc.z);
+  const dims = { x: 0, y: 0, z: 0 };
+  dims[wo.lengthAxis] = ow; dims[wo.heightAxis] = oh; dims[wo.thicknessAxis] = KOZ_DEPTH;
+  const size = ifcToThree(dims.x, dims.y, dims.z).map(Math.abs);
+  const isRaam = opening.type === 'raam';
+  return (
+    <mesh position={pos} renderOrder={15}>
+      <boxGeometry args={size} />
+      <meshStandardMaterial color={isRaam ? '#0e7490' : '#7c3aed'} transparent opacity={0.5} />
+    </mesh>
+  );
+}
+
 function OpeningMesh({ wall, opening }) {
   const wo = wall.wallOrigin;
   if (!wo) return null;
@@ -1186,23 +1212,6 @@ function OpeningMesh({ wall, opening }) {
   const frontFace = wo.thicknessStart + thickness + 5;
   const { outsidePos: _oPos, outsideDir: _oDir } = getOutsideFaceInfo(wo, null);
   const fillFace = _oPos + _oDir * 6;
-
-  console.log('[OpeningRender]', {
-    wallId: wall.expressID,
-    openingId: opening.id,
-    outsideDir: wo.resolvedOutside ?? null,
-    lengthAxis: wo.lengthAxis,
-    heightAxis: wo.heightAxis,
-    thicknessAxis: wo.thicknessAxis,
-    thicknessStart: wo.thicknessStart,
-    thicknessEnd: wo.thicknessEnd,
-    frontFace,
-    backFace,
-    openingX: opening.x,
-    openingY: opening.y,
-    openingWidth: opening.breedte,
-    openingHeight: opening.hoogte,
-  });
 
   const ox = opening.x ?? 0;
   const oy = opening.y ?? 0;
@@ -1772,6 +1781,15 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           if (!group && hideUngrouped) return [];
           return (wall.openings ?? []).map((op) => (
             <OpeningMesh key={`${wall.expressID}-${op.id}`} wall={wall} opening={op} />
+          ));
+        })}
+
+        {isShowKozijnen() && walls.flatMap((wall) => {
+          const group = wallGroupMap[wall.expressID];
+          if (group && hiddenGroupIds.has(group.id)) return [];
+          if (!group && hideUngrouped) return [];
+          return (wall.openings ?? []).map((op) => (
+            <KozijnMesh key={`koz-${wall.expressID}-${op.id}`} wall={wall} opening={op} />
           ));
         })}
 
