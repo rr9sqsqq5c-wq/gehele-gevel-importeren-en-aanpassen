@@ -1219,11 +1219,14 @@ export function generateMoldPrintHTML(mat, verband, moldDims, moldId = 'A') {
 
 export function generateCombinedMoldPrintHTML(mat, verband, moldDims) {
   const svg = generateCombinedMoldSVG(mat, verband, moldDims);
+  // PDF-bestandsnaam volgt DEZELFDE naamgeving als de DXF's: verband + mal-aanduiding. Het gecombineerde
+  // vel bevat beide mallen → "Mal A+B". De browser neemt <title> als voorgestelde 'Opslaan als PDF'-naam.
+  const pdfName = `${verband}_${moldIdLabel(mat, 'A+B').replace(/[/\\ ]+/g, '-')}`;
   return `<!DOCTYPE html>
 <html lang="nl">
 <head>
 <meta charset="utf-8">
-<title>MAL Links + Rechts | ${verband}</title>
+<title>${pdfName}</title>
 <style>
   @page { size: A0 landscape; margin: 10mm; }
   * { box-sizing: border-box; }
