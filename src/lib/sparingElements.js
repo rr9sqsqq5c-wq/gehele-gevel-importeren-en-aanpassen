@@ -23,13 +23,20 @@ export function projectElementToGroupRect(bbox, groupFrame, offset = 0, depthTol
     const t0 = lo(bbox, thicknessAxis), t1 = hi(bbox, thicknessAxis);
     if (t1 < thickMin - depthTol || t0 > thickMax + depthTol) return null;
   }
-  let x = lo(bbox, lengthAxis) - groupMinX - offset;
-  let y = lo(bbox, heightAxis) - groupMinH - offset;
-  let width = (hi(bbox, lengthAxis) - lo(bbox, lengthAxis)) + 2 * offset;
-  let height = (hi(bbox, heightAxis) - lo(bbox, heightAxis)) + 2 * offset;
+  // Onderdeel-rechthoek (bbox geprojecteerd, ZONDER offset) in groep-lokale coördinaten.
+  const ex = lo(bbox, lengthAxis) - groupMinX;
+  const ey = lo(bbox, heightAxis) - groupMinH;
+  const ew = hi(bbox, lengthAxis) - lo(bbox, lengthAxis);
+  const eh = hi(bbox, heightAxis) - lo(bbox, heightAxis);
+  // Sparing-gat = onderdeel + offset rondom.
+  const x = ex - offset, y = ey - offset, width = ew + 2 * offset, height = eh + 2 * offset;
   // Footprint moet de gevel-extent [0,groupWidth]×[0,groupHeight] overlappen.
   if (x + width <= 0 || x >= groupWidth || y + height <= 0 || y >= groupHeight) return null;
-  return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, width: Math.round(width * 10) / 10, height: Math.round(height * 10) / 10 };
+  const r = (v) => Math.round(v * 10) / 10;
+  return {
+    x: r(x), y: r(y), width: r(width), height: r(height), offset,
+    element: { x: r(ex), y: r(ey), width: r(ew), height: r(eh) },
+  };
 }
 
 // Bereken voor alle elementen de sparing-rechthoeken voor één groep (filtert de niet-rakende weg).

@@ -1876,6 +1876,48 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       }
     }
 
+    // SPARING-ELEMENTEN maatvoering — per gespaard onderdeel: het gat (onderdeel + offset, gestippeld),
+    // het onderdeel zelf, de onderdeel-maat (B×H) en de offset-afstand aan alle vier de zijden.
+    if (facadeData.sparingRects?.length) {
+      ctx.save();
+      const rectToScreen = (rx, ry, rw, rh) => {
+        const [ax, ay] = toScreen(mx(rx), ry + rh);
+        const [bx, by] = toScreen(mx(rx + rw), ry);
+        return { sx: Math.min(ax, bx), sy: Math.min(ay, by), sw: Math.abs(bx - ax), sh: Math.abs(by - ay) };
+      };
+      const spSz = annotSz(120, 8, 15);
+      ctx.font = `${spSz}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const sr of facadeData.sparingRects) {
+        const elr = sr.element ?? sr;
+        const hole = rectToScreen(sr.x, sr.y, sr.width, sr.height);
+        const el = rectToScreen(elr.x, elr.y, elr.width, elr.height);
+        // gat (gestippeld) + onderdeel (vol)
+        ctx.setLineDash([5, 3]); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(249,115,22,0.85)';
+        ctx.strokeRect(hole.sx, hole.sy, hole.sw, hole.sh);
+        ctx.setLineDash([]); ctx.lineWidth = 1.25; ctx.strokeStyle = 'rgba(249,115,22,0.95)';
+        ctx.strokeRect(el.sx, el.sy, el.sw, el.sh);
+        // onderdeel-maat (B×H) gecentreerd, op een donkere achtergrond
+        const dimLabel = `${Math.round(elr.width)}×${Math.round(elr.height)}`;
+        const tw = ctx.measureText(dimLabel).width + 6;
+        ctx.fillStyle = 'rgba(15,23,42,0.82)';
+        ctx.fillRect(el.sx + el.sw / 2 - tw / 2, el.sy + el.sh / 2 - spSz / 2 - 1, tw, spSz + 2);
+        ctx.fillStyle = '#fdba74';
+        ctx.fillText(dimLabel, el.sx + el.sw / 2, el.sy + el.sh / 2);
+        // offset-afstand aan de 4 zijden (onderdeel → geknipte strip)
+        if (sr.offset > 0) {
+          const o = `${Math.round(sr.offset)}`;
+          ctx.fillStyle = 'rgba(251,146,60,0.95)';
+          ctx.fillText(o, el.sx + el.sw / 2, (hole.sy + el.sy) / 2);                                   // boven
+          ctx.fillText(o, el.sx + el.sw / 2, (hole.sy + hole.sh + el.sy + el.sh) / 2);                 // onder
+          ctx.fillText(o, (hole.sx + el.sx) / 2, el.sy + el.sh / 2);                                   // links
+          ctx.fillText(o, (hole.sx + hole.sw + el.sx + el.sw) / 2, el.sy + el.sh / 2);                 // rechts
+        }
+      }
+      ctx.restore();
+    }
+
     ctx.font = '10px system-ui, sans-serif';
     ctx.fillStyle = '#64748b';
     ctx.textAlign = 'left';
