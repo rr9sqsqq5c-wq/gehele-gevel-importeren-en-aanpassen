@@ -247,3 +247,35 @@ export function isDropOversizedOpenings() {
 export function isStableGroupCamera() {
   return readFlag('stableGroupCamera', true);
 }
+
+// MAL_RECEPT — noodrem/defect-containment op de "⬇ Mal recept CSV"-export. De export telt
+// rijen als max(1, floor(H/lagenmaat)) i.p.v. de canonieke facadeData.rows[] (zie
+// spike/diagnose/formule-audit.md): bij 1972×434 levert dat 3 mal-sleuven waar er 4 horen, en
+// de uitvoer schrijft paneel-Y's waar de machine mal-lokale Y's verwacht. De output is dus
+// onbruikbaar én misleidend → knop DEFAULT UIT tot MOLD_FROM_CANONICAL klaar is.
+// LET OP: dit is GEEN byte-identieke UIT-tak — de knop verdwijnt bewust (defect-containment).
+// Terugzetten: ?malRecept=1 (of localStorage 'malRecept'='1').
+export function isMalRecept() {
+  return readFlag('malRecept', false);
+}
+
+// PLAN_BRIDGE — postMessage-brug voor inbedding als iframe in de externe planningstool
+// (Brickboard-planner). Alleen actief achter deze vlag. DEFAULT = false → er wordt GEEN
+// message-listener geregistreerd en GEEN 'ready'-ping verstuurd; het gedrag is byte-identiek
+// aan zonder de vlag (puur additief, geen enkele bestaande codepad wordt geraakt).
+// Aanzetten (door de planner bij het inbedden): ?planBridge=1 in de iframe-URL, of
+// localStorage 'planBridge'='1'. De parent-origin wordt bepaald uit ?bridgeOrigin=<origin>
+// of document.referrer; inkomende berichten worden op event.origin gecontroleerd. Zie
+// src/lib/planBridge.js.
+export function isPlanBridge() {
+  return readFlag('planBridge', false);
+}
+
+// SPARING_ELEMENTEN — importeer NIET-wand IFC-onderdelen (leidingen, kanalen, proxies, sparing-
+// objecten — geen raam/deur), toon ze in 3D, en knip de steenstripgevel er rondom weg volgens een
+// globale offset (marge). DEFAULT = false → geen import-knop, geen sparing-state, geen extra knip;
+// het gedrag is byte-identiek aan zonder de vlag (puur additief). Aanzetten: ?sparingElementen=1
+// (of localStorage 'sparingElementen'='1'). Zie src/lib/sparingElements.js.
+export function isSparingElementen() {
+  return readFlag('sparingElementen', false);
+}

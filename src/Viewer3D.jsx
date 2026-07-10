@@ -64,6 +64,24 @@ function getWallBox(wall) {
   };
 }
 
+// SPARING-ELEMENTEN — render de geïmporteerde niet-wand IFC-onderdelen als transparante oranje
+// dozen (bounding box) zodat de gebruiker ziet waar ze de gevel raken. Zelfde coördinaat-conventie
+// als getWallBox (wereld-mm → ifcToThree → projectMatrix via rootGroupRef).
+function SparingElements3D({ elements }) {
+  if (!elements?.length) return null;
+  return elements.map((el, i) => {
+    const b = el?.bbox; if (!b) return null;
+    const pos = ifcToThree((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2);
+    const size = ifcToThree(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ).map((v) => Math.max(Math.abs(v), 0.02));
+    return (
+      <mesh key={el.expressID ?? i} position={pos} renderOrder={20}>
+        <boxGeometry args={size} />
+        <meshStandardMaterial color="#f97316" transparent opacity={0.5} depthTest={false} />
+      </mesh>
+    );
+  });
+}
+
 function getBrickPos(wall, pieceStart, pieceLen, rowY, steenH, brickD) {
   const wo = wall.wallOrigin;
   const ifc = { x: 0, y: 0, z: 0 };
@@ -137,7 +155,7 @@ function getOutsideFaceInfo(rwo, allWalls) {
     : { outsidePos: tEnd, outsideDir: +1 };
 }
 
-function getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth = 20, panelDikte = 8, penantShift = 0, outsideDirFlip = false, materialStoot = 10) {
+function getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth = 20, panelDikte = 8, penantShift = 0, outsideDirFlip = false, materialStoot = 10, penantStartOffset = 0) {
   if (!rwo) return [];
   const pX = penant.x ?? 0;
   const pB = Math.max(1, penant.breedte ?? 400);
@@ -145,7 +163,9 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, b
   const pDR = Math.max(1, penant.diepteRechts ?? penant.diepte ?? 150);
   const pH = Math.max(1, penant.hoogte ?? 2000);
   const ld = latDikte ?? 28;
-  const penMinH = 0;
+  const penMinH = Math.max(0, penantStartOffset);   // penant-panelen volgen de groep-startlijn
+  const penH = pH - penMinH;                          // zichtbare panel-hoogte boven de startlijn (top blijft op pH)
+  if (penH <= 0) return [];
 
   const rawFace = getOutsideFaceInfo(rwo, allWalls);
   const outsidePos = rawFace.outsidePos;
@@ -160,11 +180,11 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, b
   const makeBox = (gxOff, depthCenter, boxW, boxThick) => {
     const ifc = { x: 0, y: 0, z: 0 };
     ifc[rwo.lengthAxis]    = groupMinX + gxOff;
-    ifc[rwo.heightAxis]    = groupMinH + penMinH + pH / 2;
+    ifc[rwo.heightAxis]    = groupMinH + penMinH + penH / 2;
     ifc[rwo.thicknessAxis] = outsidePos + outsideDir * depthCenter;
     const dims = { x: 1, y: 1, z: 1 };
     dims[rwo.lengthAxis]    = boxW;
-    dims[rwo.heightAxis]    = pH;
+    dims[rwo.heightAxis]    = penH;
     dims[rwo.thicknessAxis] = boxThick;
     return {
       pos:  ifcToThree(ifc.x, ifc.y, ifc.z),
@@ -180,17 +200,19 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, b
   ];
 }
 
-function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, allWalls, latDikte, brickDepth, panelDikte, penantShift = 0, outsideDirFlip = false, materialStoot = 10 }) {
+function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, allWalls, latDikte, brickDepth, panelDikte, penantShift = 0, outsideDirFlip = false, materialStoot = 10, penantStartOffset = 0 }) {
   const boxes = useMemo(
-    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot),
-    [penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot]
+    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot, penantStartOffset),
+    [penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot, penantStartOffset]
   );
   const cornerBattens = useMemo(() => {
     if (!rwo) return [];
     const pX = penant.x ?? 0;
     const pB = Math.max(1, penant.breedte ?? 400);
     const pH = Math.max(1, penant.hoogte ?? 2000);
-    const penMinH = 0;
+    const penMinH = Math.max(0, penantStartOffset);   // penant-latten volgen de groep-startlijn
+    const penH = pH - penMinH;
+    if (penH <= 0) return [];
     const sh = penantShift;
     const ld = latDikte;
     const panelT = panelDikte;
@@ -209,18 +231,18 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, allWalls,
     ].map(([gxCenter, depthCenter]) => {
       const ifc = { x: 0, y: 0, z: 0 };
       ifc[rwo.lengthAxis]    = groupMinX + gxCenter;
-      ifc[rwo.heightAxis]    = groupMinH + penMinH + pH / 2;
+      ifc[rwo.heightAxis]    = groupMinH + penMinH + penH / 2;
       ifc[rwo.thicknessAxis] = outsidePos + outsideDir * depthCenter;
       const dims = { x: 1, y: 1, z: 1 };
       dims[rwo.lengthAxis]    = ld;
-      dims[rwo.heightAxis]    = pH;
+      dims[rwo.heightAxis]    = penH;
       dims[rwo.thicknessAxis] = ld;
       return {
         pos:  ifcToThree(ifc.x, ifc.y, ifc.z),
         size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
       };
     });
-  }, [penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip]);
+  }, [penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, penantStartOffset]);
 
   if (!boxes.length) return null;
   return (
@@ -1485,7 +1507,7 @@ const COMPASS = [
   { key: 'T',    label: '⊤',   title: 'Bovenaanzicht', gridPos: '3/3' },
 ];
 
-export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData, focusSuppressRef }) {
+export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupPatterns, onSelectWall, onSelectMultiple, activeGroupId, hiddenGroupIds: hiddenGroupIdsProp, onHiddenGroupIdsChange, buildingEnvelopeData, focusSuppressRef, sparingElements = [] }) {
   const [hoveredWallId, setHoveredWallId] = useState(null);
   const [preset, setPreset] = useState(null);
   const [boxSelectMode, setBoxSelectMode] = useState(false);
@@ -1681,6 +1703,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
 
 
         <group ref={rootGroupRef}>
+        <SparingElements3D elements={sparingElements} />
         {walls.map((wall, wi) => {
           const group = wallGroupMap[wall.expressID];
           const settings = group ? groupSettings(group.id) : null;
@@ -1788,6 +1811,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
                 penantShift={penantShift}
                 outsideDirFlip={penFlip}
                 materialStoot={materialStoot}
+                penantStartOffset={Math.max(0, settings?.startLijn ?? 0)}
               />
             );
           });

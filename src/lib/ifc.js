@@ -466,6 +466,61 @@ function getBBox(api, modelID, expressID) {
   return ok ? { minX, maxX, minY, maxY, minZ, maxZ, localXDir, localYDir } : null;
 }
 
+// SPARING-ELEMENTEN — haalt de WERELD-bounding-box van geselecteerde NIET-wand IFC-elementen op
+// (leidingen/kanalen/proxies/...), in hetzelfde coördinaten-frame als de wanden (getBBox). Wordt
+// gebruikt om de steenstripgevel rondom deze onderdelen weg te knippen. entityTypeNames = array
+// van IFC-entity-namen (bv. ['IFCBUILDINGELEMENTPROXY','IFCPIPESEGMENT']). Retourneert
+// [{ expressID, name, ifcEntityType, bbox:{minX,maxX,minY,maxY,minZ,maxZ} }].
+// Kandidaat niet-wand entity-types voor de sparing-feature (proxies + veelvoorkomende MEP/onderdelen).
+export const SPARING_CANDIDATE_TYPES = [
+  'IFCBUILDINGELEMENTPROXY', 'IFCSLAB', 'IFCCOVERING', 'IFCPLATE', 'IFCMEMBER',
+  'IFCBUILDINGELEMENTPART', 'IFCDISCRETEACCESSORY',
+  'IFCPIPESEGMENT', 'IFCDUCTSEGMENT', 'IFCFLOWSEGMENT', 'IFCFLOWTERMINAL', 'IFCFLOWFITTING',
+];
+
+// Scant een IFC op de aanwezige sparing-kandidaat-types → [{ ifcEntityType, count }] (alleen >0).
+export async function scanIfcSparingTypes(file) {
+  const { IFC, api } = await getApi();
+  const modelID = api.OpenModel(new Uint8Array(await file.arrayBuffer()), {});
+  const out = [];
+  try {
+    for (const name of SPARING_CANDIDATE_TYPES) {
+      const code = IFC[name];
+      if (code === undefined) continue;
+      let n = 0; try { n = api.GetLineIDsWithType(modelID, code).size(); } catch {}
+      if (n > 0) out.push({ ifcEntityType: name, count: n });
+    }
+  } finally { try { api.CloseModel(modelID); } catch {} }
+  return out;
+}
+
+export async function parseIfcSparingElements(file, entityTypeNames) {
+  const { IFC, api } = await getApi();
+  const modelID = api.OpenModel(new Uint8Array(await file.arrayBuffer()), {});
+  const out = [];
+  try {
+    for (const entityName of (entityTypeNames ?? [])) {
+      const code = IFC[String(entityName).toUpperCase()];
+      if (code === undefined) continue;
+      let vec; try { vec = api.GetLineIDsWithType(modelID, code); } catch { continue; }
+      for (let i = 0; i < vec.size(); i++) {
+        const eID = vec.get(i);
+        const b = getBBox(api, modelID, eID);
+        if (!b) continue;
+        let name = null;
+        try { name = api.GetLine(modelID, eID, false)?.Name?.value ?? null; } catch {}
+        out.push({
+          expressID: eID, name, ifcEntityType: String(entityName).toUpperCase(),
+          bbox: { minX: b.minX, maxX: b.maxX, minY: b.minY, maxY: b.maxY, minZ: b.minZ, maxZ: b.maxZ },
+        });
+      }
+    }
+  } finally {
+    try { api.CloseModel(modelID); } catch {}
+  }
+  return out;
+}
+
 const _UPAXIS_CONFIDENCE_HIGH = 0.75;
 const _UPAXIS_CONFIDENCE_LOW  = 0.55;
 const _UPAXIS_NORMAL_SAMPLE_MAX = 400;

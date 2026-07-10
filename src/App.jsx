@@ -1,8 +1,9 @@
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Fragment } from 'react';
 import { createPortal } from 'react-dom';
-import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
+import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, parseIfcSparingElements, scanIfcSparingTypes, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
+import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -3241,6 +3242,10 @@ export default function App() {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [hiddenGroupIds, setHiddenGroupIds] = useState(new Set());
+  // SPARING-ELEMENTEN (vlag sparingElementen) — geïmporteerde niet-wand IFC-onderdelen + globale offset.
+  const [sparingElements, setSparingElements] = useState([]);
+  const [sparingOffset, setSparingOffset] = useState(10);
+  const [sparingScan, setSparingScan] = useState(null); // { file, types:[{ifcEntityType,count}], selected:Set, busy }
   const forceOrientation = 'AUTO';
   // projectInfo React state vervalt — module-state in projectCoordinates.js is de enige bron
   const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
@@ -3364,6 +3369,21 @@ export default function App() {
       if (facadeData && (s.verband ?? DEFAULT_VERBAND) === 'groothuis_wildverband_2' && isGroothuisWildverband2()) {
         const _gr = buildGroothuis2Rows(facadeData.groupWidth, facadeData.groupHeight, effectiveMat3d, facadeData.groupOpenings ?? []);
         facadeData = { ...facadeData, rows: _gr.rows, groothuisBoardEdges: _gr.boardEdges };
+      }
+      // SPARING-ELEMENTEN (vlag) — knip de bekleding rondom geïmporteerde niet-wand onderdelen (offset).
+      if (facadeData && isSparingElementen() && sparingElements.length && facadeData.refWallOrigin) {
+        const _rwo = facadeData.refWallOrigin;
+        const _rowHsp = (s.verband ?? DEFAULT_VERBAND) === 'staand_tegelverband' ? effectiveMat3d.steenL : effectiveMat3d.steenH;
+        const _tS = _rwo.thicknessStart, _tE = _rwo.thicknessEnd;
+        const _gf = {
+          lengthAxis: _rwo.lengthAxis, heightAxis: _rwo.heightAxis, thicknessAxis: _rwo.thicknessAxis,
+          groupMinX: facadeData.groupMinX, groupMinH: facadeData.groupMinH,
+          groupWidth: facadeData.groupWidth, groupHeight: facadeData.groupHeight,
+          thickMin: (Number.isFinite(_tS) && Number.isFinite(_tE)) ? Math.min(_tS, _tE) : null,
+          thickMax: (Number.isFinite(_tS) && Number.isFinite(_tE)) ? Math.max(_tS, _tE) : null,
+        };
+        const _sr = sparingRectsForGroup(sparingElements, _gf, sparingOffset);
+        if (_sr.length) facadeData = { ...facadeData, rows: clipRowsAroundRects(facadeData.rows, _sr, _rowHsp), sparingRects: _sr };
       }
       if (!facadeData) {
         const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
@@ -3837,7 +3857,7 @@ export default function App() {
       };
     }
     return result;
-  }, [groups, getSettings, wallMap, showPattern, viewMode, adjacencies, cornerConfigs, settingsMap, groupEnvelopeVisibility]);
+  }, [groups, getSettings, wallMap, showPattern, viewMode, adjacencies, cornerConfigs, settingsMap, groupEnvelopeVisibility, sparingElements, sparingOffset]);
 
   async function startScan(file, handle, isMerge = false) {
     setMergeMode(isMerge);
@@ -4963,6 +4983,29 @@ export default function App() {
     a.download = 'mal-recept.csv';
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // SPARING-ELEMENTEN — laad een IFC, scan de niet-wand kandidaat-types, importeer de gekozen types.
+  async function handleSparingFile(file) {
+    if (!file) return;
+    setSparingScan({ file, types: [], selected: new Set(), busy: true });
+    try {
+      const types = await scanIfcSparingTypes(file);
+      if (!types.length) { alert('Geen sparing-kandidaat-onderdelen (proxy/leiding/kanaal/…) in dit bestand gevonden.'); setSparingScan(null); return; }
+      setSparingScan({ file, types, selected: new Set(), busy: false });
+    } catch (e) { alert('Scannen mislukt: ' + (e?.message ?? e)); setSparingScan(null); }
+  }
+  async function handleSparingImport() {
+    if (!sparingScan?.file) return;
+    const sel = [...(sparingScan.selected ?? [])];
+    if (!sel.length) { alert('Selecteer minstens één type.'); return; }
+    setSparingScan((s) => (s ? { ...s, busy: true } : s));
+    try {
+      const els = await parseIfcSparingElements(sparingScan.file, sel);
+      setSparingElements(els);
+      setSparingScan(null);
+      if (!els.length) alert('Geen geometrie gevonden voor de gekozen types.');
+    } catch (e) { alert('Import mislukt: ' + (e?.message ?? e)); setSparingScan((s) => (s ? { ...s, busy: false } : null)); }
   }
 
   function handleExportMallen() {
@@ -6231,9 +6274,54 @@ export default function App() {
                 </Tooltip>
               </>
             )}
+            {isSparingElementen() && (
+              <>
+                <div style={{ width: 1, height: 16, background: '#334155' }} />
+                <Tooltip text={"Laad een IFC met NIET-wand onderdelen (leidingen/kanalen/proxies).\nWaar ze in de gevel liggen wordt de bekleding er rondom weggespaard volgens de offset.\nDe onderdelen worden in 3D oranje getoond."}>
+                  <label style={{ background: '#c2410c', color: '#fff', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    📎 Sparingen laden
+                    <input type="file" accept=".ifc,.IFC" style={{ display: 'none' }}
+                      onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; handleSparingFile(f); }} />
+                  </label>
+                </Tooltip>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>offset</span>
+                <input type="number" min={0} step={1} value={sparingOffset}
+                  onChange={(e) => setSparingOffset(Math.max(0, Number(e.target.value) || 0))}
+                  title="Marge (mm) rondom elk onderdeel waar de bekleding wordt weggespaard"
+                  style={{ width: 52, fontSize: 11, padding: '2px 4px', border: '1px solid #334155', borderRadius: 4, background: '#0f172a', color: '#e2e8f0', outline: 'none' }} />
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>
+                {sparingElements.length > 0 && (
+                  <span style={{ fontSize: 10, color: '#f97316', whiteSpace: 'nowrap' }}>
+                    {sparingElements.length} onderdeel{sparingElements.length !== 1 ? 'en' : ''}
+                    <button onClick={() => setSparingElements([])} title="Sparingen wissen"
+                      style={{ marginLeft: 4, background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 11 }}>✕</button>
+                  </span>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
+
+      {isSparingElementen() && sparingScan && (
+        <div style={{ position: 'fixed', top: 84, right: 20, zIndex: 1000, background: '#1e293b', border: '1px solid #334155', borderRadius: 6, padding: 12, width: 300, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0', marginBottom: 8 }}>Sparing-onderdelen importeren</div>
+          {sparingScan.busy && <div style={{ fontSize: 11, color: '#94a3b8' }}>Bezig…</div>}
+          {!sparingScan.busy && (sparingScan.types ?? []).map((t) => (
+            <label key={t.ifcEntityType} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#cbd5e1', padding: '2px 0', cursor: 'pointer' }}>
+              <input type="checkbox" checked={sparingScan.selected.has(t.ifcEntityType)}
+                onChange={(e) => setSparingScan((s) => { const sel = new Set(s.selected); if (e.target.checked) sel.add(t.ifcEntityType); else sel.delete(t.ifcEntityType); return { ...s, selected: sel }; })} />
+              {t.ifcEntityType.replace(/^IFC/, '')} <span style={{ color: '#64748b' }}>({t.count})</span>
+            </label>
+          ))}
+          <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+            <button onClick={handleSparingImport} disabled={sparingScan.busy}
+              style={{ flex: 1, background: '#c2410c', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>Importeren</button>
+            <button onClick={() => setSparingScan(null)}
+              style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>Annuleren</button>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <div style={{ width: leftCollapsed ? 28 : 280, background: '#f8fafc', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0, transition: 'width 0.18s ease', position: 'relative' }}>
@@ -6547,6 +6635,7 @@ export default function App() {
                 onHiddenGroupIdsChange={setHiddenGroupIds}
                 buildingEnvelopeData={buildingEnvelopeData}
                 focusSuppressRef={skipGroupCameraFocusRef}
+                sparingElements={isSparingElementen() ? sparingElements : []}
               />
 
               {allWalls.length === 0 && (
