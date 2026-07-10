@@ -531,9 +531,16 @@ export async function parseIfcSparingElements(file, entityTypeNames, onProgress 
         if (!b) { skipped++; continue; }
         let name = null;
         try { name = api.GetLine(modelID, eID, false)?.Name?.value ?? null; } catch {}
+        // web-ifc levert geometrie in METERS; de wanden worden in parseIfc met × 1000 naar mm
+        // geschaald (wallOrigin.*Start/End). De sparing-bbox MOET dezelfde eenheid (mm) hebben,
+        // anders staan de onderdelen factor 1000 verkeerd t.o.v. de gevel → geen/foute uitsparing.
         out.push({
           expressID: eID, name, ifcEntityType: entityName,
-          bbox: { minX: b.minX, maxX: b.maxX, minY: b.minY, maxY: b.maxY, minZ: b.minZ, maxZ: b.maxZ },
+          bbox: {
+            minX: Math.round(b.minX * 1000), maxX: Math.round(b.maxX * 1000),
+            minY: Math.round(b.minY * 1000), maxY: Math.round(b.maxY * 1000),
+            minZ: Math.round(b.minZ * 1000), maxZ: Math.round(b.maxZ * 1000),
+          },
         });
         if (out.length % 200 === 0) onProgress?.({ phase: 'progress', count: out.length, log: `${out.length} onderdelen met geometrie…` });
       }
