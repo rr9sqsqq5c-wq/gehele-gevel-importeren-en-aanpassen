@@ -296,3 +296,26 @@ export function isOpeningFromKozijn() {
 export function isShowKozijnen() {
   return readFlag('showKozijnen', false);
 }
+
+// ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
+// Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
+// (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
+// `advanced` = experimenteel/intern (kan bestaand gedrag veranderen).
+export const FLAG_REGISTRY = [
+  { key: 'sparingElementen',     label: 'Sparing-onderdelen',        note: 'Niet-wand IFC-onderdelen importeren + de bekleding er rondom sparen.' },
+  { key: 'openingFromKozijn',    label: 'Openingen op kozijn-rand',  note: 'Knip vanaf raam/deur (kozijn) i.p.v. de ruwe structurele opening.', reimport: true },
+  { key: 'showKozijnen',         label: 'Kozijnen tonen in 3D',      note: 'Raam/deur als 3D-doos ter visuele controle.', reimport: true },
+  { key: 'cornerButt',           label: 'Stompe hoek',               note: 'Geen omslag-steenstrips op het loodrechte vlak.' },
+  { key: 'corner85',             label: 'Hoek-detail 85°',           note: '' },
+  { key: 'groothuisWildverband', label: 'Groothuis wildverband 1',   note: 'Het oudere groothuis-verband (versie 2 staat standaard aan).' },
+  { key: 'malRecept',            label: 'Mal recept CSV',            note: 'CSV-export per paneel — bekende telbug (defect-containment).', advanced: true },
+  { key: 'newOpenings',          label: 'Nieuwe opening-afleiding',  note: 'Experimenteel alternatief parse-pad; kan bestaande resultaten veranderen.', reimport: true, advanced: true },
+  { key: 'openingUpAxisFix',     label: 'Opening up-as fix',         note: 'Experimenteel.', reimport: true, advanced: true },
+  { key: 'selfContainedProjects',label: 'Self-contained projecten',  note: 'Experimenteel.', advanced: true },
+  { key: 'planBridge',           label: 'Planner-brug (iframe)',     note: 'Intern; alleen voor inbedding in de planningstool.', advanced: true },
+];
+
+// Huidige effectieve waarde van een vlag (URL > localStorage > default-false).
+export function getFlag(key) { return readFlag(key, false); }
+// Zet een vlag in localStorage (voor de UI-schakelaars).
+export function setStoredFlag(key, on) { try { localStorage.setItem(key, on ? '1' : '0'); } catch {} }

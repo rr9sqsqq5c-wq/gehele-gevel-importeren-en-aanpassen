@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, parseIfcSparingElements, scanIfcSparingTypes, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -3247,6 +3247,9 @@ export default function App() {
   const [sparingOffset, setSparingOffset] = useState(10);
   const [sparingScan, setSparingScan] = useState(null); // { file, types:[{ifcEntityType,count}], selected:Set, busy }
   const [kozijnen, setKozijnen] = useState([]); // raam/deur-bboxen (uit parseIfc via projectInfo) voor 3D-weergave
+  const [flagsOpen, setFlagsOpen] = useState(false); // vlaggen-schakelaar-paneel
+  const [flagState, setFlagState] = useState(() => Object.fromEntries(FLAG_REGISTRY.map((f) => [f.key, getFlag(f.key)])));
+  const [flagsDirty, setFlagsDirty] = useState(false);
   const forceOrientation = 'AUTO';
   // projectInfo React state vervalt — module-state in projectCoordinates.js is de enige bron
   const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
@@ -4084,7 +4087,7 @@ export default function App() {
       const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
       const CACHE_SCHEMA_V = 15; // v15: kozijnen (raam/deur-bboxen) meegeparsed op projectInfo
       const pathTag = isNewOpeningDerivation() ? 'newOpenings' : 'legacy';
-      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}|${pathTag}|koz${isShowKozijnen() ? 1 : 0}`;
+      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}|${pathTag}|koz${isShowKozijnen() ? 1 : 0}|okoz${isOpeningFromKozijn() ? 1 : 0}`;
 
       addLog(filter ? `Filter: ${[...filter].join(', ')}` : 'Alle wandtypen worden geladen');
       addLog('Cache controleren…');
@@ -6252,6 +6255,9 @@ export default function App() {
             <Tooltip text="Bekijk de logica-regels per onderdeel en de wijzigingshistorie">
               <button onClick={() => setShowRulesModal(true)} style={{ background: '#475569', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>? Regels</button>
             </Tooltip>
+            <Tooltip text="Zet optionele functies (feature-vlaggen) aan/uit met schakelaars i.p.v. URL-parameters">
+              <button onClick={() => setFlagsOpen(true)} style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>⚙ Vlaggen</button>
+            </Tooltip>
             <span style={{ fontSize: 10, color: '#475569', userSelect: 'none' }}>v{APP_VERSION}</span>
           </div>
         </div>
@@ -7000,6 +7006,51 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {flagsOpen && (
+        <div onClick={() => setFlagsOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '50px 20px', overflowY: 'auto' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, width: 470, maxWidth: '92vw', boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #334155' }}>
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>⚙ Optionele functies (vlaggen)</span>
+              <button onClick={() => setFlagsOpen(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ padding: '6px 14px', maxHeight: '60vh', overflowY: 'auto' }}>
+              {['Functies', 'Geavanceerd'].map((grp) => {
+                const items = FLAG_REGISTRY.filter((f) => ((grp === 'Geavanceerd') === !!f.advanced));
+                if (!items.length) return null;
+                return (
+                  <div key={grp} style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, margin: '8px 0 2px', borderBottom: '1px solid #1e293b', paddingBottom: 3 }}>{grp}</div>
+                    {items.map((f) => (
+                      <label key={f.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '5px 0', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={!!flagState[f.key]} style={{ marginTop: 2 }}
+                          onChange={(e) => { const v = e.target.checked; setStoredFlag(f.key, v); setFlagState((s) => ({ ...s, [f.key]: v })); setFlagsDirty(true); }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 12, color: '#e2e8f0' }}>
+                            {f.label}
+                            {f.reimport && <span style={{ marginLeft: 6, fontSize: 9, color: '#fbbf24', border: '1px solid #b45309', borderRadius: 3, padding: '0 4px' }}>her-import</span>}
+                            {f.advanced && <span style={{ marginLeft: 6, fontSize: 9, color: '#f87171', border: '1px solid #b91c1c', borderRadius: 3, padding: '0 4px' }}>experimenteel</span>}
+                          </div>
+                          {f.note && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 1 }}>{f.note}</div>}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderTop: '1px solid #334155' }}>
+              <button onClick={() => { window.location.href = window.location.pathname; }}
+                style={{ background: flagsDirty ? '#16a34a' : '#334155', color: '#fff', border: 'none', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                Toepassen (herladen)
+              </button>
+              <span style={{ fontSize: 10, color: '#94a3b8' }}>
+                {flagsDirty ? 'Herladen om door te voeren.' : 'Vink aan/uit, klik Toepassen.'} Vlaggen met “her-import” vragen daarna opnieuw importeren.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showHandleiding && (
         <div onClick={() => setShowHandleiding(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9998, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }}>
