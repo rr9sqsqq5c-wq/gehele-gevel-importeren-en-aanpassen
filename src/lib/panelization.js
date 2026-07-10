@@ -877,7 +877,7 @@ function _moldGeometry(mat, verband, moldDims, moldId) {
 
 export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
   const g = _moldGeometry(mat, verband, moldDims, moldId);
-  const { moldW, moldH, frameH, frameLeft, innerW, innerH, slotH, tolerantieL, rows, pinYs, pinStepX, notchXs, notchWs } = g;
+  const { moldW, moldH, frameH, frameLeft, innerW, innerH, slotH, tolerantieL, rows, notchXs, notchWs } = g;
   const extraOffsetX = moldDims?.offsetX ?? 0;
   const r2 = (v) => Math.round(v * 100) / 100;
   const lines = [];
@@ -923,10 +923,8 @@ export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {
     }
     addText(frameLeft, row.yRow - 10, 6, `Rij ${row.globalRow + 1}  off=${row.off}mm  tol±${tolerantieL}x${g.tolerantieH}mm`, 'LABELS');
   }
-  for (const py of pinYs)
-    for (let x = frameLeft; x <= moldW - frameLeft + 0.1; x += pinStepX)
-      addCircle(r2(x), r2(py), 3, 'HOLES', 1);
-
+  // Het raster fixeergaten (pinYs × pinStepX, ~40 stuks) is bewust VERWIJDERD (klantverzoek):
+  // de mal wordt met één gat vastgezet. Alleen het uitlijngat hieronder blijft.
   // Alignment hole — Ø8mm, 11mm from left edge, vertically centred
   addCircle(11, r2(moldH / 2), 4, 'HOLES', 1);
 
