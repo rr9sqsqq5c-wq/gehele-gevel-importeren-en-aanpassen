@@ -50,23 +50,49 @@ export function perpVerband(v) {
 }
 
 // VENTILATIE_ZONE — genereer per gedetecteerde 'ventilatie'-opening in facadeData.groupOpenings een
-// (ephemere) stripZone, gecentreerd op het gat, met instelbare breedte×hoogte (settings.ventilatie)
-// en het LOODRECHTE verband. enabled:true zodat buildStripZoneRegions 'm rendert; kind:'ventilation'
-// scheidt 'm van handmatig getekende zones. Retourneert [] als de vlag/instelling uit staat of er
-// geen ventilatie-openingen zijn. De caller concat deze vóór buildStripZoneRegions.
-export function ventilationZonesFor(facadeData, settings, groupVerband) {
+// (ephemere) stripZone met het LOODRECHTE verband. De ZONE-MAAT wordt BEREKEND uit het verband (niet
+// instelbaar); de zone is het gat in de bestaande strippen waarin op-lengte-gesneden loodrechte
+// strippen komen. Het echte ventilatiegat (kleiner) wordt apart uit de zone geknipt (via de opening
+// in facadeData.rows) en panelen/latten sparen op datzelfde gat.
+//
+// HORIZONTAAL groep-verband → zone VERTICAAL (staand):
+//   breedte = stootvoeg + ⌈opening_breedte / (steenH+stootvoeg)⌉ × (steenH+stootvoeg)   (hele kolommen)
+//   hoogte  = 3×steenH + 2×lint                                                          (3 lagen)
+//   verticaal GESNAPT op de bestaande rijen: de zone omvat de laag met het gat-midden ± 1 laag.
+// VERTICAAL groep-verband → zone HORIZONTAAL (gespiegeld):
+//   hoogte  = lint + ⌈opening_hoogte / (steenH+lint)⌉ × (steenH+lint)
+//   breedte = 3×steenL + 2×stootvoeg
+// steenH=striphoogte, steenL=striplengte, stoot/lint = geldende voegen. enabled:true; kind:'ventilation'.
+export function ventilationZonesFor(facadeData, settings, groupVerband, mat) {
   if (!settings?.ventilatie?.enabled) return [];
   const vents = (facadeData?.groupOpenings ?? []).filter((o) => o?.type === 'ventilatie');
   if (!vents.length) return [];
-  const W = Math.max(20, settings.ventilatie.breedte ?? 600);
-  const H = Math.max(20, settings.ventilatie.hoogte ?? 600);
+  const steenH = mat?.steenH ?? 50, steenL = mat?.steenL ?? 210, stoot = mat?.stoot ?? 10, lint = mat?.lint ?? 12;
+  const groupHorizontal = groupVerband !== 'staand_tegelverband';
   const perp = perpVerband(groupVerband);
+  const courseH = steenH + lint; // laaghoogte omringend horizontaal verband
+  const rows = facadeData?.rows ?? [];
   return vents.map((v, i) => {
-    const cx = (v.x ?? 0) + (v.width ?? 0) / 2;
-    const cy = (v.y ?? 0) + (v.height ?? 0) / 2;
+    const opW = v.width ?? 0, opH = v.height ?? 0;
+    const cx = (v.x ?? 0) + opW / 2, cy = (v.y ?? 0) + opH / 2;
+    let W, H, x, y;
+    if (groupHorizontal) {
+      const colStep = steenH + stoot;
+      W = stoot + Math.ceil(opW / colStep) * colStep; // hele verticale kolommen
+      H = 3 * steenH + 2 * lint;                        // 3 lagen
+      x = cx - W / 2;
+      // verticale snap: middenlaag = de rij die cy bevat → zone = die rij ± 1 laag
+      const midRow = rows.filter((r) => r.y <= cy).sort((a, b) => b.y - a.y)[0];
+      y = midRow ? (midRow.y - courseH) : (cy - H / 2);
+    } else {
+      const rowStep = steenH + lint;
+      H = lint + Math.ceil(opH / rowStep) * rowStep;
+      W = 3 * steenL + 2 * stoot;
+      x = cx - W / 2; y = cy - H / 2;
+    }
     return {
       id: `vent_${v.id ?? i}`, kind: 'ventilation', label: 'Ventilatie',
-      x: round2(cx - W / 2), y: round2(cy - H / 2), width: W, height: H,
+      x: round2(x), y: round2(y), width: round2(W), height: round2(H),
       verband: perp, bondAnchor: 'zoneBottomLeft', enabled: true,
     };
   });

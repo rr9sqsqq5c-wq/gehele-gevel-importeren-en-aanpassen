@@ -1711,14 +1711,8 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               <label htmlFor="vent-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>Inschakelen</label>
             </div>
             {v.enabled && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-                {[['Breedte', 'breedte', 600], ['Hoogte', 'hoogte', 600]].map(([lbl, key, def]) => (
-                  <Field key={key} label={`${lbl} mm`}>
-                    <input type="number" min={20} step={10} value={v[key] ?? def}
-                      onChange={(e) => upd({ [key]: Number(e.target.value) })}
-                      style={{ ...inp, width: '100%' }} />
-                  </Field>
-                ))}
+              <div style={{ fontSize: 10, color: '#64748b', lineHeight: 1.4 }}>
+                Maat wordt berekend uit het verband: breedte = hele loodrechte strippen over de gat­breedte, hoogte = 3 lagen. Panelen/latten sparen op het gat zelf.
               </div>
             )}
           </CollapsibleSection>
@@ -3676,7 +3670,7 @@ export default function App() {
       // FASE 2 — stripZone-regio-tak achter featureZones (default UIT). Alleen op
       // NIET-penant-vlakken; penant-vlakken houden de tak hierboven byte-identiek.
       // Eén bedrading: de gedeelde buildStripZoneRegions (ook door de export-glue gebruikt).
-      const _ventZones3d = isVentilatieZone() ? ventilationZonesFor(facadeData, s, groupVerband3d) : [];
+      const _ventZones3d = isVentilatieZone() ? ventilationZonesFor(facadeData, s, groupVerband3d, mat) : [];
       if (isFeatureZones() && !hasPenants(s) && (getActiveStripZones(s).length + _ventZones3d.length) > 0) {
         const _regions = buildStripZoneRegions(facadeData, [...(s.stripZones ?? []), ..._ventZones3d], mat, groupVerband3d, s.color ?? '#a64033', { stripArt: _3dStripArt });
         if (_regions) {
@@ -5648,7 +5642,7 @@ export default function App() {
       // FASE 2 — stripZone-regio-tak (zelfde gedeelde functie als de scherm-glue, identieke
       // argumenten ⇒ identieke regions ⇒ scherm-hash == export-hash). Alleen niet-penant-
       // vlakken; penant-vlakken houden stripBatches hierboven byte-identiek.
-      const _ventZonesExp = isVentilatieZone() ? ventilationZonesFor(facadeData, s, s.verband ?? DEFAULT_VERBAND) : [];
+      const _ventZonesExp = isVentilatieZone() ? ventilationZonesFor(facadeData, s, s.verband ?? DEFAULT_VERBAND, mat) : [];
       if (facadeData && isFeatureZones() && !hasPenants(s) && (getActiveStripZones(s).length + _ventZonesExp.length) > 0) {
         const _regions = buildStripZoneRegions(facadeData, [...(s.stripZones ?? []), ..._ventZonesExp], mat, s.verband ?? DEFAULT_VERBAND, s.color ?? '#a64033', { stripArt: _stripBatchArt });
         if (_regions) baseStripBatches = _regions.map((r) => ({ rows: r.rows, material: r.material, color: r.color, verband: r.verband }));
@@ -6820,7 +6814,7 @@ export default function App() {
                     zoneSettings={getSettings(activeGroup.id).zoneSettings ?? []}
                     stripZones={getSettings(activeGroup.id).stripZones ?? []}
                     onStripZonesChange={(zones) => updateSettings(activeGroup.id, { stripZones: zones })}
-                    regionBatches={(() => { const _s = getSettings(activeGroup.id); if (!isFeatureZones() || hasPenants(_s)) return null; const _vent = isVentilatieZone() ? ventilationZonesFor(allPatterns[activeGroup.id]?.facadeData, _s, _s.verband ?? DEFAULT_VERBAND) : []; return (getActiveStripZones(_s).length + _vent.length) > 0 ? (allPatterns[activeGroup.id]?.batches ?? null) : null; })()}
+                    regionBatches={(() => { const _s = getSettings(activeGroup.id); if (!isFeatureZones() || hasPenants(_s)) return null; const _vent = isVentilatieZone() ? ventilationZonesFor(allPatterns[activeGroup.id]?.facadeData, _s, _s.verband ?? DEFAULT_VERBAND, _s.material ?? DEFAULT_MATERIAL) : []; return (getActiveStripZones(_s).length + _vent.length) > 0 ? (allPatterns[activeGroup.id]?.batches ?? null) : null; })()}
                     outsideDirFlip={(() => {
                       const _rawFlip = !!getSettings(activeGroup.id).outsideDirFlip;
                       if (!isOutsideDirSync()) return _rawFlip;
