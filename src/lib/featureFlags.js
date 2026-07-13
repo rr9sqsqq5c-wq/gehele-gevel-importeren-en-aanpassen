@@ -341,10 +341,12 @@ export function isBestFitFlushSide() {
 // (groep-lokaal gT0 = min lengthStart, gT1 = max lengthEnd) → één rechte linker- én rechterrand;
 // terugliggende smallere wanden worden tot die rand bekleed (kleine strook zonder wand erachter).
 // Beide randen (kijkrichting-onafhankelijk: de gevel rendert van buiten gespiegeld, dus één groep-
-// lokale kant zou de verkeerde visuele zijde raken). DEFAULT = false → masker byte-identiek.
-// Aanzetten: ?groupStartWidest=1. Noodrem: ?groupStartWidest=0.
+// lokale kant zou de verkeerde visuele zijde raken). DEFAULT = true (gepromoveerd 2026-07-13 op
+// verzoek, node-geverifieerd: links=0 rechts=3400 op wanden 26024963+26024971). NOODREM:
+// ?groupStartWidest=0 (of localStorage '0'/'false') → masker knipt weer strak op de wand-footprint
+// per hoogte (byte-identiek aan vóór).
 export function isGroupStartWidest() {
-  return readFlag('groupStartWidest', false);
+  return readFlag('groupStartWidest', true);
 }
 
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
@@ -355,7 +357,6 @@ export const FLAG_REGISTRY = [
   { key: 'sparingElementen',     label: 'Sparing-onderdelen',        note: 'Niet-wand IFC-onderdelen importeren + de bekleding er rondom sparen.' },
   { key: 'openingFromKozijn',    label: 'Openingen op kozijn-rand',  note: 'Knip vanaf raam/deur (kozijn) i.p.v. de ruwe structurele opening.', reimport: true },
   { key: 'showKozijnen',         label: 'Kozijnen tonen in 3D',      note: 'Raam/deur als 3D-doos ter visuele controle.', reimport: true },
-  { key: 'groupStartWidest',     label: 'Rechte linkerrand (breedste wand)', note: 'Bekleding-linkerrand van de groep strak op de breedste wand i.p.v. per wand trappen.' },
   { key: 'cornerButt',           label: 'Stompe hoek',               note: 'Geen omslag-steenstrips op het loodrechte vlak.' },
   { key: 'corner85',             label: 'Hoek-detail 85°',           note: '' },
   { key: 'groothuisWildverband', label: 'Groothuis wildverband 1',   note: 'Het oudere groothuis-verband (versie 2 staat standaard aan).' },
