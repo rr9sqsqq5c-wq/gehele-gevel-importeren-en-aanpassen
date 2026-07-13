@@ -96,6 +96,9 @@ export function ventilationZonesFor(facadeData, settings, groupVerband, mat) {
       x: round2(x), y: round2(y), width: round2(W), height: round2(H),
       verband: perp, bondAnchor: 'zoneBottomLeft', enabled: true,
       clearMargin: { x: stoot, y: lint }, // voeg rondom de zone: stoot zij, lint boven/onder
+      // verticale strippen OP LENGTE gesneden = zone-hoogte (steenL = H → 1 rij die de zone vult,
+      // niet 210 mm die boven de zone uitsteekt). Alleen bij horizontale groep (staande zone).
+      material: groupHorizontal ? { steenL: H } : undefined,
     };
   });
 }

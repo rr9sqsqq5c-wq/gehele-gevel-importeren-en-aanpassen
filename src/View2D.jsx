@@ -1422,6 +1422,9 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
     }
 
     for (const op of groupOpenings) {
+      // VENTILATIE_ZONE: de verticale zone-strippen lopen ÓVER het ventilatiegat → niet als opening
+      // tekenen/clearen (paneel/latten sparen wél op het gat, dat is een aparte laag).
+      if (op.type === 'ventilatie') continue;
       const [opSx, opSy] = toScreen(mx(op.x, op.width), op.y + op.height);
       const opSw = op.width * scale * 0.001;
       const opSh = op.height * scale * 0.001;
@@ -1461,6 +1464,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
     if (zetwerkParams && vis.zetwerk !== false) {
       const { breedte: zwB, offsetH: zwH, offsetV: zwV } = zetwerkParams;
       for (const op of groupOpenings) {
+        if (op.type === 'ventilatie') continue; // geen zetwerk rond de ventilatie (strippen lopen erover)
         const zbPx = zwB * scale * 0.001;
         const zohPx = zwH * scale * 0.001;
 
