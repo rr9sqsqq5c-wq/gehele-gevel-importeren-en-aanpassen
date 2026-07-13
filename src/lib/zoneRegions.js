@@ -56,12 +56,13 @@ export function perpVerband(v) {
 // in facadeData.rows) en panelen/latten sparen op datzelfde gat.
 //
 // HORIZONTAAL groep-verband → zone VERTICAAL (staand):
-//   breedte = stootvoeg + ⌈opening_breedte / (steenH+stootvoeg)⌉ × (steenH+stootvoeg)   (hele kolommen)
-//   hoogte  = 3×steenH + 2×lint                                                          (3 lagen)
-//   verticaal GESNAPT op de bestaande rijen: de zone omvat de laag met het gat-midden ± 1 laag.
-// VERTICAAL groep-verband → zone HORIZONTAAL (gespiegeld):
-//   hoogte  = lint + ⌈opening_hoogte / (steenH+lint)⌉ × (steenH+lint)
-//   breedte = 3×steenL + 2×stootvoeg
+//   breedte = HEEL aantal verticale strippen dat de gatbreedte dekt: n = ⌈(opW+stoot)/(steenH+stoot)⌉,
+//             breedte = n×steenH + (n-1)×stoot (geen rest-sliver; de bond start op x=0 → hele tegels).
+//   hoogte  = 3×steenH + 2×lint  = van de ONDERKANT van de eerste gesnapte strip tot de BOVENKANT van
+//             de tweede strip DAARBOVEN (= 3 lagen, de rode lijn). Verticaal GESNAPT op de rijen rond
+//             het gat (middenlaag = rij met het gat-midden).
+// VERTICAAL groep-verband → zone HORIZONTAAL (gespiegeld, aanname):
+//   hoogte  = m×steenH + (m-1)×lint (m = ⌈(opH+lint)/(steenH+lint)⌉);  breedte = 3×steenL + 2×stoot.
 // steenH=striphoogte, steenL=striplengte, stoot/lint = geldende voegen. enabled:true; kind:'ventilation'.
 export function ventilationZonesFor(facadeData, settings, groupVerband, mat) {
   if (!settings?.ventilatie?.enabled) return [];
@@ -77,16 +78,16 @@ export function ventilationZonesFor(facadeData, settings, groupVerband, mat) {
     const cx = (v.x ?? 0) + opW / 2, cy = (v.y ?? 0) + opH / 2;
     let W, H, x, y;
     if (groupHorizontal) {
-      const colStep = steenH + stoot;
-      W = stoot + Math.ceil(opW / colStep) * colStep; // hele verticale kolommen
-      H = 3 * steenH + 2 * lint;                        // 3 lagen
+      const n = Math.max(1, Math.ceil((opW + stoot) / (steenH + stoot))); // heel aantal kolommen
+      W = n * steenH + (n - 1) * stoot;                                     // n hele verticale strippen
+      H = 3 * steenH + 2 * lint;                                            // 3 lagen (rode lijn)
       x = cx - W / 2;
-      // verticale snap: middenlaag = de rij die cy bevat → zone = die rij ± 1 laag
+      // verticale snap: middenlaag = rij met het gat-midden → zone = die rij ± 1 laag
       const midRow = rows.filter((r) => r.y <= cy).sort((a, b) => b.y - a.y)[0];
       y = midRow ? (midRow.y - courseH) : (cy - H / 2);
     } else {
-      const rowStep = steenH + lint;
-      H = lint + Math.ceil(opH / rowStep) * rowStep;
+      const m = Math.max(1, Math.ceil((opH + lint) / (steenH + lint)));
+      H = m * steenH + (m - 1) * lint;
       W = 3 * steenL + 2 * stoot;
       x = cx - W / 2; y = cy - H / 2;
     }
