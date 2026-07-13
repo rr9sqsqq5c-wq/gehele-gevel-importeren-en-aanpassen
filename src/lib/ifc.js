@@ -2,7 +2,12 @@ import { getOpeningPoly } from './pattern.js';
 import { STEENSTRIP_CATALOG } from './battens.js';
 import { SLIMFORT_DEFAULTS, getSlimFortDepths } from './slimfort.js';
 import { registerIfcContext, getProjectInfo, getLastConfidentUpAxis, setLastConfidentUpAxis, setGeometryDerivedRenderOrigin, getWorldAnchor } from './projectCoordinates.js';
-import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly, isDropOversizedOpenings, isOpeningFromKozijn, isShowKozijnen, isOutsideDirSync } from './featureFlags.js';
+import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly, isDropOversizedOpenings, isOpeningFromKozijn, isShowKozijnen, isOutsideDirSync, isVentilatieZone } from './featureFlags.js';
+
+// VENTILATIE_ZONE — detectiedrempels voor een ventilatie-opening (klein ongevuld gat bóven een raam).
+const VENT_MAX_W = 900;    // mm — breder telt niet als ventilatie
+const VENT_MAX_H = 350;    // mm — hoger telt niet als ventilatie (raam/deur zijn veel hoger)
+const VENT_ABOVE_GAP = 1200; // mm — max verticale afstand tussen raamtop en de vent eronder
 // BRON-GUARD (dropOversizedOpenings): een void die via IfcRelVoidsElement aan een wand hangt maar
 // veel HOGER is dan die wand (bv. de 2520 mm venster-void die ook aan een 300 mm vloerband hangt)
 // levert in de browser — waar mesh-geometrie beschikbaar is — een te-hoge opening op. Die hoort er
@@ -1713,6 +1718,22 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
                 } });
               }
             } catch { }
+          }
+
+          // VENTILATIE_ZONE (vlag): retag een kleine 'sparing' die BOVEN een raam ligt (x-overlap,
+          // raamtop < vent-onderkant, binnen VENT_ABOVE_GAP) naar type 'ventilatie'. Downstream knipt
+          // isNamedOpening (pattern.js) dat gat open + legt er een zone met loodrecht verband omheen.
+          // Alles wand-lokaal (x,y in mm). Vlag UIT → geen retag → 'sparing' blijft (byte-identiek).
+          if (isVentilatieZone()) {
+            for (const op of openings) {
+              if (op.type !== 'sparing') continue;
+              if ((op.breedte ?? 0) > VENT_MAX_W || (op.hoogte ?? 0) > VENT_MAX_H) continue;
+              const aboveRaam = openings.some((r) => r.type === 'raam'
+                && (Math.min(r.x + r.breedte, op.x + op.breedte) - Math.max(r.x, op.x)) > 0   // x-overlap
+                && (r.y + r.hoogte) <= (op.y + 1)                                             // raamtop onder vent
+                && (op.y - (r.y + r.hoogte)) <= VENT_ABOVE_GAP);                              // niet te ver erboven
+              if (aboveRaam) op.type = 'ventilatie';
+            }
           }
 
           const facadePoly = getFacadePolygon(api, modelID, wID, lengthAxis, heightAxis, wallBB);

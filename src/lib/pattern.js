@@ -1,5 +1,5 @@
 import { polyXRangesAtY } from './geometry.js';
-import { isDropOversizedOpenings } from './featureFlags.js';
+import { isDropOversizedOpenings, isVentilatieZone } from './featureFlags.js';
 
 // Een opening mag z'n eigen wand niet (ver) boven uitsteken. Tolerantie vangt rounding/
 // kleine modelafwijkingen; een echte opening past binnen z'n wand, een corrupte (venster-L
@@ -345,12 +345,14 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       // de L plat tot een rechthoek → massieve hoek over-geknipt. Vlag UIT → byte-identiek.
       const wallH = w.height ?? ((w.wallOrigin.heightEnd ?? 0) - (w.wallOrigin.heightStart ?? 0));
       if (isDropOversizedOpenings() && wallH > 0 && ((op.y ?? 0) + oh) > wallH + OVERSIZED_OPENING_TOL) continue;
-      const isNamedOpening = op.type === 'raam' || op.type === 'deur';
+      // VENTILATIE_ZONE (vlag): een 'ventilatie'-opening wordt óók geknipt (gat open) en komt zo in
+      // groupOpenings terecht — waar de zone-generator 'm op detecteert. Vlag UIT → alleen raam/deur.
+      const isNamedOpening = op.type === 'raam' || op.type === 'deur' || (op.type === 'ventilatie' && isVentilatieZone());
       if (!isNamedOpening) continue;
       const groupPolyPts = op.polyPts
         ? op.polyPts.map((p) => ({ l: round2(p.l + wallOffsetX), h: round2(p.h + wallOffsetH) }))
         : null;
-      rawOpenings.push({ x: ox, y: oy, width: ow, height: oh, polyPts: groupPolyPts });
+      rawOpenings.push({ x: ox, y: oy, width: ow, height: oh, polyPts: groupPolyPts, type: op.type });
     }
   }
 
@@ -365,7 +367,9 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       { l: x2, h: y2 },
       { l: x,  h: y2 },
     ];
-    return { x, y, width: x2 - x, height: y2 - y, polyPts: mergedPolyPts };
+    const type = (a.type === 'raam' || b.type === 'raam') ? 'raam'
+      : (a.type === 'deur' || b.type === 'deur') ? 'deur' : (a.type ?? b.type);
+    return { x, y, width: x2 - x, height: y2 - y, polyPts: mergedPolyPts, type };
   };
 
   const shouldMerge = (a, b) => {

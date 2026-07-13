@@ -43,6 +43,35 @@ export function getActiveStripZones(s) {
   return (s?.stripZones ?? []).filter((z) => z?.enabled === true);
 }
 
+// VENTILATIE_ZONE — het LOODRECHTE verband t.o.v. een gegeven groep-verband. De enige verticale
+// bond in de engine is 'staand_tegelverband'; al het andere is horizontaal. Dus: staand ↔ halfsteens.
+export function perpVerband(v) {
+  return v === 'staand_tegelverband' ? 'halfsteens' : 'staand_tegelverband';
+}
+
+// VENTILATIE_ZONE — genereer per gedetecteerde 'ventilatie'-opening in facadeData.groupOpenings een
+// (ephemere) stripZone, gecentreerd op het gat, met instelbare breedte×hoogte (settings.ventilatie)
+// en het LOODRECHTE verband. enabled:true zodat buildStripZoneRegions 'm rendert; kind:'ventilation'
+// scheidt 'm van handmatig getekende zones. Retourneert [] als de vlag/instelling uit staat of er
+// geen ventilatie-openingen zijn. De caller concat deze vóór buildStripZoneRegions.
+export function ventilationZonesFor(facadeData, settings, groupVerband) {
+  if (!settings?.ventilatie?.enabled) return [];
+  const vents = (facadeData?.groupOpenings ?? []).filter((o) => o?.type === 'ventilatie');
+  if (!vents.length) return [];
+  const W = Math.max(20, settings.ventilatie.breedte ?? 600);
+  const H = Math.max(20, settings.ventilatie.hoogte ?? 600);
+  const perp = perpVerband(groupVerband);
+  return vents.map((v, i) => {
+    const cx = (v.x ?? 0) + (v.width ?? 0) / 2;
+    const cy = (v.y ?? 0) + (v.height ?? 0) / 2;
+    return {
+      id: `vent_${v.id ?? i}`, kind: 'ventilation', label: 'Ventilatie',
+      x: round2(cx - W / 2), y: round2(cy - H / 2), width: W, height: H,
+      verband: perp, bondAnchor: 'zoneBottomLeft', enabled: true,
+    };
+  });
+}
+
 function bondRowH(verband, mat) {
   return verband === 'staand_tegelverband' ? (mat.steenL ?? mat.steenH ?? 50) : (mat.steenH ?? 50);
 }

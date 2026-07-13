@@ -3,9 +3,9 @@ import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, parseIfcSparingElements, scanIfcSparingTypes, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
-import { buildStripZoneRegions, hasPenants, getActiveStripZones } from './lib/zoneRegions.js';
+import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
 import { buildBestFitFacadePattern } from './lib/facadePlane.js';
 import { reset as resetCoordinates, restoreProjectInfo, registerIfcContext } from './lib/projectCoordinates.js';
@@ -1690,6 +1690,31 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 ].map(([lbl, key, def, tip]) => (
                   <Field key={key} label={`${lbl} mm`} tip={tip}>
                     <input type="number" min={0} step={1} value={zw[key] ?? def}
+                      onChange={(e) => upd({ [key]: Number(e.target.value) })}
+                      style={{ ...inp, width: '100%' }} />
+                  </Field>
+                ))}
+              </div>
+            )}
+          </CollapsibleSection>
+        );
+      })()}
+
+      {isVentilatieZone() && (() => {
+        const v = settings.ventilatie ?? {};
+        const upd = (patch) => onUpdate({ ventilatie: { ...(settings.ventilatie ?? {}), ...patch } });
+        return (
+          <CollapsibleSection title="Ventilatiezone" tip={"Rond een ventilatieopening (klein gat bóven een raam) komt een rechthoekige zone met het LOODRECHTE metselverband t.o.v. de groep (halfsteens ↔ staand), met het gat open geknipt.\n\n· Breedte/Hoogte = afmeting van de gedraaide-verband zone, gecentreerd op het gat (mm)"} isOpen={isOpen('ventilatie')} onToggle={() => toggle('ventilatie')} badge={v.enabled ? 'Aan' : 'Uit'}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <input type="checkbox" id="vent-enable" checked={v.enabled ?? false}
+                onChange={(e) => upd({ enabled: e.target.checked })} />
+              <label htmlFor="vent-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>Inschakelen</label>
+            </div>
+            {v.enabled && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                {[['Breedte', 'breedte', 600], ['Hoogte', 'hoogte', 600]].map(([lbl, key, def]) => (
+                  <Field key={key} label={`${lbl} mm`}>
+                    <input type="number" min={20} step={10} value={v[key] ?? def}
                       onChange={(e) => upd({ [key]: Number(e.target.value) })}
                       style={{ ...inp, width: '100%' }} />
                   </Field>
@@ -3651,8 +3676,9 @@ export default function App() {
       // FASE 2 — stripZone-regio-tak achter featureZones (default UIT). Alleen op
       // NIET-penant-vlakken; penant-vlakken houden de tak hierboven byte-identiek.
       // Eén bedrading: de gedeelde buildStripZoneRegions (ook door de export-glue gebruikt).
-      if (isFeatureZones() && !hasPenants(s) && getActiveStripZones(s).length > 0) {
-        const _regions = buildStripZoneRegions(facadeData, s.stripZones, mat, groupVerband3d, s.color ?? '#a64033', { stripArt: _3dStripArt });
+      const _ventZones3d = isVentilatieZone() ? ventilationZonesFor(facadeData, s, groupVerband3d) : [];
+      if (isFeatureZones() && !hasPenants(s) && (getActiveStripZones(s).length + _ventZones3d.length) > 0) {
+        const _regions = buildStripZoneRegions(facadeData, [...(s.stripZones ?? []), ..._ventZones3d], mat, groupVerband3d, s.color ?? '#a64033', { stripArt: _3dStripArt });
         if (_regions) {
           batches = _regions.map((r) => ({
             rows: r.rows,
@@ -4085,9 +4111,9 @@ export default function App() {
     addLog(`Bestand: ${pendingFile.name} (${(pendingFile.size / 1024 / 1024).toFixed(1)} MB)`);
     try {
       const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
-      const CACHE_SCHEMA_V = 15; // v15: kozijnen (raam/deur-bboxen) meegeparsed op projectInfo
+      const CACHE_SCHEMA_V = 16; // v16: ventilatieZone-retag (kleine sparing boven raam → 'ventilatie')
       const pathTag = isNewOpeningDerivation() ? 'newOpenings' : 'legacy';
-      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}|${pathTag}|koz${isShowKozijnen() ? 1 : 0}|okoz${isOpeningFromKozijn() ? 1 : 0}`;
+      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}|${pathTag}|koz${isShowKozijnen() ? 1 : 0}|okoz${isOpeningFromKozijn() ? 1 : 0}|vent${isVentilatieZone() ? 1 : 0}`;
 
       addLog(filter ? `Filter: ${[...filter].join(', ')}` : 'Alle wandtypen worden geladen');
       addLog('Cache controleren…');
@@ -5607,8 +5633,9 @@ export default function App() {
       // FASE 2 — stripZone-regio-tak (zelfde gedeelde functie als de scherm-glue, identieke
       // argumenten ⇒ identieke regions ⇒ scherm-hash == export-hash). Alleen niet-penant-
       // vlakken; penant-vlakken houden stripBatches hierboven byte-identiek.
-      if (facadeData && isFeatureZones() && !hasPenants(s) && getActiveStripZones(s).length > 0) {
-        const _regions = buildStripZoneRegions(facadeData, s.stripZones, mat, s.verband ?? DEFAULT_VERBAND, s.color ?? '#a64033', { stripArt: _stripBatchArt });
+      const _ventZonesExp = isVentilatieZone() ? ventilationZonesFor(facadeData, s, s.verband ?? DEFAULT_VERBAND) : [];
+      if (facadeData && isFeatureZones() && !hasPenants(s) && (getActiveStripZones(s).length + _ventZonesExp.length) > 0) {
+        const _regions = buildStripZoneRegions(facadeData, [...(s.stripZones ?? []), ..._ventZonesExp], mat, s.verband ?? DEFAULT_VERBAND, s.color ?? '#a64033', { stripArt: _stripBatchArt });
         if (_regions) baseStripBatches = _regions.map((r) => ({ rows: r.rows, material: r.material, color: r.color, verband: r.verband }));
       }
       const finalStripBatches = baseStripBatches && ifcGW > 0
@@ -6742,7 +6769,7 @@ export default function App() {
                     zoneSettings={getSettings(activeGroup.id).zoneSettings ?? []}
                     stripZones={getSettings(activeGroup.id).stripZones ?? []}
                     onStripZonesChange={(zones) => updateSettings(activeGroup.id, { stripZones: zones })}
-                    regionBatches={(() => { const _s = getSettings(activeGroup.id); return isFeatureZones() && !hasPenants(_s) && getActiveStripZones(_s).length > 0 ? (allPatterns[activeGroup.id]?.batches ?? null) : null; })()}
+                    regionBatches={(() => { const _s = getSettings(activeGroup.id); if (!isFeatureZones() || hasPenants(_s)) return null; const _vent = isVentilatieZone() ? ventilationZonesFor(allPatterns[activeGroup.id]?.facadeData, _s, _s.verband ?? DEFAULT_VERBAND) : []; return (getActiveStripZones(_s).length + _vent.length) > 0 ? (allPatterns[activeGroup.id]?.batches ?? null) : null; })()}
                     outsideDirFlip={(() => {
                       const _rawFlip = !!getSettings(activeGroup.id).outsideDirFlip;
                       if (!isOutsideDirSync()) return _rawFlip;

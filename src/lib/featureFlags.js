@@ -349,6 +349,19 @@ export function isGroupStartWidest() {
   return readFlag('groupStartWidest', true);
 }
 
+// VENTILATIE_ZONE — ventilatieopening (klein ongevuld gat bóven een raam/kozijn, type 'sparing')
+// krijgt: (1) het gat wordt OPEN geknipt (retag naar type 'ventilatie', isNamedOpening cut het),
+// en (2) een rechthoekige ZONE eromheen (gecentreerd op het gat) met het LOODRECHTE verband
+// t.o.v. de groep (halfsteens ↔ staand_tegelverband). Instelbare hoogte×breedte via
+// settings.ventilatie {enabled,breedte,hoogte}. Hergebruikt het bestaande stripZones/zoneRegions-
+// systeem, dus 2D/3D/IFC-export lopen mee. Detectie: kleine 'sparing' (≤ VENT_MAX) met x-overlap
+// bóven een raam in dezelfde wand. DEFAULT = false → geen retag, geen zone (byte-identiek; de
+// 'sparing' blijft dichtgemetseld zoals nu). Aanzetten: ?ventilatieZone=1. Noodrem: ?ventilatieZone=0.
+// LET OP: retag gebeurt bij parse → cacheKey bevat de vlag + CACHE_SCHEMA_V is gebumpt (re-import).
+export function isVentilatieZone() {
+  return readFlag('ventilatieZone', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -357,6 +370,7 @@ export const FLAG_REGISTRY = [
   { key: 'sparingElementen',     label: 'Sparing-onderdelen',        note: 'Niet-wand IFC-onderdelen importeren + de bekleding er rondom sparen.' },
   { key: 'openingFromKozijn',    label: 'Openingen op kozijn-rand',  note: 'Knip vanaf raam/deur (kozijn) i.p.v. de ruwe structurele opening.', reimport: true },
   { key: 'showKozijnen',         label: 'Kozijnen tonen in 3D',      note: 'Raam/deur als 3D-doos ter visuele controle.', reimport: true },
+  { key: 'ventilatieZone',       label: 'Ventilatiezone (gedraaid verband)', note: 'Klein gat boven een raam wordt open geknipt + een zone met loodrecht verband eromheen (instelbaar per groep).', reimport: true },
   { key: 'cornerButt',           label: 'Stompe hoek',               note: 'Geen omslag-steenstrips op het loodrechte vlak.' },
   { key: 'corner85',             label: 'Hoek-detail 85°',           note: '' },
   { key: 'groothuisWildverband', label: 'Groothuis wildverband 1',   note: 'Het oudere groothuis-verband (versie 2 staat standaard aan).' },
