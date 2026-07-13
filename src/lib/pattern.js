@@ -440,7 +440,10 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     }));
   }
 
-  const maskOpenings = groupOpenings.map((op) => ({
+  // VENTILATIE_ZONE: 'ventilatie'-openingen worden NIET uit de strippen geknipt (de verticale
+  // zone-strippen lopen over het gat; alleen paneel/latten sparen op het gat, via groupOpenings).
+  // Vlag UIT → geen 'ventilatie'-type → filter is inert (byte-identiek).
+  const maskOpenings = groupOpenings.filter((op) => op.type !== 'ventilatie').map((op) => ({
     x: Math.max(0, op.x - zwExpandX),
     y: Math.max(0, op.y - zwExpandY),
     width: op.width + 2 * zwExpandX,

@@ -95,6 +95,7 @@ export function ventilationZonesFor(facadeData, settings, groupVerband, mat) {
       id: `vent_${v.id ?? i}`, kind: 'ventilation', label: 'Ventilatie',
       x: round2(x), y: round2(y), width: round2(W), height: round2(H),
       verband: perp, bondAnchor: 'zoneBottomLeft', enabled: true,
+      clearMargin: { x: stoot, y: lint }, // voeg rondom de zone: stoot zij, lint boven/onder
     };
   });
 }
@@ -175,15 +176,20 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
     return { x0: z.x ?? 0, y0, x1: (z.x ?? 0) + (z.width ?? 0), y1: y0 + eff };
   };
   const rects = active.map(zRect);
+  // VENTILATIE_ZONE: clearRect = fill-rect + voegmarge (z.clearMargin {x:stoot, y:lint}). De omringende
+  // strippen worden tot clearRect weggeknipt → een voeg RONDOM de zone; de zone zelf VULT de (kleinere)
+  // fill-rect. Zonder clearMargin (handmatige zones) → clearRect == zRect → byte-identiek.
+  const clearRect = (z) => { const r = zRect(z); const mx = Math.max(0, z.clearMargin?.x ?? 0), my = Math.max(0, z.clearMargin?.y ?? 0); return { x0: r.x0 - mx, y0: r.y0 - my, x1: r.x1 + mx, y1: r.y1 + my }; };
+  const clears = active.map(clearRect);
 
-  // ── complement = facadeData.rows − unie(zone-rechthoeken) ──
+  // ── complement = facadeData.rows − unie(zone-rechthoeken + voegmarge) ──
   const complementRows = [];
   for (const row of facadeData.rows) {
     const yLo = row.y, yHi = row.y + planeRowH;
     const outPieces = [];
     for (const p of row.pieces) {
       let parts = [[p.start, p.start + p.length]];
-      for (const r of rects) {
+      for (const r of clears) {
         if (r.y1 <= yLo + 1e-6 || r.y0 >= yHi - 1e-6) continue; // zone raakt deze laag niet
         parts = subtractInterval(parts, r.x0, r.x1);
       }
@@ -217,7 +223,7 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
           y: row.y + r.y0,
           pieces: row.pieces.map((p) => ({ ...p, start: p.start + r.x0 })),
         }));
-    const higherRects = rects.slice(i + 1); // latere zones = hogere z-order
+    const higherRects = clears.slice(i + 1); // latere zones = hogere z-order (incl. hun voegmarge)
 
     const clippedRows = [];
     for (const lr of absRows) {
