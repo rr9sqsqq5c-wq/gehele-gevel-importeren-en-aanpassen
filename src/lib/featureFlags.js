@@ -315,16 +315,18 @@ export function isOutsideDirSync() {
   return readFlag('outsideDirSync', false);
 }
 
-// BEST_FIT_FLUSH_SIDE — corrigeert de kant/diepte van het best-fit gevelvlak wanneer de auto-
-// buitendetectie GEEN betrouwbare richting geeft. Oorzaak van "strips achterstevoren + Diepte-
-// spreiding X mm"-melding: wanden die midden in de gebouw-bbox liggen worden als INTERIOR
-// geclassificeerd (resolvedOutside.outsideDir = null); fitFacadePlane valt dan terug op een
-// midden-afstand-gok die de VERKEERDE kant kan kiezen. Bij wanden van verschillende dikte die
-// flush liggen op de beklede kant levert dat een grote diepte-spreiding op de fout-gekozen kant.
-// Met de vlag: als er 0 resolvedOutside-stemmen zijn, kies de FLUSH-kant (kleinste diepte-
-// spreiding) als gevelvlak — dat is de beklede kant. Bij gelijke dikte (beide kanten flush) →
-// geen keuze, oude midden-heuristiek. DEFAULT = false → exact de huidige best-fit (byte-identiek).
-// Aanzetten: ?bestFitFlushSide=1. Noodrem: ?bestFitFlushSide=0.
+// BEST_FIT_FLUSH_SIDE — corrigeert de kant van het best-fit gevelvlak wanneer de auto-buiten-
+// richting uit een LAGE-confidence heuristiek komt en aantoonbaar fout is. Oorzaak van "strips
+// achterstevoren + Diepte-spreiding X mm"-melding: wanden die midden in de gebouw-bbox liggen
+// (beide bbox-testpunten binnen) krijgen hun outsideDir uit deprecated bbox-afstand / material-
+// layer (conf 0.2–0.75) — die kan de VERKEERDE kant kiezen. Wanden van verschillende dikte die
+// flush liggen op de beklede kant geven op de fout-gekozen kant een grote diepte-spreiding.
+// Met de vlag: als de winnende stem conf < 0.9 heeft ÉN de gekozen kant niet vlak ligt (residu >
+// tolerantie) terwijl de andere kant WÉL vlak ligt (residu ≤ tolerantie), flip naar de flush-kant
+// (= de beklede kant; groep-wanden zijn co-planair op de gevel). Confidente stem (≥0.9: bbox-exit
+// cross-product / IfcRelSpaceBoundary) blijft ongemoeid; gelijke dikte (beide kanten vlak) → geen
+// flip. DEFAULT = false → exact de huidige best-fit (byte-identiek). Aanzetten: ?bestFitFlushSide=1.
+// Noodrem: ?bestFitFlushSide=0.
 export function isBestFitFlushSide() {
   return readFlag('bestFitFlushSide', false);
 }

@@ -114,37 +114,38 @@ export function fitFacadePlane(members, modelUpAxis = null) {
   }
 
   // outward-richting langs nAxis: meerderheid van resolvedOutside (indien thicknessAxis===nAxis), anders heuristiek
-  let dirVote = 0, roVotes = 0;
+  let dirVote = 0, maxVoteConf = 0;
   for (const { m } of aabbs) {
     const wo = m.wallOrigin; const ro = wo.resolvedOutside;
-    if (ro && ro.outsideDir != null && wo.thicknessAxis === nAxis) { dirVote += (ro.outsideDir < 0 ? -1 : 1); roVotes++; }
+    if (ro && ro.outsideDir != null && wo.thicknessAxis === nAxis) { dirVote += (ro.outsideDir < 0 ? -1 : 1); maxVoteConf = Math.max(maxVoteConf, ro.confidence ?? 0); }
   }
-  // BEST_FIT_FLUSH_SIDE (vlag): geen betrouwbare resolvedOutside-stem (roVotes==0, bv. wanden die
-  // als INTERIOR geclassificeerd zijn) → kies de FLUSH-kant (kleinste diepte-spreiding) als
-  // gevelvlak i.p.v. de midden-afstand te gokken. Grondig verschil (> tolerantie) = duidelijk
-  // welke kant de beklede gevel is; gelijk (zelfde dikte) → null → oude midden-heuristiek.
-  // Vlag UIT → altijd null → byte-identiek.
-  const _flushSide = (isBestFitFlushSide() && roVotes === 0)
-    ? (() => {
-        const residOf = (dir) => {
-          const fs = aabbs.map(({ A }) => dir < 0 ? A['min' + nAxis.toUpperCase()] : A['max' + nAxis.toUpperCase()]).sort((a, b) => a - b);
-          return Math.max(...fs.map(f => Math.abs(f - fs[Math.floor(fs.length / 2)])));
-        };
-        const rMin = residOf(-1), rMax = residOf(1);
-        return Math.abs(rMin - rMax) > RESIDUAL_TOL_MM ? (rMin < rMax ? -1 : 1) : null;
-      })()
-    : null;
   // fallback: t.o.v. het midden van de selectie langs nAxis (buitenste = verste van midden)
-  if (dirVote === 0 && _flushSide == null) {
+  if (dirVote === 0) {
     const mid = (gMin[nAxis] + gMax[nAxis]) / 2;
     for (const { A } of aabbs) { const c = (A['min' + nAxis.toUpperCase()] + A['max' + nAxis.toUpperCase()]) / 2; dirVote += (c >= mid ? 1 : -1); }
   }
-  const outsideDir = _flushSide != null ? _flushSide : (dirVote >= 0 ? 1 : -1);
+  let outsideDir = dirVote >= 0 ? 1 : -1;
 
   // best-fit offset = mediaan van de BUITENvlakken; residu = spreiding
-  const faces = aabbs.map(({ A }) => outsideDir < 0 ? A['min' + nAxis.toUpperCase()] : A['max' + nAxis.toUpperCase()]).sort((a, b) => a - b);
-  const offset = faces[Math.floor(faces.length / 2)];
-  const residualMm = Math.round(Math.max(...faces.map(f => Math.abs(f - offset))));
+  const _facesFor = (dir) => aabbs.map(({ A }) => dir < 0 ? A['min' + nAxis.toUpperCase()] : A['max' + nAxis.toUpperCase()]).sort((a, b) => a - b);
+  const _residOf = (fs) => Math.round(Math.max(...fs.map(f => Math.abs(f - fs[Math.floor(fs.length / 2)]))));
+  let faces = _facesFor(outsideDir);
+  let offset = faces[Math.floor(faces.length / 2)];
+  let residualMm = _residOf(faces);
+
+  // BEST_FIT_FLUSH_SIDE (vlag): de gekozen buitenrichting kwam uit een LAGE-confidence heuristiek
+  // (deprecated bbox-afstand/material-layer, conf < 0.9) én de gekozen kant ligt NIET vlak, terwijl
+  // de andere kant WÉL vlak ligt → sterk bewijs dat de kant fout is (groep-wanden zijn co-planair op
+  // de beklede kant; een dik/dun-verschil zet de fout-kant een dikteverschil uiteen). Flip naar de
+  // flush-kant. Confidente stem (>=0.9: bbox-exit/space-boundary) blijft ongemoeid. Vlag UIT → geen
+  // wijziging (byte-identiek: faces/offset/residualMm == het oude pad).
+  if (isBestFitFlushSide() && maxVoteConf < 0.9) {
+    const oppFaces = _facesFor(-outsideDir);
+    const oppResid = _residOf(oppFaces);
+    if (residualMm > RESIDUAL_TOL_MM && oppResid <= RESIDUAL_TOL_MM) {
+      outsideDir = -outsideDir; faces = oppFaces; offset = oppFaces[Math.floor(oppFaces.length / 2)]; residualMm = oppResid;
+    }
+  }
 
   if (coFacingFrac < COFACING_FRAC) warnings.push(`Niet co-facing: slechts ${Math.round(coFacingFrac * 100)}% van de leden deelt dezelfde normaal-as (${nAxis}). Selectie bevat mogelijk meerdere gevelrichtingen.`);
   if (residualMm > RESIDUAL_TOL_MM) warnings.push(`Diepte-spreiding ${residualMm} mm > tolerantie ${RESIDUAL_TOL_MM} mm — leden liggen niet op één vlak.`);
