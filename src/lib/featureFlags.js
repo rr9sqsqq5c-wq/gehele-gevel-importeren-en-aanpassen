@@ -167,10 +167,12 @@ export function isGroothuisWildverband2() {
 // SYNTHETISCHE CALC-WAND — UI-control om een wand op te voeren door lengte × hoogte (mm) +
 // vaste dikte in te tikken, zonder IFC. De wand vervult het wand-contract en is als één-wand-
 // groep bekleedbaar (3D + 2D + uittrekstaat). SESSIE-ONLY (synthetic:true → uitgesloten van
-// persist), GEEN IFC-export, GEEN georef. DEFAULT = false → de control + alle synthetische
-// logica zijn inert en de app is byte-identiek. Aanzetten: ?syntheticWall=1. Noodrem =0.
+// persist), GEEN IFC-export, GEEN georef. DEFAULT = true (gepromoveerd 2026-07-08 op verzoek):
+// de calc-wand-control staat standaard in het import-paneel. Omdat alles sessie-only is, blijven
+// opgeslagen projecten en de IFC-export ongemoeid. NOODREM: ?syntheticWall=0 (of localStorage
+// 'syntheticWall'='0'/'false') verbergt de control weer en maakt de synthetische logica inert.
 export function isSyntheticWall() {
-  return readFlag('syntheticWall', false);
+  return readFlag('syntheticWall', true);
 }
 
 // FASE 2 — maatgevoerde rechthoek-stripZones met eigen verband per gevelvlak (in 2D te
@@ -289,6 +291,16 @@ export function isOpeningFromKozijn() {
   return readFlag('openingFromKozijn', false);
 }
 
+// KOZIJN_OFFSET — globale (hele-gebouw) per-zijde marge (links/rechts/boven/onder, mm) tussen de
+// KOZIJNRAND en de steenstripgevel (strips + panelen + latten volgen dezelfde groupOpenings, dus
+// één inflate raakt alle drie). Positief = bekleding wijkt terug (groter gat rond het kozijn).
+// Bevat óók de melding "opening zonder kozijn": een raam/deur-formaat void zonder fill wordt niet uit
+// de gevel geknipt → ⚠️. DEFAULT = false → geen UI, offsets = 0, geen melding (byte-identiek).
+// Aanzetten: ?kozijnOffset=1 (of localStorage 'kozijnOffset'='1'). Noodrem: ?kozijnOffset=0.
+export function isKozijnOffset() {
+  return readFlag('kozijnOffset', false);
+}
+
 // SHOW_KOZIJNEN — toont raam/deur-openingen ook als 3D-doos (kozijn) in de viewer, ter visuele
 // controle van de openingen t.o.v. de bekleding. De doos volgt de opening-rechthoek (die met
 // openingFromKozijn=1 de kozijn-rand volgt). DEFAULT = false → geen extra 3D-geometrie (byte-
@@ -369,6 +381,7 @@ export function isVentilatieZone() {
 export const FLAG_REGISTRY = [
   { key: 'sparingElementen',     label: 'Sparing-onderdelen',        note: 'Niet-wand IFC-onderdelen importeren + de bekleding er rondom sparen.' },
   { key: 'openingFromKozijn',    label: 'Openingen op kozijn-rand',  note: 'Knip vanaf raam/deur (kozijn) i.p.v. de ruwe structurele opening.', reimport: true },
+  { key: 'kozijnOffset',         label: 'Kozijn-offset (L/R/B/O)',   note: 'Globale marge per zijde tussen kozijnrand en bekleding (strips+panelen+latten) + melding bij opening zonder kozijn.' },
   { key: 'showKozijnen',         label: 'Kozijnen tonen in 3D',      note: 'Raam/deur als 3D-doos ter visuele controle.', reimport: true },
   { key: 'ventilatieZone',       label: 'Ventilatiezone (gedraaid verband)', note: 'Klein gat boven een raam wordt open geknipt + een zone met loodrecht verband eromheen (instelbaar per groep).', reimport: true },
   { key: 'cornerButt',           label: 'Stompe hoek',               note: 'Geen omslag-steenstrips op het loodrechte vlak.' },

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, parseIfcSparingElements, scanIfcSparingTypes, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -3265,6 +3265,10 @@ export default function App() {
   const [sparingElements, setSparingElements] = useState([]);
   const [sparingOffset, setSparingOffset] = useState(10);
   const [sparingScan, setSparingScan] = useState(null); // { file, types:[{ifcEntityType,count}], selected:Set, busy }
+  // KOZIJN-OFFSET (vlag kozijnOffset) — globale per-zijde marge (mm) tussen kozijnrand en bekleding.
+  const [kozijnOffset, setKozijnOffset] = useState({ left: 0, right: 0, top: 0, bottom: 0 });
+  // Parameter voor de patroon-builders: null wanneer de vlag UIT is → byte-identiek gedrag.
+  const kozOffsetParam = isKozijnOffset() ? kozijnOffset : null;
   const [kozijnen, setKozijnen] = useState([]); // raam/deur-bboxen (uit parseIfc via projectInfo) voor 3D-weergave
   const [flagsOpen, setFlagsOpen] = useState(false); // vlaggen-schakelaar-paneel
   const [flagState, setFlagState] = useState(() => Object.fromEntries(FLAG_REGISTRY.map((f) => [f.key, getFlag(f.key)])));
@@ -3373,9 +3377,9 @@ export default function App() {
       // val terug op het oude pad i.p.v. niets te tonen.
       const useBestFit = isBestFitGroups() && group.manual === true;
       let facadeData = (useBestFit
-        ? buildBestFitFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight)
+        ? buildBestFitFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, undefined, kozOffsetParam)
         : null)
-        ?? buildFullGroupFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight);
+        ?? buildFullGroupFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, kozOffsetParam);
       // FASE 2 — wildverband: vervang de strip-rijen door het vastgelegde tegel-verband
       // (buildTruthRows). Achter de vlag, default UIT → exact het bestaande pad. Voedt 3D
       // (batches uit facadeData.rows) én 2D (dezelfde facadeData) uit één bron.
@@ -3629,7 +3633,7 @@ export default function App() {
         const zoneMatBase = { ...mat, ...(zs.material ?? {}) };
         const zoneMat = _3dStripArt ? { ...zoneMatBase, steenL: _3dStripArt.steenL, steenH: _3dStripArt.steenH } : zoneMatBase;
         const zoneVerband3d = zs.verband ?? (s.verband ?? DEFAULT_VERBAND);
-        const zoneFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband3d, zs.maxHoogte ?? s.maxHoogte, s.zetwerk, null, s.startLijn);
+        const zoneFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband3d, zs.maxHoogte ?? s.maxHoogte, s.zetwerk, null, s.startLijn, 0, 0, kozOffsetParam);
         if (!zoneFull) continue;
         const clipRows = zoneFull.rows.map((row) => ({
           ...row,
@@ -3881,7 +3885,7 @@ export default function App() {
       };
     }
     return result;
-  }, [groups, getSettings, wallMap, showPattern, viewMode, adjacencies, cornerConfigs, settingsMap, groupEnvelopeVisibility, sparingElements, sparingOffset]);
+  }, [groups, getSettings, wallMap, showPattern, viewMode, adjacencies, cornerConfigs, settingsMap, groupEnvelopeVisibility, sparingElements, sparingOffset, kozijnOffset]);
 
   // SPARING-ELEMENTEN debug/voortgangs-controle — per groep hoeveel sparing-rechthoeken daadwerkelijk
   // uit de bekleding zijn geknipt (uit allPatterns). 0 → coördinaten sluiten niet aan of diepte-check faalt.
@@ -3907,6 +3911,21 @@ export default function App() {
     if (sparingDebug.totalRects === 0) console.warn('[sparingen] 0 sparingen geknipt — controleer: (1) onderdelen-IFC zelfde projectnulpunt als de wanden (zie wereld-bbox in het import-rapport vs. de gevel-min hieronder), (2) onderdelen vallen binnen het dikte-bereik van een gevelvlak (± ~300mm), (3) de vlag staat aan.');
     console.table(sparingDebug.perGroup.map((g) => ({ groep: g.name, 'gevel BxH': `${g.gw}×${g.gh}`, sparingen: g.rects, 'assen L/H/D': g.assen, 'gevel-min X,H': g.minXH })));
   }, [sparingDebug, sparingOffset]);
+
+  // KOZIJN-OFFSET melding: log de openingen zonder gedetecteerd kozijn (per groep) zodat ze te lokaliseren
+  // zijn. Alleen actief met de vlag aan (openingWarnings wordt dan pas gevuld in buildFullGroupFacadePattern).
+  useEffect(() => {
+    if (!isKozijnOffset()) return;
+    const rows = [];
+    for (const [gid, p] of Object.entries(allPatterns ?? {})) {
+      const gName = groups.find((g) => g.id === gid)?.name ?? gid;
+      for (const w of (p?.facadeData?.openingWarnings ?? [])) rows.push({ groep: gName, x: w.x, y: w.y, 'B×H': `${w.width}×${w.height}`, wandId: w.wallId });
+    }
+    if (rows.length) {
+      console.warn(`%c[kozijn-offset] ${rows.length} opening(en) zonder gedetecteerd kozijn — worden NIET uit de gevel geknipt. Controleer of er een raam/deur (IfcWindow/IfcDoor) aan de void hangt.`, 'color:#f59e0b;font-weight:bold');
+      console.table(rows);
+    }
+  }, [allPatterns, groups]);
 
   async function startScan(file, handle, isMerge = false) {
     setMergeMode(isMerge);
@@ -4471,6 +4490,7 @@ export default function App() {
         setGroups(state.groups);
         setGroupLinks(state.groupLinks ?? {});
         if (state.cornerConfigs && typeof state.cornerConfigs === 'object') setCornerConfigs(state.cornerConfigs);
+        if (state.kozijnOffset && typeof state.kozijnOffset === 'object') setKozijnOffset({ left: 0, right: 0, top: 0, bottom: 0, ...state.kozijnOffset });
         setSettingsMap(sm);
         if (state.wallDimOverrides && typeof state.wallDimOverrides === 'object') setWallDimOverrides(state.wallDimOverrides);
         if (Array.isArray(state.allWalls) && state.allWalls.length > 0) {
@@ -4502,10 +4522,10 @@ export default function App() {
       const _pGroups = _hasSyn ? groups.filter((g) => !g.synthetic) : groups;
       const _synGids = _hasSyn ? new Set(groups.filter((g) => g.synthetic).map((g) => g.id)) : null;
       const _pSettings = _hasSyn ? Object.fromEntries(Object.entries(settingsMap).filter(([gid]) => !_synGids.has(gid))) : settingsMap;
-      saveProjectState({ groups: _pGroups, groupLinks, cornerConfigs, settingsMap: _pSettings, ifcFileName, wallDimOverrides, allWalls: _pWalls }).catch(() => {});
+      saveProjectState({ groups: _pGroups, groupLinks, cornerConfigs, settingsMap: _pSettings, ifcFileName, wallDimOverrides, allWalls: _pWalls, kozijnOffset }).catch(() => {});
     }, 1500);
     return () => clearTimeout(_saveTimerRef.current);
-  }, [groups, groupLinks, cornerConfigs, settingsMap, ifcFileName, wallDimOverrides, allWalls]);
+  }, [groups, groupLinks, cornerConfigs, settingsMap, ifcFileName, wallDimOverrides, allWalls, kozijnOffset]);
 
   // --- PLAN_BRIDGE (achter isPlanBridge(), default UIT) — engineering-samenvatting voor de planner ---
   // Volledig ADDITIEF: met de vlag uit registreert de useEffect hieronder niets en wordt
@@ -4524,7 +4544,7 @@ export default function App() {
       const ctrims = endExtensionsToTrims(s.endExtensions);
       let facadeData = null;
       try {
-        facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrims.extendLeft, ctrims.extendRight);
+        facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrims.extendLeft, ctrims.extendRight, kozOffsetParam);
       } catch { facadeData = null; }
       const gw = facadeData?.groupWidth ?? 0;
       const gh = facadeData?.groupHeight ?? 0;
@@ -4953,7 +4973,7 @@ export default function App() {
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const mat = s.material ?? DEFAULT_MATERIAL;
       const verband = s.verband ?? DEFAULT_VERBAND;
-      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, s.zetwerk, null, s.startLijn);
+      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, s.zetwerk, null, s.startLijn, 0, 0, kozOffsetParam);
       if (!facadeDataRaw) continue;
 
       let facadeData = facadeDataRaw;
@@ -5159,7 +5179,7 @@ export default function App() {
       // best-fit-data onverhoopt → terugval op buildFullGroupFacadePattern.
       const useBestFitExport = isBestFitGroups() && group.manual === true;
       const facadeDataRaw = (useBestFitExport ? (allPatterns[group.id]?.facadeData ?? null) : null)
-        ?? buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsExport.extendLeft, ctrimsExport.extendRight);
+        ?? buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsExport.extendLeft, ctrimsExport.extendRight, kozOffsetParam);
       const _refWall = facadeDataRaw ? null : ([...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0] ?? null);
       const refWallOrigin = facadeDataRaw?.refWallOrigin ?? _refWall?.wallOrigin ?? null;
       const _axisW = refWallOrigin ? withOrigin.filter((w) => w.wallOrigin.lengthAxis === refWallOrigin.lengthAxis) : withOrigin;
@@ -5583,7 +5603,7 @@ export default function App() {
           const zoneMat = _stripBatchArt ? { ...zoneMatBase, steenL: _stripBatchArt.steenL, steenH: _stripBatchArt.steenH } : zoneMatBase;
           const zoneVerband = zs.verband ?? (s.verband ?? DEFAULT_VERBAND);
           const zoneMaxH = zs.maxHoogte ?? (s.maxHoogte ?? null);
-          const zFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxH, s.zetwerk, null, s.startLijn);
+          const zFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxH, s.zetwerk, null, s.startLijn, 0, 0, kozOffsetParam);
           if (!zFull) continue;
           const clipRows = zFull.rows.map((row) => ({
             ...row,
@@ -6387,6 +6407,39 @@ export default function App() {
                     {sparingDebug ? ` · ${sparingDebug.totalRects} geknipt (${sparingDebug.groupsHit} groep${sparingDebug.groupsHit !== 1 ? 'en' : ''})` : ''}
                     <button onClick={() => setSparingElements([])} title="Sparingen wissen"
                       style={{ marginLeft: 4, background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 11 }}>✕</button>
+                  </span>
+                )}
+              </>
+            )}
+            {isKozijnOffset() && (
+              <>
+                <div style={{ width: 1, height: 16, background: '#334155' }} />
+                <Tooltip text={"Globale marge (mm) tussen de kozijnrand en de steenstripgevel (strips + panelen + latten volgen dezelfde openingen).\nPer zijde instelbaar voor het hele gebouw. Positief = bekleding wijkt terug (groter gat rond het kozijn).\nWerkt het duidelijkst met 'Openingen op kozijn-rand' aan (dan wordt vanaf de kozijnrand gemeten)."}>
+                  <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap', cursor: 'help' }}>Kozijn-offset</span>
+                </Tooltip>
+                {[['left', 'L'], ['right', 'R'], ['top', 'B'], ['bottom', 'O']].map(([key, lbl]) => (
+                  <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <span style={{ fontSize: 10, color: '#64748b' }} title={`${lbl} = ${key === 'left' ? 'links' : key === 'right' ? 'rechts' : key === 'top' ? 'boven' : 'onder'}`}>{lbl}</span>
+                    <input type="number" step={1} value={kozijnOffset[key]}
+                      onChange={(e) => setKozijnOffset((o) => ({ ...o, [key]: Number(e.target.value) || 0 }))}
+                      title={`Marge (mm) aan de ${key === 'left' ? 'linker' : key === 'right' ? 'rechter' : key === 'top' ? 'boven' : 'onder'}zijde van het kozijn`}
+                      style={{ width: 42, fontSize: 11, padding: '2px 4px', border: '1px solid #334155', borderRadius: 4, background: '#0f172a', color: '#e2e8f0', outline: 'none' }} />
+                  </span>
+                ))}
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>
+                {(() => {
+                  const n = Object.values(allPatterns ?? {}).reduce((a, p) => a + (p?.facadeData?.openingWarnings?.length ?? 0), 0);
+                  return n > 0 ? (
+                    <span style={{ fontSize: 10, color: '#f59e0b', whiteSpace: 'nowrap' }}
+                      title="Openingen van raam/deur-formaat zonder gedetecteerd kozijn (geen fill). Die worden NIET uit de gevel geknipt — controleer het model. Details in de console (F12).">
+                      ⚠️ {n} opening{n !== 1 ? 'en' : ''} zonder kozijn
+                    </span>
+                  ) : null;
+                })()}
+                {!isOpeningFromKozijn() && (
+                  <span style={{ fontSize: 10, color: '#38bdf8', whiteSpace: 'nowrap', cursor: 'help' }}
+                    title={"De offset wordt nu gemeten vanaf de RUWE opening (void), niet vanaf het kozijn.\nZet vlag 'Openingen op kozijn-rand' aan én importeer opnieuw om vanaf de kozijnrand te meten."}>
+                    ⓘ meet vanaf void — zet 'Openingen op kozijn-rand' aan (+ herimport) voor kozijnrand
                   </span>
                 )}
               </>

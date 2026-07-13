@@ -185,7 +185,7 @@ function reprojectOpening(op, wo, plane, vLenStart, vHgtStart) {
     id: op.id, type: op.type ?? 'sparing',
     x: Math.round(lo[plane.tAxis] - vLenStart), y: Math.round(lo[plane.uAxis] - vHgtStart),
     breedte: Math.round(hi[plane.tAxis] - lo[plane.tAxis]), hoogte: Math.round(hi[plane.uAxis] - lo[plane.uAxis]),
-    polyPts, thicknessCenter: op.thicknessCenter ?? null,
+    polyPts, thicknessCenter: op.thicknessCenter ?? null, hasFill: op.hasFill,
   };
 }
 
@@ -275,7 +275,7 @@ function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft
  * vlag. Zelfde returnvorm (rows/groupMinX/.../refWallOrigin) zodat de bestaande
  * batch-/render-pijplijn ongewijzigd werkt — plus `_bestFit` diagnostiek.
  */
-export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, zetwerk, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, modelUpAxis = undefined) {
+export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, zetwerk, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, modelUpAxis = undefined, kozijnOffset = null) {
   const members = (walls ?? []).filter(w => w.wallOrigin);
   if (!members.length) return null;
   // Model-up-as uit de projectcontext (robuust, dezelfde lijn als detectModelUpAxis).
@@ -284,7 +284,7 @@ export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, z
   const plane = fitFacadePlane(members, upAxis);
   if (!plane) return null;
   const vwalls = members.map(m => toVirtualWall(m, plane));
-  const fd = buildFullGroupFacadePattern(vwalls, material, verband, maxHoogte, zetwerk, _minHoogte, startLijn, extendLeft, extendRight);
+  const fd = buildFullGroupFacadePattern(vwalls, material, verband, maxHoogte, zetwerk, _minHoogte, startLijn, extendLeft, extendRight, kozijnOffset);
   if (!fd) return null;
   const rowH = verband === 'staand_tegelverband' ? (material.steenL ?? material.steenH ?? 50) : (material.steenH ?? 50);
   // FASE 1: vlag UIT → extend=0 doorgegeven → maskRowsToContours byte-identiek (knipt op

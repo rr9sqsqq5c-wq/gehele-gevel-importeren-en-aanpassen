@@ -291,7 +291,29 @@ export function buildGroupPattern(walls, adjacencies, material, verband, opening
   return result;
 }
 
-export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk, _minHoogte, startLijn, extendLeft = 0, extendRight = 0) {
+// KOZIJN-OFFSET: rek één opening asymmetrisch op (per zijde, groep-lokale mm). x = links→rechts,
+// y = onder→boven. left/right verbreden langs x, bottom(onder)/top(boven) langs y. Rechthoek exact;
+// een polygoon via de centroïde-helft (zoals expandPolygon). off = {left,right,top,bottom}.
+function inflateOpeningPerSide(op, off) {
+  const L = off?.left ?? 0, R = off?.right ?? 0, T = off?.top ?? 0, B = off?.bottom ?? 0;
+  if (!L && !R && !T && !B) return op;
+  const x = round2((op.x ?? 0) - L);
+  const y = round2((op.y ?? 0) - B);
+  const width = round2((op.width ?? 0) + L + R);
+  const height = round2((op.height ?? 0) + B + T);
+  let polyPts = op.polyPts;
+  if (polyPts && polyPts.length >= 3) {
+    const cx = polyPts.reduce((s, p) => s + p.l, 0) / polyPts.length;
+    const cy = polyPts.reduce((s, p) => s + p.h, 0) / polyPts.length;
+    polyPts = polyPts.map((p) => ({
+      l: round2(p.l + (p.l >= cx ? R : -L)),
+      h: round2(p.h + (p.h >= cy ? T : -B)),
+    }));
+  }
+  return { ...op, x, y, width, height, polyPts };
+}
+
+export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, kozijnOffset = null) {
   const { steenL, steenH, lint, stoot } = material;
   const lagenmaat = getLagenmaat(material, verband);
   const rowH = verband === 'staand_tegelverband' ? material.steenL : steenH;
@@ -330,6 +352,8 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const zwExpandY = zwEnabled ? (zwV + zwB) : 0;
 
   const rawOpenings = [];
+  const openingWarnings = [];   // kozijnloze raam/deur-formaat voids (vlag kozijnOffset) → ⚠️
+  const warnThr = kozijnOffset?.warnThreshold ?? 300;
   for (const w of withOrigin) {
     const wallOffsetX = round2((w.wallOrigin.lengthStart ?? 0) - groupMinX);
     const wallOffsetH = round2((w.wallOrigin.heightStart ?? 0) - groupMinH);
@@ -339,6 +363,11 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       const ow = op.breedte ?? op.width ?? 0;
       const oh = op.hoogte ?? op.height ?? 0;
       if (ow < 50 || oh < 50) continue;
+      // MELDING "opening zonder kozijn": een raam/deur-formaat void ZONDER fill wordt niet als
+      // raam/deur uit de gevel geknipt → waarschuw (alleen met vlag kozijnOffset aan → kozijnOffset ≠ null).
+      if (kozijnOffset && op.hasFill === false && ow >= warnThr && oh >= warnThr) {
+        openingWarnings.push({ x: ox, y: oy, width: ow, height: oh, wallId: w.expressID });
+      }
       // BRON-GUARD: weiger een opening die boven z'n eigen wand uitsteekt (bv. een 2520 mm
       // venster-L die op een 300 mm vloerband is blijven plakken in oude/corrupte opgeslagen
       // data) — anders merget die na omzetting met de vensteropening erboven en mergeTwo slaat
@@ -397,7 +426,9 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     }
   }
 
-  const groupOpenings = merged;
+  // KOZIJN-OFFSET: rek elke opening per zijde op zodat strips (maskOpenings), panelen (openingsForZones)
+  // én latten (facadeData.groupOpenings) dezelfde marge tot de kozijnrand aanhouden. null/0 → ongemoeid.
+  const groupOpenings = kozijnOffset ? merged.map((op) => inflateOpeningPerSide(op, kozijnOffset)) : merged;
 
   function expandPolygon(pts, dx, dy) {
     if (!pts || pts.length < 3) return pts;
@@ -503,7 +534,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     if (clipped.length) rows.push({ y: rowY, pieces: clipped });
   }
 
-  return { rows, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, extendLeft, extendRight, patternStartH: effectiveMinH, groupOpenings, zetwerkParams: zwEnabled ? { breedte: zwB, offsetH: zwH, offsetV: zwV } : null, refWallOrigin: refWall.wallOrigin };
+  return { rows, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, extendLeft, extendRight, patternStartH: effectiveMinH, groupOpenings, openingWarnings, zetwerkParams: zwEnabled ? { breedte: zwB, offsetH: zwH, offsetV: zwV } : null, refWallOrigin: refWall.wallOrigin };
 }
 
 export function getGroupPatternLogic(walls, material, verband) {

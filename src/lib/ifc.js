@@ -1780,6 +1780,9 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
                 hoogte: oHeight,
                 polyPts: finalPolyPts,
                 thicknessCenter: oThicknessCenter,
+                // KOZIJN-OFFSET-melding: is er een raam/deur (fill = kozijn) aan deze void gekoppeld?
+                // false = kozijnloze opening → de gevel wordt hier niet uitgeknipt (vlag kozijnOffset).
+                hasFill: !!fillID,
               });
 
               // KOZIJN — verzamel de echte raam/deur-bbox (× 1000 → mm) van DEZE geparste wand.
