@@ -333,15 +333,16 @@ export function isBestFitFlushSide() {
   return readFlag('bestFitFlushSide', true);
 }
 
-// GROUP_START_WIDEST — rechte linker-/startrand voor een best-fit-groep. Staan er aan de linkerkant
-// wanden bóven elkaar met verschillende breedte (bv. een smallere hoofdwand onder een bredere band),
-// dan trapt de bekleding-linkerrand nu per wand: maskRowsToContours (facadePlane.js) knipt elke rij
-// tot de wand-footprint op díe hoogte, dus een 20 mm terugliggende wand geeft een 20 mm inspringende
-// rand. Met de vlag wordt de LINKERrand van elke rij doorgetrokken tot de linkerrand van de BREEDSTE
-// wand van de groep (groep-lokaal gT0 = min lengthStart) → één rechte linkerrand; terugliggende
-// smallere wanden worden tot die rand bekleed (kleine strook zonder wand erachter). Alleen LINKS
-// (rechts volgt per wand). DEFAULT = false → masker byte-identiek. Aanzetten: ?groupStartWidest=1.
-// Noodrem: ?groupStartWidest=0.
+// GROUP_START_WIDEST — schone rechthoekige omtrek op de breedste wand voor een best-fit-groep. Staan
+// er wanden bóven elkaar met verschillende breedte (bv. een smallere hoofdwand + een bredere band),
+// dan trapt de bekleding-rand nu per wand: maskRowsToContours (facadePlane.js) knipt elke rij tot de
+// wand-footprint op díe hoogte, dus een 20 mm terugliggende wand geeft een 20 mm inspringende rand.
+// Met de vlag worden BEIDE buitenranden van elke rij doorgetrokken tot de randen van de BREEDSTE wand
+// (groep-lokaal gT0 = min lengthStart, gT1 = max lengthEnd) → één rechte linker- én rechterrand;
+// terugliggende smallere wanden worden tot die rand bekleed (kleine strook zonder wand erachter).
+// Beide randen (kijkrichting-onafhankelijk: de gevel rendert van buiten gespiegeld, dus één groep-
+// lokale kant zou de verkeerde visuele zijde raken). DEFAULT = false → masker byte-identiek.
+// Aanzetten: ?groupStartWidest=1. Noodrem: ?groupStartWidest=0.
 export function isGroupStartWidest() {
   return readFlag('groupStartWidest', false);
 }

@@ -213,7 +213,7 @@ function toVirtualWall(member, plane) {
 
 // CONTOUR-MASKER: knip elke rij tot de unie van element-rechthoeken (relatief t.o.v.
 // groupMinX/groupMinH); zo blijft alles buiten een element ONbekleed.
-function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft = 0, extendRight = 0, flushLeft = false) {
+function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft = 0, extendRight = 0, flushEdges = false) {
   const rects = vwalls.map(w => ({
     t0: (w.wallOrigin.lengthStart) - groupMinX, t1: (w.wallOrigin.lengthEnd) - groupMinX,
     u0: (w.wallOrigin.heightStart) - groupMinH, u1: (w.wallOrigin.heightEnd) - groupMinH,
@@ -225,9 +225,9 @@ function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft
   // pieces geknipt vóór de mask). extendLeft/Right zijn 0 wanneer de vlag UIT staat, dus dit
   // blok is dan een no-op en de mask is byte-identiek aan het origineel.
   const keepExt = (extendLeft > 0 || extendRight > 0) && rects.length > 0;
-  // GROUP_START_WIDEST: gT0 (= linkerrand van de breedste wand, groep-lokaal) ook nodig als we de
-  // linkerrand strak willen trekken, niet alleen bij de einduiteinde-extensie.
-  const needGlobals = keepExt || (flushLeft && rects.length > 0);
+  // GROUP_START_WIDEST: gT0/gT1 (= randen van de breedste wand, groep-lokaal) ook nodig als we de
+  // groep-randen strak willen trekken, niet alleen bij de einduiteinde-extensie.
+  const needGlobals = keepExt || (flushEdges && rects.length > 0);
   const gT0 = needGlobals ? Math.min(...rects.map(r => r.t0)) : 0;
   const gT1 = needGlobals ? Math.max(...rects.map(r => r.t1)) : 0;
   const out = [];
@@ -249,9 +249,14 @@ function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft
       if (extendLeft  > 0) merged[0][0]                 = Math.min(merged[0][0],                 gT0 - extendLeft);
       if (extendRight > 0) merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], gT1 + extendRight);
     }
-    // GROUP_START_WIDEST: trek de LINKERrand van elke rij door tot de breedste wand (gT0) → één
-    // rechte linkerrand (terugliggende smallere wanden worden tot die rand bekleed). Alleen links.
-    if (flushLeft) merged[0][0] = Math.min(merged[0][0], gT0);
+    // GROUP_START_WIDEST: trek BEIDE buitenranden van elke rij door tot de breedste wand (gT0/gT1)
+    // → schone rechthoekige omtrek op de breedste wand (terugliggende smallere wanden worden tot
+    // die rand bekleed). Kijkrichting-onafhankelijk (de gevel rendert van buiten gespiegeld, dus
+    // een enkele groep-lokale kant zou de verkeerde visuele zijde raken).
+    if (flushEdges) {
+      merged[0][0]                 = Math.min(merged[0][0],                 gT0);
+      merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], gT1);
+    }
     const pieces = [];
     for (const p of row.pieces) {
       const ps = p.start, pe = p.start + p.length;
