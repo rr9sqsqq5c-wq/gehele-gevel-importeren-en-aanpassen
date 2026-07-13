@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, parseIfcSparingElements, scanIfcSparingTypes, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -6743,7 +6743,19 @@ export default function App() {
                     stripZones={getSettings(activeGroup.id).stripZones ?? []}
                     onStripZonesChange={(zones) => updateSettings(activeGroup.id, { stripZones: zones })}
                     regionBatches={(() => { const _s = getSettings(activeGroup.id); return isFeatureZones() && !hasPenants(_s) && getActiveStripZones(_s).length > 0 ? (allPatterns[activeGroup.id]?.batches ?? null) : null; })()}
-                    outsideDirFlip={!!getSettings(activeGroup.id).outsideDirFlip}
+                    outsideDirFlip={(() => {
+                      const _rawFlip = !!getSettings(activeGroup.id).outsideDirFlip;
+                      if (!isOutsideDirSync()) return _rawFlip;
+                      // OUTSIDE_DIR_SYNC (gat A): spiegel 2D op de EFFECTIEVE buitenzijde die 3D/export
+                      // gebruiken (resolvedOutside.outsideDir = incl. "Buitenzijde selecteren"), met de
+                      // auto-detectie als ijkpunt. Flip-only (R == autoOutsideDir) → identiek aan _rawFlip;
+                      // manual bereikt nu ook 2D. Geen resolvedOutside/autoOutsideDir → val terug op _rawFlip.
+                      const _ro = allPatterns[activeGroup.id]?.facadeData?.refWallOrigin?.resolvedOutside;
+                      const _R = _ro?.outsideDir, _A = _ro?.autoOutsideDir ?? _R;
+                      if (_R == null || _A == null) return _rawFlip;
+                      const _eff = _rawFlip ? -_R : _R;
+                      return _eff * _A < 0;
+                    })()}
                     endExtensions={getSettings(activeGroup.id).endExtensions}
                     buildingEnvelopeData={buildingEnvelopeData}
                     envelopeVisibility={groupEnvelopeVisibility[activeGroup.id] ?? null}

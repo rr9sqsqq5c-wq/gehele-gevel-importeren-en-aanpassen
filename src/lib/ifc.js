@@ -2,7 +2,7 @@ import { getOpeningPoly } from './pattern.js';
 import { STEENSTRIP_CATALOG } from './battens.js';
 import { SLIMFORT_DEFAULTS, getSlimFortDepths } from './slimfort.js';
 import { registerIfcContext, getProjectInfo, getLastConfidentUpAxis, setLastConfidentUpAxis, setGeometryDerivedRenderOrigin, getWorldAnchor } from './projectCoordinates.js';
-import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly, isDropOversizedOpenings, isOpeningFromKozijn, isShowKozijnen } from './featureFlags.js';
+import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly, isDropOversizedOpenings, isOpeningFromKozijn, isShowKozijnen, isOutsideDirSync } from './featureFlags.js';
 // BRON-GUARD (dropOversizedOpenings): een void die via IfcRelVoidsElement aan een wand hangt maar
 // veel HOGER is dan die wand (bv. de 2520 mm venster-void die ook aan een 300 mm vloerband hangt)
 // levert in de browser — waar mesh-geometrie beschikbaar is — een te-hoge opening op. Die hoort er
@@ -383,6 +383,10 @@ export function resolveOutsideDirections(walls) {
       noThicknessCount++;
     }
     resolved.openingCheck = openingCheck;
+    // OUTSIDE_DIR_SYNC: bewaar de AUTO-gedetecteerde richting (na window-bias) apart, zodat 2D
+    // later kan spiegelen op de effectieve richting met auto als ijkpunt. applyManualOutsideOverrides
+    // overschrijft resolved.outsideDir wél, maar NIET autoOutsideDir → auto blijft kenbaar.
+    if (isOutsideDirSync()) resolved.autoOutsideDir = resolved.outsideDir;
   }
   console.log(`[resolveOutsideDirections] ${walls.length} wanden verwerkt: ${overrideCount} window-bias overrides toegepast, ${noThicknessCount} wanden zonder thicknessCenter (override kon niet vuren)`);
 }
@@ -2200,7 +2204,12 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
         for (const wallData of (group.wallsWithRows ?? [])) {
           const { wall, rows } = wallData;
           const wo = wall.wallOrigin;
-          const { outsidePos: wallOutPos, outsideDir: wallOutDir } = calcOutsideFace(wo, allWallOrigins);
+          const _wf = calcOutsideFace(wo, allWallOrigins);
+          const wallOutPos = _wf.outsidePos;
+          // OUTSIDE_DIR_SYNC (gat B): deze per-wand-fallback paste "Buitenzijde omdraaien" NIET toe,
+          // terwijl de normale groep-tak (grpOutDir, ~regel 2130) dat wél doet. Met de vlag volgt
+          // ook deze tak dirFlip → geen strip op de verkeerde kant in dit randgeval.
+          const wallOutDir = (isOutsideDirSync() && dirFlip) ? -_wf.outsideDir : _wf.outsideDir;
           const toWorld = (localX, outDepth, localZ) => {
             if (!wo) return [localX, outDepth, localZ];
             const p = { x: 0, y: 0, z: 0 };

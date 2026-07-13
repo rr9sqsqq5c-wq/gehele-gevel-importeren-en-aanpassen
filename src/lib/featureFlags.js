@@ -297,6 +297,24 @@ export function isShowKozijnen() {
   return readFlag('showKozijnen', false);
 }
 
+// OUTSIDE_DIR_SYNC — één waarheid voor de buitenzijde-richting over 3D, 2D én IFC-export. Dicht
+// twee gaten waardoor die drie konden divergeren:
+//   (A) 2D volgde alléén "Buitenzijde omdraaien" (outsideDirFlip); "Buitenzijde selecteren"
+//       (manualOutsideDir → resolvedOutside.outsideDir) bereikte de 2D-spiegel nooit. Met de vlag
+//       spiegelt 2D op de EFFECTIEVE richting die 3D/export gebruiken, met de AUTO-detectie als
+//       ijkpunt: mirror2D = (effDir * autoOutsideDir < 0), effDir = flip ? -R : R. Voor flip-only
+//       (geen manual → R == autoOutsideDir) is dat exact gelijk aan outsideDirFlip → byte-identiek.
+//   (B) De per-wand IFC-export-fallback (ifc.js, tak zonder facadeData.rows) paste outsideDirFlip
+//       NIET toe (de normale groep-tak wél) → strip aan de verkeerde kant in dat randgeval.
+// Om (A) mogelijk te maken bewaart resolveOutsideDirections de auto-richting apart als
+// resolvedOutside.autoOutsideDir (manual overschrijft outsideDir wél, autoOutsideDir NIET).
+// DEFAULT = false → 2D leest alleen outsideDirFlip, de export-fallback dropt de flip en er wordt
+// geen autoOutsideDir opgeslagen: exact zoals nu (vlag-uit byte-identiek). Aanzetten:
+// ?outsideDirSync=1 (of localStorage 'outsideDirSync'='1'). Noodrem: ?outsideDirSync=0.
+export function isOutsideDirSync() {
+  return readFlag('outsideDirSync', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -305,6 +323,7 @@ export const FLAG_REGISTRY = [
   { key: 'sparingElementen',     label: 'Sparing-onderdelen',        note: 'Niet-wand IFC-onderdelen importeren + de bekleding er rondom sparen.' },
   { key: 'openingFromKozijn',    label: 'Openingen op kozijn-rand',  note: 'Knip vanaf raam/deur (kozijn) i.p.v. de ruwe structurele opening.', reimport: true },
   { key: 'showKozijnen',         label: 'Kozijnen tonen in 3D',      note: 'Raam/deur als 3D-doos ter visuele controle.', reimport: true },
+  { key: 'outsideDirSync',       label: 'Buitenzijde: één waarheid', note: '2D én IFC-export volgen dezelfde buitenzijde als 3D (ook "Buitenzijde selecteren").' },
   { key: 'cornerButt',           label: 'Stompe hoek',               note: 'Geen omslag-steenstrips op het loodrechte vlak.' },
   { key: 'corner85',             label: 'Hoek-detail 85°',           note: '' },
   { key: 'groothuisWildverband', label: 'Groothuis wildverband 1',   note: 'Het oudere groothuis-verband (versie 2 staat standaard aan).' },
