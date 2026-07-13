@@ -210,7 +210,10 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
     const zoneMatBase = { ...mat, ...(zone.material ?? {}) };
     // Eigen steenstrip-artikel per zone (de UI heeft zone.material al op die maten gezet)
     // overschrijft de groep-stripArt; zonder eigen artikel volgt de zone de groep (applyArt).
-    const zoneMat = zone.steenstripArtikelId ? zoneMatBase : applyArt(zoneMatBase);
+    let zoneMat = zone.steenstripArtikelId ? zoneMatBase : applyArt(zoneMatBase);
+    // VENTILATIE_ZONE: een expliciete zone-steenL (verticale strip OP LENGTE = zone-hoogte) mag NIET
+    // door de groep-stripArt (applyArt zet steenL=artikel-lengte) worden overschreven.
+    if (zone.material?.steenL != null) zoneMat = { ...zoneMat, steenL: zone.material.steenL };
     const zoneColor = zone.color ?? defaultColor;
     const zRowH = bondRowH(zoneVerband, zoneMat);
     const zW = r.x1 - r.x0, zH = r.y1 - r.y0;
