@@ -5043,30 +5043,45 @@ export default function App() {
   }
 
   // SPARING-ELEMENTEN — laad een IFC, scan de niet-wand kandidaat-types, importeer de gekozen types.
+  // Sentinels voor de naam-selectie-sleutels: `TYPE##BB##naam`; naamloze elementen krijgen <naamloos>.
+  const SPARING_SEP = '##BB##';         // scheidt entity-type en naam in de selectie-sleutel
+  const SPARING_NULL_NAME = '<naamloos>'; // naam-deel voor elementen zonder Name
   async function handleSparingFile(file) {
     if (!file) return;
     console.log('[sparingen] scan gestart:', file.name, `(${(file.size / 1048576).toFixed(1)} MB)`);
-    setSparingScan({ file, types: [], selected: new Set(), busy: true, progress: 'Bestand scannen…' });
+    setSparingScan({ file, types: [], selected: new Set(), selectedNames: new Set(), busy: true, progress: 'Bestand scannen…' });
     try {
       const types = await scanIfcSparingTypes(file);
       console.log('[sparingen] scan klaar — types met geometrie:', types.map((t) => `${t.ifcEntityType.replace(/^IFC/, '')}×${t.count}`).join(', ') || '(geen)');
       if (!types.length) { alert('Geen fysieke onderdelen (met geometrie) in dit bestand gevonden.'); setSparingScan(null); return; }
-      setSparingScan({ file, types, selected: new Set(), busy: false });
+      setSparingScan({ file, types, selected: new Set(), selectedNames: new Set(), busy: false });
     } catch (e) { console.error('[sparingen] scan mislukt:', e); alert('Scannen mislukt: ' + (e?.message ?? e)); setSparingScan(null); }
   }
   async function handleSparingImport() {
     if (!sparingScan?.file) return;
     const sel = [...(sparingScan.selected ?? [])];
     if (!sel.length) { alert('Selecteer minstens één type.'); return; }
+    // Bouw de naam-filter uit de aangevinkte naam-sleutels ("TYPE##BB##naam"). Alleen types waarvan
+    // ≥1 naam is aangevinkt komen in de map; types zonder naam-selectie blijven "alle namen" (oud gedrag).
+    const nameFilter = {};
+    for (const key of (sparingScan.selectedNames ?? [])) {
+      const si = key.indexOf(SPARING_SEP);
+      if (si < 0) continue;
+      const type = key.slice(0, si);
+      const namePart = key.slice(si + SPARING_SEP.length);
+      if (!sel.includes(type)) continue;               // type niet (meer) aangevinkt → naam negeren
+      (nameFilter[type] ??= []).push(namePart === SPARING_NULL_NAME ? null : namePart);
+    }
+    const hasNameFilter = Object.keys(nameFilter).length > 0;
     setSparingScan((s) => (s ? { ...s, busy: true, progress: 'Importeren…' } : s));
     try {
       const els = await parseIfcSparingElements(sparingScan.file, sel, (p) => {
         if (p?.log) console.log('[sparingen]', p.log);
         setSparingScan((s) => (s ? { ...s, busy: true, progress: p?.log ?? s.progress } : s));
-      });
+      }, hasNameFilter ? nameFilter : null);
       // DEBUG-RAPPORT na afloop: aantal + wereld-bbox + eerste onderdelen (zie ook de per-groep-knip-log).
       console.group('%c[sparingen] import-rapport', 'color:#f97316;font-weight:bold');
-      console.log(`${els.length} onderdelen geïmporteerd — types: ${sel.join(', ')}`);
+      console.log(`${els.length} onderdelen geïmporteerd — types: ${sel.join(', ')}${hasNameFilter ? ` · naam-filter: ${JSON.stringify(nameFilter)}` : ''}`);
       if (els.length) {
         const r = Math.round;
         const E = els.reduce((a, e) => ({
@@ -5075,7 +5090,7 @@ export default function App() {
           minZ: Math.min(a.minZ, e.bbox.minZ), maxZ: Math.max(a.maxZ, e.bbox.maxZ),
         }), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity });
         console.log(`wereld-bbox (mm): X[${r(E.minX)}..${r(E.maxX)}]  Y[${r(E.minY)}..${r(E.maxY)}]  Z[${r(E.minZ)}..${r(E.maxZ)}]`);
-        console.table(els.slice(0, 30).map((e) => ({ type: e.ifcEntityType.replace(/^IFC/, ''), name: e.name, minX: r(e.bbox.minX), maxX: r(e.bbox.maxX), minY: r(e.bbox.minY), maxY: r(e.bbox.maxY), minZ: r(e.bbox.minZ), maxZ: r(e.bbox.maxZ) })));
+        console.table(els.slice(0, 30).map((e) => ({ type: e.ifcEntityType.replace(/^IFC/, ''), tag: e.tag, name: e.name, minX: r(e.bbox.minX), maxX: r(e.bbox.maxX), minY: r(e.bbox.minY), maxY: r(e.bbox.maxY), minZ: r(e.bbox.minZ), maxZ: r(e.bbox.maxZ) })));
         if (els.length > 30) console.log(`… en nog ${els.length - 30} meer (zie sparingElements-state)`);
       }
       console.groupEnd();
@@ -6389,19 +6404,55 @@ export default function App() {
       {isSparingElementen() && sparingScan && (
         <div style={{ position: 'fixed', top: 84, right: 20, zIndex: 1000, background: '#1e293b', border: '1px solid #334155', borderRadius: 6, padding: 12, width: 300, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0', marginBottom: 8 }}>Sparing-onderdelen importeren</div>
-          {sparingScan.busy && <div style={{ fontSize: 11, color: '#38bdf8' }}>⏳ {sparingScan.progress ?? 'Bezig…'}</div>}
-          {!sparingScan.busy && (sparingScan.types ?? []).map((t) => (
-            <label key={t.ifcEntityType} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#cbd5e1', padding: '2px 0', cursor: 'pointer' }}>
-              <input type="checkbox" checked={sparingScan.selected.has(t.ifcEntityType)}
-                onChange={(e) => setSparingScan((s) => { const sel = new Set(s.selected); if (e.target.checked) sel.add(t.ifcEntityType); else sel.delete(t.ifcEntityType); return { ...s, selected: sel }; })} />
-              {t.ifcEntityType.replace(/^IFC/, '')} <span style={{ color: '#64748b' }}>({t.count})</span>
-            </label>
-          ))}
-          <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+          {/* Actieknoppen bovenaan zodat ze niet wegvallen als de tag-lijst uitklapt. */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             <button onClick={handleSparingImport} disabled={sparingScan.busy}
               style={{ flex: 1, background: '#c2410c', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>Importeren</button>
             <button onClick={() => setSparingScan(null)}
               style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>Annuleren</button>
+          </div>
+          {sparingScan.busy && <div style={{ fontSize: 11, color: '#38bdf8' }}>⏳ {sparingScan.progress ?? 'Bezig…'}</div>}
+          <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
+          {!sparingScan.busy && (sparingScan.types ?? []).map((t) => {
+            const typeChecked = sparingScan.selected.has(t.ifcEntityType);
+            const names = t.names ?? [];
+            const showNames = typeChecked && names.length > 1;   // alleen zin bij >1 naam
+            const anyNameSel = names.some((nm) => sparingScan.selectedNames?.has(t.ifcEntityType + SPARING_SEP + (nm.name ?? SPARING_NULL_NAME)));
+            const badge = t.isAssembly ? 'SAMENSTELLING' : t.ifcEntityType.replace(/^IFC/, '');
+            return (
+              <div key={t.ifcEntityType}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#cbd5e1', padding: '2px 0', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={typeChecked}
+                    onChange={(e) => setSparingScan((s) => {
+                      const sel = new Set(s.selected);
+                      const sn = new Set(s.selectedNames ?? []);
+                      if (e.target.checked) sel.add(t.ifcEntityType);
+                      else { sel.delete(t.ifcEntityType); for (const k of [...sn]) if (k.startsWith(t.ifcEntityType + SPARING_SEP)) sn.delete(k); }
+                      return { ...s, selected: sel, selectedNames: sn };
+                    })} />
+                  {badge} <span style={{ color: '#64748b' }}>({t.count})</span>
+                </label>
+                {showNames && (
+                  <div style={{ marginLeft: 20, marginBottom: 4 }}>
+                    <div style={{ fontSize: 10, color: '#64748b', marginBottom: 1 }}>
+                      {anyNameSel ? 'alleen gekozen onderdelen' : 'alle onderdelen — vink aan om te filteren (bv. DRAADEIND)'}
+                    </div>
+                    {names.map((nm) => {
+                      const nameKey = t.ifcEntityType + SPARING_SEP + (nm.name ?? SPARING_NULL_NAME);
+                      const on = sparingScan.selectedNames?.has(nameKey) ?? false;
+                      return (
+                        <label key={nameKey} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#94a3b8', padding: '1px 0', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={on}
+                            onChange={(e) => setSparingScan((s) => { const sn = new Set(s.selectedNames ?? []); if (e.target.checked) sn.add(nameKey); else sn.delete(nameKey); return { ...s, selectedNames: sn }; })} />
+                          {nm.name ?? '(naamloos)'} <span style={{ color: '#475569' }}>({nm.count})</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
           </div>
         </div>
       )}

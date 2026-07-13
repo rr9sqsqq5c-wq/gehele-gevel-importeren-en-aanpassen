@@ -475,6 +475,49 @@ function getBBox(api, modelID, expressID) {
   return ok ? { minX, maxX, minY, maxY, minZ, maxZ, localXDir, localYDir } : null;
 }
 
+// Bouwt {relatingObjectID → [relatedObjectID,…]} uit alle IfcRelAggregates (assembly → onderdelen).
+// Nodig omdat een IfcElementAssembly (bv. DRAADEIND) zelf GEEN mesh heeft: de geometrie zit in z'n
+// onderdelen (beams/plates/fasteners). Zo kunnen we de assembly-bbox uit de onderdelen samenstellen.
+function _buildAggregatesMap(IFC, api, modelID) {
+  const map = new Map();
+  let vec; try { vec = api.GetLineIDsWithType(modelID, IFC.IFCRELAGGREGATES); } catch { return map; }
+  for (let i = 0; i < vec.size(); i++) {
+    let rel; try { rel = api.GetLine(modelID, vec.get(i), false); } catch { continue; }
+    const parent = rel?.RelatingObject?.value;
+    const kids = rel?.RelatedObjects;
+    if (parent == null || !Array.isArray(kids)) continue;
+    const arr = map.get(parent) ?? [];
+    for (const k of kids) { const id = k?.value; if (id != null) arr.push(id); }
+    map.set(parent, arr);
+  }
+  return map;
+}
+
+// Bbox van een element: eigen mesh, óf — als het een container zonder eigen mesh is — de UNIE van
+// alle afstammelingen via IfcRelAggregates (recursief, met cyclus-guard). Retourneert null als er
+// nergens in de boom geometrie zit.
+function _bboxWithChildren(api, modelID, aggMap, rootID) {
+  const seen = new Set();
+  const stack = [rootID];
+  let acc = null;
+  while (stack.length) {
+    const id = stack.pop();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const b = getBBox(api, modelID, id);
+    if (b) {
+      acc = acc ? {
+        minX: Math.min(acc.minX, b.minX), maxX: Math.max(acc.maxX, b.maxX),
+        minY: Math.min(acc.minY, b.minY), maxY: Math.max(acc.maxY, b.maxY),
+        minZ: Math.min(acc.minZ, b.minZ), maxZ: Math.max(acc.maxZ, b.maxZ),
+      } : { minX: b.minX, maxX: b.maxX, minY: b.minY, maxY: b.maxY, minZ: b.minZ, maxZ: b.maxZ };
+    }
+    const kids = aggMap.get(id);
+    if (kids) for (const k of kids) if (!seen.has(k)) stack.push(k);
+  }
+  return acc;
+}
+
 // SPARING-ELEMENTEN — haalt de WERELD-bounding-box van geselecteerde NIET-wand IFC-elementen op
 // (leidingen/kanalen/proxies/...), in hetzelfde coördinaten-frame als de wanden (getBBox). Wordt
 // gebruikt om de steenstripgevel rondom deze onderdelen weg te knippen. entityTypeNames = array
@@ -499,7 +542,9 @@ export async function scanIfcSparingTypes(file) {
     const t = m[1].toUpperCase();
     if (!t.endsWith('TYPE')) present.add(t);  // sla type-DEFINITIES over (IFCSLABTYPE e.d.)
   }
-  // 2. houd alleen types die web-ifc kent én die mesh-geometrie hebben (= fysieke onderdelen).
+  // 2. houd types die web-ifc kent én die mesh-geometrie hebben (= fysieke onderdelen). IfcElementAssembly
+  //    heeft zelf géén mesh (geometrie in de onderdelen) maar nemen we EXPLICIET mee — dat is precies het
+  //    draadeind-geval (assembly Name='DRAADEIND', geometrie in beams/plates/fasteners).
   const modelID = api.OpenModel(bytes, {});
   const out = [];
   try {
@@ -509,21 +554,44 @@ export async function scanIfcSparingTypes(file) {
       let vec; try { vec = api.GetLineIDsWithType(modelID, code); } catch { continue; }
       const n = vec.size();
       if (n === 0) continue;
-      let hasGeom = false;
-      for (let i = 0; i < Math.min(n, 3) && !hasGeom; i++) { if (getBBox(api, modelID, vec.get(i))) hasGeom = true; }
-      if (hasGeom) out.push({ ifcEntityType: name, count: n });
+      const isAssembly = name === 'IFCELEMENTASSEMBLY';
+      // Alleen ECHTE bouwelementen (IfcRoot → hebben een GlobalId). Representatie-items met mesh
+      // (IfcShapeRepresentation/IfcBooleanResult/IfcExtrudedAreaSolid/IfcFacetedBrep/…) hebben géén
+      // GlobalId en vallen zo af — anders vervuilen ze de keuzelijst.
+      let hasGlobalId = false;
+      try { hasGlobalId = api.GetLine(modelID, vec.get(0), false)?.GlobalId?.value != null; } catch {}
+      if (!isAssembly && !hasGlobalId) continue;
+      let includable = isAssembly;                          // assemblies altijd; rest: mesh-check
+      for (let i = 0; i < Math.min(n, 3) && !includable; i++) { if (getBBox(api, modelID, vec.get(i))) includable = true; }
+      if (!includable) continue;
+      // 3. groepeer op Name (bv. 'DRAADEIND', 'Huls', 'PLAAT') — het menselijk-leesbare onderdeel-kenmerk
+      //    waarop de gebruiker filtert. GetLine (geen mesh) is goedkoop.
+      const nameMap = new Map();
+      for (let i = 0; i < n; i++) {
+        let nm = null;
+        try { const v = api.GetLine(modelID, vec.get(i), false)?.Name?.value; if (v != null && v !== '') nm = String(v); } catch {}
+        nameMap.set(nm, (nameMap.get(nm) ?? 0) + 1);
+      }
+      const names = [...nameMap.entries()].map(([nm, count]) => ({ name: nm, count })).sort((a, b) => b.count - a.count);
+      out.push({ ifcEntityType: name, count: n, isAssembly, names });
     }
   } finally { try { api.CloseModel(modelID); } catch {} }
   out.sort((a, b) => b.count - a.count);
   return out;
 }
 
-export async function parseIfcSparingElements(file, entityTypeNames, onProgress = null) {
+// nameFilter (optioneel) = { IFCELEMENTASSEMBLY: ['DRAADEIND', …], … } — per (UPPERCASE) entity-type een
+// lijst toegestane Name-waarden (null = "naamloos"). Ontbreekt een type in de map, of is nameFilter null →
+// ÁLLE namen van dat type (byte-identiek oud gedrag zolang de aanroeper geen nameFilter meegeeft).
+// Assemblies (IfcElementAssembly) hebben zelf geen mesh → de bbox wordt uit de onderdelen (IfcRelAggregates)
+// samengesteld via _bboxWithChildren, zodat een DRAADEIND-assembly toch een correcte sparing-rechthoek geeft.
+export async function parseIfcSparingElements(file, entityTypeNames, onProgress = null, nameFilter = null) {
   const { IFC, api } = await getApi();
   onProgress?.({ phase: 'open', log: 'IFC-model openen…' });
   const modelID = api.OpenModel(new Uint8Array(await file.arrayBuffer()), {});
   const out = [];
   try {
+    const aggMap = _buildAggregatesMap(IFC, api, modelID);
     const names = (entityTypeNames ?? []).map((n) => String(n).toUpperCase());
     for (let ti = 0; ti < names.length; ti++) {
       const entityName = names[ti];
@@ -531,20 +599,24 @@ export async function parseIfcSparingElements(file, entityTypeNames, onProgress 
       if (code === undefined) { onProgress?.({ phase: 'type', log: `${entityName}: onbekend in schema, overslaan` }); continue; }
       let vec; try { vec = api.GetLineIDsWithType(modelID, code); } catch { continue; }
       const nTot = vec.size();
+      // naam-selectie voor dit type: lege/ontbrekende lijst → geen filter (alle namen).
+      const allowRaw = nameFilter?.[entityName];
+      const allow = Array.isArray(allowRaw) && allowRaw.length ? new Set(allowRaw) : null;
       onProgress?.({ phase: 'type', type: entityName, typeIndex: ti + 1, typeTotal: names.length, typeCount: nTot, count: out.length,
-        log: `${entityName.replace(/^IFC/, '')} (${ti + 1}/${names.length}): ${nTot} stuks…` });
-      let skipped = 0;
+        log: `${entityName.replace(/^IFC/, '')} (${ti + 1}/${names.length}): ${nTot} stuks…${allow ? ` (naam-filter: ${[...allow].map((t) => t ?? '∅').join(', ')})` : ''}` });
+      let skipped = 0, nameFiltered = 0;
       for (let i = 0; i < nTot; i++) {
         const eID = vec.get(i);
-        const b = getBBox(api, modelID, eID);
+        let name = null, tag = null;
+        try { const line = api.GetLine(modelID, eID, false); const nv = line?.Name?.value; if (nv != null && nv !== '') name = String(nv); const tv = line?.Tag?.value; if (tv != null && tv !== '') tag = String(tv); } catch {}
+        if (allow && !allow.has(name)) { nameFiltered++; continue; }   // niet in de gekozen namen
+        const b = _bboxWithChildren(api, modelID, aggMap, eID);        // eigen mesh óf unie van onderdelen
         if (!b) { skipped++; continue; }
-        let name = null;
-        try { name = api.GetLine(modelID, eID, false)?.Name?.value ?? null; } catch {}
         // web-ifc levert geometrie in METERS; de wanden worden in parseIfc met × 1000 naar mm
         // geschaald (wallOrigin.*Start/End). De sparing-bbox MOET dezelfde eenheid (mm) hebben,
         // anders staan de onderdelen factor 1000 verkeerd t.o.v. de gevel → geen/foute uitsparing.
         out.push({
-          expressID: eID, name, ifcEntityType: entityName,
+          expressID: eID, name, tag, ifcEntityType: entityName,
           bbox: {
             minX: Math.round(b.minX * 1000), maxX: Math.round(b.maxX * 1000),
             minY: Math.round(b.minY * 1000), maxY: Math.round(b.maxY * 1000),
@@ -554,6 +626,7 @@ export async function parseIfcSparingElements(file, entityTypeNames, onProgress 
         if (out.length % 200 === 0) onProgress?.({ phase: 'progress', count: out.length, log: `${out.length} onderdelen met geometrie…` });
       }
       if (skipped) onProgress?.({ phase: 'type', log: `${entityName.replace(/^IFC/, '')}: ${skipped} zonder geometrie overgeslagen` });
+      if (nameFiltered) onProgress?.({ phase: 'type', log: `${entityName.replace(/^IFC/, '')}: ${nameFiltered} buiten de naam-selectie overgeslagen` });
     }
   } finally {
     try { api.CloseModel(modelID); } catch {}
