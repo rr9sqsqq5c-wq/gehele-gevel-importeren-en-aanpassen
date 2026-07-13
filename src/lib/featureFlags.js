@@ -315,6 +315,20 @@ export function isOutsideDirSync() {
   return readFlag('outsideDirSync', false);
 }
 
+// BEST_FIT_FLUSH_SIDE — corrigeert de kant/diepte van het best-fit gevelvlak wanneer de auto-
+// buitendetectie GEEN betrouwbare richting geeft. Oorzaak van "strips achterstevoren + Diepte-
+// spreiding X mm"-melding: wanden die midden in de gebouw-bbox liggen worden als INTERIOR
+// geclassificeerd (resolvedOutside.outsideDir = null); fitFacadePlane valt dan terug op een
+// midden-afstand-gok die de VERKEERDE kant kan kiezen. Bij wanden van verschillende dikte die
+// flush liggen op de beklede kant levert dat een grote diepte-spreiding op de fout-gekozen kant.
+// Met de vlag: als er 0 resolvedOutside-stemmen zijn, kies de FLUSH-kant (kleinste diepte-
+// spreiding) als gevelvlak — dat is de beklede kant. Bij gelijke dikte (beide kanten flush) →
+// geen keuze, oude midden-heuristiek. DEFAULT = false → exact de huidige best-fit (byte-identiek).
+// Aanzetten: ?bestFitFlushSide=1. Noodrem: ?bestFitFlushSide=0.
+export function isBestFitFlushSide() {
+  return readFlag('bestFitFlushSide', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -324,6 +338,7 @@ export const FLAG_REGISTRY = [
   { key: 'openingFromKozijn',    label: 'Openingen op kozijn-rand',  note: 'Knip vanaf raam/deur (kozijn) i.p.v. de ruwe structurele opening.', reimport: true },
   { key: 'showKozijnen',         label: 'Kozijnen tonen in 3D',      note: 'Raam/deur als 3D-doos ter visuele controle.', reimport: true },
   { key: 'outsideDirSync',       label: 'Buitenzijde: één waarheid', note: '2D én IFC-export volgen dezelfde buitenzijde als 3D (ook "Buitenzijde selecteren").' },
+  { key: 'bestFitFlushSide',     label: 'Best-fit: flush-kant kiezen', note: 'Als de buitenzijde onbepaald is, kies de kant waar de groep-wanden op één vlak liggen (voorkomt omgekeerde strips + diepte-spreiding-melding bij verschillende dikte).' },
   { key: 'cornerButt',           label: 'Stompe hoek',               note: 'Geen omslag-steenstrips op het loodrechte vlak.' },
   { key: 'corner85',             label: 'Hoek-detail 85°',           note: '' },
   { key: 'groothuisWildverband', label: 'Groothuis wildverband 1',   note: 'Het oudere groothuis-verband (versie 2 staat standaard aan).' },

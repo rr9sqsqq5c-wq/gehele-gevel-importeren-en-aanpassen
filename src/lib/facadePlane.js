@@ -17,7 +17,7 @@
 
 import { buildFullGroupFacadePattern } from './pattern.js';
 import { getProjectInfo } from './projectCoordinates.js';
-import { isKeepEndExtension, isReprojectOpeningPolygon } from './featureFlags.js';
+import { isKeepEndExtension, isReprojectOpeningPolygon, isBestFitFlushSide } from './featureFlags.js';
 
 const UP_AX = ['x', 'y', 'z'];
 // Boven deze drempel beschouwen we een opening-polygoon als gedegenereerd (bv. expressID
@@ -114,17 +114,32 @@ export function fitFacadePlane(members, modelUpAxis = null) {
   }
 
   // outward-richting langs nAxis: meerderheid van resolvedOutside (indien thicknessAxis===nAxis), anders heuristiek
-  let dirVote = 0;
+  let dirVote = 0, roVotes = 0;
   for (const { m } of aabbs) {
     const wo = m.wallOrigin; const ro = wo.resolvedOutside;
-    if (ro && ro.outsideDir != null && wo.thicknessAxis === nAxis) dirVote += (ro.outsideDir < 0 ? -1 : 1);
+    if (ro && ro.outsideDir != null && wo.thicknessAxis === nAxis) { dirVote += (ro.outsideDir < 0 ? -1 : 1); roVotes++; }
   }
+  // BEST_FIT_FLUSH_SIDE (vlag): geen betrouwbare resolvedOutside-stem (roVotes==0, bv. wanden die
+  // als INTERIOR geclassificeerd zijn) → kies de FLUSH-kant (kleinste diepte-spreiding) als
+  // gevelvlak i.p.v. de midden-afstand te gokken. Grondig verschil (> tolerantie) = duidelijk
+  // welke kant de beklede gevel is; gelijk (zelfde dikte) → null → oude midden-heuristiek.
+  // Vlag UIT → altijd null → byte-identiek.
+  const _flushSide = (isBestFitFlushSide() && roVotes === 0)
+    ? (() => {
+        const residOf = (dir) => {
+          const fs = aabbs.map(({ A }) => dir < 0 ? A['min' + nAxis.toUpperCase()] : A['max' + nAxis.toUpperCase()]).sort((a, b) => a - b);
+          return Math.max(...fs.map(f => Math.abs(f - fs[Math.floor(fs.length / 2)])));
+        };
+        const rMin = residOf(-1), rMax = residOf(1);
+        return Math.abs(rMin - rMax) > RESIDUAL_TOL_MM ? (rMin < rMax ? -1 : 1) : null;
+      })()
+    : null;
   // fallback: t.o.v. het midden van de selectie langs nAxis (buitenste = verste van midden)
-  if (dirVote === 0) {
+  if (dirVote === 0 && _flushSide == null) {
     const mid = (gMin[nAxis] + gMax[nAxis]) / 2;
     for (const { A } of aabbs) { const c = (A['min' + nAxis.toUpperCase()] + A['max' + nAxis.toUpperCase()]) / 2; dirVote += (c >= mid ? 1 : -1); }
   }
-  const outsideDir = dirVote >= 0 ? 1 : -1;
+  const outsideDir = _flushSide != null ? _flushSide : (dirVote >= 0 ? 1 : -1);
 
   // best-fit offset = mediaan van de BUITENvlakken; residu = spreiding
   const faces = aabbs.map(({ A }) => outsideDir < 0 ? A['min' + nAxis.toUpperCase()] : A['max' + nAxis.toUpperCase()]).sort((a, b) => a - b);
