@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { buildFullGroupFacadePattern, getOpeningPoly } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten, extendPanelsAtEnds, extendLattenAtEnds } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten, extendPanelsAtEnds, extendLattenAtEnds, cutVentHolesFromPanels } from './lib/panelization.js';
 import { brickColor, isTooSmall, polyXRangesAtY } from './lib/geometry.js';
 import { hasPenants } from './lib/zoneRegions.js';
 import { isFeatureZones } from './lib/featureFlags.js';
@@ -114,7 +114,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
     };
     const baseBattenYs = generateBattenPositions(groupHeight, effectiveMat, maxInterval, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 });
     const battenYs = baseBattenYs.map(snapToRowY);
-    const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
+    const openingsForZones = groupOpenings.filter((op) => op.type !== 'ventilatie').map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
     const penantOpenings = (groupSettings?.penanten ?? []).map((p, i) => {
       const px = (p.x ?? 0) + PENANT_PANEL_INSET;
       const pw = Math.max(1, p.breedte ?? 400) - 2 * PENANT_PANEL_INSET;
@@ -159,6 +159,8 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       }
       return false;
     });
+    // VENTILATIE_ZONE: het ventilatiegat er apart uitsnijden (paneel liep over de volle breedte door).
+    panels = cutVentHolesFromPanels(panels, groupOpenings.filter((op) => op.type === 'ventilatie'));
     // Handmatige einduiteinde-extensie: buitenste paneel loopt door voorbij de gevelrand (hoek-aansluiting).
     if (isKeepEndExtension()) {
       const _eeP = endExtensions ?? {};

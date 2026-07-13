@@ -73,6 +73,31 @@ export function clipPanelToFacadePolys(panel, facadePolys) {
   return { ...panel, clipPolys: clips, clipArea: totalArea, coverRatio };
 }
 
+// VENTILATIE_ZONE — snijd de ventilatie-gaten (rechthoek) uit de panelen ZONDER ze in een dunne band
+// te splitsen. Aanpak: de vent zit NIET in de zone-splitsing (openingsForZones), dus het paneel loopt
+// over de volle breedte door; hier halen we per overlappend paneel het gat eruit = paneel − gat, tot 4
+// rechthoeken (links/rechts over de volle paneelhoogte, boven/onder binnen de gat-breedte). Zo blijft
+// de rest van het paneel heel en verdwijnt er geen volle-breedte-band op het < 200 mm-filter.
+export function cutVentHolesFromPanels(panels, vents) {
+  if (!vents?.length || !panels?.length) return panels;
+  let out = panels;
+  for (const v of vents) {
+    const vx0 = v.x ?? 0, vx1 = (v.x ?? 0) + (v.width ?? 0), vy0 = v.y ?? 0, vy1 = (v.y ?? 0) + (v.height ?? 0);
+    out = out.flatMap((p) => {
+      const px0 = p.x, px1 = p.x + p.width, py0 = p.y, py1 = p.y + p.height;
+      if (px1 <= vx0 + 0.5 || px0 >= vx1 - 0.5 || py1 <= vy0 + 0.5 || py0 >= vy1 - 0.5) return [p]; // geen overlap
+      const mx0 = Math.max(px0, vx0), mx1 = Math.min(px1, vx1);
+      const pieces = [];
+      if (vx0 > px0 + 0.5) pieces.push({ ...p, x: px0, width: round2(vx0 - px0) });                          // links
+      if (px1 > vx1 + 0.5) pieces.push({ ...p, x: round2(vx1), width: round2(px1 - vx1) });                  // rechts
+      if (vy0 > py0 + 0.5) pieces.push({ ...p, x: round2(mx0), width: round2(mx1 - mx0), y: py0, height: round2(vy0 - py0) }); // onder
+      if (py1 > vy1 + 0.5) pieces.push({ ...p, x: round2(mx0), width: round2(mx1 - mx0), y: round2(vy1), height: round2(py1 - vy1) }); // boven
+      return pieces.filter((q) => q.width > 0.5 && q.height > 0.5);
+    });
+  }
+  return out;
+}
+
 export function buildFacadeZones(facadeWidth, facadeHeight, openings) {
   if (!openings.length) {
     return [{ id: 'Z1', kind: 'algemeen', x: 0, y: 0, width: facadeWidth, height: facadeHeight }];

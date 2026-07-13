@@ -15,7 +15,7 @@ import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loa
 import { detectAdjacencies, detectAdjacenciesAsync, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
-import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateCombinedMoldPrintHTML, getMoldTemplates, buildWildverbandPanelGrid, moldIdLabel } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateCombinedMoldPrintHTML, getMoldTemplates, buildWildverbandPanelGrid, moldIdLabel, cutVentHolesFromPanels } from './lib/panelization.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -5013,7 +5013,7 @@ export default function App() {
       const battenYs = generateBattenPositions(groupHeight, mat, Math.max(50, s.latten?.maxInterval ?? 400), { minHOH: s.latten?.minHOH, maxHOH: s.latten?.maxHOH, targetPanelH: s.panelen?.hoogte, minPanelH: 800 });
       const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, s.material ?? mat);
 
-      const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
+      const openingsForZones = groupOpenings.filter((op) => op.type !== 'ventilatie').map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
       const PENANT_PANEL_INSET = 20;
       const penantOpenings = (s.penanten ?? []).map((pen, pi) => {
         const px = (pen.x ?? 0) + PENANT_PANEL_INSET;
@@ -5040,6 +5040,7 @@ export default function App() {
         }).filter(Boolean);
       }
 
+      panels = cutVentHolesFromPanels(panels, groupOpenings.filter((op) => op.type === 'ventilatie'));
       const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400, offsetX: s.panelen.malOffsetX ?? 0 };
       const groupLabel = group.name ?? group.id;
       const recipeRows = generateMoldRecipe(panels, mat, verband, s.panelen.dikte ?? 8, moldDims, groupLabel);
@@ -5279,7 +5280,7 @@ export default function App() {
 
         if (s.panelen?.enabled && vis.panelen !== false) {
           const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, s.material ?? mat);
-          const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
+          const openingsForZones = groupOpenings.filter((op) => op.type !== 'ventilatie').map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
           const PENANT_PANEL_INSET_EX = 20;
           const penantOpenings = (s.penanten ?? []).map((pen, pi) => {
             const px = (pen.x ?? 0) + PENANT_PANEL_INSET_EX;
@@ -5349,6 +5350,7 @@ export default function App() {
             return false;
           });
         }
+        panels = cutVentHolesFromPanels(panels, groupOpenings.filter((op) => op.type === 'ventilatie'));
 
         if (isAluminium && facadeData) {
           const ccs = s.concreteCladdingSettings ?? {};
