@@ -165,11 +165,11 @@ export function supportsFileSystemAccess() {
   return typeof window !== 'undefined' && 'showOpenFilePicker' in window;
 }
 
-export async function saveProjectState({ groups, groupLinks, cornerConfigs, settingsMap, ifcFileName, wallDimOverrides, allWalls, kozijnOffset }) {
+export async function saveProjectState({ groups, groupLinks, cornerConfigs, settingsMap, ifcFileName, wallDimOverrides, allWalls, kozijnOffset, minStackDelta }) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_PROJECT, 'readwrite');
-    tx.objectStore(STORE_PROJECT).put({ id: 'last', groups, groupLinks, cornerConfigs: cornerConfigs ?? {}, settingsMap, ifcFileName, wallDimOverrides: wallDimOverrides ?? {}, allWalls: allWalls ?? [], kozijnOffset: kozijnOffset ?? null, savedAt: Date.now() });
+    tx.objectStore(STORE_PROJECT).put({ id: 'last', groups, groupLinks, cornerConfigs: cornerConfigs ?? {}, settingsMap, ifcFileName, wallDimOverrides: wallDimOverrides ?? {}, allWalls: allWalls ?? [], kozijnOffset: kozijnOffset ?? null, minStackDelta: minStackDelta ?? null, savedAt: Date.now() });
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   });

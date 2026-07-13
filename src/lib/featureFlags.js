@@ -301,6 +301,16 @@ export function isKozijnOffset() {
   return readFlag('kozijnOffset', false);
 }
 
+// OPENING_EDGE_QUARTER — aanvullende metselregel bij een opening-rand. Nu: een splinter tegen de
+// opening wordt geforceerd naar een hele Kop (½ steen). Met de vlag: de minimummaat mag zakken naar
+// ¼ steen wanneer het forceren naar een Kop twee strips BOVEN ELKAAR (voor/na de opening) bijna even
+// groot maakt (delta ≤ instelbare drempel minStackDelta, default 50 mm) — dan pakt die rij een ¼-steen
+// zodat de rijen weer verspringen. DEFAULT = false → exact de huidige Kop-regel (byte-identiek).
+// Aanzetten: ?openingEdgeQuarter=1. Noodrem: ?openingEdgeQuarter=0.
+export function isOpeningEdgeQuarter() {
+  return readFlag('openingEdgeQuarter', false);
+}
+
 // SHOW_KOZIJNEN — toont raam/deur-openingen ook als 3D-doos (kozijn) in de viewer, ter visuele
 // controle van de openingen t.o.v. de bekleding. De doos volgt de opening-rechthoek (die met
 // openingFromKozijn=1 de kozijn-rand volgt). DEFAULT = false → geen extra 3D-geometrie (byte-
@@ -382,6 +392,7 @@ export const FLAG_REGISTRY = [
   { key: 'sparingElementen',     label: 'Sparing-onderdelen',        note: 'Niet-wand IFC-onderdelen importeren + de bekleding er rondom sparen.' },
   { key: 'openingFromKozijn',    label: 'Openingen op kozijn-rand',  note: 'Knip vanaf raam/deur (kozijn) i.p.v. de ruwe structurele opening.', reimport: true },
   { key: 'kozijnOffset',         label: 'Kozijn-offset (L/R/B/O)',   note: 'Globale marge per zijde tussen kozijnrand en bekleding (strips+panelen+latten) + melding bij opening zonder kozijn.' },
+  { key: 'openingEdgeQuarter',   label: 'Opening-rand ¼-steen',      note: 'Sta ¼ steen toe tegen een opening i.p.v. altijd ½ (kop) wanneer twee strips boven elkaar bijna even groot worden. Delta instelbaar.' },
   { key: 'showKozijnen',         label: 'Kozijnen tonen in 3D',      note: 'Raam/deur als 3D-doos ter visuele controle.', reimport: true },
   { key: 'ventilatieZone',       label: 'Ventilatiezone (gedraaid verband)', note: 'Klein gat boven een raam wordt open geknipt + een zone met loodrecht verband eromheen (instelbaar per groep).', reimport: true },
   { key: 'cornerButt',           label: 'Stompe hoek',               note: 'Geen omslag-steenstrips op het loodrechte vlak.' },

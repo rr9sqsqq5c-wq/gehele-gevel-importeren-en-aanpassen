@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, parseIfcSparingElements, scanIfcSparingTypes, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -3269,6 +3269,10 @@ export default function App() {
   const [kozijnOffset, setKozijnOffset] = useState({ left: 0, right: 0, top: 0, bottom: 0 });
   // Parameter voor de patroon-builders: null wanneer de vlag UIT is → byte-identiek gedrag.
   const kozOffsetParam = isKozijnOffset() ? kozijnOffset : null;
+  // OPENING_EDGE_QUARTER (vlag openingEdgeQuarter) — instelbare stapel-delta (mm) waaronder een opening-
+  // rand-strip naar ¼ steen mag i.p.v. altijd ½ (kop). null wanneer de vlag UIT is → byte-identiek.
+  const [minStackDelta, setMinStackDelta] = useState(50);
+  const edgeStaggerParam = isOpeningEdgeQuarter() ? { minDelta: minStackDelta } : null;
   const [kozijnen, setKozijnen] = useState([]); // raam/deur-bboxen (uit parseIfc via projectInfo) voor 3D-weergave
   const [flagsOpen, setFlagsOpen] = useState(false); // vlaggen-schakelaar-paneel
   const [flagState, setFlagState] = useState(() => Object.fromEntries(FLAG_REGISTRY.map((f) => [f.key, getFlag(f.key)])));
@@ -3377,9 +3381,9 @@ export default function App() {
       // val terug op het oude pad i.p.v. niets te tonen.
       const useBestFit = isBestFitGroups() && group.manual === true;
       let facadeData = (useBestFit
-        ? buildBestFitFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, undefined, kozOffsetParam)
+        ? buildBestFitFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, undefined, kozOffsetParam, edgeStaggerParam)
         : null)
-        ?? buildFullGroupFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, kozOffsetParam);
+        ?? buildFullGroupFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, kozOffsetParam, edgeStaggerParam);
       // FASE 2 — wildverband: vervang de strip-rijen door het vastgelegde tegel-verband
       // (buildTruthRows). Achter de vlag, default UIT → exact het bestaande pad. Voedt 3D
       // (batches uit facadeData.rows) én 2D (dezelfde facadeData) uit één bron.
@@ -3633,7 +3637,7 @@ export default function App() {
         const zoneMatBase = { ...mat, ...(zs.material ?? {}) };
         const zoneMat = _3dStripArt ? { ...zoneMatBase, steenL: _3dStripArt.steenL, steenH: _3dStripArt.steenH } : zoneMatBase;
         const zoneVerband3d = zs.verband ?? (s.verband ?? DEFAULT_VERBAND);
-        const zoneFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband3d, zs.maxHoogte ?? s.maxHoogte, s.zetwerk, null, s.startLijn, 0, 0, kozOffsetParam);
+        const zoneFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband3d, zs.maxHoogte ?? s.maxHoogte, s.zetwerk, null, s.startLijn, 0, 0, kozOffsetParam, edgeStaggerParam);
         if (!zoneFull) continue;
         const clipRows = zoneFull.rows.map((row) => ({
           ...row,
@@ -3885,7 +3889,7 @@ export default function App() {
       };
     }
     return result;
-  }, [groups, getSettings, wallMap, showPattern, viewMode, adjacencies, cornerConfigs, settingsMap, groupEnvelopeVisibility, sparingElements, sparingOffset, kozijnOffset]);
+  }, [groups, getSettings, wallMap, showPattern, viewMode, adjacencies, cornerConfigs, settingsMap, groupEnvelopeVisibility, sparingElements, sparingOffset, kozijnOffset, minStackDelta]);
 
   // SPARING-ELEMENTEN debug/voortgangs-controle — per groep hoeveel sparing-rechthoeken daadwerkelijk
   // uit de bekleding zijn geknipt (uit allPatterns). 0 → coördinaten sluiten niet aan of diepte-check faalt.
@@ -4491,6 +4495,7 @@ export default function App() {
         setGroupLinks(state.groupLinks ?? {});
         if (state.cornerConfigs && typeof state.cornerConfigs === 'object') setCornerConfigs(state.cornerConfigs);
         if (state.kozijnOffset && typeof state.kozijnOffset === 'object') setKozijnOffset({ left: 0, right: 0, top: 0, bottom: 0, ...state.kozijnOffset });
+        if (Number.isFinite(state.minStackDelta)) setMinStackDelta(state.minStackDelta);
         setSettingsMap(sm);
         if (state.wallDimOverrides && typeof state.wallDimOverrides === 'object') setWallDimOverrides(state.wallDimOverrides);
         if (Array.isArray(state.allWalls) && state.allWalls.length > 0) {
@@ -4522,10 +4527,10 @@ export default function App() {
       const _pGroups = _hasSyn ? groups.filter((g) => !g.synthetic) : groups;
       const _synGids = _hasSyn ? new Set(groups.filter((g) => g.synthetic).map((g) => g.id)) : null;
       const _pSettings = _hasSyn ? Object.fromEntries(Object.entries(settingsMap).filter(([gid]) => !_synGids.has(gid))) : settingsMap;
-      saveProjectState({ groups: _pGroups, groupLinks, cornerConfigs, settingsMap: _pSettings, ifcFileName, wallDimOverrides, allWalls: _pWalls, kozijnOffset }).catch(() => {});
+      saveProjectState({ groups: _pGroups, groupLinks, cornerConfigs, settingsMap: _pSettings, ifcFileName, wallDimOverrides, allWalls: _pWalls, kozijnOffset, minStackDelta }).catch(() => {});
     }, 1500);
     return () => clearTimeout(_saveTimerRef.current);
-  }, [groups, groupLinks, cornerConfigs, settingsMap, ifcFileName, wallDimOverrides, allWalls, kozijnOffset]);
+  }, [groups, groupLinks, cornerConfigs, settingsMap, ifcFileName, wallDimOverrides, allWalls, kozijnOffset, minStackDelta]);
 
   // --- PLAN_BRIDGE (achter isPlanBridge(), default UIT) — engineering-samenvatting voor de planner ---
   // Volledig ADDITIEF: met de vlag uit registreert de useEffect hieronder niets en wordt
@@ -4544,7 +4549,7 @@ export default function App() {
       const ctrims = endExtensionsToTrims(s.endExtensions);
       let facadeData = null;
       try {
-        facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrims.extendLeft, ctrims.extendRight, kozOffsetParam);
+        facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrims.extendLeft, ctrims.extendRight, kozOffsetParam, edgeStaggerParam);
       } catch { facadeData = null; }
       const gw = facadeData?.groupWidth ?? 0;
       const gh = facadeData?.groupHeight ?? 0;
@@ -4973,7 +4978,7 @@ export default function App() {
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const mat = s.material ?? DEFAULT_MATERIAL;
       const verband = s.verband ?? DEFAULT_VERBAND;
-      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, s.zetwerk, null, s.startLijn, 0, 0, kozOffsetParam);
+      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, s.zetwerk, null, s.startLijn, 0, 0, kozOffsetParam, edgeStaggerParam);
       if (!facadeDataRaw) continue;
 
       let facadeData = facadeDataRaw;
@@ -5179,7 +5184,7 @@ export default function App() {
       // best-fit-data onverhoopt → terugval op buildFullGroupFacadePattern.
       const useBestFitExport = isBestFitGroups() && group.manual === true;
       const facadeDataRaw = (useBestFitExport ? (allPatterns[group.id]?.facadeData ?? null) : null)
-        ?? buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsExport.extendLeft, ctrimsExport.extendRight, kozOffsetParam);
+        ?? buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsExport.extendLeft, ctrimsExport.extendRight, kozOffsetParam, edgeStaggerParam);
       const _refWall = facadeDataRaw ? null : ([...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0] ?? null);
       const refWallOrigin = facadeDataRaw?.refWallOrigin ?? _refWall?.wallOrigin ?? null;
       const _axisW = refWallOrigin ? withOrigin.filter((w) => w.wallOrigin.lengthAxis === refWallOrigin.lengthAxis) : withOrigin;
@@ -5603,7 +5608,7 @@ export default function App() {
           const zoneMat = _stripBatchArt ? { ...zoneMatBase, steenL: _stripBatchArt.steenL, steenH: _stripBatchArt.steenH } : zoneMatBase;
           const zoneVerband = zs.verband ?? (s.verband ?? DEFAULT_VERBAND);
           const zoneMaxH = zs.maxHoogte ?? (s.maxHoogte ?? null);
-          const zFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxH, s.zetwerk, null, s.startLijn, 0, 0, kozOffsetParam);
+          const zFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxH, s.zetwerk, null, s.startLijn, 0, 0, kozOffsetParam, edgeStaggerParam);
           if (!zFull) continue;
           const clipRows = zFull.rows.map((row) => ({
             ...row,
@@ -6442,6 +6447,19 @@ export default function App() {
                     ⓘ meet vanaf void — zet 'Openingen op kozijn-rand' aan (+ herimport) voor kozijnrand
                   </span>
                 )}
+              </>
+            )}
+            {isOpeningEdgeQuarter() && (
+              <>
+                <div style={{ width: 1, height: 16, background: '#334155' }} />
+                <Tooltip text={"Aanvullende metselregel bij een opening-rand.\nStandaard wordt een splinter tegen de opening een hele Kop (½ steen).\nMet deze regel mag die naar ¼ steen zakken wanneer twee strips BOVEN ELKAAR (voor/na de opening) minder dan de delta van elkaar verschillen — zo blijven de rijen verspringen.\nDelta = minimaal hoogteverschil tussen gestapelde rand-strips (mm)."}>
+                  <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap', cursor: 'help' }}>Opening-rand ¼ · delta</span>
+                </Tooltip>
+                <input type="number" min={0} step={1} value={minStackDelta}
+                  onChange={(e) => setMinStackDelta(Math.max(0, Number(e.target.value) || 0))}
+                  title="Onder dit hoogteverschil (mm) tussen twee gestapelde rand-strips mag de strip naar ¼ steen i.p.v. ½ (kop)"
+                  style={{ width: 48, fontSize: 11, padding: '2px 4px', border: '1px solid #334155', borderRadius: 4, background: '#0f172a', color: '#e2e8f0', outline: 'none' }} />
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>
               </>
             )}
           </div>

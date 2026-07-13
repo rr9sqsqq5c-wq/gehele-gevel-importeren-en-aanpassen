@@ -113,14 +113,30 @@ function getRest(pieces, totalWidth) {
   return round2(totalWidth - (last.start + last.length));
 }
 
-function fixOpeningEdgePieces(pieces, leftEdges, rightEdges, kop, driekwart, stoot, steenL) {
+// opts (optioneel, vlag openingEdgeQuarter) = { minDelta, kwart, prevL, prevR, curL, curR }.
+//  - prevL/prevR: Map edgeX→edge-lengte van de rij ERONDER (voor stapel-vergelijking).
+//  - curL/curR: Map die deze functie vult met de gekozen edge-lengtes (voor de volgende rij).
+// Zonder opts → target is altijd kop en er wordt niets in maps gezet = exact het oude gedrag (byte-identiek).
+function fixOpeningEdgePieces(pieces, leftEdges, rightEdges, kop, driekwart, stoot, steenL, opts = null) {
   if (!leftEdges.length && !rightEdges.length) return pieces;
   let result = [...pieces];
 
+  // Kies de edge-maat: normaal kop; met opts mag 'ie naar kwart als (1) het forceren naar een kop de
+  // strip bijna gelijk maakt aan de rij eronder (|kop−prev| ≤ minDelta), (2) kwart wél genoeg verspringt
+  // (|kwart−prev| > minDelta) en (3) de splinter kleiner dan kwart is (we kunnen alleen GROEIEN).
+  const pickTarget = (natLen, prev) => {
+    if (opts && opts.kwart > 0 && prev != null && natLen < opts.kwart &&
+        Math.abs(kop - prev) <= opts.minDelta && Math.abs(opts.kwart - prev) > opts.minDelta) {
+      return opts.kwart;
+    }
+    return kop;
+  };
+
   for (const edgeX of leftEdges) {
+    const key = Math.round(edgeX);
     const idx = result.findIndex((p) => Math.abs(p.start + p.length - edgeX) < 1.5);
     if (idx < 0) continue;
-    if (result[idx].length >= kop - 0.5) continue;
+    if (result[idx].length >= kop - 0.5) { opts?.curL?.set(key, round2(result[idx].length)); continue; }
 
     let volIdx = -1;
     for (let i = idx - 1; i >= 0; i--) {
@@ -131,22 +147,25 @@ function fixOpeningEdgePieces(pieces, leftEdges, rightEdges, kop, driekwart, sto
       }
       if (!gapFound) { volIdx = i; break; }
     }
-    if (volIdx < 0) continue;
+    if (volIdx < 0) { opts?.curL?.set(key, round2(result[idx].length)); continue; }
 
     const S = result[idx].length;
-    const cutLen = round2(S + steenL - kop);
-    const shift = round2(kop - S);
+    const T = pickTarget(S, opts?.prevL?.get(key));
+    const cutLen = round2(S + steenL - T);
+    const shift = round2(T - S);
     result[volIdx] = { ...result[volIdx], length: cutLen, label: 'Rest' };
     for (let i = volIdx + 1; i < idx; i++) {
       result[i] = { ...result[i], start: round2(result[i].start - shift) };
     }
-    result[idx] = { ...result[idx], start: round2(edgeX - kop), length: kop, label: 'Kop' };
+    result[idx] = { ...result[idx], start: round2(edgeX - T), length: T, label: T === kop ? 'Kop' : 'Klezoor' };
+    opts?.curL?.set(key, T);
   }
 
   for (const edgeX of rightEdges) {
+    const key = Math.round(edgeX);
     const idx = result.findIndex((p) => Math.abs(p.start - edgeX) < 1.5);
     if (idx < 0) continue;
-    if (result[idx].length >= kop - 0.5) continue;
+    if (result[idx].length >= kop - 0.5) { opts?.curR?.set(key, round2(result[idx].length)); continue; }
 
     let volIdx = -1;
     for (let i = idx + 1; i < result.length; i++) {
@@ -157,17 +176,19 @@ function fixOpeningEdgePieces(pieces, leftEdges, rightEdges, kop, driekwart, sto
       }
       if (!gapFound) { volIdx = i; break; }
     }
-    if (volIdx < 0) continue;
+    if (volIdx < 0) { opts?.curR?.set(key, round2(result[idx].length)); continue; }
 
     const S = result[idx].length;
-    const cutLen = round2(S + steenL - kop);
-    const shift = round2(kop - S);
+    const T = pickTarget(S, opts?.prevR?.get(key));
+    const cutLen = round2(S + steenL - T);
+    const shift = round2(T - S);
     const volEnd = round2(result[volIdx].start + result[volIdx].length);
-    result[idx] = { ...result[idx], start: round2(edgeX), length: kop, label: 'Kop' };
+    result[idx] = { ...result[idx], start: round2(edgeX), length: T, label: T === kop ? 'Kop' : 'Klezoor' };
     for (let i = idx + 1; i < volIdx; i++) {
       result[i] = { ...result[i], start: round2(result[i].start + shift) };
     }
     result[volIdx] = { ...result[volIdx], start: round2(volEnd - cutLen), length: cutLen, label: 'Rest' };
+    opts?.curR?.set(key, T);
   }
 
   return result.filter((p) => p.length > 0.5);
@@ -313,7 +334,7 @@ function inflateOpeningPerSide(op, off) {
   return { ...op, x, y, width, height, polyPts };
 }
 
-export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, kozijnOffset = null) {
+export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, zetwerk, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, kozijnOffset = null, edgeStagger = null) {
   const { steenL, steenH, lint, stoot } = material;
   const lagenmaat = getLagenmaat(material, verband);
   const rowH = verband === 'staand_tegelverband' ? material.steenL : steenH;
@@ -492,8 +513,12 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const kop = round2((steenL - stoot) / 2);
   const driekwart = round2((steenL + stoot) * 0.75 - stoot);
 
+  const kwart = round2(kop / 2);   // ¼ steen (halve kop) — ondergrens bij edgeStagger-relaxatie
   const effectiveWidth = round2(groupWidth + extendLeft + extendRight);
   const rows = [];
+  // OPENING_EDGE_QUARTER: onthoud de edge-lengtes van de vorige rij (per opening-rand) om stapel-
+  // alignment te herkennen. Reset zodra een rij geen opening-randen heeft (verticale onderbreking).
+  let prevEdgeL = new Map(), prevEdgeR = new Map();
   for (let r = rStart; r < rEnd; r++) {
     const rowY = round2(patternOffset + r * lagenmaat);
     const builtPieces = buildRowPiecesForWidth(effectiveWidth, material, verband, r, 0);
@@ -524,10 +549,19 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
         }
       }
       if (leftEdges.length) {
-        const fixed = fixOpeningEdgePieces(clipped, leftEdges, rightEdges, kop, driekwart, stoot, steenL);
+        const curEdgeL = new Map(), curEdgeR = new Map();
+        const _opts = edgeStagger
+          ? { minDelta: edgeStagger.minDelta, kwart, prevL: prevEdgeL, prevR: prevEdgeR, curL: curEdgeL, curR: curEdgeR }
+          : null;
+        const fixed = fixOpeningEdgePieces(clipped, leftEdges, rightEdges, kop, driekwart, stoot, steenL, _opts);
         clipped.length = 0;
         for (const p of fixed) clipped.push(p);
+        if (edgeStagger) { prevEdgeL = curEdgeL; prevEdgeR = curEdgeR; }
+      } else if (edgeStagger) {
+        prevEdgeL = new Map(); prevEdgeR = new Map();   // geen opening-randen op deze rij → reset
       }
+    } else if (edgeStagger) {
+      prevEdgeL = new Map(); prevEdgeR = new Map();
     }
 
     if (effectiveMinH > 0 && rowY < effectiveMinH) {
