@@ -308,11 +308,12 @@ export function isShowKozijnen() {
 //       NIET toe (de normale groep-tak wél) → strip aan de verkeerde kant in dat randgeval.
 // Om (A) mogelijk te maken bewaart resolveOutsideDirections de auto-richting apart als
 // resolvedOutside.autoOutsideDir (manual overschrijft outsideDir wél, autoOutsideDir NIET).
-// DEFAULT = false → 2D leest alleen outsideDirFlip, de export-fallback dropt de flip en er wordt
-// geen autoOutsideDir opgeslagen: exact zoals nu (vlag-uit byte-identiek). Aanzetten:
-// ?outsideDirSync=1 (of localStorage 'outsideDirSync'='1'). Noodrem: ?outsideDirSync=0.
+// DEFAULT = true (gepromoveerd 2026-07-13 op verzoek): 2D én IFC-export volgen dezelfde buitenzijde
+// als 3D (ook "Buitenzijde selecteren"). NOODREM: ?outsideDirSync=0 (of localStorage
+// 'outsideDirSync'='0'/'false') → 2D leest weer alleen outsideDirFlip, de export-fallback dropt de
+// flip en er wordt geen autoOutsideDir opgeslagen (exact het gedrag van vóór, byte-identiek).
 export function isOutsideDirSync() {
-  return readFlag('outsideDirSync', false);
+  return readFlag('outsideDirSync', true);
 }
 
 // BEST_FIT_FLUSH_SIDE — corrigeert de kant van het best-fit gevelvlak wanneer de auto-buiten-
@@ -325,10 +326,11 @@ export function isOutsideDirSync() {
 // tolerantie) terwijl de andere kant WÉL vlak ligt (residu ≤ tolerantie), flip naar de flush-kant
 // (= de beklede kant; groep-wanden zijn co-planair op de gevel). Confidente stem (≥0.9: bbox-exit
 // cross-product / IfcRelSpaceBoundary) blijft ongemoeid; gelijke dikte (beide kanten vlak) → geen
-// flip. DEFAULT = false → exact de huidige best-fit (byte-identiek). Aanzetten: ?bestFitFlushSide=1.
-// Noodrem: ?bestFitFlushSide=0.
+// flip. DEFAULT = true (gepromoveerd 2026-07-13 op verzoek, end-to-end node-geverifieerd op BIL-MOO:
+// wanden 26024971/26037507+26037284 → outsideDir -1, residu 1mm, 0 waarschuwingen). NOODREM:
+// ?bestFitFlushSide=0 (of localStorage '0'/'false') → exact de best-fit van vóór (byte-identiek).
 export function isBestFitFlushSide() {
-  return readFlag('bestFitFlushSide', false);
+  return readFlag('bestFitFlushSide', true);
 }
 
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
@@ -339,8 +341,6 @@ export const FLAG_REGISTRY = [
   { key: 'sparingElementen',     label: 'Sparing-onderdelen',        note: 'Niet-wand IFC-onderdelen importeren + de bekleding er rondom sparen.' },
   { key: 'openingFromKozijn',    label: 'Openingen op kozijn-rand',  note: 'Knip vanaf raam/deur (kozijn) i.p.v. de ruwe structurele opening.', reimport: true },
   { key: 'showKozijnen',         label: 'Kozijnen tonen in 3D',      note: 'Raam/deur als 3D-doos ter visuele controle.', reimport: true },
-  { key: 'outsideDirSync',       label: 'Buitenzijde: één waarheid', note: '2D én IFC-export volgen dezelfde buitenzijde als 3D (ook "Buitenzijde selecteren").' },
-  { key: 'bestFitFlushSide',     label: 'Best-fit: flush-kant kiezen', note: 'Als de buitenzijde onbepaald is, kies de kant waar de groep-wanden op één vlak liggen (voorkomt omgekeerde strips + diepte-spreiding-melding bij verschillende dikte).' },
   { key: 'cornerButt',           label: 'Stompe hoek',               note: 'Geen omslag-steenstrips op het loodrechte vlak.' },
   { key: 'corner85',             label: 'Hoek-detail 85°',           note: '' },
   { key: 'groothuisWildverband', label: 'Groothuis wildverband 1',   note: 'Het oudere groothuis-verband (versie 2 staat standaard aan).' },
