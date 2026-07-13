@@ -17,7 +17,7 @@
 
 import { buildFullGroupFacadePattern } from './pattern.js';
 import { getProjectInfo } from './projectCoordinates.js';
-import { isKeepEndExtension, isReprojectOpeningPolygon, isBestFitFlushSide } from './featureFlags.js';
+import { isKeepEndExtension, isReprojectOpeningPolygon, isBestFitFlushSide, isGroupStartWidest } from './featureFlags.js';
 
 const UP_AX = ['x', 'y', 'z'];
 // Boven deze drempel beschouwen we een opening-polygoon als gedegenereerd (bv. expressID
@@ -213,7 +213,7 @@ function toVirtualWall(member, plane) {
 
 // CONTOUR-MASKER: knip elke rij tot de unie van element-rechthoeken (relatief t.o.v.
 // groupMinX/groupMinH); zo blijft alles buiten een element ONbekleed.
-function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft = 0, extendRight = 0) {
+function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft = 0, extendRight = 0, flushLeft = false) {
   const rects = vwalls.map(w => ({
     t0: (w.wallOrigin.lengthStart) - groupMinX, t1: (w.wallOrigin.lengthEnd) - groupMinX,
     u0: (w.wallOrigin.heightStart) - groupMinH, u1: (w.wallOrigin.heightEnd) - groupMinH,
@@ -225,8 +225,11 @@ function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft
   // pieces geknipt vóór de mask). extendLeft/Right zijn 0 wanneer de vlag UIT staat, dus dit
   // blok is dan een no-op en de mask is byte-identiek aan het origineel.
   const keepExt = (extendLeft > 0 || extendRight > 0) && rects.length > 0;
-  const gT0 = keepExt ? Math.min(...rects.map(r => r.t0)) : 0;
-  const gT1 = keepExt ? Math.max(...rects.map(r => r.t1)) : 0;
+  // GROUP_START_WIDEST: gT0 (= linkerrand van de breedste wand, groep-lokaal) ook nodig als we de
+  // linkerrand strak willen trekken, niet alleen bij de einduiteinde-extensie.
+  const needGlobals = keepExt || (flushLeft && rects.length > 0);
+  const gT0 = needGlobals ? Math.min(...rects.map(r => r.t0)) : 0;
+  const gT1 = needGlobals ? Math.max(...rects.map(r => r.t1)) : 0;
   const out = [];
   for (const row of rows) {
     const y = row.y;
@@ -246,6 +249,9 @@ function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft
       if (extendLeft  > 0) merged[0][0]                 = Math.min(merged[0][0],                 gT0 - extendLeft);
       if (extendRight > 0) merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], gT1 + extendRight);
     }
+    // GROUP_START_WIDEST: trek de LINKERrand van elke rij door tot de breedste wand (gT0) → één
+    // rechte linkerrand (terugliggende smallere wanden worden tot die rand bekleed). Alleen links.
+    if (flushLeft) merged[0][0] = Math.min(merged[0][0], gT0);
     const pieces = [];
     for (const p of row.pieces) {
       const ps = p.start, pe = p.start + p.length;
@@ -279,7 +285,7 @@ export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, z
   // FASE 1: vlag UIT → extend=0 doorgegeven → maskRowsToContours byte-identiek (knipt op
   // footprint). Vlag AAN → de globale buitenrand behoudt de handmatige einduiteinde-extensie.
   const _keepEndExt = isKeepEndExtension();
-  fd.rows = maskRowsToContours(fd.rows, vwalls, fd.groupMinX, fd.groupMinH, rowH, _keepEndExt ? extendLeft : 0, _keepEndExt ? extendRight : 0);
+  fd.rows = maskRowsToContours(fd.rows, vwalls, fd.groupMinX, fd.groupMinH, rowH, _keepEndExt ? extendLeft : 0, _keepEndExt ? extendRight : 0, isGroupStartWidest());
   fd._bestFit = {
     uAxis: plane.uAxis, tAxis: plane.tAxis, nAxis: plane.nAxis, outsideDir: plane.outsideDir,
     offsetMm: plane.offset, residualMm: plane.residualMm, coFacingPct: Math.round(plane.coFacingFrac * 100),
