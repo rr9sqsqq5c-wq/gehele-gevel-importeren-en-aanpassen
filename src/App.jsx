@@ -470,7 +470,7 @@ const CHANGELOG = [
       '3D viewer (react-three-fiber) en 2D gevelaanzicht',
       'Groepen aanmaken en bewerken per gevel',
       'Metselverbanden: halfsteens, halfsteens kop, staand tegelverband',
-      'Zetwerk, panelen, latten (horizontaal/verticaal)',
+      'Panelen, latten (horizontaal/verticaal)',
       'Penant configuratie met zij-strips en voorzijde-strips',
       'Zone-indeling per penant (links→rechts numering)',
       'IFC export met gevelbekleding',
@@ -656,7 +656,7 @@ function detectSubstrateType(wallObjs) {
 
 function useGroupSettings() {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', stripColor: null, verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, startLijn: null, penanten: [], zoneSettings: [], zetwerk: { enabled: false, breedte: 50, dikte: 2, offsetH: 0, offsetV: 0, stripOffset: 5 }, panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true, penanten: true }, ifcLayerVisibility: { strips: true, zetwerk: true, panelen: true, latten: true }, endExtensions: { left: { strips: 0, battens: 0, panels: 0 }, right: { strips: 0, battens: 0, panels: 0 } }, overgangsvoeg: 10, backingType: 'hout', wallSubstrateType: 'unknown', concreteCladdingSettings: { claddingDepthInward: 0, isEntrancePortalWall: false, cladSideFaces: true, cladFrontFace: true, cladPortalInnerFaces: false, insulationThickness: 140, uProfileWidth: 60, uProfileDepth: 30, uProfileSpacing: 600, mountingOffset: 10, panelVentilationGap: 20 }, slimFortSettings: { ...SLIMFORT_DEFAULTS } });
+  const defaults = (id) => ({ name: id, color: '#a64033', stripColor: null, verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, startLijn: null, penanten: [], zoneSettings: [], panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, panelen: true, latten: true, penanten: true }, ifcLayerVisibility: { strips: true, panelen: true, latten: true }, endExtensions: { left: { strips: 0, battens: 0, panels: 0 }, right: { strips: 0, battens: 0, panels: 0 } }, overgangsvoeg: 10, backingType: 'hout', wallSubstrateType: 'unknown', concreteCladdingSettings: { claddingDepthInward: 0, isEntrancePortalWall: false, cladSideFaces: true, cladFrontFace: true, cladPortalInnerFaces: false, insulationThickness: 140, uProfileWidth: 60, uProfileDepth: 30, uProfileSpacing: 600, mountingOffset: 10, panelVentilationGap: 20 }, slimFortSettings: { ...SLIMFORT_DEFAULTS } });
   const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
@@ -1669,37 +1669,6 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         );
       })()}
 
-      {(() => {
-        const zw = settings.zetwerk ?? {};
-        const upd = (patch) => onUpdate({ zetwerk: { ...(settings.zetwerk ?? {}), ...patch } });
-        return (
-          <CollapsibleSection title="Zetwerk rondom openingen" tip={"Aluminium of stalen randprofiel rondom ramen en deuren.\nWordt in 2D als grijs frame getekend rondom elke sparing.\nDe steenstrips worden automatisch op afstand gehouden.\n\n· Breedte = breedte van het profiel\n· Offset H = ruimte tussen opening en profiel (horizontaal)\n· Offset V = ruimte boven/onder de opening\n· Strip gap = extra vrije ruimte tussen profiel en strips"} isOpen={isOpen('zetwerk')} onToggle={() => toggle('zetwerk')} badge={zw.enabled ? 'Aan' : 'Uit'}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              <input type="checkbox" id="zw-enable" checked={zw.enabled ?? false}
-                onChange={(e) => upd({ enabled: e.target.checked })} />
-              <label htmlFor="zw-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>Inschakelen</label>
-            </div>
-            {zw.enabled && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-                {[
-                  ['Breedte', 'breedte', 50, 'Breedte van het zetwerk profiel (mm).'],
-                  ['Dikte', 'dikte', 2, 'Materiaaldikte van het zetwerk profiel (mm).'],
-                  ['Offset H', 'offsetH', 0, 'Horizontale ruimte tussen de kozijnrand en het profiel (mm).'],
-                  ['Offset V', 'offsetV', 0, 'Verticale ruimte boven en onder de kozijnrand (mm).'],
-                  ['Strip gap', 'stripOffset', 5, 'Extra ruimte die de steenstrips vrijhouden van het profiel (mm).'],
-                ].map(([lbl, key, def, tip]) => (
-                  <Field key={key} label={`${lbl} mm`} tip={tip}>
-                    <input type="number" min={0} step={1} value={zw[key] ?? def}
-                      onChange={(e) => upd({ [key]: Number(e.target.value) })}
-                      style={{ ...inp, width: '100%' }} />
-                  </Field>
-                ))}
-              </div>
-            )}
-          </CollapsibleSection>
-        );
-      })()}
-
       {isVentilatieZone() && (() => {
         const v = settings.ventilatie ?? {};
         const upd = (patch) => onUpdate({ ventilatie: { ...(settings.ventilatie ?? {}), ...patch } });
@@ -2667,11 +2636,10 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         const vis = settings.layerVisibility ?? {};
         const updVis = (patch) => onUpdate({ layerVisibility: { ...(settings.layerVisibility ?? {}), ...patch } });
         return (
-          <CollapsibleSection title="Laagzichtbaarheid 2D" tip={"Schakel lagen aan of uit in het 2D gevelaanzicht.\nEen laag uitzetten verbergt deze in de 2D visualisatie maar beïnvloedt de instellingen niet.\n\n· Steenstrips = de brickslip-stenen op de gevel\n· Zetwerk = het randprofiel rondom sparingen\n· Panelen = de draagpanelen achter de strips\n· Latten = de houten achterconstructie-latten"} isOpen={isOpen('lagen')} onToggle={() => toggle('lagen')}>
+          <CollapsibleSection title="Laagzichtbaarheid 2D" tip={"Schakel lagen aan of uit in het 2D gevelaanzicht.\nEen laag uitzetten verbergt deze in de 2D visualisatie maar beïnvloedt de instellingen niet.\n\n· Steenstrips = de brickslip-stenen op de gevel\n· Panelen = de draagpanelen achter de strips\n· Latten = de houten achterconstructie-latten"} isOpen={isOpen('lagen')} onToggle={() => toggle('lagen')}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {[
                 ['strips', 'Steenstrips', 'De brickslip-steenstrips op de gevel zichtbaar tonen.'],
-                ['zetwerk', 'Zetwerk', 'Het aluminium of stalen randprofiel rondom sparingen tonen.'],
                 ['panelen', 'Panelen', 'De draagpanelen achter de brickslips tonen.'],
                 ['latten', 'Latten', 'De houten achterconstructie-latten tonen.'],
                 ['penanten', 'Penanten', 'De penanten (kolommen) op de gevel zichtbaar tonen.'],
@@ -2692,11 +2660,10 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         const ifcVis = settings.ifcLayerVisibility ?? {};
         const updIfcVis = (patch) => onUpdate({ ifcLayerVisibility: { ...(settings.ifcLayerVisibility ?? {}), ...patch } });
         return (
-          <CollapsibleSection title="Laagzichtbaarheid IFC-export" tip={"Schakel lagen aan of uit voor de IFC-export.\nDeze instelling bepaalt welke lagen in het geëxporteerde IFC-bestand worden opgenomen.\nDe berekeningen en het 2D-aanzicht worden hierdoor niet beïnvloed.\n\n· Steenstrips = de brickslip-stenen op de gevel\n· Zetwerk = het randprofiel rondom sparingen\n· Panelen = de draagpanelen achter de strips\n· Latten = de houten achterconstructie-latten"} isOpen={isOpen('ifclagen')} onToggle={() => toggle('ifclagen')}>
+          <CollapsibleSection title="Laagzichtbaarheid IFC-export" tip={"Schakel lagen aan of uit voor de IFC-export.\nDeze instelling bepaalt welke lagen in het geëxporteerde IFC-bestand worden opgenomen.\nDe berekeningen en het 2D-aanzicht worden hierdoor niet beïnvloed.\n\n· Steenstrips = de brickslip-stenen op de gevel\n· Panelen = de draagpanelen achter de strips\n· Latten = de houten achterconstructie-latten"} isOpen={isOpen('ifclagen')} onToggle={() => toggle('ifclagen')}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {[
                 ['strips', 'Steenstrips', 'De brickslip-steenstrips in de IFC-export opnemen.'],
-                ['zetwerk', 'Zetwerk', 'Het zetwerk in de IFC-export opnemen. Uitzetten laat het zetwerk weg uit de IFC, maar de regels rondom sparingen blijven intact.'],
                 ['panelen', 'Panelen', 'De draagpanelen in de IFC-export opnemen.'],
                 ['latten', 'Latten', 'De achterconstructie-latten in de IFC-export opnemen.'],
               ].map(([key, label, tip]) => (
@@ -3381,9 +3348,9 @@ export default function App() {
       // val terug op het oude pad i.p.v. niets te tonen.
       const useBestFit = isBestFitGroups() && group.manual === true;
       let facadeData = (useBestFit
-        ? buildBestFitFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, undefined, kozOffsetParam, edgeStaggerParam)
+        ? buildBestFitFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, undefined, kozOffsetParam, edgeStaggerParam)
         : null)
-        ?? buildFullGroupFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, kozOffsetParam, edgeStaggerParam);
+        ?? buildFullGroupFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, kozOffsetParam, edgeStaggerParam);
       // FASE 2 — wildverband: vervang de strip-rijen door het vastgelegde tegel-verband
       // (buildTruthRows). Achter de vlag, default UIT → exact het bestaande pad. Voedt 3D
       // (batches uit facadeData.rows) én 2D (dezelfde facadeData) uit één bron.
@@ -3637,7 +3604,7 @@ export default function App() {
         const zoneMatBase = { ...mat, ...(zs.material ?? {}) };
         const zoneMat = _3dStripArt ? { ...zoneMatBase, steenL: _3dStripArt.steenL, steenH: _3dStripArt.steenH } : zoneMatBase;
         const zoneVerband3d = zs.verband ?? (s.verband ?? DEFAULT_VERBAND);
-        const zoneFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband3d, zs.maxHoogte ?? s.maxHoogte, s.zetwerk, null, s.startLijn, 0, 0, kozOffsetParam, edgeStaggerParam);
+        const zoneFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband3d, zs.maxHoogte ?? s.maxHoogte, null, s.startLijn, 0, 0, kozOffsetParam, edgeStaggerParam);
         if (!zoneFull) continue;
         const clipRows = zoneFull.rows.map((row) => ({
           ...row,
@@ -4549,7 +4516,7 @@ export default function App() {
       const ctrims = endExtensionsToTrims(s.endExtensions);
       let facadeData = null;
       try {
-        facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrims.extendLeft, ctrims.extendRight, kozOffsetParam, edgeStaggerParam);
+        facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrims.extendLeft, ctrims.extendRight, kozOffsetParam, edgeStaggerParam);
       } catch { facadeData = null; }
       const gw = facadeData?.groupWidth ?? 0;
       const gh = facadeData?.groupHeight ?? 0;
@@ -4750,7 +4717,7 @@ export default function App() {
     const srcSettings = getSettings(sourceGroupId);
     const linkedIds = groups.filter((g) => groupLinks[g.id] === linkId && g.id !== sourceGroupId).map((g) => g.id);
     for (const id of linkedIds) {
-      updateSettings(id, { name: srcSettings.name, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth, maxHoogte: srcSettings.maxHoogte, penanten: srcSettings.penanten ? [...srcSettings.penanten] : [], zetwerk: srcSettings.zetwerk ? { ...srcSettings.zetwerk } : undefined, panelen: srcSettings.panelen ? { ...srcSettings.panelen } : undefined, latten: srcSettings.latten ? { ...srcSettings.latten } : undefined, lattenArtikelen: srcSettings.lattenArtikelen ? [...srcSettings.lattenArtikelen] : [], steenstripsArtikelen: srcSettings.steenstripsArtikelen ? [...srcSettings.steenstripsArtikelen] : [] });
+      updateSettings(id, { name: srcSettings.name, verband: srcSettings.verband, material: { ...srcSettings.material }, brickDepth: srcSettings.brickDepth, maxHoogte: srcSettings.maxHoogte, penanten: srcSettings.penanten ? [...srcSettings.penanten] : [], panelen: srcSettings.panelen ? { ...srcSettings.panelen } : undefined, latten: srcSettings.latten ? { ...srcSettings.latten } : undefined, lattenArtikelen: srcSettings.lattenArtikelen ? [...srcSettings.lattenArtikelen] : [], steenstripsArtikelen: srcSettings.steenstripsArtikelen ? [...srcSettings.steenstripsArtikelen] : [] });
     }
   }
 
@@ -4978,7 +4945,7 @@ export default function App() {
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const mat = s.material ?? DEFAULT_MATERIAL;
       const verband = s.verband ?? DEFAULT_VERBAND;
-      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, s.zetwerk, null, s.startLijn, 0, 0, kozOffsetParam, edgeStaggerParam);
+      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, null, s.startLijn, 0, 0, kozOffsetParam, edgeStaggerParam);
       if (!facadeDataRaw) continue;
 
       let facadeData = facadeDataRaw;
@@ -5170,7 +5137,7 @@ export default function App() {
 
       const mat = s.material ?? DEFAULT_MATERIAL;
       const vis = Object.fromEntries(
-        ['strips', 'zetwerk', 'panelen', 'latten'].map(k => [
+        ['strips', 'panelen', 'latten'].map(k => [
           k,
           (s.layerVisibility?.[k] ?? true) && (s.ifcLayerVisibility?.[k] ?? true)
         ])
@@ -5185,7 +5152,7 @@ export default function App() {
       // best-fit-data onverhoopt → terugval op buildFullGroupFacadePattern.
       const useBestFitExport = isBestFitGroups() && group.manual === true;
       const facadeDataRaw = (useBestFitExport ? (allPatterns[group.id]?.facadeData ?? null) : null)
-        ?? buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, s.zetwerk, null, s.startLijn, ctrimsExport.extendLeft, ctrimsExport.extendRight, kozOffsetParam, edgeStaggerParam);
+        ?? buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsExport.extendLeft, ctrimsExport.extendRight, kozOffsetParam, edgeStaggerParam);
       const _refWall = facadeDataRaw ? null : ([...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0] ?? null);
       const refWallOrigin = facadeDataRaw?.refWallOrigin ?? _refWall?.wallOrigin ?? null;
       const _axisW = refWallOrigin ? withOrigin.filter((w) => w.wallOrigin.lengthAxis === refWallOrigin.lengthAxis) : withOrigin;
@@ -5265,7 +5232,6 @@ export default function App() {
 
         const battenMaxInterval = Math.max(50, s.latten?.maxInterval ?? 400);
         const lintHalfExport = (mat.lint ?? 12) / 2;
-        const zwExpVExport = s.zetwerk?.enabled ? Math.max(0, s.zetwerk.offsetV ?? 0) + Math.max(1, s.zetwerk.breedte ?? 50) : 0;
         const clampToGroupH = (y) => Math.min(groupHeight, Math.max(0, y));
         const allRowYsExport = (facRows ?? []).map((r) => r.y).sort((a, b) => a - b);
         const snapToRowYExport = (y) => {
@@ -5316,24 +5282,6 @@ export default function App() {
           if (s.startLijn != null && s.startLijn < 0 && panels.length > 0) {
             const minY = Math.min(...panels.map((p) => p.y));
             panels = panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: s.startLijn, height: p.height + p.y - s.startLijn } : p);
-          }
-          if (s.zetwerk?.enabled && groupOpenings.length > 0) {
-            const CLEARANCE = 10;
-            const sideExpand = (s.zetwerk.offsetH ?? 0) + (s.zetwerk.breedte ?? 50) + CLEARANCE;
-            panels = panels.map((panel) => {
-              let { x, width } = panel;
-              for (const op of groupOpenings) {
-                if (panel.y + panel.height <= op.y || panel.y >= op.y + op.height) continue;
-                if (x < op.x && x + width > op.x - sideExpand) width = Math.max(0, op.x - sideExpand - x);
-                if (x >= op.x + op.width && x < op.x + op.width + sideExpand) {
-                  const newX = op.x + op.width + sideExpand;
-                  width = Math.max(0, x + width - newX);
-                  x = newX;
-                }
-              }
-              if (width <= 0) return null;
-              return { ...panel, x, width };
-            }).filter(Boolean);
           }
           panels = panels.filter((panel) => panel.height >= 200 && panel.width >= 10);
           const facRowH = (s.verband ?? 'halfsteens') === 'staand_tegelverband' ? mat.steenL : mat.steenH;
@@ -5447,7 +5395,6 @@ export default function App() {
           if (richting === 'horizontaal') {
             const gH = Math.round(groupHeight);
             const minH = Math.max(0, Math.round(s.startLijn ?? 0));
-            const zwExpV = (s.zetwerk?.enabled) ? Math.max(0, (s.zetwerk.offsetV ?? 0)) + Math.max(1, s.zetwerk.breedte ?? 50) : 0;
             const clampY = (y) => Math.min(gH, Math.max(0, y));
 
             const boundaryYs = new Set([minH, gH]);
@@ -5490,8 +5437,8 @@ export default function App() {
               return { x: op.x, width: op.width };
             };
             for (const op of groupOpenings) {
-              const belowLatY = Math.round(clampY(op.y - zwExpV)) - latBreedte;
-              const rawAboveExp = Math.round(clampY(op.y + op.height + zwExpV));
+              const belowLatY = Math.round(clampY(op.y)) - latBreedte;
+              const rawAboveExp = Math.round(clampY(op.y + op.height));
               const firstAboveExp = allRowYsExport.find(ry => ry >= rawAboveExp - 0.5) ?? rawAboveExp;
               const aboveLatY = firstAboveExp;
               if (belowLatY >= 0) {
@@ -5522,37 +5469,6 @@ export default function App() {
           if (lat.y + lat.height > s.maxHoogte) return { ...lat, height: s.maxHoogte - lat.y };
           return lat;
         }).filter(Boolean);
-      }
-
-      const _zwOpenings = facadeData?.groupOpenings ?? [];
-      if (s.zetwerk?.enabled && _zwOpenings.length > 0) {
-        const CLEARANCE = 10;
-        const sideExpand = (s.zetwerk.offsetH ?? 0) + (s.zetwerk.breedte ?? 50) + CLEARANCE;
-        const vertExpand = (s.zetwerk.offsetV ?? 0) + (s.zetwerk.breedte ?? 50) + (s.zetwerk.stripOffset ?? 5);
-        const clippedLats = [];
-        for (const lat of lattenData) {
-          if (lat.richting !== 'horizontaal' || lat.openingForced) { clippedLats.push(lat); continue; }
-          const latMidY = lat.y + lat.height / 2;
-          const relevant = _zwOpenings.filter((op) => latMidY >= op.y - vertExpand && latMidY <= op.y + op.height + vertExpand);
-          if (relevant.length === 0) { clippedLats.push(lat); continue; }
-          let segments = [{ start: lat.x, end: lat.x + lat.width }];
-          for (const op of relevant) {
-            const exFrom = op.x - sideExpand;
-            const exTo = op.x + op.width + sideExpand;
-            const next = [];
-            for (const seg of segments) {
-              if (seg.end <= exFrom || seg.start >= exTo) { next.push(seg); continue; }
-              if (seg.start < exFrom) next.push({ start: seg.start, end: exFrom });
-              if (seg.end > exTo) next.push({ start: exTo, end: seg.end });
-            }
-            segments = next;
-          }
-          for (const seg of segments) {
-            const w = seg.end - seg.start;
-            if (w > 0.5) clippedLats.push({ ...lat, x: seg.start, width: w });
-          }
-        }
-        lattenData = clippedLats;
       }
 
       const penantFaceRows = (s.penanten ?? []).map((p) => {
@@ -5610,7 +5526,7 @@ export default function App() {
           const zoneMat = _stripBatchArt ? { ...zoneMatBase, steenL: _stripBatchArt.steenL, steenH: _stripBatchArt.steenH } : zoneMatBase;
           const zoneVerband = zs.verband ?? (s.verband ?? DEFAULT_VERBAND);
           const zoneMaxH = zs.maxHoogte ?? (s.maxHoogte ?? null);
-          const zFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxH, s.zetwerk, null, s.startLijn, 0, 0, kozOffsetParam, edgeStaggerParam);
+          const zFull = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxH, null, s.startLijn, 0, 0, kozOffsetParam, edgeStaggerParam);
           if (!zFull) continue;
           const clipRows = zFull.rows.map((row) => ({
             ...row,
@@ -5795,7 +5711,6 @@ export default function App() {
         panels: finalPanels,
         lattenData: finalLattenData,
         latDikte: latDikteEff ?? (s.latten?.dikte ?? 28),
-        zetwerk: s.zetwerk,
         facadeData,
         stripBatches: finalStripBatches,
         cornerWraps: exportCornerWraps,
@@ -6878,7 +6793,6 @@ export default function App() {
                     startLijn={getSettings(activeGroup.id).startLijn}
                     penantFaceData={penantFaceData}
                     groupColor={getSettings(activeGroup.id).color}
-                    zetwerk={getSettings(activeGroup.id).zetwerk}
                     panelen={getSettings(activeGroup.id).panelen}
                     latten={getSettings(activeGroup.id).latten}
                     layerVisibility={getSettings(activeGroup.id).layerVisibility}
@@ -6948,7 +6862,6 @@ export default function App() {
                     walls={groupWalls}
                     groupSettings={s}
                     groupName={s.name}
-                    zetwerk={s.zetwerk}
                     panelen={s.panelen}
                     latten={s.latten}
                     groupMinH={gMinH}

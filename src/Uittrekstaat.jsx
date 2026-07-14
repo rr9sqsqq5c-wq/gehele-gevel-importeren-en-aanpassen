@@ -34,7 +34,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
   const groupWalls = group.wallIds.map((id) => walls.find((w) => w.expressID === id)).filter(Boolean);
   if (!groupWalls.length) return null;
 
-  let facadeData = buildFullGroupFacadePattern(groupWalls, mat, verband, s.maxHoogte, s.zetwerk, null);
+  let facadeData = buildFullGroupFacadePattern(groupWalls, mat, verband, s.maxHoogte, null);
   if (!facadeData) return null;
   // FASE 2 — wildverband: de zaaglijst telt het vastgelegde truth-verband (zelfde bron als
   // 2D/3D/IFC/werktekening) i.p.v. de tegelverband-degradatie uit pattern.js. Vlag UIT →
@@ -197,20 +197,6 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
     }
   }
 
-  let zetWerkAreaMM2 = 0;
-  if (s.zetwerk?.enabled) {
-    const zwB = Math.max(1, s.zetwerk.breedte ?? 50);
-    const zwH = Math.max(0, s.zetwerk.offsetH ?? 0);
-    const zwV = Math.max(0, s.zetwerk.offsetV ?? 0);
-    for (const op of groupOpenings) {
-      const expandedW = op.width + 2 * (zwH + zwB);
-      const expandedH = op.height + 2 * (zwV + zwB);
-      const innerW = op.width + 2 * zwH;
-      const innerH = op.height + 2 * zwV;
-      zetWerkAreaMM2 += expandedW * expandedH - innerW * innerH;
-    }
-  }
-
   let penantAreaMM2 = 0;
   let hoekprofielLengthMM = 0;
   let uSectiesCount = 0;
@@ -257,7 +243,6 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
     lattenArtikelen: s.lattenArtikelen ?? [],
     steenstripsArtikelen: s.steenstripsArtikelen ?? [],
     basisplaatId: s.panelen?.basisplaatId ?? null,
-    zetWerkAreaMM2,
     mat,
     openingsCount: groupOpenings.length,
     groupOpenings,
@@ -383,7 +368,7 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose,
   }, [groups, walls, getSettings, adjacencies, cornerTrimsMap]);
 
   const totals = useMemo(() => {
-    const t = { facadeAreaMM2: 0, openingsAreaMM2: 0, netFacadeAreaMM2: 0, penantAreaMM2: 0, hoekprofielLengthMM: 0, uSectiesCount: 0, vertikaleLattenLengthMM: 0, stripAreaMM2: 0, zetWerkAreaMM2: 0, panelCount: 0, panelAreaMM2: 0, panelWeightKg: 0, lattenCount: 0, lattenLengthMM: 0 };
+    const t = { facadeAreaMM2: 0, openingsAreaMM2: 0, netFacadeAreaMM2: 0, penantAreaMM2: 0, hoekprofielLengthMM: 0, uSectiesCount: 0, vertikaleLattenLengthMM: 0, stripAreaMM2: 0, panelCount: 0, panelAreaMM2: 0, panelWeightKg: 0, lattenCount: 0, lattenLengthMM: 0 };
     for (const to of takeoffs) {
       t.facadeAreaMM2 += to.facadeAreaMM2;
       t.openingsAreaMM2 += to.openingsAreaMM2;
@@ -393,7 +378,6 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose,
       t.uSectiesCount += (to.uSectiesCount ?? 0);
       t.vertikaleLattenLengthMM += (to.vertikaleLattenLengthMM ?? 0);
       t.stripAreaMM2 += to.stripAreaMM2;
-      t.zetWerkAreaMM2 += to.zetWerkAreaMM2;
       for (const pg of Object.values(to.panelGroups)) {
         t.panelCount += pg.count;
         t.panelAreaMM2 += pg.areaMM2;
@@ -531,7 +515,6 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose,
             {totals.hoekprofielLengthMM > 0 && <tr><TD>Alu. hoekprofiel (L) penanten</TD><TD right mono>{(totals.hoekprofielLengthMM / 1000).toFixed(2)}</TD><TD right>m¹</TD></tr>}
             {totals.uSectiesCount > 0 && <tr><TD>Penant U-secties (totaal)</TD><TD right mono>{totals.uSectiesCount}</TD><TD right>st.</TD></tr>}
             {totals.vertikaleLattenLengthMM > 0 && <tr><TD>Vert. bevestigingslatten penanten (90×50)</TD><TD right mono>{(totals.vertikaleLattenLengthMM / 1000).toFixed(2)}</TD><TD right>m¹</TD></tr>}
-            {totals.zetWerkAreaMM2 > 0 && <tr><TD>Zetwerk oppervlak</TD><TD right mono>{m2(totals.zetWerkAreaMM2)}</TD><TD right>m²</TD></tr>}
 
             <SectionHeader title="Panelen" />
             {totals.panelCount > 0 ? <>
@@ -646,11 +629,6 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose,
                 {to.stripCount.Drieklezoor > 0 && <tr><TD>— Drieklezoor</TD><TD right mono>{to.stripCount.Drieklezoor}</TD><TD right>st</TD></tr>}
                 {to.stripCount.Rest > 0 && <tr><TD>— Snijstrip (rest)</TD><TD right mono>{to.stripCount.Rest}</TD><TD right>st</TD></tr>}
                 {to.stripCount.Tegel > 0 && <tr><TD>— Tegels</TD><TD right mono>{to.stripCount.Tegel}</TD><TD right>st</TD></tr>}
-
-                {to.zetWerkAreaMM2 > 0 && <>
-                  <SectionHeader title="Zetwerk" />
-                  <tr><TD>Zetwerk oppervlak rondom sparingen</TD><TD right mono>{m2(to.zetWerkAreaMM2)}</TD><TD right>m²</TD></tr>
-                </>}
 
                 {panelEntries.length > 0 && (() => {
                   const diff = to.panelAreaMM2 - to.netFacadeAreaMM2;

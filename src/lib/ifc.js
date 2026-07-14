@@ -2599,49 +2599,6 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
 
     const maxHoogte = group.maxHoogte ?? null;
 
-    if (vis.zetwerk !== false && group.zetwerk?.enabled && group.facadeData) {
-      const zw = group.zetwerk;
-      const zwB = Math.max(1, zw.breedte ?? 50);
-      const zwH = Math.max(0, zw.offsetH ?? 0);
-      const zwV = Math.max(0, zw.offsetV ?? 0);
-      const { axisStr, refStr } = makeGroupAxes();
-      const depth = effectiveLatDepth + panelDikte + brickD / 2;
-      for (const op of (group.facadeData.groupOpenings ?? [])) {
-        const opPoly = getOpeningPoly(op);
-        const opLs = opPoly.map(p => p.l), opHs = opPoly.map(p => p.h);
-        const opMinL = Math.min(...opLs), opMaxL = Math.max(...opLs);
-        const opMinH = Math.min(...opHs), opMaxH = Math.max(...opHs);
-        if (maxHoogte != null && maxHoogte > 0 && opMinH >= maxHoogte) continue;
-        const ox1 = opMinL - zwH - zwB, ox2 = opMaxL + zwH + zwB;
-        const oy1 = opMinH - zwV - zwB, oy2 = opMaxH + zwV + zwB;
-        const totalW = ox2 - ox1;
-        const innerH = (opMaxH + zwV) - (opMinH - zwV);
-        const bars = [
-          { lx: ox1 + totalW / 2, lz: oy2 - zwB / 2, lw: totalW, lh: zwB },
-          { lx: ox1 + totalW / 2, lz: oy1 + zwB / 2, lw: totalW, lh: zwB },
-          { lx: ox1 + zwB / 2,    lz: op.y - zwV + innerH / 2, lw: zwB, lh: innerH },
-          { lx: ox2 - zwB / 2,    lz: op.y - zwV + innerH / 2, lw: zwB, lh: innerH },
-        ];
-        for (const bar of bars) {
-          const barBottom = bar.lz - bar.lh / 2;
-          if (maxHoogte != null && maxHoogte > 0 && barBottom >= maxHoogte) continue;
-          const [wx, wy, wz] = groupToWorld(bar.lx, depth, barBottom);
-          const placePt = PT(wx, wy, wz);
-          const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
-          const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
-          const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
-          const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(bar.lw)},${r(brickD)})`);
-          const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(bar.lh)})`);
-          const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
-          const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
-          const safeName = `${group.name ?? 'Groep'} - Zetwerk`.replace(/'/g, "\\'");
-          const proxy   = E(`IFCBUILDINGELEMENTPROXY(${G()},#${owH},'${safeName}',$,'Zetwerk',#${localPl},#${pds},$,.NOTDEFINED.)`);
-          E(`IFCSTYLEDITEM(#${solid},(#${getStyle('#475569')}),$)`);
-          allProxyIds.push(proxy);
-        }
-      }
-    }
-
     const penanten = (wallSettings[group.id] ?? {}).penanten ?? [];
     const penantFaceRows = group.penantFaceRows ?? [];
     if (penanten.length && rwo) {
