@@ -226,7 +226,7 @@ function DimV({ x, y1, y2, label, color = '#1e3a5f', side = 'left' }) {
   );
 }
 
-function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, startLijn, verband, backingType) {
+function computeLatten(facadeData, panelen, latten, mat, penanten, startLijn, verband, backingType) {
   const _bt = backingType ?? 'hout';
   if (!facadeData || !latten?.enabled || _bt === 'aluminium' || _bt === 'aluminium_slimfort') return [];
   const { groupWidth, groupHeight, groupOpenings } = facadeData;
@@ -256,7 +256,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, star
   }
 
   if (richting === 'horizontaal') {
-    const rawLatten = computeHorizontalLatten({ facadeData, latten, mat, panelen, zetwerk, startLijn, backingType: _bt });
+    const rawLatten = computeHorizontalLatten({ facadeData, latten, mat, panelen, startLijn, backingType: _bt });
     if (!rawLatten.length) return rawLatten;
 
     const INSET = 5;
@@ -311,7 +311,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, star
   }
 }
 
-export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen, latten, groupMinH, penantFaceData, zoneSettings, epcSettings, outsideDirFlip, cornerTrimLeft = 0, cornerTrimRight = 0, cornerExtendLeft = 0, cornerExtendRight = 0, lattenTrimLeft = 0, lattenTrimRight = 0, lattenExtendLeft = 0, lattenExtendRight = 0, panelsTrimLeft = 0, panelsTrimRight = 0, panelsExtendLeft = 0, panelsExtendRight = 0 }) {
+export function Werktekening({ walls, groupSettings, groupName, panelen, latten, groupMinH, penantFaceData, zoneSettings, epcSettings, outsideDirFlip, cornerTrimLeft = 0, cornerTrimRight = 0, cornerExtendLeft = 0, cornerExtendRight = 0, lattenTrimLeft = 0, lattenTrimRight = 0, lattenExtendLeft = 0, lattenExtendRight = 0, panelsTrimLeft = 0, panelsTrimRight = 0, panelsExtendLeft = 0, panelsExtendRight = 0 }) {
   const svgRef = useRef(null);
   const summarySvgRef = useRef(null);
   const productiePrintRef = useRef(null);
@@ -336,7 +336,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
 
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
-    const fd = buildFullGroupFacadePattern(walls, mat, verband, maxH, zetwerk, null, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight);
+    const fd = buildFullGroupFacadePattern(walls, mat, verband, maxH, null, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight);
     // FASE 2 — wildverband-strips uit het vastgelegde tegel-verband (zelfde bron als 2D/3D/IFC).
     // Vlag UIT → exact het bestaande pad (byte-identiek).
     if (fd && verband === 'wildverband' && isWildverbandKoppelstrip()) {
@@ -352,7 +352,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
       return { ...fd, rows: _gr.rows };
     }
     return fd;
-  }, [walls, mat, verband, maxH, zetwerk, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight]);
+  }, [walls, mat, verband, maxH, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight]);
 
   const allPanels = useMemo(() => {
     if (!facadeData || !panelen?.enabled) return [];
@@ -425,24 +425,6 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
         if (res.ok) panels.push(...res.panels);
       }
     }
-    if (zetwerk?.enabled && groupOpenings.length > 0) {
-      const CLEARANCE = 10;
-      const sideExpand = (zetwerk.offsetH ?? 0) + (zetwerk.breedte ?? 50) + CLEARANCE;
-      panels = panels.map((panel) => {
-        let { x, width } = panel;
-        for (const op of groupOpenings) {
-          if (panel.y + panel.height <= op.y || panel.y >= op.y + op.height) continue;
-          if (x < op.x && x + width > op.x - sideExpand) width = Math.max(0, op.x - sideExpand - x);
-          if (x >= op.x + op.width && x < op.x + op.width + sideExpand) {
-            const newX = op.x + op.width + sideExpand;
-            width = Math.max(0, x + width - newX);
-            x = newX;
-          }
-        }
-        if (width <= 0) return null;
-        return { ...panel, x, width };
-      }).filter(Boolean);
-    }
     panels = panels.filter((panel) => panel.height >= 200 && panel.width >= 10);
     if (verband !== 'wildverband') {
       const rowH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
@@ -465,10 +447,10 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
       return panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: startLijn, height: p.height + p.y - startLijn } : p);
     }
     return panels;
-  }, [facadeData, panelen, mat, groupSettings, latten, zetwerk, verband]);
+  }, [facadeData, panelen, mat, groupSettings, latten, verband]);
 
   const penanten = groupSettings?.penanten ?? [];
-  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings?.startLijn ?? null, verband, groupSettings?.backingType ?? 'hout'), [facadeData, panelen, latten, mat, penanten, zetwerk, groupSettings, verband]);
+  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten, groupSettings?.startLijn ?? null, verband, groupSettings?.backingType ?? 'hout'), [facadeData, panelen, latten, mat, penanten, groupSettings, verband]);
 
   const wallGroupPolysRaw = useMemo(() => {
     if (!walls?.length) return [];
@@ -534,7 +516,7 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
   const zonePanels = effectivePanels.filter((p) =>
     p.x + p.width > viewXStart + 1 && p.x < viewXEnd - 1 &&
     p.y + p.height > viewYStart + 1 && p.y < viewYEnd - 1
-  );
+  ).sort((a, b) => (a.y - b.y) || (a.x - b.x));  // P-nummering: per rij links→rechts, dan een rij hoger
   const zoneLatten = allLatten.filter((l) =>
     l.x + l.width > viewXStart + 1 && l.x < viewXEnd - 1 &&
     l.y + l.height > viewYStart + 1 && l.y < viewYEnd - 1
@@ -1429,7 +1411,8 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
           let globalSeq = 1;
           const tableRows = [];
           for (const zone of facadeZones) {
-            const panelsInZone = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1);
+            const panelsInZone = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1)
+              .sort((a, b) => (a.y - b.y) || (a.x - b.x));  // nummering: per rij links→rechts, dan een rij hoger
             for (const panel of panelsInZone) {
               const paneelId = makeEpcId(zone, globalSeq++);
               const { counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet);
@@ -1562,7 +1545,8 @@ export function Werktekening({ walls, groupSettings, groupName, zetwerk, panelen
             const zVerband = getZoneVerband(zone);
             const zMat = getZoneMat(zone);
             const zoneTpl = getMoldTemplates(zVerband, zMat, moldDims);
-            const panelsInZone = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1);
+            const panelsInZone = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1)
+              .sort((a, b) => (a.y - b.y) || (a.x - b.x));  // nummering: per rij links→rechts, dan een rij hoger
             const panelCount = panelsInZone.length;
             const panelH = panelen?.hoogte ?? 1200;
             const rowsPerPanel = Math.max(1, Math.floor(panelH / zoneTpl.lagenmaat));
