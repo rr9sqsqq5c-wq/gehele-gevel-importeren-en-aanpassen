@@ -301,6 +301,17 @@ export function isKozijnOffset() {
   return readFlag('kozijnOffset', false);
 }
 
+// HALFSTEENS_PANEL_5STREK — vaste paneelbreedte bij een HALFSTEENS verband: knip altijd na 5 strekken
+// (volle stenen) + (stootvoeg − 3 mm speling), gemeten vanaf het groep-nulpunt waar de bond begint. Zo
+// valt elke paneelvoeg in de stootvoeg van de even rij → de KOPPELSTEEN (strip die de voeg overspant)
+// zit gegarandeerd OM EN OM (nooit twee in opeenvolgende rijen), en het naastliggende paneel begint weer
+// met een strek. Vervangt de target-breedte/chooseBreaks-verdeling voor halfsteens; verspringen uit.
+// DEFAULT = true (op klantverzoek: "altijd"). NOODREM: ?halfsteensPanel5Strek=0 (of localStorage
+// '0'/'false') → terug naar de oude stootvoeg-target-verdeling (byte-identiek aan vóór).
+export function isHalfsteensPanel5Strek() {
+  return readFlag('halfsteensPanel5Strek', true);
+}
+
 // OPENING_EDGE_QUARTER — aanvullende metselregel bij een opening-rand. Nu: een splinter tegen de
 // opening wordt geforceerd naar een hele Kop (½ steen). Met de vlag: de minimummaat mag zakken naar
 // ¼ steen wanneer het forceren naar een Kop twee strips BOVEN ELKAAR (voor/na de opening) bijna even

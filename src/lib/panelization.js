@@ -3,7 +3,7 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2 } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek } from './featureFlags.js';
 
 function round2(v) {
   return Math.round(v * 100) / 100;
@@ -304,7 +304,7 @@ export function generateBattenPositions(groupHeight, mat, maxInterval, options =
   return _battenForN(groupHeight, steenH, lint, lagenmaat, N);
 }
 
-export function computeHorizontalLatten({ facadeData, latten, mat, panelen, zetwerk, startLijn, backingType }) {
+export function computeHorizontalLatten({ facadeData, latten, mat, panelen, startLijn, backingType }) {
   const _bt = backingType ?? 'hout';
   if (!facadeData || !latten?.enabled || _bt === 'aluminium' || _bt === 'aluminium_slimfort') return [];
   const richting = latten.richting ?? 'horizontaal';
@@ -328,7 +328,6 @@ export function computeHorizontalLatten({ facadeData, latten, mat, panelen, zetw
   }
   const minH = Math.max(0, Math.round(startLijn ?? 0));
   const startLijnN = Math.round(startLijn ?? 0);
-  const zwExpV = (zetwerk?.enabled) ? Math.max(0, (zetwerk.offsetV ?? 0)) + Math.max(1, zetwerk.breedte ?? 50) : 0;
   const clampY = (y) => Math.min(gH, Math.max(0, y));
   const allRowYsSorted = (facadeData?.rows ?? []).map(r => r.y).sort((a, b) => a - b);
 
@@ -358,8 +357,8 @@ export function computeHorizontalLatten({ facadeData, latten, mat, panelen, zetw
   };
 
   for (const op of groupOpenings) {
-    const belowLatY = Math.round(clampY(op.y - zwExpV)) - latBreedte;
-    const rawAbove = Math.round(clampY(op.y + op.height + zwExpV));
+    const belowLatY = Math.round(clampY(op.y)) - latBreedte;
+    const rawAbove = Math.round(clampY(op.y + op.height));
     const firstAbove = allRowYsSorted.find(ry => ry >= rawAbove - 0.5) ?? rawAbove;
     const aboveLatY = firstAbove;
     if (belowLatY >= 0) {
@@ -370,38 +369,6 @@ export function computeHorizontalLatten({ facadeData, latten, mat, panelen, zetw
       const { x: ax, width: aw } = getOpXW(op, aboveLatY + latBreedte / 2);
       result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: ax, y: aboveLatY, width: aw, height: latBreedte, forced: true, openingForced: true });
     }
-  }
-
-  if (zetwerk?.enabled && groupOpenings.length > 0) {
-    const CLEARANCE = 10;
-    const sideExpand = (zetwerk.offsetH ?? 0) + (zetwerk.breedte ?? 50) + CLEARANCE;
-    const vertExpand = (zetwerk.offsetV ?? 0) + (zetwerk.breedte ?? 50) + (zetwerk.stripOffset ?? 5);
-    const clipped = [];
-    for (const lat of result) {
-      const latMidY = lat.y + lat.height / 2;
-      const relevant = groupOpenings.filter(
-        (op) => latMidY >= op.y - vertExpand && latMidY <= op.y + op.height + vertExpand
-      );
-      if (relevant.length === 0 || lat.openingForced) { clipped.push(lat); continue; }
-      let segments = [{ start: lat.x, end: lat.x + lat.width }];
-      for (const op of relevant) {
-        const exFrom = op.x - sideExpand;
-        const exTo = op.x + op.width + sideExpand;
-        const next = [];
-        for (const seg of segments) {
-          if (seg.end <= exFrom || seg.start >= exTo) { next.push(seg); continue; }
-          if (seg.start < exFrom) next.push({ start: seg.start, end: exFrom });
-          if (seg.end > exTo) next.push({ start: exTo, end: seg.end });
-        }
-        segments = next;
-      }
-      let si = 0;
-      for (const seg of segments) {
-        const w = seg.end - seg.start;
-        if (w > 0.5) clipped.push({ ...lat, id: `${lat.id}-s${si++}`, x: seg.start, width: w });
-      }
-    }
-    return clipped;
   }
 
   return result;
@@ -549,9 +516,24 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material 
 
   const stoot = material?.stoot ?? 10;
   const hasStripAlign = material != null && verband != null && nCols > 1;
+  // HALFSTEENS_PANEL_5STREK: vaste paneelbreedte = 5 strekken + (stootvoeg − 3 mm speling), GROEP-lokaal
+  // (de bond begint op groep-x=0, en zone.x is groep-lokaal). De snijposities k·pitch − 3 vallen zo in de
+  // stootvoeg van de even rij → koppelsteen om-en-om + volgend paneel begint met een strek. Verspringen vervalt.
+  const use5Strek = isHalfsteensPanel5Strek() && verband === 'halfsteens' && material != null
+    && zone.width > (5 * (material.steenL + stoot) - 3 + 0.5);
   let xBreaks;
 
-  if (hasStripAlign) {
+  if (use5Strek) {
+    const pitch = 5 * (material.steenL + stoot);   // 5 strekken + 5 stootvoegen
+    const boardVoeg = 3;                            // speling tbv plaatsing panelen
+    xBreaks = [zoneX1];
+    for (let k = Math.ceil((zoneX1 + boardVoeg) / pitch); k * pitch - boardVoeg < zoneX2 - 0.001; k++) {
+      const e = round2(k * pitch - boardVoeg);
+      if (e > zoneX1 + 0.5 && e < zoneX2 - 0.5) xBreaks.push(e);
+    }
+    xBreaks.push(zoneX2);
+    xBreaks = [...new Set(xBreaks)].sort((a, b) => a - b);
+  } else if (hasStripAlign) {
     const candidates = collectStootvoegBreaks(zone.width, material, verband, stoot);
     const rawBreaks = chooseBreaks(0, zone.width, candidates, targetW, targetW);
     xBreaks = rawBreaks.map(x => round2(zoneX1 + x));
@@ -567,7 +549,7 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material 
   }
 
   let xBreaksOdd = null;
-  if (basePanel.verspringen && nCols > 1) {
+  if (!use5Strek && basePanel.verspringen && nCols > 1) {
     if (hasStripAlign) {
       const candidates = collectStootvoegBreaks(zone.width, material, verband, stoot);
       const halfShift = targetW / 2;
@@ -595,7 +577,7 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material 
   const orientation = fitsLandscape ? 'liggend' : 'staand';
   const panels = buildPanelsFromBreaks(zone, xBreaks, yBreaks, orientation, xBreaksOdd);
 
-  if (hasStripAlign && panels.length > 0) {
+  if ((hasStripAlign || use5Strek) && panels.length > 0) {
     for (const panel of panels) {
       const xb = panel.staggered && xBreaksOdd ? xBreaksOdd : xBreaks;
       const colIdx = xb.findIndex(x => Math.abs(x - panel.x) < 0.01);
