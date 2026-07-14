@@ -34,7 +34,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
   const groupWalls = group.wallIds.map((id) => walls.find((w) => w.expressID === id)).filter(Boolean);
   if (!groupWalls.length) return null;
 
-  let facadeData = buildFullGroupFacadePattern(groupWalls, mat, verband, s.maxHoogte, null);
+  let facadeData = buildFullGroupFacadePattern(groupWalls, mat, verband, s.maxHoogte, null, null, 0, 0, null, null, s.maxHoogteVullen);
   if (!facadeData) return null;
   // FASE 2 — wildverband: de zaaglijst telt het vastgelegde truth-verband (zelfde bron als
   // 2D/3D/IFC/werktekening) i.p.v. de tegelverband-degradatie uit pattern.js. Vlag UIT →

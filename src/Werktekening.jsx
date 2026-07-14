@@ -336,7 +336,7 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
 
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
-    const fd = buildFullGroupFacadePattern(walls, mat, verband, maxH, null, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight);
+    const fd = buildFullGroupFacadePattern(walls, mat, verband, maxH, null, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight, null, null, groupSettings?.maxHoogteVullen);
     // FASE 2 — wildverband-strips uit het vastgelegde tegel-verband (zelfde bron als 2D/3D/IFC).
     // Vlag UIT → exact het bestaande pad (byte-identiek).
     if (fd && verband === 'wildverband' && isWildverbandKoppelstrip()) {
@@ -1326,17 +1326,33 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
                   Genereer paneel tekeningen
                 </button>
               </div>
-            ) : (
+            ) : (() => {
+              // Unieke panelen: identieke panelen (zelfde maat + strippatroon) één keer tonen met aantal te produceren.
+              const enriched = zonePanels.map((panel, idx) => {
+                const { strips, counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet);
+                const stripSig = strips.map((s) => `${s.label}:${Math.round(s.width)}:${Math.round(s.x)}:${Math.round(s.y)}:${s.koppelstrip ? 'K' : ''}`).join('|');
+                const sig = `${Math.round(panel.width)}x${Math.round(panel.height)}|${panel.type ?? ''}|${stripSig}`;
+                return { panel, idx, strips, counts, sig };
+              });
+              const groups = new Map();
+              enriched.forEach((e) => {
+                if (!groups.has(e.sig)) groups.set(e.sig, { firstIdx: e.idx, count: 0 });
+                groups.get(e.sig).count++;
+              });
+              const uniques = enriched.filter((e) => groups.get(e.sig).firstIdx === e.idx);
+              return (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '0 4px' }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a5f' }}>
-                    {zonePanels.length} panelen — {groupName ?? 'Groep'}{selectedZone ? ` · ${selectedZone.label}` : ''}
+                    {uniques.length} unieke {uniques.length === 1 ? 'paneel' : 'panelen'} · {zonePanels.length} totaal — {groupName ?? 'Groep'}{selectedZone ? ` · ${selectedZone.label}` : ''}
                   </span>
                   <button onClick={() => setProductieGenerated(false)} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '3px 8px', cursor: 'pointer' }}>Verberg</button>
                 </div>
                 <div ref={productiePrintRef} style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-                  {zonePanels.map((panel, idx) => {
-                    const { strips, counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet);
+                  {uniques.map((e, uniqueIdx) => {
+                    const { panel, strips, counts } = e;
+                    const prodCount = groups.get(e.sig).count;
+                    const uniqueSeq = uniqueIdx + 1;
                     const color = groupSettings?.color ?? '#a64033';
                     const PAD = 40;
                     const MAX_DRAW_W = 340;
@@ -1348,19 +1364,23 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
                     const sc = drawPW / panel.width;
                     const TABLE_H = Math.min(counts.length * 12 + 28, 120);
                     const CARD_W = drawPW + PAD * 2;
-                    const CARD_H = drawPH + PAD * 2 + TABLE_H + 20;
-                    const ox = PAD, oy = 32;
+                    const CARD_H = drawPH + PAD * 2 + TABLE_H + 36;
+                    const ox = PAD, oy = 48;
                     const px = (x) => ox + x * sc;
                     const py = (y) => oy + (panel.height - y) * sc;
                     return (
-                      <svg key={panel.id ?? idx} width={CARD_W} height={CARD_H}
+                      <svg key={panel.id ?? e.idx} width={CARD_W} height={CARD_H}
                         viewBox={`0 0 ${CARD_W} ${CARD_H}`}
                         style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 4, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', flexShrink: 0 }}
                         xmlns="http://www.w3.org/2000/svg">
-                        <text x={CARD_W / 2} y={14} textAnchor="middle" fontSize={9} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">
-                          P{idx + 1}{selectedZone ? ` · ${selectedZone.label}` : ''} — {mm(panel.width)} × {mm(panel.height)} mm
+                        <rect x={CARD_W / 2 - 66} y={3} width={132} height={17} rx={8.5} fill="#1e3a5f" />
+                        <text x={CARD_W / 2} y={15} textAnchor="middle" fontSize={10.5} fontWeight="bold" fill="#ffffff" fontFamily="Arial, sans-serif">
+                          {prodCount}× te produceren
                         </text>
-                        <text x={CARD_W / 2} y={25} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
+                        <text x={CARD_W / 2} y={31} textAnchor="middle" fontSize={9} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">
+                          P{uniqueSeq}{selectedZone ? ` · ${selectedZone.label}` : ''} — {mm(panel.width)} × {mm(panel.height)} mm
+                        </text>
+                        <text x={CARD_W / 2} y={41} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
                           {panel.type === 'start' ? 'Start element' : panel.type === 'eind' ? 'Eind element' : panel.type === 'midden' ? 'Volg element' : panel.type === 'volledig' ? 'Volledig element' : verband} · {strips.length} strips
                         </text>
                         <rect x={ox} y={oy} width={drawPW} height={drawPH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1} />
@@ -1402,7 +1422,8 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
                   })}
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
         )}
 

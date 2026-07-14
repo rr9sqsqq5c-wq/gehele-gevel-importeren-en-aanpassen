@@ -3348,9 +3348,9 @@ export default function App() {
       // val terug op het oude pad i.p.v. niets te tonen.
       const useBestFit = isBestFitGroups() && group.manual === true;
       let facadeData = (useBestFit
-        ? buildBestFitFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, undefined, kozOffsetParam, edgeStaggerParam)
+        ? buildBestFitFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, undefined, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen)
         : null)
-        ?? buildFullGroupFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, kozOffsetParam, edgeStaggerParam);
+        ?? buildFullGroupFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen);
       // FASE 2 — wildverband: vervang de strip-rijen door het vastgelegde tegel-verband
       // (buildTruthRows). Achter de vlag, default UIT → exact het bestaande pad. Voedt 3D
       // (batches uit facadeData.rows) én 2D (dezelfde facadeData) uit één bron.
@@ -4516,7 +4516,7 @@ export default function App() {
       const ctrims = endExtensionsToTrims(s.endExtensions);
       let facadeData = null;
       try {
-        facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrims.extendLeft, ctrims.extendRight, kozOffsetParam, edgeStaggerParam);
+        facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrims.extendLeft, ctrims.extendRight, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen);
       } catch { facadeData = null; }
       const gw = facadeData?.groupWidth ?? 0;
       const gh = facadeData?.groupHeight ?? 0;
@@ -4945,7 +4945,7 @@ export default function App() {
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const mat = s.material ?? DEFAULT_MATERIAL;
       const verband = s.verband ?? DEFAULT_VERBAND;
-      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, null, s.startLijn, 0, 0, kozOffsetParam, edgeStaggerParam);
+      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, null, s.startLijn, 0, 0, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen);
       if (!facadeDataRaw) continue;
 
       let facadeData = facadeDataRaw;
@@ -5152,7 +5152,7 @@ export default function App() {
       // best-fit-data onverhoopt → terugval op buildFullGroupFacadePattern.
       const useBestFitExport = isBestFitGroups() && group.manual === true;
       const facadeDataRaw = (useBestFitExport ? (allPatterns[group.id]?.facadeData ?? null) : null)
-        ?? buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsExport.extendLeft, ctrimsExport.extendRight, kozOffsetParam, edgeStaggerParam);
+        ?? buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsExport.extendLeft, ctrimsExport.extendRight, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen);
       const _refWall = facadeDataRaw ? null : ([...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0] ?? null);
       const refWallOrigin = facadeDataRaw?.refWallOrigin ?? _refWall?.wallOrigin ?? null;
       const _axisW = refWallOrigin ? withOrigin.filter((w) => w.wallOrigin.lengthAxis === refWallOrigin.lengthAxis) : withOrigin;

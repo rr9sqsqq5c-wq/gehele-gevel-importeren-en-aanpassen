@@ -334,7 +334,7 @@ function inflateOpeningPerSide(op, off) {
   return { ...op, x, y, width, height, polyPts };
 }
 
-export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, kozijnOffset = null, edgeStagger = null) {
+export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, kozijnOffset = null, edgeStagger = null, fillToMax = false) {
   const { steenL, steenH, lint, stoot } = material;
   const lagenmaat = getLagenmaat(material, verband);
   const rowH = verband === 'staand_tegelverband' ? material.steenL : steenH;
@@ -354,7 +354,10 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
 
   const groupWidth = round2(groupMaxX - groupMinX);
   const groupHeight = round2(groupMaxH - groupMinH);
-  const effectiveHeight = maxHoogte != null && maxHoogte > 0 ? Math.min(groupHeight, maxHoogte) : groupHeight;
+  // FILL_TO_MAX (per-groep "optrekken naar maxlijn"): de bekleding loopt DOOR tot maxHoogte, ook
+  // boven de wandtop (geen Math.min). Zonder de optie: alleen naar beneden knippen (byte-identiek).
+  const _cap = maxHoogte != null && maxHoogte > 0 ? maxHoogte : groupHeight;
+  const effectiveHeight = fillToMax ? _cap : Math.min(groupHeight, _cap);
   const effectiveMinH = startLijn ?? 0;
   const patternOffset = startLijn != null
     ? ((startLijn % lagenmaat) + lagenmaat) % lagenmaat

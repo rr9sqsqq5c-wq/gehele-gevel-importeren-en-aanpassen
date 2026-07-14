@@ -213,11 +213,15 @@ function toVirtualWall(member, plane) {
 
 // CONTOUR-MASKER: knip elke rij tot de unie van element-rechthoeken (relatief t.o.v.
 // groupMinX/groupMinH); zo blijft alles buiten een element ONbekleed.
-function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft = 0, extendRight = 0, flushEdges = false) {
+function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft = 0, extendRight = 0, flushEdges = false, fillTop = 0) {
   const rects = vwalls.map(w => ({
     t0: (w.wallOrigin.lengthStart) - groupMinX, t1: (w.wallOrigin.lengthEnd) - groupMinX,
     u0: (w.wallOrigin.heightStart) - groupMinH, u1: (w.wallOrigin.heightEnd) - groupMinH,
   }));
+  // FILL_TO_MAX ("optrekken naar maxlijn"): rek de BOVENkant van elke wand-rechthoek op tot fillTop
+  // (= maxHoogte, groep-lokaal) → de bekleding vult door tot de maxlijn óók boven de wandtop.
+  // fillTop=0 (default) → geen wijziging (byte-identiek).
+  if (fillTop > 0) for (const r of rects) r.u1 = Math.max(r.u1, fillTop);
   // FASE 1 (keepEndExtension): de handmatige einduiteinde-extensie mag de GLOBALE
   // buitenrand van de groep voorbij de gevelrand laten doorlopen (stompe hoek). We rekken
   // UITSLUITEND de buitenste a/b op die samenvallen met de groep-extremen (gT0/gT1) —
@@ -275,7 +279,7 @@ function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft
  * vlag. Zelfde returnvorm (rows/groupMinX/.../refWallOrigin) zodat de bestaande
  * batch-/render-pijplijn ongewijzigd werkt — plus `_bestFit` diagnostiek.
  */
-export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, modelUpAxis = undefined, kozijnOffset = null, edgeStagger = null) {
+export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, modelUpAxis = undefined, kozijnOffset = null, edgeStagger = null, fillToMax = false) {
   const members = (walls ?? []).filter(w => w.wallOrigin);
   if (!members.length) return null;
   // Model-up-as uit de projectcontext (robuust, dezelfde lijn als detectModelUpAxis).
@@ -284,13 +288,13 @@ export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, _
   const plane = fitFacadePlane(members, upAxis);
   if (!plane) return null;
   const vwalls = members.map(m => toVirtualWall(m, plane));
-  const fd = buildFullGroupFacadePattern(vwalls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft, extendRight, kozijnOffset, edgeStagger);
+  const fd = buildFullGroupFacadePattern(vwalls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft, extendRight, kozijnOffset, edgeStagger, fillToMax);
   if (!fd) return null;
   const rowH = verband === 'staand_tegelverband' ? (material.steenL ?? material.steenH ?? 50) : (material.steenH ?? 50);
   // FASE 1: vlag UIT → extend=0 doorgegeven → maskRowsToContours byte-identiek (knipt op
   // footprint). Vlag AAN → de globale buitenrand behoudt de handmatige einduiteinde-extensie.
   const _keepEndExt = isKeepEndExtension();
-  fd.rows = maskRowsToContours(fd.rows, vwalls, fd.groupMinX, fd.groupMinH, rowH, _keepEndExt ? extendLeft : 0, _keepEndExt ? extendRight : 0, isGroupStartWidest());
+  fd.rows = maskRowsToContours(fd.rows, vwalls, fd.groupMinX, fd.groupMinH, rowH, _keepEndExt ? extendLeft : 0, _keepEndExt ? extendRight : 0, isGroupStartWidest(), fillToMax ? fd.groupHeight : 0);
   fd._bestFit = {
     uAxis: plane.uAxis, tAxis: plane.tAxis, nAxis: plane.nAxis, outsideDir: plane.outsideDir,
     offsetMm: plane.offset, residualMm: plane.residualMm, coFacingPct: Math.round(plane.coFacingFrac * 100),
