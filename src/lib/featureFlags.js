@@ -395,6 +395,15 @@ export function isVentilatieZone() {
   return readFlag('ventilatieZone', false);
 }
 
+// PENANT_TWEE_RIJEN — voorvlak-verband van een penant (buildCenteredFacePattern, alléén halfsteens):
+// de VERSPRINGENDE rij (oneven) wordt "hele strek tegen beide randen + symmetrisch middenstuk" i.p.v.
+// de huidige halve-steen-verschuiving. De GECENTREERDE rij (even, strek-hart-op-midden) blijft gelijk.
+// Voorbeeld 563 / strek 221 / voeg 6: even = 165·221·165, oneven = 221·109·221.
+// DEFAULT = false → exact het huidige gedrag (byte-identiek). Aanzetten: ?penantTweeRijen=1.
+export function isPenantTweeRijen() {
+  return readFlag('penantTweeRijen', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -410,6 +419,7 @@ export const FLAG_REGISTRY = [
   { key: 'corner85',             label: 'Hoek-detail 85°',           note: '' },
   { key: 'groothuisWildverband', label: 'Groothuis wildverband 1',   note: 'Het oudere groothuis-verband (versie 2 staat standaard aan).' },
   { key: 'malRecept',            label: 'Mal recept CSV',            note: 'CSV-export per paneel — bekende telbug (defect-containment).', advanced: true },
+  { key: 'penantTweeRijen',      label: 'Penant — strek aan de randen (oneven rij)', note: 'Voorvlak van een penant (halfsteens): de verspringende rij begint/eindigt met een hele strek + symmetrisch middenstuk, i.p.v. de halve-steen-verschuiving. Bv. 563 → 221·109·221.' },
   { key: 'newOpenings',          label: 'Nieuwe opening-afleiding',  note: 'Experimenteel alternatief parse-pad; kan bestaande resultaten veranderen.', reimport: true, advanced: true },
   { key: 'openingUpAxisFix',     label: 'Opening up-as fix',         note: 'Experimenteel.', reimport: true, advanced: true },
   { key: 'selfContainedProjects',label: 'Self-contained projecten',  note: 'Experimenteel.', advanced: true },

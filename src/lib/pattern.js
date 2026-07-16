@@ -1,5 +1,5 @@
 import { polyXRangesAtY } from './geometry.js';
-import { isDropOversizedOpenings, isVentilatieZone } from './featureFlags.js';
+import { isDropOversizedOpenings, isVentilatieZone, isPenantTweeRijen } from './featureFlags.js';
 
 // Een opening mag z'n eigen wand niet (ver) boven uitsteken. Tolerantie vangt rounding/
 // kleine modelafwijkingen; een echte opening past binnen z'n wand, een corrupte (venster-L
@@ -731,32 +731,74 @@ export function buildCenteredFacePattern(width, height, material, verband, rowOf
   const center = width / 2;
   const rows = [];
 
+  const penantTweeRijen = isPenantTweeRijen();
   for (let r = 0; r < lagen; r++) {
     const rowY = round2(r * lagenmaat);
     const isOdd = (r + rowOffset) % 2 !== 0;
-    const shift = verband === 'halfsteens' && isOdd ? unit / 2 : 0;
-    const refStart = round2(center - steenL / 2 + shift);
 
-    let x = refStart;
-    while (x - unit >= -unit + 0.001) x = round2(x - unit);
+    let pieces;
+    if (penantTweeRijen && verband === 'halfsteens' && isOdd) {
+      // PENANT_TWEE_RIJEN (vlag): de verspringende rij = hele strek tegen beide randen +
+      // symmetrisch middenstuk, i.p.v. de halve-steen-verschuiving in de else-tak hieronder.
+      pieces = buildEdgeStrekRow(width, center, steenL, unit, kop);
+    } else {
+      // Byte-identiek origineel: strek gecentreerd, halfsteens-verschuiving op oneven rijen.
+      const shift = verband === 'halfsteens' && isOdd ? unit / 2 : 0;
+      const refStart = round2(center - steenL / 2 + shift);
 
-    const pieces = [];
-    while (x < width - 0.001) {
-      const realStart = Math.max(0, round2(x));
-      const realEnd = Math.min(width, round2(x + steenL));
-      const len = round2(realEnd - realStart);
-      if (len > 0.001) {
-        let label = 'Strek';
-        if (len < steenL - 0.001) {
-          label = Math.abs(len - kop) < 1 ? 'Kop' : 'Rest';
+      let x = refStart;
+      while (x - unit >= -unit + 0.001) x = round2(x - unit);
+
+      pieces = [];
+      while (x < width - 0.001) {
+        const realStart = Math.max(0, round2(x));
+        const realEnd = Math.min(width, round2(x + steenL));
+        const len = round2(realEnd - realStart);
+        if (len > 0.001) {
+          let label = 'Strek';
+          if (len < steenL - 0.001) {
+            label = Math.abs(len - kop) < 1 ? 'Kop' : 'Rest';
+          }
+          pieces.push({ start: realStart, length: len, label });
         }
-        pieces.push({ start: realStart, length: len, label });
+        x = round2(x + unit);
       }
-      x = round2(x + unit);
     }
     if (pieces.length) rows.push({ y: rowY, pieces });
   }
   return rows;
+}
+
+// PENANT_TWEE_RIJEN — bouwt de VERSPRINGENDE rij van het penant-voorvlak (halfsteens): een HELE
+// strek tegen de linker- én rechterrand, en het middengat symmetrisch vanuit het hart gevuld
+// (streken vanuit het midden; gat-randen afgeknipt). Te smal voor twee streken (< 2·strek + voeg)
+// → terugval op de gecentreerde opbouw. Voorbeeld 563 / strek 221 / voeg 6 → 221 · 109 · 221.
+function buildEdgeStrekRow(width, center, steenL, unit, kop) {
+  const stoot = round2(unit - steenL);
+  const labelOf = (len) => len < steenL - 0.001 ? (Math.abs(len - kop) < 1 ? 'Kop' : 'Rest') : 'Strek';
+  const fillCentered = (loBound, hiBound, out) => {
+    let x = round2(center - steenL / 2);
+    while (x > loBound - unit + 0.001) x = round2(x - unit);
+    while (x < hiBound - 0.001) {
+      const rs = Math.max(loBound, round2(x)), re = Math.min(hiBound, round2(x + steenL));
+      const len = round2(re - rs);
+      if (len > 0.001) out.push({ start: rs, length: len, label: labelOf(len) });
+      x = round2(x + unit);
+    }
+  };
+
+  // Te smal voor twee hele streken naast elkaar → gecentreerde opbouw (zoals de even rij).
+  if (width < 2 * steenL + stoot - 0.001) {
+    const pieces = [];
+    fillCentered(0, width, pieces);
+    return pieces;
+  }
+
+  // Hele strek tegen beide randen + symmetrisch gevuld middengat.
+  const pieces = [{ start: 0, length: steenL, label: 'Strek' }];
+  fillCentered(round2(steenL + stoot), round2(width - steenL - stoot), pieces);
+  pieces.push({ start: round2(width - steenL), length: steenL, label: 'Strek' });
+  return pieces.sort((a, b) => a.start - b.start);
 }
 
 export function buildSymmetricFacePattern(width, height, material, verband, rowOffset = 0) {
