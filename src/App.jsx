@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, parseIfcSparingElements, scanIfcSparingTypes, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isGevelHandedness, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -13,7 +13,7 @@ import handleidingMd from '../HANDLEIDING.md?raw';
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, clearParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState, saveSourceIfc, loadSourceIfc } from './lib/storage.js';
 import { detectAdjacencies, detectAdjacenciesAsync, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
-import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
+import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern, facadeNeedsMirror } from './lib/pattern.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateCombinedMoldPrintHTML, getMoldTemplates, buildWildverbandPanelGrid, moldIdLabel, cutVentHolesFromPanels } from './lib/panelization.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
@@ -6804,6 +6804,13 @@ export default function App() {
                     regionBatches={(() => { const _s = getSettings(activeGroup.id); if (!isFeatureZones() || hasPenants(_s)) return null; const _vent = isVentilatieZone() ? ventilationZonesFor(allPatterns[activeGroup.id]?.facadeData, _s, _s.verband ?? DEFAULT_VERBAND, _s.material ?? DEFAULT_MATERIAL) : []; return (getActiveStripZones(_s).length + _vent.length) > 0 ? (allPatterns[activeGroup.id]?.batches ?? null) : null; })()}
                     outsideDirFlip={(() => {
                       const _rawFlip = !!getSettings(activeGroup.id).outsideDirFlip;
+                      // GEVEL_HANDEDNESS (vlag): spiegel 2D op de auto-handedness van het vlak (van buiten
+                      // links→rechts) ⊕ de handmatige flip. Neemt voorrang op de outsideDirSync-mirror.
+                      if (isGevelHandedness()) {
+                        const _wo = allPatterns[activeGroup.id]?.facadeData?.refWallOrigin;
+                        const _mir = _wo ? facadeNeedsMirror(_wo.heightAxis, _wo.thicknessAxis, _wo.lengthAxis, _wo.resolvedOutside?.outsideDir) : false;
+                        return _rawFlip !== _mir;
+                      }
                       if (!isOutsideDirSync()) return _rawFlip;
                       // OUTSIDE_DIR_SYNC (gat A): spiegel 2D op de EFFECTIEVE buitenzijde die 3D/export
                       // gebruiken (resolvedOutside.outsideDir = incl. "Buitenzijde selecteren"), met de
@@ -6868,7 +6875,14 @@ export default function App() {
                     penantFaceData={penantFaceData}
                     zoneSettings={s.zoneSettings ?? []}
                     epcSettings={{ projectNummer: s.epcProjectNummer ?? '00000', level: s.epcLevel ?? 0 }}
-                    outsideDirFlip={!!s.outsideDirFlip}
+                    outsideDirFlip={(() => {
+                      const _f = !!s.outsideDirFlip;
+                      // GEVEL_HANDEDNESS: werktekening spiegelt mee op de auto-handedness ⊕ handmatige flip.
+                      if (!isGevelHandedness()) return _f;
+                      const _wo = allPatterns[activeGroup.id]?.facadeData?.refWallOrigin;
+                      const _mir = _wo ? facadeNeedsMirror(_wo.heightAxis, _wo.thicknessAxis, _wo.lengthAxis, _wo.resolvedOutside?.outsideDir) : false;
+                      return _f !== _mir;
+                    })()}
                     cornerTrimLeft={ctrimsW.trimLeft}
                     cornerTrimRight={ctrimsW.trimRight}
                     cornerExtendLeft={ctrimsW.extendLeft}

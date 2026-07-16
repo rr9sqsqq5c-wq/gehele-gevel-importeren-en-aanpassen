@@ -1,5 +1,18 @@
 import { polyXRangesAtY } from './geometry.js';
-import { isDropOversizedOpenings, isVentilatieZone, isPenantTweeRijen } from './featureFlags.js';
+import { isDropOversizedOpenings, isVentilatieZone, isPenantTweeRijen, isGevelHandedness } from './featureFlags.js';
+
+// GEVEL_HANDEDNESS — moet de horizontale richting van dit vlak gespiegeld worden zodat het van BUITEN
+// links→rechts leest? De lengte-as (t) is de +wereld-as; van buiten gezien loopt +t links→rechts alleen
+// als outsideDir·ε(up,normaal,lengte) < 0. ε = pariteit van de as-permutatie t.o.v. (x,y,z): +1 voor een
+// cyclische lus (x→y→z), −1 anders. → mirror nodig wanneer outsideDir·ε > 0. Geen outsideDir → geen mirror.
+const _AX_IDX = { x: 0, y: 1, z: 2 };
+export function facadeNeedsMirror(upAxis, normalAxis, lengthAxis, outsideDir) {
+  if (outsideDir == null) return false;
+  const a = _AX_IDX[upAxis], b = _AX_IDX[normalAxis], c = _AX_IDX[lengthAxis];
+  if (a == null || b == null || c == null) return false;
+  const eps = ((a - b) * (b - c) * (c - a)) / 2; // +1 (even) / −1 (oneven) permutatie van (x,y,z)
+  return (outsideDir * eps) > 0;
+}
 
 // Een opening mag z'n eigen wand niet (ver) boven uitsteken. Tolerantie vangt rounding/
 // kleine modelafwijkingen; een echte opening past binnen z'n wand, een corrupte (venster-L
@@ -345,6 +358,10 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
   const refLengthAxis = refWall.wallOrigin.lengthAxis;
   const refHeightAxis = refWall.wallOrigin.heightAxis;
+  // GEVEL_HANDEDNESS (vlag): moet de bond horizontaal gespiegeld worden zodat het vlak van buiten
+  // links→rechts leest? Werkt ook voor het best-fit-pad (de virtuele wandorigin draagt dezelfde
+  // assen + resolvedOutside.outsideDir). Vlag UIT → false → byte-identiek.
+  const mirrorBond = isGevelHandedness() && facadeNeedsMirror(refHeightAxis, refWall.wallOrigin.thicknessAxis, refLengthAxis, refWall.wallOrigin.resolvedOutside?.outsideDir);
   const axisWalls = withOrigin.filter((w) => w.wallOrigin.lengthAxis === refLengthAxis);
 
   const groupMinX = Math.min(...axisWalls.map((w) => w.wallOrigin.lengthStart ?? 0));
@@ -517,9 +534,12 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   for (let r = rStart; r < rEnd; r++) {
     const rowY = round2(patternOffset + r * lagenmaat);
     const builtPieces = buildRowPiecesForWidth(effectiveWidth, material, verband, r, 0);
-    const rawPieces = extendLeft > 0
+    let rawPieces = extendLeft > 0
       ? builtPieces.map((p) => ({ ...p, start: round2(p.start - extendLeft) }))
       : builtPieces;
+    // GEVEL_HANDEDNESS: spiegel de rij-bond in de groep-breedte (hele-steen-start naar de buiten-
+    // linkerkant = rechts-verankerd in +t). Openingen blijven op echte t → de clip hieronder ongewijzigd.
+    if (mirrorBond) rawPieces = rawPieces.map((p) => ({ ...p, start: round2(groupWidth - p.start - p.length) }));
     const clipped = [];
     for (const piece of rawPieces) {
       const parts = splitAroundOpenings(piece, rowY);

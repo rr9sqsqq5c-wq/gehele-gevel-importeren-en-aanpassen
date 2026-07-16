@@ -404,6 +404,16 @@ export function isPenantTweeRijen() {
   return readFlag('penantTweeRijen', false);
 }
 
+// GEVEL_HANDEDNESS — één waarheid voor de HORIZONTALE richting (links↔rechts) van een gevelvlak.
+// De lengte-as (tAxis) is altijd de +wereld-as; of die van BUITEN gezien links→rechts of rechts→links
+// loopt hangt af van outsideDir en de as-oriëntatie: mirror nodig als outsideDir·ε(up,normaal,lengte) > 0.
+// Vlag AAN → (1) de steenstrip-bond wordt rechts-verankerd (hele-steen-start aan de buiten-linkerkant),
+// zodat 3D + IFC-export van buiten links→rechts lezen; (2) 2D/werktekening spiegelen mee. Kozijnen/
+// panelen blijven op hun echte positie. DEFAULT = false → byte-identiek. Aanzetten: ?gevelHandedness=1.
+export function isGevelHandedness() {
+  return readFlag('gevelHandedness', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -420,6 +430,7 @@ export const FLAG_REGISTRY = [
   { key: 'groothuisWildverband', label: 'Groothuis wildverband 1',   note: 'Het oudere groothuis-verband (versie 2 staat standaard aan).' },
   { key: 'malRecept',            label: 'Mal recept CSV',            note: 'CSV-export per paneel — bekende telbug (defect-containment).', advanced: true },
   { key: 'penantTweeRijen',      label: 'Penant — strek aan de randen (oneven rij)', note: 'Voorvlak van een penant (halfsteens): de verspringende rij begint/eindigt met een hele strek + symmetrisch middenstuk, i.p.v. de halve-steen-verschuiving. Bv. 563 → 221·109·221.' },
+  { key: 'gevelHandedness',      label: 'Gevel-handedness (links↔rechts)', note: 'Spiegelt de steenstrip-bond én 2D/werktekening zó dat elk gevelvlak van buiten gezien links→rechts leest (3D/2D/export één waarheid). Kozijnen blijven op hun plek.' },
   { key: 'newOpenings',          label: 'Nieuwe opening-afleiding',  note: 'Experimenteel alternatief parse-pad; kan bestaande resultaten veranderen.', reimport: true, advanced: true },
   { key: 'openingUpAxisFix',     label: 'Opening up-as fix',         note: 'Experimenteel.', reimport: true, advanced: true },
   { key: 'selfContainedProjects',label: 'Self-contained projecten',  note: 'Experimenteel.', advanced: true },
