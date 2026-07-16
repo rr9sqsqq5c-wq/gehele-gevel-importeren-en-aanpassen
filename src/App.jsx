@@ -4097,7 +4097,7 @@ export default function App() {
       const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
       const CACHE_SCHEMA_V = 16; // v16: ventilatieZone-retag (kleine sparing boven raam → 'ventilatie')
       const pathTag = isNewOpeningDerivation() ? 'newOpenings' : 'legacy';
-      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}|${pathTag}|koz${isShowKozijnen() ? 1 : 0}|okoz${isOpeningFromKozijn() ? 1 : 0}|vent${isVentilatieZone() ? 1 : 0}`;
+      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}|${pathTag}|koz${isShowKozijnen() ? 1 : 0}|okoz${isOpeningFromKozijn() ? 1 : 0}|vent${isVentilatieZone() ? 1 : 0}|gh${isGevelHandedness() ? 1 : 0}`;
 
       addLog(filter ? `Filter: ${[...filter].join(', ')}` : 'Alle wandtypen worden geladen');
       addLog('Cache controleren…');

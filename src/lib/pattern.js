@@ -2,16 +2,17 @@ import { polyXRangesAtY } from './geometry.js';
 import { isDropOversizedOpenings, isVentilatieZone, isPenantTweeRijen, isGevelHandedness } from './featureFlags.js';
 
 // GEVEL_HANDEDNESS — moet de horizontale richting van dit vlak gespiegeld worden zodat het van BUITEN
-// links→rechts leest? De lengte-as (t) is de +wereld-as; van buiten gezien loopt +t links→rechts alleen
-// als outsideDir·ε(up,normaal,lengte) < 0. ε = pariteit van de as-permutatie t.o.v. (x,y,z): +1 voor een
-// cyclische lus (x→y→z), −1 anders. → mirror nodig wanneer outsideDir·ε > 0. Geen outsideDir → geen mirror.
+// links→rechts leest? Kijker-rechts = up × buitennormaal = outsideDir·ε(up,normaal,lengte)·ê_lengte.
+// +t (bond-richting) valt samen met kijker-rechts als outsideDir·ε > 0 → leest al links→rechts (geen
+// mirror). outsideDir·ε < 0 → +t = kijker-links → bond leest rechts→links → MIRROR. ε = pariteit van de
+// as-permutatie t.o.v. (x,y,z): +1 cyclisch (x→y→z), −1 anders. Geen outsideDir → geen mirror.
 const _AX_IDX = { x: 0, y: 1, z: 2 };
 export function facadeNeedsMirror(upAxis, normalAxis, lengthAxis, outsideDir) {
   if (outsideDir == null) return false;
   const a = _AX_IDX[upAxis], b = _AX_IDX[normalAxis], c = _AX_IDX[lengthAxis];
   if (a == null || b == null || c == null) return false;
   const eps = ((a - b) * (b - c) * (c - a)) / 2; // +1 (even) / −1 (oneven) permutatie van (x,y,z)
-  return (outsideDir * eps) > 0;
+  return (outsideDir * eps) < 0;
 }
 
 // Een opening mag z'n eigen wand niet (ver) boven uitsteken. Tolerantie vangt rounding/

@@ -2,7 +2,7 @@ import { getOpeningPoly } from './pattern.js';
 import { STEENSTRIP_CATALOG } from './battens.js';
 import { SLIMFORT_DEFAULTS, getSlimFortDepths } from './slimfort.js';
 import { registerIfcContext, getProjectInfo, getLastConfidentUpAxis, setLastConfidentUpAxis, setGeometryDerivedRenderOrigin, getWorldAnchor } from './projectCoordinates.js';
-import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly, isDropOversizedOpenings, isOpeningFromKozijn, isShowKozijnen, isOutsideDirSync, isVentilatieZone } from './featureFlags.js';
+import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly, isDropOversizedOpenings, isOpeningFromKozijn, isShowKozijnen, isOutsideDirSync, isVentilatieZone, isGevelHandedness } from './featureFlags.js';
 
 // VENTILATIE_ZONE — detectiedrempels voor een ventilatie-opening (klein ongevuld gat bóven een raam).
 const VENT_MAX_W = 900;    // mm — breder telt niet als ventilatie
@@ -358,6 +358,45 @@ function _validateOutsideWithOpenings(wo, openings) {
   const note = `${typeStr} | ${biasStr} ${matchStr}`.trim();
 
   return { openingsCount: openings.length, scoredCount: scored, sideAScore: Math.round(sideAScore * 10) / 10, sideBScore: Math.round(sideBScore * 10) / 10, biasedSide, matches, inconsistent, confidenceBoost, note };
+}
+
+// KLIKLIJST-BUITENRICHTING (harde waarheid, gevelHandedness) — de dunste (~30 mm) kozijn-sub-geometrie
+// ligt aan het BUITENSTE dikte-vlak. Geeft +1 (buiten = +thicknessAxis) of −1, of null (geen dun
+// buitenprofiel / < 2 sub-geoms). Geometrie-gebaseerd → robuuster dan de bbox-heuristiek. Zie geheugen
+// 'kliklijst-offset-en-buitenzijde'. thAxis = de wand-normaal (thicknessAxis).
+function _windowKliklijstOutsideDir(api, modelID, winID, thAxis) {
+  let mesh; try { mesh = api.GetFlatMesh(modelID, winID); } catch { return null; }
+  if (!mesh || mesh.geometries.size() === 0) return null;
+  const ai = thAxis === 'x' ? 0 : thAxis === 'y' ? 1 : 2;
+  const subs = [];
+  let tMin = Infinity, tMax = -Infinity;
+  for (let gi = 0; gi < mesh.geometries.size(); gi++) {
+    const pl = mesh.geometries.get(gi); let g;
+    let smin = Infinity, smax = -Infinity;
+    try {
+      g = api.GetGeometry(modelID, pl.geometryExpressID);
+      const v = api.GetVertexArray(g.GetVertexData(), g.GetVertexDataSize());
+      const m = pl.flatTransformation;
+      for (let vi = 0; vi < v.length; vi += 6) {
+        const x = v[vi], y = v[vi + 1], z = v[vi + 2];
+        const wc = ai === 0 ? (m[0] * x + m[4] * y + m[8] * z + m[12])
+          : ai === 1 ? (m[1] * x + m[5] * y + m[9] * z + m[13])
+          : (m[2] * x + m[6] * y + m[10] * z + m[14]);
+        if (wc < smin) smin = wc;
+        if (wc > smax) smax = wc;
+      }
+    } catch { } finally { g?.delete(); }
+    if (smin === Infinity) continue;
+    subs.push({ smin, smax });
+    if (smin < tMin) tMin = smin;
+    if (smax > tMax) tMax = smax;
+  }
+  if (subs.length < 2 || tMax - tMin < 1e-6) return null;
+  let thin = subs[0];
+  for (const s of subs) if ((s.smax - s.smin) < (thin.smax - thin.smin)) thin = s;
+  // ligt de dunste sub-geom (kliklijst) dichter bij het MAX- of MIN-dikte-vlak?
+  const faceMax = (tMax - thin.smax) <= (thin.smin - tMin);
+  return faceMax ? 1 : -1;
 }
 
 export function resolveOutsideDirections(walls) {
@@ -1836,6 +1875,34 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
       }
 
     resolveOutsideDirections(walls);
+
+    // GEVEL_HANDEDNESS: overschrijf outsideDir met de KLIKLIJST-buitenrichting (harde, geometrie-
+    // gebaseerde waarheid) waar een raam met een dun buitenprofiel bekend is. Fixt de onbetrouwbare
+    // bbox-heuristiek (bv. 272.5-langsgevel: heuristiek +z conf 0.2, kliklijst −z). Vlag UIT → geen
+    // override (byte-identiek); de vlag zit in de cache-key (re-import bij toggle).
+    if (isGevelHandedness()) {
+      let _khCount = 0;
+      for (const wall of walls) {
+        const wo = wall.wallOrigin;
+        if (!wo || !wo.thicknessAxis) continue;
+        const voids = wallVoids[+wall.expressID] ?? [];
+        let vote = 0, n = 0;
+        for (const oID of voids) {
+          if (openingType[oID] !== 'raam') continue;
+          const winID = fillerExpressID[oID];
+          if (!winID) continue;
+          const d = _windowKliklijstOutsideDir(api, modelID, winID, wo.thicknessAxis);
+          if (d != null) { vote += d; n++; }
+        }
+        if (n > 0 && vote !== 0) {
+          const dir = vote > 0 ? 1 : -1;
+          wo.resolvedOutside = { ...(wo.resolvedOutside ?? {}), outsideDir: dir, outsidePos: dir < 0 ? wo.thicknessStart : wo.thicknessEnd, source: 'kliklijst', confidence: 0.97, ambiguous: false, reason: `kliklijst-buitenvlak (${n} raam)` };
+          wo.isExterior = true;
+          _khCount++;
+        }
+      }
+      console.log(`[GEVEL_HANDEDNESS] kliklijst-outsideDir override op ${_khCount} wand(en)`);
+    }
 
     {
       const noVoidWalls   = walls.filter(w => w.openings.length === 0);
