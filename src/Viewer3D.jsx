@@ -4,7 +4,7 @@ import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { buildProjectMatrix, getTrueNorthAngle, getProjectInfo } from './lib/projectCoordinates.js';
 import { generateSlimFortGrid, SLIMFORT_DEFAULTS, getSlimFortDepths, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
-import { isStableGroupCamera, isShowKozijnen } from './lib/featureFlags.js';
+import { isStableGroupCamera, isShowKozijnen, isGevelHandedness } from './lib/featureFlags.js';
 
 // Wereld-up (three Y-up). STABLE_GROUP_CAMERA #1 lerpt camera.up hiernaartoe bij groep-focus
 // zodat de frontale blik niet gekanteld blijft van eerder orbiten.
@@ -1384,7 +1384,15 @@ function FocusGroupCamera({ activeGroupId, groups, walls, groupSettings, project
     const ifcDirVec = { x: 0, y: 0, z: 0 };
     ifcDirVec[rwo.thicknessAxis] = outsideDir * 1000;
     const [ldx, ldy, ldz] = ifcToThree(ifcDirVec.x, ifcDirVec.y, ifcDirVec.z);
-    const [dx, dy, dz] = applyMatrix(projectMatrix, ldx, ldy, ldz);
+    let [dx, dy, dz] = applyMatrix(projectMatrix, ldx, ldy, ldz);
+    if (isGevelHandedness()) {
+      // CAMERA-FIX: projectMatrix bevat een TRANSLATIE (render-origin, bij georef ~111 km). Op een
+      // RICHTING mag alleen de rotatie werken — anders lekt die offset in de camera-richting en wijst
+      // die voor elk vlak ~dezelfde kant op (i.p.v. langs de buitennormaal). Trek het getransformeerde
+      // nulpunt eraf → zuivere rotatie. Vlag UIT → byte-identiek (oude, foutieve richting).
+      const [opx, opy, opz] = applyMatrix(projectMatrix, 0, 0, 0);
+      dx -= opx; dy -= opy; dz -= opz;
+    }
     const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
     const d = span * 1.6;
     targetRef.current = {
