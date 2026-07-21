@@ -2330,7 +2330,9 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
     const groupToWorld = (gx, outDepth, gz) => {
       if (!rwo) return [gx, outDepth, gz];
       const p = { x: 0, y: 0, z: 0 };
-      p[rwo.lengthAxis]    = groupMinX + gx;
+      // GEVEL_HANDEDNESS u-frame: gx is een u-coördinaat (u=0 = buiten-links). Map naar wereld net als
+      // 3D (mapLen): gespiegeld vlak → buiten-links ligt aan de wereld-max-kant. Vlag UIT → mirrored=false.
+      p[rwo.lengthAxis]    = groupMinX + (group.facadeData?.mirrored ? ((group.facadeData?.groupWidth ?? 0) - gx) : gx);
       p[rwo.thicknessAxis] = grpOutPos + grpOutDir * outDepth;
       p[rwo.heightAxis]    = groupMinH + gz;
       return [p.x, p.y, p.z];
