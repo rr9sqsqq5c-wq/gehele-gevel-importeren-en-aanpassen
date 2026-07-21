@@ -419,6 +419,23 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     }
   }
 
+  // GEVEL_HANDEDNESS (vlag): u-frame. In plaats van de BOND te spiegelen (oude aanpak) spiegelen we de
+  // OPENINGEN naar het u-frame (u=0 = buiten-links), zodat álles — bond, openingen, panelen, latten —
+  // in hetzelfde van-buiten links→rechts-frame zit. De bond blijft natuurlijk links-uitgelijnd (= u).
+  // 3D/export mappen u→wereld (mapLen: mir ? groupMaxX−u : groupMinX+u). Vlag UIT → mirrorBond=false →
+  // rawOpenings onaangeroerd (byte-identiek). Rand-extensies hoeven NIET te wisselen: u<0 mapt vanzelf
+  // naar de buiten-linkerkant. De per-zijde kozijnoffset WEL: een gespiegelde opening verwisselt z'n
+  // fysieke L/R-randen in u, dus de marge moet mee-swappen.
+  if (mirrorBond) {
+    for (const op of rawOpenings) {
+      if (op.polyPts) op.polyPts = op.polyPts.map((p) => ({ l: round2(groupWidth - p.l), h: p.h }));
+      op.x = round2(groupWidth - op.x - op.width);
+    }
+    if (kozijnOffset && (kozijnOffset.left != null || kozijnOffset.right != null)) {
+      kozijnOffset = { ...kozijnOffset, left: kozijnOffset.right ?? 0, right: kozijnOffset.left ?? 0 };
+    }
+  }
+
   const mergeTwo = (a, b) => {
     const x  = Math.min(a.x, b.x);
     const y  = Math.min(a.y, b.y);
@@ -535,12 +552,9 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   for (let r = rStart; r < rEnd; r++) {
     const rowY = round2(patternOffset + r * lagenmaat);
     const builtPieces = buildRowPiecesForWidth(effectiveWidth, material, verband, r, 0);
-    let rawPieces = extendLeft > 0
+    const rawPieces = extendLeft > 0
       ? builtPieces.map((p) => ({ ...p, start: round2(p.start - extendLeft) }))
       : builtPieces;
-    // GEVEL_HANDEDNESS: spiegel de rij-bond in de groep-breedte (hele-steen-start naar de buiten-
-    // linkerkant = rechts-verankerd in +t). Openingen blijven op echte t → de clip hieronder ongewijzigd.
-    if (mirrorBond) rawPieces = rawPieces.map((p) => ({ ...p, start: round2(groupWidth - p.start - p.length) }));
     const clipped = [];
     for (const piece of rawPieces) {
       const parts = splitAroundOpenings(piece, rowY);
@@ -587,7 +601,7 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     if (clipped.length) rows.push({ y: rowY, pieces: clipped });
   }
 
-  return { rows, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, extendLeft, extendRight, patternStartH: effectiveMinH, groupOpenings, openingWarnings, refWallOrigin: refWall.wallOrigin };
+  return { rows, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, extendLeft, extendRight, patternStartH: effectiveMinH, groupOpenings, openingWarnings, refWallOrigin: refWall.wallOrigin, mirrored: mirrorBond };
 }
 
 export function getGroupPatternLogic(walls, material, verband) {

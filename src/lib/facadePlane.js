@@ -213,11 +213,15 @@ function toVirtualWall(member, plane) {
 
 // CONTOUR-MASKER: knip elke rij tot de unie van element-rechthoeken (relatief t.o.v.
 // groupMinX/groupMinH); zo blijft alles buiten een element ONbekleed.
-function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft = 0, extendRight = 0, flushEdges = false, fillTop = 0) {
+function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft = 0, extendRight = 0, flushEdges = false, fillTop = 0, mir = false, groupWidth = 0) {
   const rects = vwalls.map(w => ({
     t0: (w.wallOrigin.lengthStart) - groupMinX, t1: (w.wallOrigin.lengthEnd) - groupMinX,
     u0: (w.wallOrigin.heightStart) - groupMinH, u1: (w.wallOrigin.heightEnd) - groupMinH,
   }));
+  // GEVEL_HANDEDNESS u-frame: de bond staat in het natuurlijke build-frame; 3D/export flippen 'm via
+  // mapLen (mir ? groupMaxX−u). Spiegel daarom de wand-contour mee (t → groupWidth−t) zodat een bond-
+  // piece overleeft als de wand op z'n RENDER-positie bestaat (niet op z'n mirror). Vlag UIT → mir=false.
+  if (mir) for (const r of rects) { const _t0 = r.t0; r.t0 = groupWidth - r.t1; r.t1 = groupWidth - _t0; }
   // FILL_TO_MAX ("optrekken naar maxlijn"): rek de BOVENkant van elke wand-rechthoek op tot fillTop
   // (= maxHoogte, groep-lokaal) → de bekleding vult door tot de maxlijn óók boven de wandtop.
   // fillTop=0 (default) → geen wijziging (byte-identiek).
@@ -294,7 +298,7 @@ export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, _
   // FASE 1: vlag UIT → extend=0 doorgegeven → maskRowsToContours byte-identiek (knipt op
   // footprint). Vlag AAN → de globale buitenrand behoudt de handmatige einduiteinde-extensie.
   const _keepEndExt = isKeepEndExtension();
-  fd.rows = maskRowsToContours(fd.rows, vwalls, fd.groupMinX, fd.groupMinH, rowH, _keepEndExt ? extendLeft : 0, _keepEndExt ? extendRight : 0, isGroupStartWidest(), fillToMax ? fd.groupHeight : 0);
+  fd.rows = maskRowsToContours(fd.rows, vwalls, fd.groupMinX, fd.groupMinH, rowH, _keepEndExt ? extendLeft : 0, _keepEndExt ? extendRight : 0, isGroupStartWidest(), fillToMax ? fd.groupHeight : 0, fd.mirrored, fd.groupWidth);
   fd._bestFit = {
     uAxis: plane.uAxis, tAxis: plane.tAxis, nAxis: plane.nAxis, outsideDir: plane.outsideDir,
     offsetMm: plane.offset, residualMm: plane.residualMm, coFacingPct: Math.round(plane.coFacingFrac * 100),

@@ -155,7 +155,14 @@ function getOutsideFaceInfo(rwo, allWalls) {
     : { outsidePos: tEnd, outsideDir: +1 };
 }
 
-function getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth = 20, panelDikte = 8, penantShift = 0, outsideDirFlip = false, materialStoot = 10, penantStartOffset = 0) {
+// GEVEL_HANDEDNESS u-frame: map een facade-lengte-coördinaat u (u=0 = buiten-links) naar de wereld-
+// lengte-as. mir=false → u telt vanaf groupMinX (byte-identiek met vroeger). mir=true → buiten-links
+// ligt aan de wereld-max-kant, dus het punt spiegelt om het groep-midden: groupMinX+groupWidth−u.
+function mapLen(groupMinX, groupWidth, u, mir) {
+  return mir ? (groupMinX + groupWidth - u) : (groupMinX + u);
+}
+
+function getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth = 20, panelDikte = 8, penantShift = 0, outsideDirFlip = false, materialStoot = 10, penantStartOffset = 0, mir = false, groupWidth = 0) {
   if (!rwo) return [];
   const pX = penant.x ?? 0;
   const pB = Math.max(1, penant.breedte ?? 400);
@@ -179,7 +186,7 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, b
 
   const makeBox = (gxOff, depthCenter, boxW, boxThick) => {
     const ifc = { x: 0, y: 0, z: 0 };
-    ifc[rwo.lengthAxis]    = groupMinX + gxOff;
+    ifc[rwo.lengthAxis]    = mapLen(groupMinX, groupWidth, gxOff, mir);
     ifc[rwo.heightAxis]    = groupMinH + penMinH + penH / 2;
     ifc[rwo.thicknessAxis] = outsidePos + outsideDir * depthCenter;
     const dims = { x: 1, y: 1, z: 1 };
@@ -200,10 +207,10 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, b
   ];
 }
 
-function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, allWalls, latDikte, brickDepth, panelDikte, penantShift = 0, outsideDirFlip = false, materialStoot = 10, penantStartOffset = 0 }) {
+function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, allWalls, latDikte, brickDepth, panelDikte, penantShift = 0, outsideDirFlip = false, materialStoot = 10, penantStartOffset = 0, mir = false, groupWidth = 0 }) {
   const boxes = useMemo(
-    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot, penantStartOffset),
-    [penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot, penantStartOffset]
+    () => getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot, penantStartOffset, mir, groupWidth),
+    [penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, materialStoot, penantStartOffset, mir, groupWidth]
   );
   const cornerBattens = useMemo(() => {
     if (!rwo) return [];
@@ -230,7 +237,7 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, allWalls,
       [xRight, depthFront],
     ].map(([gxCenter, depthCenter]) => {
       const ifc = { x: 0, y: 0, z: 0 };
-      ifc[rwo.lengthAxis]    = groupMinX + gxCenter;
+      ifc[rwo.lengthAxis]    = mapLen(groupMinX, groupWidth, gxCenter, mir);
       ifc[rwo.heightAxis]    = groupMinH + penMinH + penH / 2;
       ifc[rwo.thicknessAxis] = outsidePos + outsideDir * depthCenter;
       const dims = { x: 1, y: 1, z: 1 };
@@ -242,7 +249,7 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, allWalls,
         size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs),
       };
     });
-  }, [penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, penantStartOffset]);
+  }, [penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth, panelDikte, penantShift, outsideDirFlip, penantStartOffset, mir, groupWidth]);
 
   if (!boxes.length) return null;
   return (
@@ -271,12 +278,12 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, allWalls,
   );
 }
 
-function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY, steenH, brickD, allWalls, flipDir = false, depthFromFace = null) {
+function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY, steenH, brickD, allWalls, flipDir = false, depthFromFace = null, mir = false, groupWidth = 0) {
   const raw = getOutsideFaceInfo(rwo, allWalls);
   const outsidePos = raw.outsidePos;
   const outsideDir = flipDir ? -raw.outsideDir : raw.outsideDir;
   const ifc = { x: 0, y: 0, z: 0 };
-  ifc[rwo.lengthAxis]    = groupMinX + pieceStart + pieceLen / 2;
+  ifc[rwo.lengthAxis]    = mapLen(groupMinX, groupWidth, pieceStart + pieceLen / 2, mir);
   ifc[rwo.heightAxis]    = groupMinH + rowY + steenH / 2;
   ifc[rwo.thicknessAxis] = outsidePos + outsideDir * (depthFromFace !== null ? depthFromFace : brickD / 2);
   const dims = { x: 0.01, y: 0.01, z: 0.01 };
@@ -289,12 +296,12 @@ function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY,
   };
 }
 
-function getPenantSideBrickPos(rwo, groupMinX, groupMinH, sideType, pX, pB, pieceStart, pieceLen, rowY, steenH, brickD, sideDepthOffset, allWalls, flipDir = false) {
+function getPenantSideBrickPos(rwo, groupMinX, groupMinH, sideType, pX, pB, pieceStart, pieceLen, rowY, steenH, brickD, sideDepthOffset, allWalls, flipDir = false, mir = false, groupWidth = 0) {
   const raw = getOutsideFaceInfo(rwo, allWalls);
   const outsidePos = raw.outsidePos;
   const outsideDir = flipDir ? -raw.outsideDir : raw.outsideDir;
   const ifc = { x: 0, y: 0, z: 0 };
-  ifc[rwo.lengthAxis]    = groupMinX + (sideType === 'left' ? pX + brickD / 2 : pX + pB - brickD / 2);
+  ifc[rwo.lengthAxis]    = mapLen(groupMinX, groupWidth, (sideType === 'left' ? pX + brickD / 2 : pX + pB - brickD / 2), mir);
   ifc[rwo.heightAxis]    = groupMinH + rowY + steenH / 2;
   ifc[rwo.thicknessAxis] = outsidePos + outsideDir * (sideDepthOffset + pieceStart + pieceLen / 2);
   const dims = { x: 0.01, y: 0.01, z: 0.01 };
@@ -975,8 +982,10 @@ function GroupBricks3D({ groupPattern, material, brickD, allWalls, slimFort }) {
 
   const batches = useMemo(() => {
     if (!groupPattern) return [];
-    const { batches: batchData, groupMinX, groupMinH, refWallOrigin, outsideDirFlip, cornerWraps } = groupPattern;
+    const { batches: batchData, groupMinX, groupMinH, refWallOrigin, outsideDirFlip, cornerWraps, facadeData } = groupPattern;
     if (!refWallOrigin || !batchData?.length) return [];
+    const groupWidth = facadeData?.groupWidth ?? 0;
+    const mirrored = !!facadeData?.mirrored;
     const defaultSteenH = material?.steenH ?? 50;
     const depth = brickD ?? 20;
     const mainBatches = batchData.map((batch) => {
@@ -987,7 +996,7 @@ function GroupBricks3D({ groupPattern, material, brickD, allWalls, slimFort }) {
           color: batch.color,
           bricks: batch.rows.flatMap((row) =>
             row.pieces.map((piece) =>
-              getPenantSideBrickPos(refWallOrigin, groupMinX, groupMinH, sideType, penantX, penantB, piece.start, piece.length, row.y, steenH, depth, sideDepthOffset, allWalls, !!outsideDirFlip)
+              getPenantSideBrickPos(refWallOrigin, groupMinX, groupMinH, sideType, penantX, penantB, piece.start, piece.length, row.y, steenH, depth, sideDepthOffset, allWalls, !!outsideDirFlip, mirrored, groupWidth)
             )
           ),
         };
@@ -997,7 +1006,7 @@ function GroupBricks3D({ groupPattern, material, brickD, allWalls, slimFort }) {
         color: batch.color,
         bricks: batch.rows.flatMap((row) =>
           row.pieces.map((piece) =>
-            getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, allWalls, !!outsideDirFlip, dfr)
+            getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, allWalls, !!outsideDirFlip, dfr, mirrored, groupWidth)
           )
         ),
       };
@@ -1797,6 +1806,9 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           const axisWalls = groupWalls.filter((w) => w.wallOrigin.lengthAxis === rwo.lengthAxis);
           const groupMinX = Math.min(...axisWalls.map((w) => w.wallOrigin.lengthStart));
           const groupMinH = Math.min(...axisWalls.map((w) => w.wallOrigin.heightStart));
+          const penGroupMaxX = Math.max(...axisWalls.map((w) => (w.wallOrigin.lengthStart ?? 0) + (w.length ?? 0)));
+          const penGroupWidth = penGroupMaxX - groupMinX;
+          const penMir = !!groupPatterns?.[group.id]?.facadeData?.mirrored;
           const penLatDikte = groupPatterns?.[group.id]?.latDikteEff ?? settings?.latten?.dikte ?? 28;
           const penBrickD   = settings?.brickDepth ?? 20;
           const penPanelDikte = settings?.panelen?.dikte ?? 8;
@@ -1823,6 +1835,8 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
                 outsideDirFlip={penFlip}
                 materialStoot={materialStoot}
                 penantStartOffset={Math.max(0, settings?.startLijn ?? 0)}
+                mir={penMir}
+                groupWidth={penGroupWidth}
               />
             );
           });
