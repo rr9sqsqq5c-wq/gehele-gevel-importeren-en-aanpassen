@@ -202,6 +202,17 @@ export function isReprojectOpeningPolygon() {
   return readFlag('reprojectOpeningPolygon', true);
 }
 
+// CONCAVE_OPENING_MERGE — twee overlappende openings op één wand (bv. een DEUR (vol) naast een RAAM
+// (hoog)) worden nu tot hun echte, niet-convexe (L/U-vormige) RECTILINEAIRE UNIE samengevoegd i.p.v.
+// tot hun bounding box. Lost op dat het massieve muurdeel ONDER het raam (naast de deur) binnen de
+// bbox valt en foutief als void wordt weggeknipt → onbekleed. shouldMerge (overlapX>50 && overlapY>50)
+// en de rest van de pijplijn blijven gelijk; alleen mergeTwo levert een unie-polygoon (splitAround-
+// Openings/polyXRangesAtY + fixOpeningEdgePieces werken al op polyPts). Lukt de unie niet (disjunct/
+// pinch) → bbox-fallback. DEFAULT = false → altijd bbox (byte-identiek). Aanzetten: ?concaveOpeningMerge=1.
+export function isConcaveOpeningMerge() {
+  return readFlag('concaveOpeningMerge', false);
+}
+
 // TRUENORTH_METADATA_ONLY (FIX C) — project-noord overal. GEEN pad past trueNorth toe op de
 // GETOONDE geometrie: vlag AAN → de Ry(trueNorth)-rotatie verlaat buildProjectMatrix
 // (projectCoordinates.js) zodat 3D = 2D = export allemaal in het project-noord-frame staan;
@@ -423,6 +434,7 @@ export const FLAG_REGISTRY = [
   { key: 'openingFromKozijn',    label: 'Openingen op kozijn-rand',  note: 'Knip vanaf raam/deur (kozijn) i.p.v. de ruwe structurele opening.', reimport: true },
   { key: 'kozijnOffset',         label: 'Kozijn-offset (L/R/B/O)',   note: 'Globale marge per zijde tussen kozijnrand en bekleding (strips+panelen+latten) + melding bij opening zonder kozijn.' },
   { key: 'openingEdgeQuarter',   label: 'Opening-rand ¼-steen',      note: 'Sta ¼ steen toe tegen een opening i.p.v. altijd ½ (kop) wanneer twee strips boven elkaar bijna even groot worden. Delta instelbaar.' },
+  { key: 'concaveOpeningMerge',  label: 'Concave opening-unie (raam+deur)', note: 'Twee overlappende openings (deur naast raam) worden tot hun echte L/U-vorm samengevoegd i.p.v. bbox, zodat het massieve muurdeel onder het raam bekleed blijft.' },
   { key: 'showKozijnen',         label: 'Kozijnen tonen in 3D',      note: 'Raam/deur als 3D-doos ter visuele controle.', reimport: true },
   { key: 'ventilatieZone',       label: 'Ventilatiezone (gedraaid verband)', note: 'Klein gat boven een raam wordt open geknipt + een zone met loodrecht verband eromheen (instelbaar per groep).', reimport: true },
   { key: 'cornerButt',           label: 'Stompe hoek',               note: 'Geen omslag-steenstrips op het loodrechte vlak.' },

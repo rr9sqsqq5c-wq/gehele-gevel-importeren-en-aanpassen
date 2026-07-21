@@ -1,5 +1,5 @@
 import { polyXRangesAtY } from './geometry.js';
-import { isDropOversizedOpenings, isVentilatieZone, isPenantTweeRijen, isGevelHandedness } from './featureFlags.js';
+import { isDropOversizedOpenings, isVentilatieZone, isPenantTweeRijen, isGevelHandedness, isConcaveOpeningMerge } from './featureFlags.js';
 
 // GEVEL_HANDEDNESS — moet de horizontale richting van dit vlak gespiegeld worden zodat het van BUITEN
 // links→rechts leest? Kijker-rechts = up × buitennormaal = outsideDir·ε(up,normaal,lengte)·ê_lengte.
@@ -348,6 +348,66 @@ function inflateOpeningPerSide(op, off) {
   return { ...op, x, y, width, height, polyPts };
 }
 
+// CONCAVE_OPENING_MERGE — rectilineaire UNIE van twee openingspolygonen (elk als {l,h}-lijst), i.p.v.
+// hun bounding box. Twee overlappende openings (bv. deur vol + raam hoog ernaast) geven met een bbox-
+// merge een massief muurdeel ONDER het raam (naast de deur) in de void → dat wordt geknipt. De unie
+// behoudt dat massieve deel (L/U-vorm). Methode: raster van alle vertex-x/y → per cel dekking-test
+// (ray-cast, cel-midden ligt nooit op een vertex-lijn) → buiten­randen = celranden die maar bij één
+// gedekte cel horen (annulatie) → stitch tot één lus. Disjuncte/niet-sluitende dekking of een pinch
+// (graad ≠ 2) → null; de aanroeper valt dan terug op de bbox. Collineaire tussenpunten zijn onschadelijk
+// voor polyXRangesAtY. Alleen actief achter de vlag (aanroeper gated) → vlag UIT = byte-identiek.
+export function rectilinearUnion(polyA, polyB) {
+  const uniq = (vals) => [...new Set(vals.map((v) => round2(v)))].sort((p, q) => p - q);
+  const xs = uniq([...polyA, ...polyB].map((p) => p.l));
+  const ys = uniq([...polyA, ...polyB].map((p) => p.h));
+  if (xs.length < 2 || ys.length < 2 || ys.length > 1000) return null;
+  const inside = (poly, x, y) => {
+    for (const [a, b] of polyXRangesAtY(poly, y)) if (x >= a && x <= b) return true;
+    return false;
+  };
+  const K = (i, j) => `${i},${j}`;      // grid-index → knoop-sleutel
+  const edges = new Map();
+  const addEdge = (i1, j1, i2, j2) => {
+    const k1 = K(i1, j1), k2 = K(i2, j2);
+    const key = k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`;
+    edges.set(key, (edges.get(key) ?? 0) + 1);
+  };
+  for (let i = 0; i + 1 < xs.length; i++) {
+    for (let j = 0; j + 1 < ys.length; j++) {
+      const cx = (xs[i] + xs[i + 1]) / 2, cy = (ys[j] + ys[j + 1]) / 2;
+      if (inside(polyA, cx, cy) || inside(polyB, cx, cy)) {
+        addEdge(i, j, i + 1, j);           // onder
+        addEdge(i, j + 1, i + 1, j + 1);   // boven
+        addEdge(i, j, i, j + 1);           // links
+        addEdge(i + 1, j, i + 1, j + 1);   // rechts
+      }
+    }
+  }
+  const adj = new Map();
+  const link = (a, b) => { if (!adj.has(a)) adj.set(a, []); adj.get(a).push(b); };
+  let boundaryEdges = 0;
+  for (const [key, c] of edges) {
+    if (c !== 1) continue;                 // gedeelde rand (2×) = intern
+    const [k1, k2] = key.split('|');
+    link(k1, k2); link(k2, k1); boundaryEdges++;
+  }
+  if (boundaryEdges < 4) return null;
+  // stitch: elke rand-knoop heeft graad 2 op een enkele simpele lus (corner óf collineair doorpunt).
+  const start = adj.keys().next().value;
+  const loop = [];
+  let prev = -1, cur = start;
+  for (let step = 0; step <= adj.size; step++) {
+    loop.push(cur);
+    const nb = adj.get(cur);
+    if (!nb || nb.length !== 2) return null; // vertakking/pinch → onbetrouwbaar → bbox-fallback
+    const next = nb[0] !== prev ? nb[0] : nb[1];
+    prev = cur; cur = next;
+    if (cur === start) break;
+  }
+  if (cur !== start || loop.length !== adj.size || loop.length < 4) return null; // >1 lus of niet gesloten
+  return loop.map((k) => { const [i, j] = k.split(',').map(Number); return { l: xs[i], h: ys[j] }; });
+}
+
 export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, kozijnOffset = null, edgeStagger = null, fillToMax = false) {
   const { steenL, steenH, lint, stoot } = material;
   const lagenmaat = getLagenmaat(material, verband);
@@ -359,6 +419,8 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
   const refLengthAxis = refWall.wallOrigin.lengthAxis;
   const refHeightAxis = refWall.wallOrigin.heightAxis;
+  // CONCAVE_OPENING_MERGE (vlag, default UIT): mergeTwo levert de echte L/U-unie i.p.v. de bbox.
+  const concaveOpeningMerge = isConcaveOpeningMerge();
   // GEVEL_HANDEDNESS (vlag): moet de bond horizontaal gespiegeld worden zodat het vlak van buiten
   // links→rechts leest? Werkt ook voor het best-fit-pad (de virtuele wandorigin draagt dezelfde
   // assen + resolvedOutside.outsideDir). Vlag UIT → false → byte-identiek.
@@ -441,14 +503,24 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     const y  = Math.min(a.y, b.y);
     const x2 = Math.max(a.x + a.width,  b.x + b.width);
     const y2 = Math.max(a.y + a.height, b.y + b.height);
+    const type = (a.type === 'raam' || b.type === 'raam') ? 'raam'
+      : (a.type === 'deur' || b.type === 'deur') ? 'deur' : (a.type ?? b.type);
+    // CONCAVE_OPENING_MERGE (vlag): behoud het massieve muurdeel tussen/onder twee overlappende
+    // openings via hun echte rectilineaire UNIE i.p.v. de bounding box. Lukt de unie niet (disjunct/
+    // pinch) → bbox-fallback hieronder. Vlag UIT → altijd bbox (byte-identiek).
+    if (concaveOpeningMerge) {
+      const polyOf = (op) => (op.polyPts && op.polyPts.length >= 3)
+        ? op.polyPts
+        : [{ l: op.x, h: op.y }, { l: op.x + op.width, h: op.y }, { l: op.x + op.width, h: op.y + op.height }, { l: op.x, h: op.y + op.height }];
+      const uni = rectilinearUnion(polyOf(a), polyOf(b));
+      if (uni && uni.length >= 4) return { x, y, width: x2 - x, height: y2 - y, polyPts: uni, type };
+    }
     const mergedPolyPts = [
       { l: x,  h: y },
       { l: x2, h: y },
       { l: x2, h: y2 },
       { l: x,  h: y2 },
     ];
-    const type = (a.type === 'raam' || b.type === 'raam') ? 'raam'
-      : (a.type === 'deur' || b.type === 'deur') ? 'deur' : (a.type ?? b.type);
     return { x, y, width: x2 - x, height: y2 - y, polyPts: mergedPolyPts, type };
   };
 
