@@ -29,18 +29,9 @@ function trailingRun(cs) { const last = cs[cs.length - 1].t; let n = 0; for (let
 function countKKpairs(cs) { let c = 0, run = 0; for (const s of cs) { if (s.t === 'K') { run++; if (run === 2) c++; } else run = 0; } return c; }
 function perpends(cs, stoot) { const ps = []; let x = 0; for (const c of cs) { x += c.w; ps.push(Math.round(x)); x += stoot; } return ps; }
 
-function subtractRect(brick, opening) {
-  const { x1: bx1, x2: bx2, y1: by1, y2: by2 } = brick;
-  const { x: ox, y: oy, width: ow, height: oh } = opening;
-  const ox2 = ox + ow, oy2 = oy + oh;
-  if (bx2 <= ox || bx1 >= ox2 || by2 <= oy || by1 >= oy2) return [brick];
-  const parts = [];
-  if (bx1 < ox)  parts.push({ x1: bx1, x2: Math.min(bx2, ox), y1: by1, y2: by2 });
-  if (bx2 > ox2) parts.push({ x1: Math.max(bx1, ox2), x2: bx2, y1: by1, y2: by2 });
-  if (by1 < oy)  parts.push({ x1: Math.max(bx1, ox), x2: Math.min(bx2, ox2), y1: by1, y2: Math.min(by2, oy) });
-  if (by2 > oy2) parts.push({ x1: Math.max(bx1, ox), x2: Math.min(bx2, ox2), y1: Math.max(by1, oy2), y2: by2 });
-  return parts.filter((rr) => rr.x2 > rr.x1 + 0.5 && rr.y2 > rr.y1 + 0.5);
-}
+// CONCAVE-VOID: gedeelde POLY-BEWUSTE opening-subtractie (concave L/U-void → notch blijft bekleed;
+// rechthoek → exact het oude bbox-gedrag). Vervangt de lokale bbox-only subtractRect.
+import { subtractOpeningFromBrick as subtractRect } from './geometry.js';
 
 // Eén rij voor paneelbreedte `panelW`, kaarsrecht sluitend met een drieklezoor-pasmaat.
 // Backtracking houdt zich aan max 4 strek / max 2 kop / max 1× 2-koppen, en vermijdt

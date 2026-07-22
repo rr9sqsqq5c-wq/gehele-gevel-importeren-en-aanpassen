@@ -63,18 +63,9 @@ export const WILDVERBAND_TRUTH = {
   koppelstrips: [[1, 0], [3, 0], [5, 0]],
 };
 
-function subtractRect(brick, opening) {
-  const { x1: bx1, x2: bx2, y1: by1, y2: by2 } = brick;
-  const { x: ox, y: oy, width: ow, height: oh } = opening;
-  const ox2 = ox + ow, oy2 = oy + oh;
-  if (bx2 <= ox || bx1 >= ox2 || by2 <= oy || by1 >= oy2) return [brick];
-  const parts = [];
-  if (bx1 < ox)  parts.push({ x1: bx1, x2: Math.min(bx2, ox), y1: by1, y2: by2 });
-  if (bx2 > ox2) parts.push({ x1: Math.max(bx1, ox2), x2: bx2, y1: by1, y2: by2 });
-  if (by1 < oy)  parts.push({ x1: Math.max(bx1, ox), x2: Math.min(bx2, ox2), y1: by1, y2: Math.min(by2, oy) });
-  if (by2 > oy2) parts.push({ x1: Math.max(bx1, ox), x2: Math.min(bx2, ox2), y1: Math.max(by1, oy2), y2: by2 });
-  return parts.filter((rr) => rr.x2 > rr.x1 + 0.5 && rr.y2 > rr.y1 + 0.5);
-}
+// CONCAVE-VOID: gedeelde POLY-BEWUSTE opening-subtractie (concave L/U-void → notch blijft bekleed;
+// rechthoek → exact het oude bbox-gedrag). Vervangt de lokale bbox-only subtractRect.
+import { subtractOpeningFromBrick as subtractRect } from './geometry.js';
 
 // Volledige gevel: tegel WILDVERBAND_TRUTH. Per rij r (0 = onder): patroonrij = r % 6.
 // Paneel 0 = startpaneel, paneel ≥ 1 = volgpaneel. De stenen liggen DOORLOPEND (stootvoeg
