@@ -94,11 +94,16 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
 
   let stripCount = { Strek: 0, Kop: 0, Drieklezoor: 0, Rest: 0, Tegel: 0 };
   let stripAreaMM2 = 0;
+  const stripDims = {};   // werkelijke strip-maten: "lengte x hoogte" → { len, hgt, label, count }
   for (const row of effectiveRows) {
     for (const piece of row.pieces) {
       const lbl = piece.label ?? 'Strek';
       stripCount[lbl] = (stripCount[lbl] ?? 0) + 1;
       stripAreaMM2 += piece.length * mat.steenH;
+      const _L = Math.round(piece.length), _H = Math.round(mat.steenH);
+      const _dk = `${_L}x${_H}`;
+      if (!stripDims[_dk]) stripDims[_dk] = { len: _L, hgt: _H, label: lbl, count: 0 };
+      stripDims[_dk].count++;
     }
   }
 
@@ -234,7 +239,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
     groupId: group.id, name, color,
     groupWidth, groupHeight,
     facadeAreaMM2, openingsAreaMM2, netFacadeAreaMM2, penantAreaMM2, hoekprofielLengthMM, uSectiesCount, vertikaleLattenLengthMM,
-    stripCount, stripAreaMM2,
+    stripCount, stripAreaMM2, stripDims,
     panelGroups,
     panelAreaMM2: Object.values(panelGroups).reduce((sum, pg) => sum + pg.areaMM2, 0),
     noPanelZonesAreaMM2, noPanelZonesCount,
@@ -528,6 +533,31 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose,
               <tr><TD>Aantal latten totaal</TD><TD right mono bold>{totals.lattenCount}</TD><TD right>st</TD></tr>
               <tr><TD>Totale latlengte</TD><TD right mono>{(totals.lattenLengthMM / 1000).toFixed(1)}</TD><TD right>m</TD></tr>
             </> : <tr><TD span={3} color="#94a3b8">Geen latten geconfigureerd</TD></tr>}
+
+            <SectionHeader title="Steenstrip-maten (hele project)" />
+            {(() => {
+              // Aggregeer de WERKELIJKE strip-maten (lengte × hoogte) over alle groepen.
+              const agg = {};
+              for (const to of takeoffs) {
+                for (const [k, v] of Object.entries(to.stripDims ?? {})) {
+                  if (!agg[k]) agg[k] = { ...v, count: 0 };
+                  agg[k].count += v.count;
+                }
+              }
+              const rowsD = Object.values(agg).sort((a, b) => (b.len - a.len) || (b.hgt - a.hgt));
+              if (!rowsD.length) return <tr><TD span={3} color="#94a3b8">Geen strippen</TD></tr>;
+              const totaal = rowsD.reduce((s, d) => s + d.count, 0);
+              return <>
+                {rowsD.map((d) => (
+                  <tr key={`${d.len}x${d.hgt}`}>
+                    <TD>Steenstrip {d.len} × {d.hgt} mm <span style={{ color: '#94a3b8', fontSize: 10 }}>({d.label})</span></TD>
+                    <TD right mono>{d.count}</TD>
+                    <TD right>st</TD>
+                  </tr>
+                ))}
+                <tr><TD bold>Totaal strippen (alle maten, {rowsD.length} unieke)</TD><TD right mono bold>{totaal}</TD><TD right>st</TD></tr>
+              </>;
+            })()}
 
             <SectionHeader title="Materialen per groep" />
             {takeoffs.map((to) => {
