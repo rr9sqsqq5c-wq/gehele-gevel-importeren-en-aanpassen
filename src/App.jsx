@@ -5239,9 +5239,12 @@ export default function App() {
       if (isBlankBaseVerband(s.verband ?? DEFAULT_VERBAND)) continue; // GEEN_VERBAND: blanco basisvlak → geen panelen
 
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
-      const mat = s.material ?? DEFAULT_MATERIAL;
+      // UNIFIED_PANELS: mal op de artikel-maat + App's facadeData (net als scherm/2D) → één bron.
+      const _mrArt = isUnifiedPanels() ? STEENSTRIP_CATALOG.find((a) => a.id === (s.steenstripsArtikelen ?? [])[0]) : null;
+      const mat = _mrArt ? { ...(s.material ?? DEFAULT_MATERIAL), steenL: _mrArt.steenL, steenH: _mrArt.steenH } : (s.material ?? DEFAULT_MATERIAL);
       const verband = s.verband ?? DEFAULT_VERBAND;
-      const facadeDataRaw = buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, null, s.startLijn, 0, 0, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen);
+      const facadeDataRaw = (isUnifiedPanels() ? (allPatterns[group.id]?.facadeData ?? null) : null)
+        ?? buildFullGroupFacadePattern(walls, mat, verband, s.maxHoogte, null, s.startLijn, 0, 0, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen);
       if (!facadeDataRaw) continue;
 
       let facadeData = facadeDataRaw;
@@ -5510,9 +5513,10 @@ export default function App() {
       const s = getSettings(group.id);
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const gAdj = adjacencies.filter((a) => group.wallIds.includes(a.wallIdA) && group.wallIds.includes(a.wallIdB));
-      const rows = buildGroupPattern(walls, gAdj, s.material ?? DEFAULT_MATERIAL, s.verband ?? DEFAULT_VERBAND, 'all');
-
-      const mat = s.material ?? DEFAULT_MATERIAL;
+      // UNIFIED_PANELS: export op de artikel-maat (net als scherm/2D) → strips, panelen én labels consistent.
+      const _exArt = isUnifiedPanels() ? STEENSTRIP_CATALOG.find((a) => a.id === (s.steenstripsArtikelen ?? [])[0]) : null;
+      const mat = _exArt ? { ...(s.material ?? DEFAULT_MATERIAL), steenL: _exArt.steenL, steenH: _exArt.steenH } : (s.material ?? DEFAULT_MATERIAL);
+      const rows = buildGroupPattern(walls, gAdj, mat, s.verband ?? DEFAULT_VERBAND, 'all');
       const vis = Object.fromEntries(
         ['strips', 'panelen', 'latten'].map(k => [
           k,
@@ -5527,8 +5531,10 @@ export default function App() {
       // (= buildBestFitFacadePattern-uitkomst). Zo wijkt de export niet af van het scherm.
       // Vlag UIT of niet-handmatig → het bestaande oude pad (byte-identiek). Ontbreekt de
       // best-fit-data onverhoopt → terugval op buildFullGroupFacadePattern.
+      // UNIFIED_PANELS: ook auto-groepen exporteren EXACT de facadeData van scherm/2D (allPatterns) →
+      // één bron. Vlag uit → alleen best-fit-manual (oud, byte-identiek). Ontbreekt de data → eigen build.
       const useBestFitExport = isBestFitGroups() && group.manual === true;
-      const facadeDataRaw = (useBestFitExport ? (allPatterns[group.id]?.facadeData ?? null) : null)
+      const facadeDataRaw = ((useBestFitExport || isUnifiedPanels()) ? (allPatterns[group.id]?.facadeData ?? null) : null)
         ?? buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsExport.extendLeft, ctrimsExport.extendRight, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen);
       const _refWall = facadeDataRaw ? null : ([...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0] ?? null);
       const refWallOrigin = facadeDataRaw?.refWallOrigin ?? _refWall?.wallOrigin ?? null;
@@ -7415,6 +7421,7 @@ export default function App() {
                   <Werktekening
                     key={activeGroup.id}
                     walls={groupWalls}
+                    sharedFacadeData={allPatterns[activeGroup.id]?.facadeData ?? null}
                     groupSettings={s}
                     groupName={s.name}
                     panelen={s.panelen}
@@ -7460,6 +7467,7 @@ export default function App() {
             <Uittrekstaat
               groups={groups}
               walls={allWalls}
+              facadeDataByGroup={Object.fromEntries(groups.map((g) => [g.id, allPatterns[g.id]?.facadeData ?? null]))}
               getSettings={getSettings}
               adjacencies={adjacencies}
               cornerTrimsMap={Object.fromEntries(groups.map((g) => [g.id, endExtensionsToTrims(getSettings(g.id).endExtensions)]))}

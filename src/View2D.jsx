@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { buildFullGroupFacadePattern, getOpeningPoly, facadeNeedsMirror } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten, extendPanelsAtEnds, extendLattenAtEnds, cutVentHolesFromPanels, attachHolesToPanels, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones, mergeStackedColumns, buildGroupPanels } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten, extendPanelsAtEnds, extendLattenAtEnds, cutVentHolesFromPanels, attachHolesToPanels, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones, mergeStackedColumns, buildGroupPanels, detectKoppelstrippen } from './lib/panelization.js';
 import { clipRowsAroundRects } from './lib/sparingElements.js';
 import { brickColor, isTooSmall, polyXRangesAtY } from './lib/geometry.js';
 import { hasPenants } from './lib/zoneRegions.js';
@@ -1358,7 +1358,19 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       const panelRightEdges = allPanels.length
         ? [...new Set(allPanels.map((p) => Math.round(p.x + p.width)))].filter((x) => x < groupWidth - 1)
         : [];
+      // UNIFIED_PANELS: koppelstrippen met DEZELFDE detectie als de werktekening (detectKoppelstrippen —
+      // strip valt VOLLEDIG binnen ≥2 panelen) i.p.v. de grovere "paneelrand ligt in de strip"-test (die
+      // een vals-positief geeft aan raamranden waar boven/onder het raam geen echte paneelnaad zit). Vlag
+      // uit → oude test (byte-identiek).
+      const _kopSetV2 = (isUnifiedPanels() && allPanels.length && (rows?.length ?? 0))
+        ? new Set(detectKoppelstrippen(allPanels, rows, effectiveMat, verband).map((k) => `${Math.round(k.x)},${Math.round(k.y)},${Math.round(k.width)}`))
+        : null;
       const isKoppelstrip = (sx, ex) => panelRightEdges.some((bx) => bx > sx + 0.5 && bx < ex - 0.5);
+      // koppelstrip-kleur per strip: unified → set-lidmaatschap (zelfde als werktekening, geen Strek-guard);
+      // vlag uit → oude Strek+paneelrand-test (byte-identiek).
+      const stripIsKoppel = (piece, ry) => _kopSetV2
+        ? _kopSetV2.has(`${Math.round(piece.start)},${Math.round(ry)},${Math.round(piece.length)}`)
+        : (piece.label === 'Strek' && isKoppelstrip(piece.start, piece.start + piece.length));
       const tooSmallPieces = [];
       if (regionBatches) {
         // 2D == 3D == export: teken stenen uit de doorgegeven samengestelde regio-batches.
@@ -1417,7 +1429,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
           for (const piece of row.pieces) {
             const [pSx] = toScreen(mx(piece.start, piece.length), 0);
             const pSw = piece.length * scale * 0.001;
-            ctx.fillStyle = (piece.koppelstrip || (piece.label === 'Strek' && isKoppelstrip(piece.start, piece.start + piece.length)))
+            ctx.fillStyle = (piece.koppelstrip || stripIsKoppel(piece, row.y))
               ? 'rgba(22,163,74,0.85)'
               : brickColor(piece.label, color, piece.length, kopMM);
             ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));

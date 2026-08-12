@@ -314,7 +314,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, startLijn, ve
   }
 }
 
-export function Werktekening({ walls, groupSettings, groupName, panelen, latten, groupMinH, penantFaceData, zoneSettings, stripZones = [], sparingElements = [], sparingOffset = 0, epcSettings, outsideDirFlip, cornerTrimLeft = 0, cornerTrimRight = 0, cornerExtendLeft = 0, cornerExtendRight = 0, lattenTrimLeft = 0, lattenTrimRight = 0, lattenExtendLeft = 0, lattenExtendRight = 0, panelsTrimLeft = 0, panelsTrimRight = 0, panelsExtendLeft = 0, panelsExtendRight = 0 }) {
+export function Werktekening({ walls, sharedFacadeData = null, groupSettings, groupName, panelen, latten, groupMinH, penantFaceData, zoneSettings, stripZones = [], sparingElements = [], sparingOffset = 0, epcSettings, outsideDirFlip, cornerTrimLeft = 0, cornerTrimRight = 0, cornerExtendLeft = 0, cornerExtendRight = 0, lattenTrimLeft = 0, lattenTrimRight = 0, lattenExtendLeft = 0, lattenExtendRight = 0, panelsTrimLeft = 0, panelsTrimRight = 0, panelsExtendLeft = 0, panelsExtendRight = 0 }) {
   const svgRef = useRef(null);
   const summarySvgRef = useRef(null);
   const productiePrintRef = useRef(null);
@@ -323,7 +323,11 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
   const [selectedZoneIdx, setSelectedZoneIdx] = useState(-1);
   const [tekenZone, setTekenZone] = useState({ enabled: false, x: 0, y: 0, width: null, height: null });
 
-  const mat     = groupSettings?.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
+  const _rawMat = groupSettings?.material ?? { steenL: 210, steenH: 50, lint: 12, stoot: 10 };
+  // UNIFIED_PANELS: pas het steenstrip-artikel toe op de maat (net als App/2D) → strips, panelen én
+  // labels (kop/strek) consistent op de artikel-steen. Vlag uit → rauwe groep-maat (byte-identiek).
+  const _wtMatArt = isUnifiedPanels() ? STEENSTRIP_CATALOG.find((a) => a.id === (groupSettings?.steenstripsArtikelen ?? [])[0]) : null;
+  const mat     = _wtMatArt ? { ..._rawMat, steenL: _wtMatArt.steenL, steenH: _wtMatArt.steenH } : _rawMat;
   const verband = groupSettings?.verband ?? 'halfsteens';
   const maxH    = groupSettings?.maxHoogte ?? null;
 
@@ -339,6 +343,11 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
 
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
+    // UNIFIED_PANELS: normale verbanden gebruiken ÉÉN bron — de facadeData van App (2D/3D), gebouwd mét
+    // het steenstrip-artikel + kozijn-offset + edge-stagger → strips zijn overal gelijk. Blanco (geen
+    // verband)/groothuis/wildverband houden hun eigen pad (die verwerken de rijen apart, hieronder).
+    const _isSpecialFd = isBlankBaseVerband(verband) || verband === 'wildverband' || verband === 'groothuis_wildverband' || verband === 'groothuis_wildverband_2';
+    if (isUnifiedPanels() && sharedFacadeData && !_isSpecialFd) return sharedFacadeData;
     const fd = buildFullGroupFacadePattern(walls, mat, verband, maxH, null, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight, null, null, groupSettings?.maxHoogteVullen);
     // GEEN_VERBAND: basis blanco; de getekende zones leveren de strips. rows = de zone-regio-rijen
     // (union) zodat getPanelStripsAnnotated per paneel de zone-strips toont; coverageRows = solide
@@ -365,7 +374,7 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
       return { ...fd, rows: _gr.rows };
     }
     return fd;
-  }, [walls, mat, verband, maxH, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight, stripZones]);
+  }, [walls, mat, verband, maxH, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight, stripZones, sharedFacadeData]);
 
   // SPARING-ELEMENTEN: rechthoeken in HET EIGEN facadeData-frame (geen mismatch met App/best-fit).
   const sparingRects = useMemo(

@@ -26,9 +26,12 @@ function polyArea(pts) {
   return Math.abs(a) / 2;
 }
 
-function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims = null, sparingElements = [], sparingOffset = 0) {
+function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims = null, sparingElements = [], sparingOffset = 0, sharedFacadeData = null) {
   const s = getSettings(group.id);
-  const mat = s.material ?? DEFAULT_MATERIAL;
+  // UNIFIED_PANELS: artikel-maat toepassen (net als App/2D) → strips, panelen én labels consistent.
+  const _rawMat = s.material ?? DEFAULT_MATERIAL;
+  const _utMatArt = isUnifiedPanels() ? STEENSTRIP_CATALOG.find((a) => a.id === (s.steenstripsArtikelen ?? [])[0]) : null;
+  const mat = _utMatArt ? { ..._rawMat, steenL: _utMatArt.steenL, steenH: _utMatArt.steenH } : _rawMat;
   const verband = s.verband ?? 'halfsteens';
   const name = s.name ?? group.id;
   const color = s.color ?? '#94a3b8';
@@ -36,7 +39,12 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
   const groupWalls = group.wallIds.map((id) => walls.find((w) => w.expressID === id)).filter(Boolean);
   if (!groupWalls.length) return null;
 
-  let facadeData = buildFullGroupFacadePattern(groupWalls, mat, verband, s.maxHoogte, null, null, 0, 0, null, null, s.maxHoogteVullen);
+  // UNIFIED_PANELS: normale verbanden gebruiken ÉÉN bron — App's facadeData (artikel + kozijn-offset +
+  // edge-stagger) i.p.v. eigen rauwe build. Blanco/groothuis/wildverband houden hun eigen pad (hieronder).
+  const _isSpecialUt = isBlankBaseVerband(verband) || verband === 'wildverband' || verband === 'groothuis_wildverband' || verband === 'groothuis_wildverband_2';
+  let facadeData = (isUnifiedPanels() && sharedFacadeData && !_isSpecialUt)
+    ? sharedFacadeData
+    : buildFullGroupFacadePattern(groupWalls, mat, verband, s.maxHoogte, null, null, 0, 0, null, null, s.maxHoogteVullen);
   if (!facadeData) return null;
   // FASE 2 — wildverband: de zaaglijst telt het vastgelegde truth-verband (zelfde bron als
   // 2D/3D/IFC/werktekening) i.p.v. de tegelverband-degradatie uit pattern.js. Vlag UIT →
@@ -420,12 +428,12 @@ function computeImportTotals(walls) {
   return { brutoMM2, openingsMM2, nettoMM2: brutoMM2 - openingsMM2, wallCount, openingCount };
 }
 
-export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose, cornerTrimsMap = {}, sparingElements = [], sparingOffset = 0 }) {
+export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose, cornerTrimsMap = {}, sparingElements = [], sparingOffset = 0, facadeDataByGroup = {} }) {
   const importTotals = useMemo(() => computeImportTotals(walls), [walls]);
 
   const takeoffs = useMemo(() => {
     return groups
-      .map((g) => computeGroupTakeoff(g, walls, getSettings, adjacencies, cornerTrimsMap[g.id] ?? null, sparingElements, sparingOffset))
+      .map((g) => computeGroupTakeoff(g, walls, getSettings, adjacencies, cornerTrimsMap[g.id] ?? null, sparingElements, sparingOffset, facadeDataByGroup[g.id] ?? null))
       .filter(Boolean);
   }, [groups, walls, getSettings, adjacencies, cornerTrimsMap, sparingElements, sparingOffset]);
 
