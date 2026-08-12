@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Groothuis Wildverband — referentie</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 980px; margin: 24px auto; padding: 0 16px; color: #1e293b; line-height: 1.6; }
+  h1 { font-size: 22px; margin-bottom: 2px; }
+  .sub { color: #64748b; font-size: 13px; margin-bottom: 18px; }
+  h2 { font-size: 15px; margin-top: 26px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+  code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  ul { margin: 8px 0; }
+  li { margin: 3px 0; }
+  table { border-collapse: collapse; font-size: 12px; margin: 8px 0; }
+  th, td { border: 1px solid #cbd5e1; padding: 3px 7px; text-align: left; }
+  th { background: #f8fafc; }
+  .note { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 5px; padding: 8px 12px; font-size: 13px; color: #9a3412; margin: 12px 0; }
+  svg { display: block; }
+</style>
+</head>
+<body>
+  <h1>Groothuis Wildverband</h1>
+  <div class="sub">Referentie-ontwerp · vastgelegd vanuit <code>spike/wildverband-nieuw-ontwerp.mjs</code> · voorbeeld voor steen 210×50, stoot 4 mm, lint 10 mm</div>
+
+  <h2>Regels (definitie van het verband)</h2>
+  <ul>
+    <li><strong>Repeterend over 6 rijen</strong> (verticale module-herhaling, lagenmaat = steenhoogte + lintvoeg).</li>
+    <li><strong>Rijstart om en om</strong>: oneven rij begint met een <strong>drieklezoor (D)</strong>, even rij met een <strong>kop (K)</strong> — telkens gevolgd door een <strong>strek (S)</strong>.</li>
+    <li><strong>Midden vrij</strong> ingevuld met strekken of koppen (geen drieklezoren in het midden).</li>
+    <li><strong>Drieklezoor alleen aan het geveleinde</strong>: elke rij sluit rechts met een drieklezoor (op de kaarsrechte paneelrand).</li>
+    <li><strong>Metselregels</strong>: max <strong>4 strekken</strong> naast elkaar · max <strong>2 koppen</strong> naast elkaar · max <strong>1×</strong> "2 koppen naast elkaar" per rij.</li>
+    <li><strong>Wild</strong>: geen doorlopende stootvoeg tussen opeenvolgende rijen.</li>
+    <li><strong>Kaarsrechte panelranden</strong> links en rechts; de sluit-drieklezoor is een pasmaat zodat de rij exact op de paneelbreedte sluit.</li>
+  </ul>
+
+  <div class="note">
+    <strong>Volgt de groep-maten:</strong> de steenmaat (S) en voegen (stoot/lint) komen uit de groep-materiaalinstelling. De getoonde reeks is het concrete resultaat voor <code>S=210, K=103, D=157, stoot=4, lint=10</code> bij een paneel van <code>2500</code> breed; bij andere maten rolt er een andere (geldige) reeks uit dezelfde regels.
+  </div>
+
+  <h2>Voorbeeld-paneel — 2500 × 1200 mm (20 lagen)</h2>
+  <div id="panel"></div>
+
+  <h2>6-rij module (voorbeeld 210/4/10, paneel 2500)</h2>
+  <table id="moduletable"><thead><tr><th>rij</th><th>start</th><th>strips (s=strek · k=kop · d=drieklezoor · d*=sluit-pasmaat)</th><th>sluit-D</th></tr></thead><tbody></tbody></table>
+
+<script>
+  const M=[[["D",157,0],["S",210,0],["K",103,0],["K",103,0],["S",210,0],["S",210,0],["K",103,0],["S",210,0],["K",103,0],["S",210,0],["K",103,0],["S",210,0],["S",210,0],["K",103,0],["D",199,1]],[["K",103,0],["S",210,0],["K",103,0],["S",210,0],["K",103,0],["S",210,0],["S",210,0],["K",103,0],["S",210,0],["K",103,0],["S",210,0],["K",103,0],["S",210,0],["K",103,0],["K",103,0],["D",146,1]],[["D",157,0],["S",210,0],["K",103,0],["S",210,0],["S",210,0],["S",210,0],["S",210,0],["K",103,0],["S",210,0],["S",210,0],["S",210,0],["S",210,0],["D",199,1]],[["K",103,0],["S",210,0],["S",210,0],["S",210,0],["K",103,0],["K",103,0],["S",210,0],["K",103,0],["S",210,0],["S",210,0],["K",103,0],["S",210,0],["S",210,0],["K",103,0],["D",146,1]],[["D",157,0],["S",210,0],["S",210,0],["K",103,0],["K",103,0],["S",210,0],["S",210,0],["S",210,0],["K",103,0],["S",210,0],["K",103,0],["S",210,0],["S",210,0],["D",199,1]],[["K",103,0],["S",210,0],["S",210,0],["K",103,0],["K",103,0],["S",210,0],["K",103,0],["S",210,0],["S",210,0],["S",210,0],["K",103,0],["S",210,0],["K",103,0],["S",210,0],["D",146,1]]];
+  const stoot=4, BH=50, LM=60, PW=2500, NROWS=20;
+  const COL={S:'#f0d9e6',K:'#c98bb4',D:'#fb923c'}, TXT={S:'#5b2155',K:'#3d1230',D:'#7c2d12'};
+  // paneel
+  (function(){
+    const sc=0.30, padL=14, padT=14, padR=14, padB=8, PH=NROWS*LM;
+    const svgW=padL+PW*sc+padR, svgH=padT+PH*sc+padB;
+    let s=`<svg viewBox="0 0 ${svgW} ${svgH}" width="${svgW}" height="${svgH}" xmlns="http://www.w3.org/2000/svg">`;
+    s+=`<rect x="${padL}" y="${padT}" width="${PW*sc}" height="${PH*sc}" fill="#fff" stroke="#334155" stroke-width="1.5"/>`;
+    for(let r=0;r<NROWS;r++){const cs=M[r%6];const yTop=padT+(PH-(r+1)*LM)*sc+(LM-BH)/2*sc,h=BH*sc;let x=0;
+      for(let c=0;c<cs.length;c++){const[t,w,pas]=cs[c],rw=w*sc,rx=padL+x*sc,isPas=pas===1;
+        s+=`<rect x="${rx}" y="${yTop}" width="${rw}" height="${h}" fill="${COL[t]}" stroke="${isPas?'#c2410c':'#b06a96'}" stroke-width="${isPas?0.9:0.35}" ${isPas?'stroke-dasharray="2.5,1.3"':''}/>`;
+        if(rw>11&&h>8)s+=`<text x="${rx+rw/2}" y="${yTop+h/2}" text-anchor="middle" dominant-baseline="middle" font-size="6.5" font-weight="${t==='D'?700:400}" fill="${TXT[t]}">${isPas?'d':t.toLowerCase()}</text>`;
+        x+=w+stoot;}}
+    for(let m=6;m<NROWS;m+=6){const ly=padT+(PH-m*LM)*sc;s+=`<line x1="${padL}" y1="${ly}" x2="${padL+PW*sc}" y2="${ly}" stroke="#94a3b8" stroke-width="0.6" stroke-dasharray="4,3"/>`;}
+    s+=`<rect x="${padL}" y="${padT}" width="${PW*sc}" height="${PH*sc}" fill="none" stroke="#334155" stroke-width="1.5"/></svg>`;
+    document.getElementById('panel').innerHTML=s;
+  })();
+  // tabel
+  (function(){
+    const tb=document.querySelector('#moduletable tbody');
+    M.forEach((cs,r)=>{const tr=document.createElement('tr');
+      const seq=cs.map(c=>c[2]?'d*':c[0].toLowerCase()).join(' ');
+      const last=cs[cs.length-1];
+      tr.innerHTML=`<td>${r+1}</td><td>${r%2===0?'drieklezoor':'kop'}</td><td><code>${seq}</code></td><td>${last[1]} mm</td>`;
+      tb.appendChild(tr);});
+  })();
+</script>
+</body>
+</html>

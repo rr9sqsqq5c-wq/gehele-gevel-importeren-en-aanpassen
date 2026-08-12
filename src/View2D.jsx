@@ -1,11 +1,12 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import { buildFullGroupFacadePattern, getOpeningPoly } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten, extendPanelsAtEnds, extendLattenAtEnds, cutVentHolesFromPanels } from './lib/panelization.js';
+import { buildFullGroupFacadePattern, getOpeningPoly, facadeNeedsMirror } from './lib/pattern.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten, extendPanelsAtEnds, extendLattenAtEnds, cutVentHolesFromPanels, attachHolesToPanels, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones } from './lib/panelization.js';
+import { clipRowsAroundRects } from './lib/sparingElements.js';
 import { brickColor, isTooSmall, polyXRangesAtY } from './lib/geometry.js';
 import { hasPenants } from './lib/zoneRegions.js';
 import { isFeatureZones } from './lib/featureFlags.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isKeepEndExtension } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isKeepEndExtension, isShowKozijnen, isUnifiedLatten, isGevelHandedness, isBlankBaseVerband } from './lib/featureFlags.js';
 import { generateSlimFortGrid, generateSlimFortFaces, SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
 
 function hexToRgba(hex, alpha = 1) {
@@ -32,6 +33,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
   const [redrawTick, setRedrawTick] = useState(0);
 
   const transform = useRef({ scale: 1, tx: 0, ty: 0 });
+  const fitScaleRef = useRef(1);   // fit-to-view schaal (basis voor de zoom-ratio bij annotatie-grootte)
   const dragStart = useRef(null);
   const [drawMode, setDrawMode] = useState(false);
   const drawModeRef = useRef(false);
@@ -88,6 +90,10 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
 
   const allPanels = useMemo(() => {
     if (!facadeData) return [];
+    // GEEN_VERBAND: draagpanelen volgen de getekende tekenzones (elk vak z'n eigen achterconstructie).
+    if (isBlankBaseVerband(verband)) {
+      return buildZoneBackingPanels({ facadeData, activeZones: (stripZones ?? []).filter((z) => z?.enabled === true), panelen, latten, mat: effectiveMat, verband, startLijn, sparingRects: facadeData.sparingRects });
+    }
     const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
     // GROOTHUIS WILDVERBAND: komt uit facadeData.rows (generatief, panelen vol met 2500 + rest)
     // → geen panel-grid; de rows-tak rendert het.
@@ -142,6 +148,8 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
     });
     // VENTILATIE_ZONE: het ventilatiegat er apart uitsnijden (paneel liep over de volle breedte door).
     panels = cutVentHolesFromPanels(panels, groupOpenings.filter((op) => op.type === 'ventilatie'));
+    // SPARING-ELEMENTEN: paneel HEEL houden en het gat markeren (voor frees/zagerij) i.p.v. opknippen.
+    panels = attachHolesToPanels(panels, facadeData.sparingRects);
     // Handmatige einduiteinde-extensie: buitenste paneel loopt door voorbij de gevelrand (hoek-aansluiting).
     if (isKeepEndExtension()) {
       const _eeP = endExtensions ?? {};
@@ -152,23 +160,42 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       return panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: startLijn, height: p.height + p.y - startLijn } : p);
     }
     return panels;
-  }, [facadeData, panelen, latten, effectiveMat, groupSettings, startLijn, verband, endExtensions]);
+  }, [facadeData, panelen, latten, effectiveMat, groupSettings, startLijn, verband, endExtensions, stripZones]);
 
   const allLatten = useMemo(() => {
     const _bt = groupSettings?.backingType ?? 'hout';
     if (!facadeData || !latten?.enabled || _bt === 'aluminium' || _bt === 'aluminium_slimfort') return [];
+    // GEEN_VERBAND: latten volgen de zone-panelen en worden op de zone-rechthoeken geklipt.
+    if (isBlankBaseVerband(verband)) {
+      const az = (stripZones ?? []).filter((z) => z?.enabled === true);
+      if (!az.length) return [];
+      const base = buildFacadeLatten({ facadeData, latten, mat: effectiveMat, panelen, panels: allPanels, penanten: [], startLijn, verband, backingType: _bt, sparingRects: facadeData.sparingRects });
+      return clipLattenToZones(base, az);
+    }
     const { groupWidth, groupHeight } = facadeData;
     const richting = latten.richting ?? 'horizontaal';
     const latBreedte = Math.max(5, latten.breedte ?? 50);
 
+    // FASE 1 — één gedeelde latten-berekening (vlag). Post-processing (endExtensions) blijft view-eigen.
+    if (isUnifiedLatten()) {
+      let base = buildFacadeLatten({ facadeData, latten, mat: effectiveMat, panelen, panels: allPanels, penanten: groupSettings?.penanten ?? [], startLijn, verband, backingType: _bt, sparingRects: facadeData.sparingRects });
+      if (isKeepEndExtension() && richting === 'horizontaal') {
+        const _eeL = endExtensions ?? {};
+        base = extendLattenAtEnds(base, groupWidth, Math.max(0, _eeL.left?.battens ?? 0), Math.max(0, _eeL.right?.battens ?? 0));
+      }
+      return base;
+    }
+
+    let out;
     if (richting === 'horizontaal') {
-      const _hl = computeHorizontalLatten({ facadeData, latten, mat: effectiveMat, panelen, startLijn, backingType: _bt });
+      const _hl = computeHorizontalLatten({ facadeData, latten, mat: effectiveMat, panelen, startLijn, backingType: _bt, verband });
       // Handmatige einduiteinde-extensie: buitenste horizontale latte loopt door voorbij de gevelrand.
       if (isKeepEndExtension()) {
         const _eeL = endExtensions ?? {};
-        return extendLattenAtEnds(_hl, groupWidth, Math.max(0, _eeL.left?.battens ?? 0), Math.max(0, _eeL.right?.battens ?? 0));
+        out = extendLattenAtEnds(_hl, groupWidth, Math.max(0, _eeL.left?.battens ?? 0), Math.max(0, _eeL.right?.battens ?? 0));
+      } else {
+        out = _hl;
       }
-      return _hl;
     } else {
       const xPositions = new Set();
       xPositions.add(0);
@@ -178,7 +205,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
         xPositions.add(Math.round(panel.x + panel.width / 2));
         xPositions.add(Math.round(panel.x + panel.width));
       }
-      return [...xPositions]
+      out = [...xPositions]
         .sort((a, b) => a - b)
         .map((x, idx) => ({
           id: `lat-v-${idx}`,
@@ -190,7 +217,9 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
           forced: false,
         }));
     }
-  }, [facadeData, latten, allPanels, effectiveMat, startLijn, panelen, groupSettings, endExtensions]);
+    // SPARING-ELEMENTEN: de onderdelen ook uit de latten knippen (contour-volgend, dezelfde rects als de strips).
+    return cutVentHolesFromPanels(out, facadeData.sparingRects);
+  }, [facadeData, latten, allPanels, effectiveMat, startLijn, panelen, groupSettings, endExtensions, verband, stripZones]);
 
   const allUProfiles = useMemo(() => {
     if ((groupSettings?.backingType ?? 'hout') !== 'aluminium') return [];
@@ -270,7 +299,12 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       const zoneMat = { ...effectiveMat, ...(zs.material ?? {}) };
       const zoneVerband = zs.verband ?? verband;
       const zoneMaxHoogte = zs.maxHoogte ?? maxHoogte;
-      const patternData = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxHoogte, null, startLijn);
+      let patternData = buildFullGroupFacadePattern(walls, zoneMat, zoneVerband, zoneMaxHoogte, null, startLijn);
+      // SPARING-ELEMENTEN: ook de penant-zone-strips rond de onderdelen knippen (2D == 3D == export).
+      if (patternData && facadeData.sparingRects?.length) {
+        const zRowH = zoneVerband === 'staand_tegelverband' ? (zoneMat.steenL ?? zoneMat.steenH ?? 50) : (zoneMat.steenH ?? 50);
+        patternData = { ...patternData, rows: clipRowsAroundRects(patternData.rows, facadeData.sparingRects, zRowH) };
+      }
       result.push(patternData ? { patternData, zoneX1, zoneX2, color: zs.color ?? groupColor, zoneMat, zoneVerband } : null);
     }
     return result;
@@ -297,6 +331,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
     const bw = bounds.maxX - bounds.minX || 1;
     const bh = bounds.maxY - bounds.minY || 1;
     const scale = Math.min((W - PAD * 2) / bw, (H - PAD * 2) / bh) * 1000;
+    fitScaleRef.current = scale;   // onthoud de fit-schaal → zoom-ratio voor annotatie-grootte
     const cx = (bounds.minX + bounds.maxX) / 2;
     const cy = (bounds.minY + bounds.maxY) / 2;
     transform.current = {
@@ -332,7 +367,10 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       vX * scale * 0.001 + tx,
       ty - vY * scale * 0.001,
     ];
-    const annotSz = (physMM, min = 7, max = 28) => Math.max(min, Math.min(max, physMM * scale * 0.001));
+    // Bij inzoomen groeit de annotatie mee voor leesbaarheid: de max-cap schaalt met de zoom-ratio
+    // (scale t.o.v. de fit-schaal), gedempt tot 2,5×. Op fit-niveau (ratio 1) is dit ongewijzigd.
+    const _annotZoomK = Math.min(2.5, Math.max(1, scale / (fitScaleRef.current || scale)));
+    const annotSz = (physMM, min = 7, max = 28) => Math.max(min, Math.min(max * _annotZoomK, physMM * scale * 0.001));
 
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#1e293b';
@@ -415,9 +453,18 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       ctx.fill();
     }
 
+    // End-extension aanwezig? (zelfde bron als de bounds-verbreding, regel ~309-310)
+    const _eeClip = endExtensions ?? {};
+    const _hasEndExt = isKeepEndExtension() && (
+      Math.max(0, _eeClip.left?.strips ?? 0, _eeClip.left?.battens ?? 0, _eeClip.left?.panels ?? 0) > 0 ||
+      Math.max(0, _eeClip.right?.strips ?? 0, _eeClip.right?.battens ?? 0, _eeClip.right?.panels ?? 0) > 0
+    );
     const applyOpeningExclusionClip = () => {
       ctx.beginPath();
-      traceFacadePath();
+      // Met end-extension (handmatig): de verbrede rand als clip nemen (net als de strips, ~regel 1296),
+      // anders knipt de wand-vorm de verlengde panelen/latten juist weg. Zonder extensie ongewijzigd (wand-vorm).
+      if (_hasEndExt) ctx.rect(clipSx - 1, faceSy - 1, clipW + 2, faceH + 2);
+      else traceFacadePath();
       if (startLijn != null && startLijn < 0) {
         const [, byPeil] = toScreen(0, 0);
         const [, byStart] = toScreen(0, startLijn);
@@ -1220,6 +1267,29 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
           ctx.textBaseline = 'middle';
           ctx.fillText(`${Math.round(panel.width)}×${Math.round(panel.height)}`, pSx + pSw / 2, pSy + pSh / 2);
         }
+        // SPARING-ELEMENTEN: markeer het gat op het HELE paneel (frees/zagerij) — rood gestreept + maat.
+        if (panel.holes?.length) {
+          for (const h of panel.holes) {
+            const [hSx, hSy] = toScreen(mx(h.x, h.width), h.y + h.height);
+            const hSw = h.width * scale * 0.001;
+            const hSh = h.height * scale * 0.001;
+            ctx.fillStyle = 'rgba(220,38,38,0.18)';
+            ctx.fillRect(hSx, hSy, hSw, hSh);
+            ctx.strokeStyle = '#dc2626';
+            ctx.lineWidth = 1.2;
+            ctx.setLineDash([4, 3]);
+            ctx.strokeRect(hSx, hSy, hSw, hSh);
+            ctx.setLineDash([]);
+            if (hSw > 20 && hSh > 12) {
+              const hSz = annotSz(60, 6, 12);
+              ctx.font = `${hSz}px system-ui, sans-serif`;
+              ctx.fillStyle = '#b91c1c';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(`${Math.round(h.width)}×${Math.round(h.height)}`, hSx + hSw / 2, hSy + hSh / 2);
+            }
+          }
+        }
       });
       const [, faceSyTop] = toScreen(0, groupHeight);
       const [, faceSyBot] = toScreen(0, 0);
@@ -1253,8 +1323,8 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
         const STRIP_LAT_GAP = 5;
         const baseVY = (startLijn != null && startLijn < 0) ? startLijn : 0;
         for (const { penant: p, height: pH } of penantFaceData) {
-          const pX = p.x ?? 0;
           const pB = Math.max(1, p.breedte ?? 400);
+          const pX = p.x ?? 0;   // penant.x is u; de outsideDirFlip-mirror (manuele flip) plaatst 'm
           const clipX = pX + STRIP_LAT_GAP;
           const clipW = Math.max(0, pB - 2 * STRIP_LAT_GAP);
           if (clipW <= 0) continue;
@@ -1442,13 +1512,37 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
         ctx.textAlign = 'right';
         ctx.fillText(`${Math.round(op.x + op.width)}`, opSx + opSw - 2, labelY);
       }
+
+      // KOZIJN-weergave (vlag showKozijnen): teken het echte kozijn-vlak (rauw, vóór offset) als amber
+      // stippelkader binnen de knipgrens, met de marge kozijn→kniprand links/rechts (= de offset) ter
+      // controle van de uitlijning. Bij vlag kozijnOffset uit is dit de reveal kozijn↔void.
+      if (isShowKozijnen() && op.kozijnRaw) {
+        const k = op.kozijnRaw;
+        const [kSx, kSy] = toScreen(mx(k.x, k.width), k.y + k.height);
+        const kSw = k.width * scale * 0.001;
+        const kSh = k.height * scale * 0.001;
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(kSx, kSy, kSw, kSh);
+        ctx.setLineDash([]);
+        const gapL = Math.round(k.x - op.x);                       // marge links kozijn → kniprand (offset L)
+        const gapR = Math.round((op.x + op.width) - (k.x + k.width)); // marge rechts (offset R)
+        if (kSw > 30 && kSh > 16) {
+          ctx.font = `${annotSz(80, 7, 13)}px system-ui, sans-serif`;
+          ctx.fillStyle = '#fbbf24';
+          ctx.textBaseline = 'middle';
+          ctx.textAlign = 'center';
+          ctx.fillText(`L ${gapL} · R ${gapR}`, kSx + kSw / 2, kSy + kSh / 2);
+        }
+      }
     }
 
 
     if (penantFaceData?.length && vis.penanten !== false) {
-      for (const { penant: p, front, left: leftSideRows = [], right: rightSideRows = [], height: pH, panelDepthL: penPanelDepthL, panelDepthR: penPanelDepthR, pDL: penDL, pDR: penDR } of penantFaceData) {
-        const pX = p.x ?? 0;
+      for (const { penant: p, front, left: leftSideRows = [], right: rightSideRows = [], height: pH, panelDepthL: penPanelDepthL, panelDepthR: penPanelDepthR, pDL: penDL, pDR: penDR, skipLeft: penSkipL = false, skipRight: penSkipR = false } of penantFaceData) {
         const pB = Math.max(1, p.breedte ?? 400);
+        const pX = p.x ?? 0;   // penant.x is u; de outsideDirFlip-mirror (manuele flip) plaatst 'm
         const pDL = Math.max(1, penDL ?? p.diepteLinks ?? p.diepte ?? 150);
         const pDR = Math.max(1, penDR ?? p.diepteRechts ?? p.diepte ?? 150);
         const baseVY = (startLijn != null && startLijn < 0) ? startLijn : 0;
@@ -1458,20 +1552,22 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
         const [, bottomY] = toScreen(0, baseVY);
         const pW = ex - sx;
         const pHpx = bottomY - baseY;
-        const depthPxR = Math.min(pDR * scale * 0.001, 30);
-        const depthPxL = Math.min(pDL * scale * 0.001, 30);
+        const depthPxR = penSkipR ? 0 : Math.min(pDR * scale * 0.001, 30);   // zijde op 0 → geen zij-wig
+        const depthPxL = penSkipL ? 0 : Math.min(pDL * scale * 0.001, 30);
 
         ctx.fillStyle = 'rgba(99,102,241,0.15)';
         ctx.fillRect(sx, baseY, pW, pHpx);
 
-        ctx.fillStyle = 'rgba(99,102,241,0.25)';
-        ctx.beginPath();
-        ctx.moveTo(sx + pW, baseY);
-        ctx.lineTo(sx + pW + depthPxR, baseY - depthPxR);
-        ctx.lineTo(sx + pW + depthPxR, bottomY - depthPxR);
-        ctx.lineTo(sx + pW, bottomY);
-        ctx.closePath();
-        ctx.fill();
+        if (!penSkipR) {
+          ctx.fillStyle = 'rgba(99,102,241,0.25)';
+          ctx.beginPath();
+          ctx.moveTo(sx + pW, baseY);
+          ctx.lineTo(sx + pW + depthPxR, baseY - depthPxR);
+          ctx.lineTo(sx + pW + depthPxR, bottomY - depthPxR);
+          ctx.lineTo(sx + pW, bottomY);
+          ctx.closePath();
+          ctx.fill();
+        }
 
         if (rightSideRows.length) {
           ctx.save();

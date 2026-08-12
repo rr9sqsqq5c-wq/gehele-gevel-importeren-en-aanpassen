@@ -1,0 +1,11 @@
+import { IfcAPI } from 'web-ifc'; import fs from 'fs';
+const wi = await import('web-ifc');
+const api = new IfcAPI(); await api.Init();
+const bid = api.OpenModel(new Uint8Array(fs.readFileSync('C:/Users/MurkAnneKooistraKooi/Downloads/downloads tot 10-7/BIL-KSA-A-ZZ-PBP1.ifc')));
+const n = (t) => api.GetLineIDsWithType(bid, t).size();
+console.log('  IfcDoor           :', n(wi.IFCDOOR));
+console.log('  IfcWindow         :', n(wi.IFCWINDOW));
+console.log('  IfcOpeningElement :', n(wi.IFCOPENINGELEMENT));
+console.log('  IfcRelFillsElement:', n(wi.IFCRELFILLSELEMENT), ' <- opening<->kozijn (fill)');
+console.log('  IfcRelVoidsElement:', n(wi.IFCRELVOIDSELEMENT), ' <- wand<->opening (void)');
+api.CloseModel(bid);

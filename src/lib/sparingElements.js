@@ -50,6 +50,23 @@ export function sparingRectsForGroup(elements, groupFrame, offset = 0, depthTol 
   return rects;
 }
 
+// Gemak-helper: leidt de sparing-rechthoeken af uit een facadeData (gebruikt z'n refWallOrigin +
+// dimensies als groupFrame). Zo delen App (scherm/export), Werktekening én Uittrekstaat één bron —
+// elk in hun EIGEN facadeData-frame, dus geen frame-mismatch. Geen elementen/refWallOrigin → [].
+export function sparingRectsForFacade(facadeData, elements, offset = 0, depthTol = 300) {
+  const rwo = facadeData?.refWallOrigin;
+  if (!rwo || !elements?.length) return [];
+  const tS = rwo.thicknessStart, tE = rwo.thicknessEnd;
+  const gf = {
+    lengthAxis: rwo.lengthAxis, heightAxis: rwo.heightAxis, thicknessAxis: rwo.thicknessAxis,
+    groupMinX: facadeData.groupMinX, groupMinH: facadeData.groupMinH,
+    groupWidth: facadeData.groupWidth, groupHeight: facadeData.groupHeight,
+    thickMin: (Number.isFinite(tS) && Number.isFinite(tE)) ? Math.min(tS, tE) : null,
+    thickMax: (Number.isFinite(tS) && Number.isFinite(tE)) ? Math.max(tS, tE) : null,
+  };
+  return sparingRectsForGroup(elements, gf, offset, depthTol);
+}
+
 // Knip de sparing-rechthoeken uit de rijen (post-processing op facadeData.rows). Elk stuk metselwerk
 // dat op z'n rijhoogte binnen een sparing-rechthoek valt, wordt op de rand afgesneden (net als een
 // raam/deur-opening). rowH = steenstrip-hoogte (verband-afhankelijk). Retourneert NIEUWE rows.

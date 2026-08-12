@@ -186,6 +186,31 @@ export function isFeatureZones() {
   return readFlag('featureZones', true);
 }
 
+// GEEN_VERBAND — extra metselverband-keuze "geen": het BASISVLAK (buiten de tekenzones) krijgt
+// GEEN bekleding — geen steenstrips, geen panelen, geen latten — zodat je een blanco gevel houdt
+// om zelf tekenzones op te leggen. De zones brengen hun eigen verband/inhoud. DEFAULT = false →
+// de optie bestaat niet → settings.verband kan nooit 'geen' zijn → byte-identiek aan vóór.
+// NOODREM: ?geenVerband=0 → isBlankBaseVerband() valt terug op false → een 'geen'-project rendert
+// weer het doorlopende fallback-verband (buildRowPiecesForWidth zonder kop-offset) i.p.v. blanco.
+export function isGeenVerband() {
+  return readFlag('geenVerband', false);
+}
+
+// Eén bron voor de "blanco basisvlak"-conditie: alleen waar wanneer de vlag AAN staat én de groep
+// (of zone) expliciet verband 'geen' heeft. Alle consumenten (2D/3D/export/werktekening/uittrekstaat)
+// gaten hierop; met de vlag UIT is dit overal false → geen enkele gedragswijziging.
+export function isBlankBaseVerband(verband) {
+  return verband === 'geen' && isGeenVerband();
+}
+
+// PANEEL_OPTIMALISATIE — verdeel elke paneel-rechthoek optimaal: kolommen gelijk verdeeld met de naad
+// op een stootvoeg, rijen een EVEN aantal lagen (halfsteens) én binnen het gewicht (≤ maxKg, hard
+// ≤ maxKg+10). Vervangt de greedy breedte-verdeling + de niet-afgedwongen gewichtsgrens. DEFAULT =
+// false → exact het bestaande gedrag. NOODREM: ?paneelOptimalisatie=0.
+export function isPaneelOptimalisatie() {
+  return readFlag('paneelOptimalisatie', false);
+}
+
 // REPROJECT_OPENING_POLYGON — in het best-fit-pad (handmatige groepen) behoudt
 // reprojectOpening (facadePlane.js) de OPENING-POLYGOON i.p.v. 'm tot z'n bounding box te
 // reduceren (polyPts:null). Lost op dat een concave/L-vormige opening (bv. wand 60148,
@@ -211,6 +236,16 @@ export function isReprojectOpeningPolygon() {
 // pinch) → bbox-fallback. DEFAULT = false → altijd bbox (byte-identiek). Aanzetten: ?concaveOpeningMerge=1.
 export function isConcaveOpeningMerge() {
   return readFlag('concaveOpeningMerge', false);
+}
+
+// ZONE_START_STOP — per tekenzone een numerieke Start-X en Stop-X (mm) intypen i.p.v. alleen tekenen,
+// plus een "hele steen"-snap voor optimalisatie. De velden bewerken de BESTAANDE zone-rechthoek
+// (z.x = Start-X, z.x+z.width = Stop-X); geen nieuw dataveld → opgeslagen projecten ongemoeid, en de
+// zone-motor (buildStripZoneRegions.zRect) leest z.x/z.width al → 3D/2D/IFC volgen automatisch. LET OP:
+// bereikt UITSLUITEND 3D/2D/IFC — de meetstaat en mallen lezen de zone-motor niet (increment B2 apart).
+// DEFAULT = false → geen velden, tekenen-only (byte-identiek). Aanzetten: ?zoneStartStop=1.
+export function isZoneStartStop() {
+  return readFlag('zoneStartStop', false);
 }
 
 // TRUENORTH_METADATA_ONLY (FIX C) — project-noord overal. GEEN pad past trueNorth toe op de
@@ -312,6 +347,24 @@ export function isKozijnOffset() {
   return readFlag('kozijnOffset', false);
 }
 
+// PROJECT_DEFAULTS — project-brede standaard voor STARTLIJN (t.o.v. peil) en STEENSTRIP + VOEGEN
+// (lint/stoot). Elke groep 'volgt project' (default), tenzij je in die groep een eigen startlijn of
+// steenstrip/voeg kiest (override). Wijzig je de projectwaarde → alle volgt-project-groepen bewegen mee.
+// DEFAULT = false → geen project-paneel, groepen gebruiken de bestaande hardcoded defaults (byte-identiek).
+// Aanzetten: ?projectDefaults=1 (of localStorage 'projectDefaults'='1'). Noodrem: ?projectDefaults=0.
+export function isProjectDefaults() {
+  return readFlag('projectDefaults', false);
+}
+
+// LEKDORPEL_REFERENTIE — de LINKER/RECHTER opening-rand volgt de LEKDORPEL (los IFC, IfcBuildingElement-
+// Proxy met 'lekdorpel' in de naam) i.p.v. de kozijn-bbox. Alleen de X-randen (start/einde) worden vervangen;
+// de hoogte (Y) blijft van het kozijn/void. Bij een meervoudig kozijn geeft de lekdorpel één doorlopende
+// opening over de volle breedte. De kozijn-offset L/R meet dan vanaf de lekdorpelrand.
+// DEFAULT = false → geen loader, geen X-override (byte-identiek). Aanzetten: ?lekdorpelReferentie=1.
+export function isLekdorpelReferentie() {
+  return readFlag('lekdorpelReferentie', false);
+}
+
 // HALFSTEENS_PANEL_5STREK — vaste paneelbreedte bij een HALFSTEENS verband: knip altijd na 5 strekken
 // (volle stenen) + (stootvoeg − 3 mm speling), gemeten vanaf het groep-nulpunt waar de bond begint. Zo
 // valt elke paneelvoeg in de stootvoeg van de even rij → de KOPPELSTEEN (strip die de voeg overspant)
@@ -331,6 +384,18 @@ export function isHalfsteensPanel5Strek() {
 // Aanzetten: ?openingEdgeQuarter=1. Noodrem: ?openingEdgeQuarter=0.
 export function isOpeningEdgeQuarter() {
   return readFlag('openingEdgeQuarter', false);
+}
+
+// KOP_TOLERANTIE — reststeen-regel met marge. Een EIND-rest die binnen ±KOP_TOL mm (pattern.js, =2) van
+// een hele kop ligt wordt als KOP toegepast: de laatste hele strek wordt NIET naar een drieklezoor
+// getrokken, en de rest heet 'Kop' i.p.v. 'Rest'. Lost op dat een op hele mm afgeronde wandlengte (bv.
+// 6792,4 → 6792, zie ifc.js:1111/1122 + syntheticWall.js:15 + facadePlane.js:223) net ONDER de kop-grens
+// valt en zo op de verspringende (oneven) rijen een drieklezoor forceert. Werkt op ALLE halfsteens-paden
+// (3D/2D/zones/penant/werktekening) omdat ze dezelfde buildRowPiecesForWidth delen.
+// DEFAULT = false → drempels exact (< kop / < 0,01) = byte-identiek. Aanzetten: ?kopTolerantie=1 (of
+// localStorage 'kopTolerantie'='1'). Noodrem: ?kopTolerantie=0.
+export function isKopTolerantie() {
+  return readFlag('kopTolerantie', false);
 }
 
 // SHOW_KOZIJNEN — toont raam/deur-openingen ook als 3D-doos (kozijn) in de viewer, ter visuele
@@ -406,6 +471,28 @@ export function isVentilatieZone() {
   return readFlag('ventilatieZone', false);
 }
 
+// UNIFIED_LATTEN (FASE 1 — één waarheid) — ÉÉN gedeelde latten-berekening (buildFacadeLatten,
+// panelization.js) voor 2D/3D/export/werktekening/uittrekstaat: computeHorizontalLatten-positionering
+// + opening-clip + paneel-extent-clip (INSET 5) + sparing-clip. Vervangt de twee uiteenlopende
+// algoritmes (de paneelgrens-loop in export/uittrekstaat) en de ontbrekende clips (2D/3D lopen nu
+// vol-breedte). DEFAULT = false → elke view houdt z'n huidige latten-pad (byte-identiek). Als de vlag
+// AAN staat produceren álle weergaven identieke latten. Aanzetten: ?unifiedLatten=1. Noodrem: =0.
+export function isUnifiedLatten() {
+  return readFlag('unifiedLatten', false);
+}
+
+// KLIKLIJST_REFERENTIE — de kozijn-offset-referentie (kozijnRect) volgt de BUITENRAND van de KLIKLIJST
+// rondom het frame (het dunne profiel aan het buitenste dikte-vlak) i.p.v. de platgeslagen envelope
+// (meest-links/rechts-punt over alle diepten). Lost de inconsistente offset op: verschillende kozijn-
+// onderdelen liggen op verschillende diepte, en alleen de kliklijst-rand is de juiste referentie.
+// Bijvangst: de kliklijst-positie (welk dikte-vlak) is een onafhankelijk buiten/binnen-signaal.
+// PARSE-TIJD: kozijnRect wordt anders berekend → de vlag zit in de cache-key (re-import bij toggle).
+// DEFAULT = false → envelope (byte-identiek). Geen dun buitenprofiel → fallback envelope + ⚠️.
+// Aanzetten: ?kliklijstReferentie=1. Zie geheugen 'kliklijst-offset-en-buitenzijde'.
+export function isKliklijstReferentie() {
+  return readFlag('kliklijstReferentie', false);
+}
+
 // PENANT_TWEE_RIJEN — voorvlak-verband van een penant (buildCenteredFacePattern, alléén halfsteens):
 // de VERSPRINGENDE rij (oneven) wordt "hele strek tegen beide randen + symmetrisch middenstuk" i.p.v.
 // de huidige halve-steen-verschuiving. De GECENTREERDE rij (even, strek-hart-op-midden) blijft gelijk.
@@ -425,6 +512,73 @@ export function isGevelHandedness() {
   return readFlag('gevelHandedness', false);
 }
 
+// UITTREKSTAAT_SNAP — de uittrekstaat + mal-recept panelizeren met dezelfde snapFn (paneel-splitslijnen op
+// steenrijen) als tekening/3D/2D/export, i.p.v. ongesnapt. Lost op dat de materiaalstaat bij VERTICAAL
+// gesplitste zones andere paneelmaten telt dan getekend/geëxporteerd. DEFAULT = false → byte-identiek
+// (ongesnapt). Aanzetten: ?uittrekstaatSnap=1. Zones die niet splitsen zijn sowieso identiek.
+export function isUittrekstaatSnap() {
+  return readFlag('uittrekstaatSnap', false);
+}
+
+// PANEEL_MERK — koppelt het productie-merk (P-nummer per uniek paneeltype, "N× te produceren") aan de
+// montage-EPC: elk paneel krijgt een GEDEELD merk-nummer (op maat+strippatroon+gaten, in montage-volgorde),
+// getoond als kolom in de EPC-tabel/CSV + op de tekening, en hergebruikt in de productielijst → koppeling
+// productie↔montage. DEFAULT = false → geen merk-kolom (byte-identiek). Aanzetten: ?paneelMerk=1.
+// LET OP: leunt op uittrekstaatSnap (merk moet op de gesnapte, autoritatieve panelen berekend worden).
+export function isPaneelMerk() {
+  return readFlag('paneelMerk', false);
+}
+
+// PANEEL_14LAAG — halfsteens paneel-afmeting verband-gedreven i.p.v. gewicht/panelen.hoogte. Breedte =
+// 5 strekken + 4 stootvoegen + (stoot−3) [= de bestaande 5-strek]. Hoogte = MAX 14 lagen: paneelhoogte =
+// 14·lagenmaat − 3 = 14·steenH + 13·lint + (lint−3); onder course-flush, top groeit (lint−3), 3 mm
+// horizontale voeg tussen gestapelde panelen. De LATTEN worden hieruit AFGELEID (dataflow omgekeerd): één
+// lat gecentreerd op elke paneelvoeg; de álleronderste lat van de gevel én boven elke opening op paneel-
+// onder + 10 mm; en per gat ceil(span/400)−1 tussenlatten (gelijk verdeeld, h.o.h. net onder 400).
+// Vervangt de gewicht/interval-logica. DEFAULT = false → byte-identiek. Aanzetten: ?paneel14Laag=1.
+export function isPaneel14Laag() {
+  return readFlag('paneel14Laag', false);
+}
+
+// PENANT-HOEK-STOOTVOEG (3D): tussen de voorvlak-strip en de zijvlak-strip van een penant hoort een
+// stootvoeg, maar de zijstrip-lengte (pD + stoot + brickDepth) laat 'm juist tot de voorstrip doorlopen
+// ("sluit op"). Deze vlag haalt de `stoot` uit de zijstrip-LENGTE (voorstrip blijft op maxArmDepth) → er
+// valt een stoot-breed gat tussen voor- en zijstrip. Alleen het 3D-pad. DEFAULT = false → byte-identiek.
+export function isPenantHoekStoot() {
+  return readFlag('penantHoekStoot', false);
+}
+
+// GEEN-STRIP-GEEN-PANEEL (3D): 3D mist de strip-overlap-filter die View2D/Werktekening/export wél hebben
+// (een paneel blijft alleen als het érgens een steenstrip-stuk raakt). Deze vlag geeft 3D diezelfde filter →
+// paneel (en de erop volgende latten) verdwijnt waar geen strip is, bv. in smalle strip-loze zones tussen
+// openingen. DEFAULT = false → byte-identiek. Aanzetten: ?strip3dFilter=1. Noodrem: ?strip3dFilter=0.
+export function isStrip3dFilter() {
+  return readFlag('strip3dFilter', false);
+}
+
+// UNIT_DETECTIE — herken REPETERENDE gevel-units (verdiepingshoge BUITENwand-panelen met dezelfde
+// maat + raam/deur-layout, positie-onafhankelijk) en zet elk voorkomen als een gevelgroep weg;
+// identieke voorkomens delen een linkId → hun settings lopen synchroon (1× een unit-type instellen →
+// alle kopieën volgen, ook cross-project want de signature is stabiel). Puur ADDITIEF: bestaande
+// groepen en al-gegroepeerde wanden blijven ongemoeid; alleen een extra knop + één-regel-melding.
+// Eén-wand-per-unit (het HSB-paneel dat de openingen draagt); de finish-laag (baksteen) is een los
+// hulpmiddel en wordt hier niet vereist. DEFAULT = false → geen knop, geen state, byte-identiek.
+// Aanzetten: ?unitDetectie=1 (of localStorage 'unitDetectie'='1'). Noodrem: ?unitDetectie=0.
+export function isUnitDetectie() {
+  return readFlag('unitDetectie', false);
+}
+
+// GH_IMPORT — importeer een Grasshopper/Geometry-Gym IFC waarin de bekleding AL gemodelleerd staat
+// (IfcBuildingElementPart 'Board'/'Bricks' + IfcMember 'Slats'), i.p.v. wanden. Het pad leest de
+// elementen zelf, leidt de gevelvlakken af (platen-vlak, 3 mm-paneelvoeg), nummert de panelen per
+// gevel (1 plaat = 1 paneel, onder→boven/links→rechts) en toont per gevel een beoordelingsaanzicht +
+// uittrekstaat + zaaglijst, met terugschrijven van het paneelnummer naar de IFC. PUUR ADDITIEF: geen
+// enkele bestaande codepad (wand-import/parse/opslag) wordt geraakt. DEFAULT = false → geen knop, geen
+// state, byte-identiek. Aanzetten: ?ghImport=1 (of localStorage 'ghImport'='1'). Zie src/lib/ghCladding.js.
+export function isGhImport() {
+  return readFlag('ghImport', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -433,16 +587,31 @@ export const FLAG_REGISTRY = [
   { key: 'sparingElementen',     label: 'Sparing-onderdelen',        note: 'Niet-wand IFC-onderdelen importeren + de bekleding er rondom sparen.' },
   { key: 'openingFromKozijn',    label: 'Openingen op kozijn-rand',  note: 'Knip vanaf raam/deur (kozijn) i.p.v. de ruwe structurele opening.', reimport: true },
   { key: 'kozijnOffset',         label: 'Kozijn-offset (L/R/B/O)',   note: 'Globale marge per zijde tussen kozijnrand en bekleding (strips+panelen+latten) + melding bij opening zonder kozijn.' },
+  { key: 'projectDefaults',      label: 'Project-defaults (startlijn + steenstrip)', note: 'Project-brede startlijn (t.o.v. peil) en steenstrip/voegen; elke groep volgt project tenzij je er een eigen kiest.' },
+  { key: 'lekdorpelReferentie',  label: 'Lekdorpel als opening-rand',  note: 'Laad de lekdorpel-IFC; de L/R opening-rand volgt de lekdorpel i.p.v. de kozijn-bbox (hoogte blijft van het kozijn).' },
   { key: 'openingEdgeQuarter',   label: 'Opening-rand ¼-steen',      note: 'Sta ¼ steen toe tegen een opening i.p.v. altijd ½ (kop) wanneer twee strips boven elkaar bijna even groot worden. Delta instelbaar.' },
+  { key: 'kopTolerantie',        label: 'Kop-tolerantie ±2 mm (i.p.v. drieklezoor)', note: 'Een eind-rest binnen ±2 mm van een hele kop wordt als kop toegepast i.p.v. de laatste strek naar een drieklezoor te trekken. Lost op dat een op hele mm afgeronde wandlengte (bv. 6792,4→6792) net onder de kop-grens valt en zo een drieklezoor forceert op de verspringende rijen.' },
   { key: 'concaveOpeningMerge',  label: 'Concave opening-unie (raam+deur)', note: 'Twee overlappende openings (deur naast raam) worden tot hun echte L/U-vorm samengevoegd i.p.v. bbox, zodat het massieve muurdeel onder het raam bekleed blijft.' },
-  { key: 'showKozijnen',         label: 'Kozijnen tonen in 3D',      note: 'Raam/deur als 3D-doos ter visuele controle.', reimport: true },
+  { key: 'zoneStartStop',        label: 'Zone Start-X / Stop-X (numeriek)', note: 'Per tekenzone de linker- en rechterrand exact in mm intypen (i.p.v. tekenen) + "hele steen"-snap, om te optimaliseren. Werkt in 3D/2D/IFC; meetstaat/mallen nog niet.' },
+  { key: 'geenVerband',          label: 'Metselverband "geen" (blanco basisvlak)', note: 'Extra keuze in de verband-dropdown: het basisvlak buiten de tekenzones krijgt geen strips/panelen/latten → blanco gevel om zelf tekenzones op te leggen. De zones brengen hun eigen verband.' },
+  { key: 'paneelOptimalisatie',  label: 'Optimale paneelverdeling', note: 'Verdeel elk paneelvlak optimaal: kolommen gelijk met de naad op een stootvoeg, rijen een even aantal lagen én binnen het gewicht (≤ maxKg, hard ≤ maxKg+10). Vervangt de greedy breedte + dwingt de gewichtsgrens af.' },
+  { key: 'showKozijnen',         label: 'Kozijnen tonen (2D + 3D)',  note: 'Raam/deur als 3D-doos én als amber kader in 2D (met L/R-marge tot de strips) ter controle van de uitlijning.', reimport: true },
   { key: 'ventilatieZone',       label: 'Ventilatiezone (gedraaid verband)', note: 'Klein gat boven een raam wordt open geknipt + een zone met loodrecht verband eromheen (instelbaar per groep).', reimport: true },
   { key: 'cornerButt',           label: 'Stompe hoek',               note: 'Geen omslag-steenstrips op het loodrechte vlak.' },
   { key: 'corner85',             label: 'Hoek-detail 85°',           note: '' },
   { key: 'groothuisWildverband', label: 'Groothuis wildverband 1',   note: 'Het oudere groothuis-verband (versie 2 staat standaard aan).' },
   { key: 'malRecept',            label: 'Mal recept CSV',            note: 'CSV-export per paneel — bekende telbug (defect-containment).', advanced: true },
+  { key: 'unifiedLatten',        label: 'Latten — één berekening',   note: 'FASE 1: één gedeelde latten-berekening voor 2D/3D/export/werktekening/uittrekstaat (positionering + opening/paneel/sparing-clip).', advanced: true },
+  { key: 'kliklijstReferentie',  label: 'Kliklijst als offset-rand', note: 'Kozijn-offset meet vanaf de buitenrand van de kliklijst (dun buitenprofiel) rondom het frame, i.p.v. de envelope.', reimport: true },
   { key: 'penantTweeRijen',      label: 'Penant — strek aan de randen (oneven rij)', note: 'Voorvlak van een penant (halfsteens): de verspringende rij begint/eindigt met een hele strek + symmetrisch middenstuk, i.p.v. de halve-steen-verschuiving. Bv. 563 → 221·109·221.' },
   { key: 'gevelHandedness',      label: 'Gevel-handedness (links↔rechts)', note: 'Spiegelt de steenstrip-bond én 2D/werktekening zó dat elk gevelvlak van buiten gezien links→rechts leest (3D/2D/export één waarheid). Kozijnen blijven op hun plek.' },
+  { key: 'uittrekstaatSnap',     label: 'Uittrekstaat — panelen op steenrijen', note: 'Uittrekstaat + mal-recept panelizeren met dezelfde snap (paneel-splits op steenrijen) als tekening/3D/export, zodat de materiaalstaat dezelfde paneelmaten telt.' },
+  { key: 'paneelMerk',           label: 'Paneel-merk (productie↔montage)', note: 'Elk paneel krijgt een gedeeld merk (P-nr per uniek type) als kolom in de EPC-tabel/CSV + op de tekening, hergebruikt in de productielijst. Vereist "Uittrekstaat — panelen op steenrijen".', advanced: true },
+  { key: 'paneel14Laag',         label: 'Panelen — 14-laag + latten uit paneelvoegen', note: 'Halfsteens: paneelhoogte vast op 14 lagen (14·steenH+13·lint+(lint−3)) i.p.v. gewicht/hoogte-instelling; latten afgeleid uit de paneelvoegen (voeg-lat + onderlat +10mm + ~400 h.o.h. opvulling).', advanced: true },
+  { key: 'strip3dFilter',        label: '3D — geen paneel/lat zonder strip', note: '3D krijgt dezelfde strip-overlap-filter als 2D/werktekening/export: een paneel (en de erop volgende latten) verdwijnt als het nergens een steenstrip raakt. Dicht het gat waardoor 3D een paneel zonder strip kon tonen (bv. smalle zone tussen openingen).', advanced: true },
+  { key: 'penantHoekStoot',      label: 'Penant — stootvoeg voor↔zij (3D)', note: 'Zet een stootvoeg tussen de voorvlak-strip en de zijvlak-strip van een penant (3D): de zijstrip stopt een stootvoeg vóór de voorstrip i.p.v. er tegenaan (haalt de stoot uit de zijstrip-lengte).', advanced: true },
+  { key: 'unitDetectie',         label: 'Detecteer repeterende units', note: 'Herkent verdiepingshoge buitenwand-panelen met dezelfde maat + raam/deur-layout en zet elk voorkomen als een gekoppelde gevelgroep weg (1× een unit-type instellen → alle kopieën volgen). Puur additief.' },
+  { key: 'ghImport',             label: 'Grasshopper-gevel importeren', note: 'Laad een Grasshopper/Geometry-Gym IFC waarin panelen/strippen/latten al gemodelleerd zijn (geen wanden): leidt de gevels af, nummert de panelen per gevel en toont per gevel een beoordelingsaanzicht + uittrekstaat + zaaglijst.', reimport: true },
   { key: 'newOpenings',          label: 'Nieuwe opening-afleiding',  note: 'Experimenteel alternatief parse-pad; kan bestaande resultaten veranderen.', reimport: true, advanced: true },
   { key: 'openingUpAxisFix',     label: 'Opening up-as fix',         note: 'Experimenteel.', reimport: true, advanced: true },
   { key: 'selfContainedProjects',label: 'Self-contained projecten',  note: 'Experimenteel.', advanced: true },

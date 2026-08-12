@@ -1,9 +1,9 @@
-import { polyXRangesAtY, openingCoversX, openingXCoordsAtY } from './geometry.js';
+import { polyXRangesAtY, openingCoversX, openingXCoordsAtY, openingXRangesAtY } from './geometry.js';
 import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth, getWildverbandPanelBoundary } from './pattern.js';
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie } from './featureFlags.js';
 
 function round2(v) {
   return Math.round(v * 100) / 100;
@@ -98,7 +98,25 @@ export function cutVentHolesFromPanels(panels, vents) {
   return out;
 }
 
-export function buildFacadeZones(facadeWidth, facadeHeight, openings) {
+// SPARING-ELEMENTEN — hang de gaten (rechthoeken, groep-lokaal) op de panelen ZONDER het paneel op te
+// knippen: het paneel blijft één plaat, elk gat wordt (geknipt op de paneelrand) als {x,y,width,height}
+// in `panel.holes` gezet. Zo kan de werktekening/uittrekstaat het gat markeren voor de frees/zagerij.
+// Coördinaten zijn hetzelfde groep-lokale frame als panel.x/y (niet paneel-lokaal). Geen rects → paneel
+// ongemoeid (byte-identiek). Wordt óók in 2D/export gebruikt i.p.v. opknippen.
+export function attachHolesToPanels(panels, rects) {
+  if (!rects?.length || !panels?.length) return panels;
+  return panels.map((p) => {
+    const holes = [];
+    for (const r of rects) {
+      const x0 = Math.max(p.x, r.x), x1 = Math.min(p.x + p.width, (r.x ?? 0) + (r.width ?? 0));
+      const y0 = Math.max(p.y, r.y), y1 = Math.min(p.y + p.height, (r.y ?? 0) + (r.height ?? 0));
+      if (x1 - x0 > 0.5 && y1 - y0 > 0.5) holes.push({ x: round2(x0), y: round2(y0), width: round2(x1 - x0), height: round2(y1 - y0) });
+    }
+    return holes.length ? { ...p, holes } : p;
+  });
+}
+
+export function buildFacadeZones(facadeWidth, facadeHeight, openings, splitAllOpeningsX = false) {
   if (!openings.length) {
     return [{ id: 'Z1', kind: 'algemeen', x: 0, y: 0, width: facadeWidth, height: facadeHeight }];
   }
@@ -129,6 +147,15 @@ export function buildFacadeZones(facadeWidth, facadeHeight, openings) {
     for (const o of bandOpenings) {
       for (const x of openingXCoordsAtY(o, midY)) {
         xCoords.add(Math.max(0, Math.min(facadeWidth, x)));
+      }
+    }
+    // STRIP-SNEDE / proposal 3: splits ELKE band óók op de x-randen van ALLE openingen, zodat de massieve
+    // wanddelen links/rechts van een raam verticaal kunnen samensmelten (geen horizontale paneelrand door
+    // een doorlopende steen boven/onder het raam). Param uit → byte-identiek.
+    if (splitAllOpeningsX) {
+      for (const o of openings) {
+        xCoords.add(Math.max(0, Math.min(facadeWidth, o.x ?? 0)));
+        xCoords.add(Math.max(0, Math.min(facadeWidth, (o.x ?? 0) + (o.width ?? 0))));
       }
     }
     const xArr = [...xCoords].sort((a, b) => a - b);
@@ -276,6 +303,25 @@ function _scoreBattenLayout(groupHeight, battenYs, targetPanelH, minPanelH) {
   return finalSegs.reduce((sum, h) => sum + (h - mean) ** 2, 0) / finalSegs.length;
 }
 
+// PANEEL_14LAAG: de yBreaks voor de 14-laag-pitch (paneel = pitchV−3), met merge van een rest < 200mm in het
+// paneel eronder. GEDEELD door panelizeZone (paneel-hoogtes) én computeHorizontalLatten (latten op de voegen),
+// zodat latten altijd exact op de échte paneelvoegen liggen — ook na de merge (geen fantoom-voeg).
+export function compute14LaagYBreaks(zoneY1, zoneY2, lagenmaat) {
+  const pitchV = 14 * lagenmaat;
+  let yBreaks = [zoneY1];
+  for (let k = 1; k * pitchV - 3 < (zoneY2 - zoneY1) - 0.001; k++) {
+    const e = round2(zoneY1 + k * pitchV - 3);
+    if (e > zoneY1 + 0.5 && e < zoneY2 - 0.5) yBreaks.push(e);
+  }
+  yBreaks.push(zoneY2);
+  yBreaks = [...new Set(yBreaks)].sort((a, b) => a - b);
+  if (yBreaks.length >= 3) {
+    const topPanelH = (zoneY2 - yBreaks[yBreaks.length - 2]) - PANEL_GAP;   // −gap: het niet-onderste paneel wordt 3mm ingekort
+    if (topPanelH < 200) yBreaks.splice(yBreaks.length - 2, 1);
+  }
+  return yBreaks;
+}
+
 export function generateBattenPositions(groupHeight, mat, maxInterval, options = {}) {
   const steenH = mat.steenH ?? 50;
   const lint   = mat.lint   ?? 12;
@@ -304,7 +350,7 @@ export function generateBattenPositions(groupHeight, mat, maxInterval, options =
   return _battenForN(groupHeight, steenH, lint, lagenmaat, N);
 }
 
-export function computeHorizontalLatten({ facadeData, latten, mat, panelen, startLijn, backingType }) {
+export function computeHorizontalLatten({ facadeData, latten, mat, panelen, startLijn, backingType, verband }) {
   const _bt = backingType ?? 'hout';
   if (!facadeData || !latten?.enabled || _bt === 'aluminium' || _bt === 'aluminium_slimfort') return [];
   const richting = latten.richting ?? 'horizontaal';
@@ -335,6 +381,45 @@ export function computeHorizontalLatten({ facadeData, latten, mat, panelen, star
 
   const result = [];
   let idx = 0;
+  // PANEEL_14LAAG: latten PER ZONE op de ÉCHTE paneelvoegen (compute14LaagYBreaks, identiek aan de panelen),
+  // + onderlat met z'n onderkant op +10, + dorpel-lat waar een raam op de bovenkant van de zone staat, +
+  // ~maxInterval-vulling ertussen. Zo geen groep-brede fantoom-latten en geen overlappende latten onder/boven ramen.
+  const use14 = isPaneel14Laag() && verband === 'halfsteens';
+  if (use14) {
+    const lagenmaat14 = (mat.steenH ?? 50) + (mat.lint ?? 12);
+    const half = latBreedte / 2;
+    const opsForZones = (groupOpenings ?? []).filter(op => op.type !== 'ventilatie')
+      .map(op => ({ x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
+    const zones = buildFacadeZones(groupWidth, groupHeight, opsForZones);
+    for (const zone of zones) {
+      const zb = Math.round(zone.y), zt = Math.round(zone.y + zone.height);
+      const yBreaks = compute14LaagYBreaks(zb, zt, lagenmaat14);
+      const voegCenters = yBreaks.slice(1, -1).map(b => b + 1.5);   // midden van de 3mm-voeg = de paneelvoeg
+      const sill = opsForZones.some(op => Math.abs(op.y - zt) < 2 && op.x < zone.x + zone.width && op.x + op.width > zone.x);
+      const centers = [zb + 10 + half, ...voegCenters];             // onderlat: onderkant op +10 → center = +10 + half
+      if (sill) centers.push(zt - half);                            // dorpel: bovenkant op de dorpel → center = zt − half
+      centers.sort((a, b) => a - b);
+      // Zonder dorpel de vulling tot de zone-bovenkant laten doorlopen (steun in een hoog bovenste paneel),
+      // maar GÉÉN lat op de gevelrand/roof zelf. Bij een klein bovenpaneel (gat < ~1,5·maxInterval) voegt dit niets toe.
+      const fillTop = sill ? null : zt;
+      for (let i = 0; i < centers.length; i++) {
+        result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: zone.x, y: clampY(Math.round(centers[i] - half)), width: zone.width, height: latBreedte, forced: false });
+        const next = i < centers.length - 1 ? centers[i + 1] : fillTop;   // ~maxInterval-vulling tot de volgende lat of de zone-top
+        if (next != null && next > centers[i] + 1) {
+          const span = next - centers[i];
+          const gaps = Math.max(1, Math.round(span / maxInterval));
+          for (let j = 1; j < gaps; j++) result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: zone.x, y: clampY(Math.round(centers[i] + j * span / gaps - half)), width: zone.width, height: latBreedte, forced: false });
+        }
+      }
+    }
+    // PANEEL_14LAAG: dubbelingen weg — een smallere lat die binnen ~150mm van een BREDERE lat ligt die z'n
+    // x-bereik omvat, is overbodig (bv. de flank-onderlat naast een raam vs. de volle-breedte dorpel-lat
+    // eronder die al doorloopt). Drop de smalle; de brede dekt die plek al.
+    const _keep14 = result.filter((a, i) => !result.some((b, j) => j !== i
+      && b.width > a.width + 0.5 && b.x <= a.x + 0.5 && b.x + b.width >= a.x + a.width - 0.5
+      && Math.abs((a.y + a.height / 2) - (b.y + b.height / 2)) < 150));
+    result.length = 0; result.push(..._keep14);
+  } else {
   for (const yr of [...allYs].filter(y => y >= minH && y <= gH).sort((a, b) => a - b)) {
     let latY;
     if (yr === minH) latY = minH;
@@ -347,6 +432,7 @@ export function computeHorizontalLatten({ facadeData, latten, mat, panelen, star
   if (startLijnN < 0) {
     result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: 0, y: startLijnN, width: groupWidth, height: latBreedte, forced: true });
   }
+  }
 
   const getOpXW = (op, y) => {
     if (op.polyPts?.length >= 3) {
@@ -356,7 +442,9 @@ export function computeHorizontalLatten({ facadeData, latten, mat, panelen, star
     return { x: op.x, width: op.width };
   };
 
-  for (const op of groupOpenings) {
+  // Losse dorpel/latei-latten per raam — voor 14-laag NIET (de per-zone-latten hierboven dekken dorpel + latei
+  // al, en deze zouden er juist overheen lopen; dat was precies de klacht "latten over elkaar onder de ramen").
+  if (!use14) for (const op of groupOpenings) {
     const belowLatY = Math.round(clampY(op.y)) - latBreedte;
     const rawAbove = Math.round(clampY(op.y + op.height));
     const firstAbove = allRowYsSorted.find(ry => ry >= rawAbove - 0.5) ?? rawAbove;
@@ -372,6 +460,141 @@ export function computeHorizontalLatten({ facadeData, latten, mat, panelen, star
   }
 
   return result;
+}
+
+// FASE 1 — ÉÉN WAARHEID voor de latten (vlag unifiedLatten). Positionering via computeHorizontalLatten
+// (generateBattenPositions + brickTop-snap), dan opening-clip + paneel-extent-clip (INSET 5), en tenslotte
+// sparing-clip. Verticaal: paneel-x-posities (met penant-hoogte) + sparing-clip. De AANROEPER levert z'n
+// eigen `panels` (zodat de extent-clip op dezelfde panelen klopt) én de `panelen`-settings. Zo produceren
+// 2D/3D/export/werktekening/uittrekstaat identieke latten uit één bron.
+export function buildFacadeLatten({ facadeData, latten, mat, panelen, panels = [], penanten = [], startLijn, verband, backingType, sparingRects = [] }) {
+  const _bt = backingType ?? 'hout';
+  if (!facadeData || !latten?.enabled || _bt === 'aluminium' || _bt === 'aluminium_slimfort') return [];
+  const { groupWidth, groupHeight, groupOpenings } = facadeData;
+  const richting = latten.richting ?? 'horizontaal';
+  const latBreedte = Math.max(5, latten.breedte ?? 50);
+  const use14 = isPaneel14Laag() && verband === 'halfsteens';   // 14-laag: gevelrand niet insetten (t.b.v. end-extension)
+  let out;
+  if (richting === 'horizontaal') {
+    const rawLatten = computeHorizontalLatten({ facadeData, latten, mat, panelen, startLijn, backingType: _bt, verband });
+    const INSET = 5;
+    const result = [];
+    let gi = 0;
+    for (const lat of rawLatten) {
+      if (lat.forced) { result.push({ ...lat, id: `lat-h-${gi++}` }); continue; }
+      const latTop = lat.y, latBot = lat.y + lat.height;
+      const openingsAtY = (groupOpenings ?? []).filter((op) => op.y < latBot && op.y + op.height > latTop);
+      const zones = [];
+      if (!openingsAtY.length) { zones.push({ x1: 0, x2: groupWidth }); }
+      else {
+        const opRanges = openingsAtY.flatMap((op) => openingXRangesAtY(op, latTop, latBot)).sort((a, b) => a.x1 - b.x1);
+        let cursor = 0;
+        for (const op of opRanges) { if (op.x1 > cursor) zones.push({ x1: cursor, x2: op.x1 }); cursor = Math.max(cursor, op.x2); }
+        if (cursor < groupWidth) zones.push({ x1: cursor, x2: groupWidth });
+      }
+      for (const zone of zones) {
+        let x1 = zone.x1, x2 = zone.x2;
+        if (panels.length) {
+          const inZone = panels.filter((p) => p.y < latBot && p.y + p.height > latTop && p.x + p.width > zone.x1 && p.x < zone.x2);
+          if (inZone.length) {
+            const pxMin = Math.min(...inZone.map((p) => p.x));
+            const pxMax = Math.max(...inZone.map((p) => p.x + p.width));
+            // PANEEL_14LAAG: aan de GEVELRAND niet insetten → de rand-lat raakt x=0/groupWidth en loopt zo mee met end-extension.
+            x1 = (use14 && pxMin <= 0.5) ? pxMin : pxMin + INSET;
+            x2 = (use14 && pxMax >= groupWidth - 0.5) ? pxMax : pxMax - INSET;
+          }
+        }
+        if (x2 <= x1) continue;
+        result.push({ ...lat, id: `lat-h-${gi++}`, x: x1, width: x2 - x1 });
+      }
+    }
+    out = result;
+  } else {
+    const xs = new Set([0, groupWidth]);
+    for (const p of panels) { xs.add(Math.round(p.x)); xs.add(Math.round(p.x + p.width / 2)); xs.add(Math.round(p.x + p.width)); }
+    out = [...xs].sort((a, b) => a - b).map((x, idx) => {
+      const lx1 = x - latBreedte / 2;
+      const pen = (penanten ?? []).find((p) => { const px1 = p.x ?? 0, px2 = px1 + Math.max(1, p.breedte ?? 400); return lx1 + latBreedte > px1 + 5 && lx1 < px2 - 5; });
+      const latH = pen ? Math.max(1, pen.hoogte ?? 2000) : groupHeight;
+      return { id: `lat-v-${idx}`, richting: 'verticaal', x: lx1, y: 0, width: latBreedte, height: latH, forced: false };
+    });
+  }
+  return (sparingRects?.length) ? cutVentHolesFromPanels(out, sparingRects) : out;
+}
+
+// GEEN_VERBAND / zone-backing: draagpanelen die de GETEKENDE ZONES volgen i.p.v. de hele gevel.
+// Elke zone-rechthoek wordt gesneden met de openings-vrije gevelzones (buildFacadeZones) en per
+// stuk gepanelizeerd (met de EIGEN verband van die zone), zodat elk bekledingsvak z'n eigen
+// draagpanelen krijgt en openingen vrij blijven. activeZones = de stripZone-objecten (al op
+// enabled gefilterd; dragen x/y/width/height + verband). Lege input → [].
+export function buildZoneBackingPanels({ facadeData, activeZones, panelen, latten, mat, verband, startLijn = null, sparingRects = [] }) {
+  if (!facadeData || !panelen?.enabled || !activeZones?.length) return [];
+  const { groupWidth, groupHeight, groupOpenings = [] } = facadeData;
+  const openings = (groupOpenings ?? []).filter((op) => op.type !== 'ventilatie')
+    .map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
+  const basePanel = computeEffectiveBasePanel(panelen, mat.brickWeightM2 ?? 40, mat);
+  const maxInterval = Math.max(50, latten?.maxInterval ?? 400);
+  const baseBattenYs = generateBattenPositions(groupHeight, mat, maxInterval, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 });
+  const lint = mat.lint ?? 12, steenH = mat.steenH ?? 50, steenL = mat.steenL ?? 210, lintHalf = lint / 2;
+  const fullZones = buildFacadeZones(groupWidth, groupHeight, openings, true);   // massieve delen naast een raam samensmelten (geen strip-snede)
+  let panels = [];
+  for (const z of activeZones) {
+    const V = z.verband ?? verband ?? 'halfsteens';
+    const zx1 = z.x ?? 0, zy1 = z.y ?? 0, zx2 = zx1 + (z.width ?? 0), zy2 = zy1 + (z.height ?? 0);
+    // PANEELVOEGEN OP DE STEENRIJEN: bouw de course-grid van DEZE zone (eigen verband + anker) en
+    // snap de paneel-hoogtebreaks daarop, zodat een paneelvoeg op een lintvoeg valt (net als de basis).
+    const lagenmaat = V === 'staand_tegelverband' ? (steenL + lint) : (steenH + lint);
+    const anchorY = z.bondAnchor === 'planeOrigin' ? 0 : zy1;
+    const rowYs = [];
+    if (lagenmaat > 0) {
+      const k0 = Math.floor((zy1 - anchorY) / lagenmaat) - 1;
+      for (let y = anchorY + k0 * lagenmaat; y <= zy2 + lagenmaat; y += lagenmaat) if (y >= zy1 - 1 && y <= zy2 + 1) rowYs.push(round2(y));
+    }
+    const snapFn = rowYs.length ? (y) => { const t = y + lintHalf; return rowYs.reduce((b, ry) => Math.abs(ry - t) < Math.abs(b - t) ? ry : b); } : null;
+    const bys = snapFn ? baseBattenYs.map(snapFn) : baseBattenYs;
+    for (const fz of fullZones) {
+      const ix1 = Math.max(fz.x, zx1), iy1 = Math.max(fz.y, zy1);
+      const ix2 = Math.min(fz.x + fz.width, zx2), iy2 = Math.min(fz.y + fz.height, zy2);
+      if (ix2 - ix1 > 10 && iy2 - iy1 > 10) {
+        const res = panelizeZone({ x: ix1, y: iy1, width: ix2 - ix1, height: iy2 - iy1, id: `zpz-${Math.round(ix1)}-${Math.round(iy1)}`, kind: 'zone', bondOriginX: z.bondAnchor === 'planeOrigin' ? 0 : zx1, bondOriginY: z.bondAnchor === 'planeOrigin' ? 0 : zy1 }, bys, basePanel, snapFn, mat, V);
+        if (res.ok) panels.push(...res.panels);
+      }
+    }
+  }
+  panels = panels.filter((p) => p.height >= 200 && p.width >= 10);
+  // PROJECT-STARTLIJN (peil): net als de basis-panelen. <0 → het onderste paneel (op de gevelonderkant,
+  // y≈0) trekt door tot de startlijn; >0 → panelen onder de startlijn worden afgesneden.
+  if (startLijn != null && startLijn < 0 && panels.length) {
+    panels = panels.map((p) => p.y <= 0.5 ? { ...p, y: startLijn, height: round2(p.height + p.y - startLijn) } : p);
+  } else if (startLijn != null && startLijn > 0 && panels.length) {
+    panels = panels.map((p) => {
+      if (p.y + p.height <= startLijn) return null;
+      if (p.y < startLijn) return { ...p, y: startLijn, height: round2(p.y + p.height - startLijn) };
+      return p;
+    }).filter(Boolean);
+  }
+  return attachHolesToPanels(panels, sparingRects);
+}
+
+// Klip latten op de zone-rechthoeken (x én y): een lat blijft alleen waar een zone hem dekt.
+// Nodig omdat buildFacadeLatten in banden zónder zone-paneel de lat over de volle breedte legt.
+// Overlappende zones kunnen een lat-segment dubbel geven — verwaarloosbaar (identieke positie).
+export function clipLattenToZones(latten, activeZones) {
+  if (!latten?.length || !activeZones?.length) return [];
+  const out = [];
+  let gi = 0;
+  for (const lat of latten) {
+    const lx1 = lat.x, ly1 = lat.y, lx2 = lat.x + lat.width, ly2 = lat.y + lat.height;
+    for (const z of activeZones) {
+      const zx1 = z.x ?? 0, zy1 = z.y ?? 0, zx2 = zx1 + (z.width ?? 0), zy2 = zy1 + (z.height ?? 0);
+      const ix1 = Math.max(lx1, zx1), iy1 = Math.max(ly1, zy1);
+      const ix2 = Math.min(lx2, zx2), iy2 = Math.min(ly2, zy2);
+      if (ix2 - ix1 > 1 && iy2 - iy1 > 0.5) {
+        out.push({ ...lat, id: `${lat.id ?? 'lat'}-z${gi++}`, x: ix1, y: iy1, width: ix2 - ix1, height: iy2 - iy1 });
+      }
+    }
+  }
+  return out;
 }
 
 function mergeSmallSegments(breaks, minH) {
@@ -453,6 +676,90 @@ function collectStootvoegBreaks(zoneWidth, material, verband, stoot) {
   return [...breaks].sort((a, b) => a - b);
 }
 
+// PANEEL_OPTIMALISATIE — verdeel `total` lagen over `nRow` rijen, elke rij EVEN, zo gelijk mogelijk.
+// Een oneven rest (1 laag) gaat naar de bovenste rij (die wordt sowieso door de zone-top begrensd → mag oneven).
+function distributeEvenCourses(total, nRow) {
+  const parts = new Array(nRow).fill(0);
+  let base = Math.floor(total / nRow);
+  if (base % 2 === 1) base -= 1;
+  base = Math.max(2, base);
+  for (let i = 0; i < nRow; i++) parts[i] = base;
+  let rem = total - base * nRow;
+  let i = 0;
+  while (rem >= 2) { parts[i % nRow] += 2; rem -= 2; i++; }
+  if (rem === 1) parts[nRow - 1] += 1;
+  return parts;
+}
+
+// PANEEL_OPTIMALISATIE — optimale rechthoek-verdeling. Kolommen: gelijk verdeeld, elke naad gesnapt op
+// de dichtstbijzijnde stootvoeg (want daar mag gezaagd worden). Rijen: even aantal lagen (halfsteens)
+// én binnen het gewicht — de breedste kolom bepaalt de maximale rijhoogte (opp × kg/m² ≤ maxKg / +10).
+// Paneelvorm zelf komt uit buildPanelsFromBreaks (ongewijzigd); alleen de break-posities zijn slimmer.
+function optimalPanelizeZone(zone, basePanel, material, verband) {
+  const W = round2(zone.width), H = round2(zone.height);
+  if (W <= 0 || H <= 0) return null;
+  const zoneX1 = round2(zone.x), zoneY1 = round2(zone.y);
+  const steenL = material.steenL ?? 210, steenH = material.steenH ?? 50, lint = material.lint ?? 12, stoot = material.stoot ?? 10;
+  const lagenmaat = verband === 'staand_tegelverband' ? (steenL + lint) : (steenH + lint);
+  if (lagenmaat <= 0) return null;
+
+  // ── kolommen: gelijk + naad op stootvoeg ──
+  const targetW = basePanel.targetWidth ?? (5 * steenL + 4 * stoot);
+  const plateW = basePanel.width ?? 3005;
+  let nCol = Math.max(1, Math.round(W / Math.max(1, Math.min(targetW, plateW))));
+  while (W / nCol > plateW + 0.5) nCol++;   // nooit breder dan de plaat
+  // KOLOM-NAAD OP DE DOORLOPENDE STEEN: snap elke naad naar een HELE-STEEN-positie (k×(steenL+stoot))
+  // gemeten vanaf de bond-oorsprong — doorlopend, óók over openingen heen. Zo liggen ALLE naden in
+  // dezelfde stootvoeg-fase → koppelstrippen enkel OM-EN-OM (elke andere laag is volledig schoon), i.p.v.
+  // de ene naad op een halve steen en de andere op een hele → elke laag raak. Vult tevens proposal 3 in.
+  const pitch = steenL + stoot;
+  const originX = zone.bondOriginX ?? 0;   // doorlopende steen-oorsprong (plane = 0, of de zone-x)
+  const xInner = [];
+  for (let i = 1; i < nCol; i++) {
+    const idealAbs = zoneX1 + (i * W) / nCol;
+    const snapAbs = originX + Math.round((idealAbs - originX) / pitch) * pitch;   // dichtstbijzijnde hele steen
+    if (snapAbs > zoneX1 + 0.5 && snapAbs < zoneX1 + W - 0.5) xInner.push(round2(snapAbs));
+  }
+  const xBreaks = [...new Set([zoneX1, ...xInner, round2(zoneX1 + W)])].sort((a, b) => a - b);
+  let maxColW = 1;
+  for (let i = 0; i < xBreaks.length - 1; i++) maxColW = Math.max(maxColW, xBreaks[i + 1] - xBreaks[i]);
+
+  // ── rijen: even lagen én binnen gewicht (breedste kolom bepaalt maxhoogte) ──
+  const totalCourses = Math.max(1, Math.round(H / lagenmaat));
+  const area50 = basePanel.maxArea50MM2 ?? Infinity;
+  const area60 = basePanel.maxArea60MM2 ?? Infinity;
+  const evenFloor = (n) => Math.max(2, Math.floor(n / 2) * 2);
+  const maxCHard = isFinite(area60) ? Math.max(2, evenFloor((area60 / maxColW) / lagenmaat)) : totalCourses;
+  const maxCPref = isFinite(area50) ? Math.max(2, evenFloor((area50 / maxColW) / lagenmaat)) : maxCHard;
+  let nRow = Math.max(1, Math.ceil(totalCourses / Math.max(2, maxCPref)));
+  let rowCourses;
+  for (let guard = 0; guard < 100; guard++) {
+    rowCourses = distributeEvenCourses(totalCourses, nRow);
+    if (Math.max(...rowCourses) <= maxCHard || nRow >= totalCourses) break;
+    nRow++;
+  }
+  // HORIZONTALE NAAD OP DE LINTVOEG: snap elke interne rij-naad naar de doorlopende laag-lijn
+  // (courseOriginY + k×lagenmaat), óók over openingen heen, zodat een strip nooit horizontaal wordt
+  // doorsneden (dat kan enkel in een lintvoeg). Onder-/bovenrand = deelvlak-rand (raam/zone → geen paneel ernaast).
+  const courseOriginY = zone.bondOriginY ?? 0;
+  const snapY = (y) => courseOriginY + Math.round((y - courseOriginY) / lagenmaat) * lagenmaat;
+  const yBreaks = [zoneY1];
+  let acc = 0;
+  for (let i = 0; i < rowCourses.length - 1; i++) {
+    acc += rowCourses[i];
+    const yLine = round2(snapY(zoneY1 + acc * lagenmaat));   // op een lintvoeg
+    if (yLine > zoneY1 + 1 && yLine < zoneY1 + H - 1) yBreaks.push(yLine);
+  }
+  yBreaks.push(round2(zoneY1 + H));
+  const yb = [...new Set(yBreaks)].sort((a, b) => a - b);
+
+  const bpW = basePanel.width, bpH = basePanel.maxHeight ?? basePanel.height;
+  const orientation = (W <= bpW && H <= (bpH ?? H)) ? 'liggend' : 'staand';
+  const panels = buildPanelsFromBreaks(zone, xBreaks, yb, orientation, null).filter((p) => p.width > 0.001 && p.height > 0.001);
+  if (!panels.length) return null;
+  return { ok: true, orientation, panelCount: panels.length, panels };
+}
+
 export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material = null, verband = null) {
   const bpW = basePanel.width;
   const bpH = basePanel.height;
@@ -463,6 +770,22 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material 
   const zoneX2 = round2(zone.x + zone.width);
   const zoneY1 = round2(zone.y);
   const zoneY2 = round2(zone.y + zone.height);
+
+  // PANEEL_OPTIMALISATIE (vlag, default UIT): optimale verdeling (kolommen gelijk+stootvoeg, rijen even
+  // lagen+gewicht) voor de horizontale/staande verbanden. Wildverband/groothuis houden hun eigen pad.
+  if (isPaneelOptimalisatie() && material != null && verband != null
+    && verband !== 'wildverband' && verband !== 'groothuis_wildverband' && verband !== 'groothuis_wildverband_2') {
+    const opt = optimalPanelizeZone(zone, basePanel, material, verband);
+    if (opt) return opt;
+  }
+
+  // PANEEL_14LAAG (vlag): halfsteens paneelhoogte vast op 14 lagen. pitchV = 14·lagenmaat; paneel = pitchV−3
+  // (= 14·steenH + 13·lint + (lint−3)), onder course-flush, 3 mm voeg naar boven. yBreaks worden hieronder
+  // overschreven (i.p.v. de battenYs/gewicht-splits); de latten worden in de call-sites uit de paneelvoegen
+  // afgeleid. Vlag uit → onaangeroerd (byte-identiek).
+  const _lagenmaat14 = (material?.steenH ?? 50) + (material?.lint ?? 12);
+  const use14Laag = isPaneel14Laag() && verband === 'halfsteens' && material != null && _lagenmaat14 > 0
+    && zone.height > (14 * _lagenmaat14 - 3 + 0.5);
 
   const ySet = new Set([zoneY1, zoneY2]);
   for (const by of battenYs) {
@@ -510,6 +833,12 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material 
         yBreaks = [...new Set(newBreaks)].sort((a, b) => a - b);
       }
     }
+  }
+
+  // PANEEL_14LAAG: overschrijf yBreaks met de 14-laag-pitch (paneel = pitchV−3; de 3mm-voeg naar boven komt
+  // uit de verticale PANEL_GAP hieronder). Rest < 200mm smelt in het paneel eronder (zie compute14LaagYBreaks).
+  if (use14Laag) {
+    yBreaks = compute14LaagYBreaks(zoneY1, zoneY2, _lagenmaat14);
   }
 
   const nCols = Math.max(1, Math.round(zone.width / targetW));
@@ -594,6 +923,18 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material 
     }
   }
 
+  // PANEEL_14LAAG: verticale voeg — schuif niet-onderste panelen PANEL_GAP omhoog + hoogte −PANEL_GAP
+  // (spiegelbeeld van de horizontale), zodat elk paneel pitchV−3 hoog is met een 3mm voeg erboven.
+  if (use14Laag && panels.length > 0) {
+    for (const panel of panels) {
+      if (Math.abs(panel.y - zoneY1) >= 0.01) {   // niet de onderste rij
+        panel.y = round2(panel.y + PANEL_GAP);
+        panel.height = round2(panel.height - PANEL_GAP);
+        panel.area = round2(panel.width * panel.height);
+      }
+    }
+  }
+
   const validPanels = panels.filter(p => p.width > 0.001 && p.height > 0.001);
   if (!validPanels.length) {
     const fallback = {
@@ -626,7 +967,9 @@ export function detectKoppelstrippen(panels, facadeRows, mat, verband) {
         const px2 = round2(panel.x + panel.width);
         const py1 = round2(panel.y);
         const py2 = round2(panel.y + panel.height);
-        if (row.y + stripH <= py1 + 0.5 || row.y >= py2 - 0.5) continue;
+        // Alleen VERTICALE doorsnijding telt als koppelstrip: de steenrij moet VOLLEDIG binnen dit paneel
+        // vallen (horizontaal snijden we altijd in een lintvoeg → een strip wordt nooit horizontaal gedeeld).
+        if (row.y < py1 - 0.5 || row.y + stripH > py2 + 0.5) continue;
         if (ex <= px1 + 0.5 || sx >= px2 - 0.5) continue;
         spanning.push(panel);
       }
@@ -712,16 +1055,19 @@ export function computeEffectiveBasePanel(panelen, brickWeightM2, material) {
   const w = Math.max(100, panelen?.breedte ?? 3005);
   const h = Math.max(100, panelen?.hoogte ?? 1200);
   const maxKg = panelen?.maxKg ?? 50;
-  const panelW = panelen?.gewichtM2 ?? 9.4;
-  const brickW = brickWeightM2 ?? 40;
-  const totalW = Math.max(0.001, panelW + brickW);
-  const maxAreaMM2 = (maxKg / totalW) * 1e6;
-  const effectiveH = Math.min(h, Math.max(100, Math.floor(maxAreaMM2 / w)));
-
   const steenL = material?.steenL ?? 210;
   const steenH = material?.steenH ?? 50;
   const lint  = material?.lint  ?? 12;
   const stoot = material?.stoot ?? 10;
+  const panelW = panelen?.gewichtM2 ?? 9.4;
+  // GEWICHT PER STRIP (optioneel): staat material.stripKg (kg per strip) → leid het strip-gewicht/m²
+  // daaruit af (een strip beslaat (steenL+stoot)×(steenH+lint) m²); anders de per-m²-waarde
+  // brickWeightM2. Zonder stripKg is dit woord-voor-woord het oude gedrag (byte-identiek).
+  const _moduleM2 = ((steenL + stoot) * (steenH + lint)) / 1e6;
+  const brickW = (material?.stripKg > 0 && _moduleM2 > 0) ? (material.stripKg / _moduleM2) : (brickWeightM2 ?? 40);
+  const totalW = Math.max(0.001, panelW + brickW);
+  const maxAreaMM2 = (maxKg / totalW) * 1e6;
+  const effectiveH = Math.min(h, Math.max(100, Math.floor(maxAreaMM2 / w)));
   const brickTargetW = 5 * steenL + 4 * stoot;
   const brickTargetH = 14 * steenH + 13 * lint;
 
@@ -733,6 +1079,11 @@ export function computeEffectiveBasePanel(panelen, brickWeightM2, material) {
     targetWidth:  Math.min(w, brickTargetW),
     targetHeight: Math.min(effectiveH, brickTargetH),
     verspringen: panelen?.verspringen ?? false,
+    // PANEEL_OPTIMALISATIE: maximale paneel-OPPERVLAKte uit het gewicht (kg/m² × opp = kg). area50 =
+    // streefgrens (maxKg), area60 = harde grens (maxKg+10, "incidenteel iets zwaarder"). Alleen gebruikt
+    // door de optimale verdeling; bestaande callers negeren deze velden (byte-identiek).
+    maxArea50MM2: (maxKg / totalW) * 1e6,
+    maxArea60MM2: ((maxKg + 10) / totalW) * 1e6,
   };
 }
 

@@ -181,11 +181,26 @@ function reprojectOpening(op, wo, plane, vLenStart, vHgtStart) {
       });
     }
   }
+  // KOZIJN-OFFSET: herproj­ecteer óók het kozijn-vlak (fill) naar het virtuele-wand-frame, met exact
+  // dezelfde as-transform (recursief door dezelfde functie), zodat de offset-referentie in het best-fit-
+  // pad (default-groepen) meeloopt. Geen kozijn → null (offset valt terug op de void + melding).
+  let kozijnRect = null;
+  if (op.kozijnRect) {
+    const kr = reprojectOpening({ ...op.kozijnRect, id: op.id, type: op.type }, wo, plane, vLenStart, vHgtStart);
+    kozijnRect = { x: kr.x, y: kr.y, breedte: kr.breedte, hoogte: kr.hoogte, polyPts: kr.polyPts };
+  }
+  // LEKDORPEL-REFERENTIE: herprojecteer de lekdorpel-X-extent (wand-lokaal) mee naar het vlak-frame,
+  // zodat de opening-rand ook in het best-fit-pad de lekdorpel volgt.
+  let lekdorpelX = null;
+  if (op.lekdorpelX && (op.lekdorpelX.breedte ?? op.lekdorpelX.width)) {
+    const lr = reprojectOpening({ id: op.id, type: op.type, x: op.lekdorpelX.x, y: op.y ?? 0, breedte: op.lekdorpelX.breedte ?? op.lekdorpelX.width, hoogte: op.hoogte ?? op.height ?? 0, polyPts: null }, wo, plane, vLenStart, vHgtStart);
+    lekdorpelX = { x: lr.x, breedte: lr.breedte };
+  }
   return {
     id: op.id, type: op.type ?? 'sparing',
     x: Math.round(lo[plane.tAxis] - vLenStart), y: Math.round(lo[plane.uAxis] - vHgtStart),
     breedte: Math.round(hi[plane.tAxis] - lo[plane.tAxis]), hoogte: Math.round(hi[plane.uAxis] - lo[plane.uAxis]),
-    polyPts, thicknessCenter: op.thicknessCenter ?? null, hasFill: op.hasFill,
+    polyPts, thicknessCenter: op.thicknessCenter ?? null, hasFill: op.hasFill, kozijnRect, lekdorpelX, lekSource: op.lekSource ?? null,
   };
 }
 
@@ -283,7 +298,7 @@ function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft
  * vlag. Zelfde returnvorm (rows/groupMinX/.../refWallOrigin) zodat de bestaande
  * batch-/render-pijplijn ongewijzigd werkt — plus `_bestFit` diagnostiek.
  */
-export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, modelUpAxis = undefined, kozijnOffset = null, edgeStagger = null, fillToMax = false) {
+export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, modelUpAxis = undefined, kozijnOffset = null, edgeStagger = null, fillToMax = false, lekdorpels = null) {
   const members = (walls ?? []).filter(w => w.wallOrigin);
   if (!members.length) return null;
   // Model-up-as uit de projectcontext (robuust, dezelfde lijn als detectModelUpAxis).

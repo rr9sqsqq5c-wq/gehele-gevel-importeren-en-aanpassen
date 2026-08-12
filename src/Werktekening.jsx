@@ -1,9 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
 import { buildFullGroupFacadePattern, buildFacePattern, buildMirroredFacePattern } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG, clipPanelToFacadePolys, detectKoppelstrippen, PANEL_GAP, buildWildverbandPanelGrid, computeHorizontalLatten } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG, clipPanelToFacadePolys, detectKoppelstrippen, PANEL_GAP, buildWildverbandPanelGrid, computeHorizontalLatten, attachHolesToPanels, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones } from './lib/panelization.js';
+import { buildStripZoneRegions, getActiveStripZones, solidifyRows } from './lib/zoneRegions.js';
+import { sparingRectsForFacade } from './lib/sparingElements.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2 } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isPaneelMerk, isBlankBaseVerband, isFeatureZones } from './lib/featureFlags.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -256,7 +258,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, startLijn, ve
   }
 
   if (richting === 'horizontaal') {
-    const rawLatten = computeHorizontalLatten({ facadeData, latten, mat, panelen, startLijn, backingType: _bt });
+    const rawLatten = computeHorizontalLatten({ facadeData, latten, mat, panelen, startLijn, backingType: _bt, verband });
     if (!rawLatten.length) return rawLatten;
 
     const INSET = 5;
@@ -311,7 +313,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, startLijn, ve
   }
 }
 
-export function Werktekening({ walls, groupSettings, groupName, panelen, latten, groupMinH, penantFaceData, zoneSettings, epcSettings, outsideDirFlip, cornerTrimLeft = 0, cornerTrimRight = 0, cornerExtendLeft = 0, cornerExtendRight = 0, lattenTrimLeft = 0, lattenTrimRight = 0, lattenExtendLeft = 0, lattenExtendRight = 0, panelsTrimLeft = 0, panelsTrimRight = 0, panelsExtendLeft = 0, panelsExtendRight = 0 }) {
+export function Werktekening({ walls, groupSettings, groupName, panelen, latten, groupMinH, penantFaceData, zoneSettings, stripZones = [], sparingElements = [], sparingOffset = 0, epcSettings, outsideDirFlip, cornerTrimLeft = 0, cornerTrimRight = 0, cornerExtendLeft = 0, cornerExtendRight = 0, lattenTrimLeft = 0, lattenTrimRight = 0, lattenExtendLeft = 0, lattenExtendRight = 0, panelsTrimLeft = 0, panelsTrimRight = 0, panelsExtendLeft = 0, panelsExtendRight = 0 }) {
   const svgRef = useRef(null);
   const summarySvgRef = useRef(null);
   const productiePrintRef = useRef(null);
@@ -337,6 +339,16 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
   const facadeData = useMemo(() => {
     if (!walls?.length) return null;
     const fd = buildFullGroupFacadePattern(walls, mat, verband, maxH, null, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight, null, null, groupSettings?.maxHoogteVullen);
+    // GEEN_VERBAND: basis blanco; de getekende zones leveren de strips. rows = de zone-regio-rijen
+    // (union) zodat getPanelStripsAnnotated per paneel de zone-strips toont; coverageRows = solide
+    // dekking (mortelvoegen dicht) voor de zone-clip. Geen actieve zones → volledig blanco.
+    if (fd && isBlankBaseVerband(verband)) {
+      const az = (stripZones ?? []).filter((z) => z?.enabled === true);
+      const cov = solidifyRows(fd.rows, (mat.stoot ?? 10) + 2);
+      const regions = az.length ? buildStripZoneRegions({ ...fd, coverageRows: cov }, az, mat, verband, groupSettings?.color ?? '#a64033', {}) : null;
+      const zoneRows = regions ? regions.flatMap((r) => r.rows ?? []) : [];
+      return { ...fd, coverageRows: cov, rows: zoneRows };
+    }
     // FASE 2 — wildverband-strips uit het vastgelegde tegel-verband (zelfde bron als 2D/3D/IFC).
     // Vlag UIT → exact het bestaande pad (byte-identiek).
     if (fd && verband === 'wildverband' && isWildverbandKoppelstrip()) {
@@ -352,10 +364,20 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
       return { ...fd, rows: _gr.rows };
     }
     return fd;
-  }, [walls, mat, verband, maxH, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight]);
+  }, [walls, mat, verband, maxH, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight, stripZones]);
+
+  // SPARING-ELEMENTEN: rechthoeken in HET EIGEN facadeData-frame (geen mismatch met App/best-fit).
+  const sparingRects = useMemo(
+    () => sparingRectsForFacade(facadeData, sparingElements, sparingOffset),
+    [facadeData, sparingElements, sparingOffset]
+  );
 
   const allPanels = useMemo(() => {
     if (!facadeData || !panelen?.enabled) return [];
+    // GEEN_VERBAND: draagpanelen volgen de getekende zones.
+    if (isBlankBaseVerband(verband)) {
+      return buildZoneBackingPanels({ facadeData, activeZones: (stripZones ?? []).filter((z) => z?.enabled === true), panelen, latten, mat, verband, startLijn: groupSettings?.startLijn, sparingRects });
+    }
     const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
     const basePanel = computeEffectiveBasePanel(panelen, mat.brickWeightM2 ?? 40, mat);
     const maxInterval = Math.max(50, latten?.maxInterval ?? 400);
@@ -441,16 +463,24 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
         return false;
       });
     }
+    // SPARING-ELEMENTEN: paneel HEEL houden + het gat markeren (panel.holes) voor frees/zagerij.
+    panels = attachHolesToPanels(panels, sparingRects);
     const startLijn = groupSettings?.startLijn;
     if (startLijn != null && startLijn < 0 && panels.length > 0) {
       const minY = Math.min(...panels.map((p) => p.y));
       return panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: startLijn, height: p.height + p.y - startLijn } : p);
     }
     return panels;
-  }, [facadeData, panelen, mat, groupSettings, latten, verband]);
+  }, [facadeData, panelen, mat, groupSettings, latten, verband, sparingRects, stripZones]);
 
   const penanten = groupSettings?.penanten ?? [];
-  const allLatten = useMemo(() => computeLatten(facadeData, panelen, latten, mat, penanten, groupSettings?.startLijn ?? null, verband, groupSettings?.backingType ?? 'hout'), [facadeData, panelen, latten, mat, penanten, groupSettings, verband]);
+  const allLatten = useMemo(() => (
+    isBlankBaseVerband(verband)                 // GEEN_VERBAND: latten volgen de zone-panelen, geklipt op de zones
+      ? clipLattenToZones(buildFacadeLatten({ facadeData, latten, mat, panelen, panels: allPanels, penanten: [], startLijn: groupSettings?.startLijn ?? null, verband, backingType: groupSettings?.backingType ?? 'hout', sparingRects }), (stripZones ?? []).filter((z) => z?.enabled === true))
+    : isUnifiedLatten()
+      ? buildFacadeLatten({ facadeData, latten, mat, panelen, panels: allPanels, penanten, startLijn: groupSettings?.startLijn ?? null, verband, backingType: groupSettings?.backingType ?? 'hout', sparingRects })
+      : computeLatten(facadeData, panelen, latten, mat, penanten, groupSettings?.startLijn ?? null, verband, groupSettings?.backingType ?? 'hout')
+  ), [facadeData, panelen, latten, mat, penanten, groupSettings, verband, allPanels, sparingRects, stripZones]);
 
   const wallGroupPolysRaw = useMemo(() => {
     if (!walls?.length) return [];
@@ -517,6 +547,31 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
     p.x + p.width > viewXStart + 1 && p.x < viewXEnd - 1 &&
     p.y + p.height > viewYStart + 1 && p.y < viewYEnd - 1
   ).sort((a, b) => (a.y - b.y) || (a.x - b.x));  // P-nummering: per rij links→rechts, dan een rij hoger
+
+  // PANEEL_MERK (vlag): groep-breed merk-nr per UNIEK paneeltype (maat+strippatroon+gaten, exact dezelfde
+  // signatuur als de productielijst), in montage-volgorde. Gedeeld door montage (EPC-tabel/CSV/tekening) én
+  // productielijst → koppeling productie↔montage. Plain const (geen hook) → raakt de hook-volgorde niet.
+  // Vlag UIT → null → geen merk-kolom (byte-identiek).
+  const paneelMerkMap = isPaneelMerk() ? (() => {
+    const sigOf = (panel) => {
+      const { strips } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet);
+      const stripSig = strips.map((s) => `${s.label}:${Math.round(s.width)}:${Math.round(s.x)}:${Math.round(s.y)}:${s.koppelstrip ? 'K' : ''}`).join('|');
+      const holeSig = (panel.holes ?? []).map((h) => `${Math.round(h.x - panel.x)}:${Math.round(h.y - panel.y)}:${Math.round(h.width)}:${Math.round(h.height)}`).join(',');
+      return `${Math.round(panel.width)}x${Math.round(panel.height)}|${panel.type ?? ''}|${stripSig}|H:${holeSig}`;
+    };
+    const sorted = [...effectivePanels].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+    const sigToMerk = new Map(), posToMerk = new Map(), merkCount = new Map();
+    let next = 1;
+    for (const panel of sorted) {
+      const sig = sigOf(panel);
+      if (!sigToMerk.has(sig)) sigToMerk.set(sig, next++);
+      const m = sigToMerk.get(sig);
+      posToMerk.set(`${Math.round(panel.x)}_${Math.round(panel.y)}`, m);
+      merkCount.set(m, (merkCount.get(m) ?? 0) + 1);
+    }
+    return { get: (p) => posToMerk.get(`${Math.round(p.x)}_${Math.round(p.y)}`) ?? null, count: (m) => merkCount.get(m) ?? 0 };
+  })() : null;
+  const paneelMerkLabel = (p) => { const m = paneelMerkMap?.get(p); return m != null ? `P${m}` : ''; };
   const zoneLatten = allLatten.filter((l) =>
     l.x + l.width > viewXStart + 1 && l.x < viewXEnd - 1 &&
     l.y + l.height > viewYStart + 1 && l.y < viewYEnd - 1
@@ -658,6 +713,7 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
         rows.push({
           PaneelID_EPC: paneelId,
           PaneelID_Leesbaar: formatEpcDisplay(paneelId),
+          ...(isPaneelMerk() ? { Merk: paneelMerkLabel(panel) } : {}),
           Projectnummer: epcProjectNr,
           Level: String(epcLevel).padStart(2, '0'),
           Zone: zone.label,
@@ -1331,7 +1387,9 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
               const enriched = zonePanels.map((panel, idx) => {
                 const { strips, counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet);
                 const stripSig = strips.map((s) => `${s.label}:${Math.round(s.width)}:${Math.round(s.x)}:${Math.round(s.y)}:${s.koppelstrip ? 'K' : ''}`).join('|');
-                const sig = `${Math.round(panel.width)}x${Math.round(panel.height)}|${panel.type ?? ''}|${stripSig}`;
+                // Gaten in de sig → een paneel MÉT gat is een ander uniek paneel dan zonder (frees/zagerij).
+                const holeSig = (panel.holes ?? []).map((h) => `${Math.round(h.x - panel.x)}:${Math.round(h.y - panel.y)}:${Math.round(h.width)}:${Math.round(h.height)}`).join(',');
+                const sig = `${Math.round(panel.width)}x${Math.round(panel.height)}|${panel.type ?? ''}|${stripSig}|H:${holeSig}`;
                 return { panel, idx, strips, counts, sig };
               });
               const groups = new Map();
@@ -1351,8 +1409,11 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
                 <div ref={productiePrintRef} style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
                   {uniques.map((e, uniqueIdx) => {
                     const { panel, strips, counts } = e;
-                    const prodCount = groups.get(e.sig).count;
-                    const uniqueSeq = uniqueIdx + 1;
+                    // PANEEL_MERK: gebruik het GROEP-brede merk + telling (1:1 met de montage-Merk-kolom).
+                    // Vlag uit → per-zone uniqueSeq + telling (byte-identiek).
+                    const _merk = paneelMerkMap?.get(panel);
+                    const prodCount = _merk != null ? paneelMerkMap.count(_merk) : groups.get(e.sig).count;
+                    const uniqueSeq = _merk != null ? _merk : uniqueIdx + 1;
                     const color = groupSettings?.color ?? '#a64033';
                     const PAD = 40;
                     const MAX_DRAW_W = 340;
@@ -1404,6 +1465,21 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
                             </g>
                           );
                         })}
+                        {/* SPARING: gat op het hele paneel markeren (rood gestreept + maat) voor frees/zagerij. */}
+                        {(panel.holes ?? []).map((h, hi) => {
+                          const rx = px(h.x - panel.x);
+                          const ry = py((h.y - panel.y) + h.height);
+                          const rw = h.width * sc;
+                          const rh = h.height * sc;
+                          return (
+                            <g key={`hole-${hi}`}>
+                              <rect x={rx} y={ry} width={rw} height={rh} fill="#fee2e2" stroke="#dc2626" strokeWidth={0.9} strokeDasharray="3,2" />
+                              {rw > 22 && rh > 9 && (
+                                <text x={rx + rw / 2} y={ry + rh / 2} textAnchor="middle" dominantBaseline="middle" fontSize={Math.min(7, rh * 0.5)} fill="#b91c1c" fontFamily="Arial, sans-serif">{mm(h.width)}×{mm(h.height)}</text>
+                              )}
+                            </g>
+                          );
+                        })}
                         <text x={ox + drawPW / 2} y={oy - 4} textAnchor="middle" fontSize={7} fill="#334155" fontFamily="Arial, sans-serif">{mm(panel.width)} mm</text>
                         <text x={ox - 5} y={oy + drawPH / 2} textAnchor="middle" fontSize={7} fill="#334155" fontFamily="Arial, sans-serif"
                           transform={`rotate(-90,${ox - 5},${oy + drawPH / 2})`}>{mm(panel.height)} mm</text>
@@ -1445,7 +1521,7 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
               const hvCount   = counts.filter(c => c.label === 'Halve').reduce((s, c) => s + c.n, 0);
               const restCount = counts.filter(c => c.label === 'Rest').reduce((s, c) => s + c.n, 0);
               const total     = counts.reduce((s, c) => s + c.n, 0);
-              tableRows.push({ paneelId, paneelIdDisplay: formatEpcDisplay(paneelId), zone: zone.label, breedte: Math.round(panel.width), hoogte: Math.round(panel.height), opp: areaM2.toFixed(3), gewicht: gewichtKg, vol: volCount, kop: kopCount, dk: dkCount, hv: hvCount, rest: restCount, total });
+              tableRows.push({ paneelId, paneelIdDisplay: formatEpcDisplay(paneelId), merk: paneelMerkLabel(panel), zone: zone.label, breedte: Math.round(panel.width), hoogte: Math.round(panel.height), opp: areaM2.toFixed(3), gewicht: gewichtKg, vol: volCount, kop: kopCount, dk: dkCount, hv: hvCount, rest: restCount, total });
             }
           }
           const ksSummary = (() => {
@@ -1473,7 +1549,7 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    {['PaneelID', 'Zone', 'B (mm)', 'H (mm)', 'Opp. (m²)', 'Gew. (kg)', 'Strek', 'Kop', 'Drklz', '½', 'Rest', 'Totaal'].map(h => (
+                    {['PaneelID', ...(isPaneelMerk() ? ['Merk'] : []), 'Zone', 'B (mm)', 'H (mm)', 'Opp. (m²)', 'Gew. (kg)', 'Strek', 'Kop', 'Drklz', '½', 'Rest', 'Totaal'].map(h => (
                       <th key={h} style={thStyle}>{h}</th>
                     ))}
                   </tr>
@@ -1482,6 +1558,7 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
                   {tableRows.map((r, i) => (
                     <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
                       <td style={{ ...tdStyle, fontFamily: 'monospace', letterSpacing: '0.03em', fontWeight: 600, color: '#1e40af' }} title={r.paneelId}>{r.paneelIdDisplay}</td>
+                      {isPaneelMerk() && <td style={{ ...tdStyle, fontWeight: 700, color: '#0369a1' }}>{r.merk}</td>}
                       <td style={tdStyle}>{r.zone}</td>
                       <td style={tdRight}>{r.breedte}</td>
                       <td style={tdRight}>{r.hoogte}</td>
@@ -1498,7 +1575,7 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
                 </tbody>
                 <tfoot>
                   <tr style={{ background: '#f0f4f8' }}>
-                    <td colSpan={5} style={{ ...tdStyle, fontWeight: 700 }}>Totaal {tableRows.length} panelen (prefab)</td>
+                    <td colSpan={isPaneelMerk() ? 6 : 5} style={{ ...tdStyle, fontWeight: 700 }}>Totaal {tableRows.length} panelen (prefab)</td>
                     <td style={{ ...tdRight, fontWeight: 700 }}>{tableRows.reduce((s, r) => s + r.gewicht, 0).toFixed(1)}</td>
                     <td style={{ ...tdRight, fontWeight: 700 }}>{tableRows.reduce((s, r) => s + r.vol, 0)}</td>
                     <td style={{ ...tdRight, fontWeight: 700 }}>{tableRows.reduce((s, r) => s + r.kop, 0)}</td>
@@ -1538,16 +1615,24 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
         {drawingType === 'maltekening' && (() => {
           const groupVerband = groupSettings?.verband ?? 'halfsteens';
           const moldDims = { hoogte: panelen?.malBreedte ?? 270, lengte: panelen?.malLengte ?? 3400, tolerantieL: panelen?.tolerantieL ?? 1, tolerantieH: panelen?.tolerantieH ?? 1, offsetX: panelen?.malOffsetX ?? 0 };
-          const zonesForMal = (selectedZone && !tekenZone.enabled) ? [selectedZone] : facadeZones;
-          const hasZones = facadeZones.length > 1;
+          // MALTEKENING ZONE-AFHANKELIJK: bij getekende tekenzones (stripZones) de mal per zone-verband
+          // afleiden; anders het oude pad (penant-zoneSettings / facadeZones).
+          const _activeStrip = isFeatureZones() ? (stripZones ?? []).filter((z) => z?.enabled === true) : [];
+          const _usingStrip = _activeStrip.length > 0;
+          const zonesForMal = _usingStrip
+            ? _activeStrip.map((z, i) => ({ ...z, idx: i, label: z.label ?? `Zone ${String.fromCharCode(65 + i)}`, xStart: z.x ?? 0, xEnd: (z.x ?? 0) + (z.width ?? 0) }))
+            : ((selectedZone && !tekenZone.enabled) ? [selectedZone] : facadeZones);
+          const hasZones = _usingStrip ? true : facadeZones.length > 1;
 
           const resolvedZoneSettings = (zoneSettings ?? []);
 
           function getZoneMat(zone) {
+            if (_usingStrip) return { ...mat, ...(zone.material ?? {}) };
             const zs = resolvedZoneSettings[zone.idx] ?? {};
             return { ...mat, ...(zs.material ?? {}) };
           }
           function getZoneVerband(zone) {
+            if (_usingStrip) return zone.verband ?? groupVerband;
             return resolvedZoneSettings[zone.idx]?.verband ?? groupVerband;
           }
 
@@ -1566,7 +1651,8 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
             const zVerband = getZoneVerband(zone);
             const zMat = getZoneMat(zone);
             const zoneTpl = getMoldTemplates(zVerband, zMat, moldDims);
-            const panelsInZone = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1)
+            const panelsInZone = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1
+              && (zone.height == null || (p.y + p.height > (zone.y ?? 0) + 1 && p.y < (zone.y ?? 0) + zone.height - 1)))
               .sort((a, b) => (a.y - b.y) || (a.x - b.x));  // nummering: per rij links→rechts, dan een rij hoger
             const panelCount = panelsInZone.length;
             const panelH = panelen?.hoogte ?? 1200;

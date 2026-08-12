@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { buildProjectMatrix, getTrueNorthAngle, getProjectInfo } from './lib/projectCoordinates.js';
 import { generateSlimFortGrid, SLIMFORT_DEFAULTS, getSlimFortDepths, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
 import { isStableGroupCamera, isShowKozijnen, isGevelHandedness } from './lib/featureFlags.js';
+import { facadeNeedsMirror } from './lib/pattern.js';
 
 // Wereld-up (three Y-up). STABLE_GROUP_CAMERA #1 lerpt camera.up hiernaartoe bij groep-focus
 // zodat de frontale blik niet gekanteld blijft van eerder orbiten.
@@ -164,8 +165,12 @@ function mapLen(groupMinX, groupWidth, u, mir) {
 
 function getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, brickDepth = 20, panelDikte = 8, penantShift = 0, outsideDirFlip = false, materialStoot = 10, penantStartOffset = 0, mir = false, groupWidth = 0) {
   if (!rwo) return [];
-  const pX = penant.x ?? 0;
   const pB = Math.max(1, penant.breedte ?? 400);
+  // GEVEL_HANDEDNESS u-frame: penant.x is een u-coördinaat (u=0 = buiten-links). De u→wereld-mapping
+  // (mapLen in makeBox) plaatst 'm; op x=0 komt de penant buiten-links, net als de bond.
+  const pX = penant.x ?? 0;
+  const skipL = (penant.diepteLinks  ?? penant.diepte ?? 150) <= 0;   // zijde op 0 → geen zijkant (been + latten weg)
+  const skipR = (penant.diepteRechts ?? penant.diepte ?? 150) <= 0;
   const pDL = Math.max(1, penant.diepteLinks  ?? penant.diepte ?? 150);
   const pDR = Math.max(1, penant.diepteRechts ?? penant.diepte ?? 150);
   const pH = Math.max(1, penant.hoogte ?? 2000);
@@ -200,11 +205,10 @@ function getPenantBoxes(penant, rwo, groupMinX, groupMinH, allWalls, latDikte, b
   };
 
   const sh = penantShift;
-  return [
-    makeBox(pX + pB / 2,                              ld + sh - panelT / 2,          frontW, panelT),
-    makeBox(pX + brickDepth + panelT / 2,             ld + sh - panelT - sideDL / 2, panelT, sideDL),
-    makeBox(pX + pB - brickDepth - panelT / 2,        ld + sh - panelT - sideDR / 2, panelT, sideDR),
-  ];
+  const boxes = [ makeBox(pX + pB / 2, ld + sh - panelT / 2, frontW, panelT) ];   // voorpaneel blijft altijd
+  if (!skipL) boxes.push(makeBox(pX + brickDepth + panelT / 2,      ld + sh - panelT - sideDL / 2, panelT, sideDL));
+  if (!skipR) boxes.push(makeBox(pX + pB - brickDepth - panelT / 2, ld + sh - panelT - sideDR / 2, panelT, sideDR));
+  return boxes;
 }
 
 function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, allWalls, latDikte, brickDepth, panelDikte, penantShift = 0, outsideDirFlip = false, materialStoot = 10, penantStartOffset = 0, mir = false, groupWidth = 0 }) {
@@ -214,9 +218,12 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, allWalls,
   );
   const cornerBattens = useMemo(() => {
     if (!rwo) return [];
-    const pX = penant.x ?? 0;
     const pB = Math.max(1, penant.breedte ?? 400);
+    // GEVEL_HANDEDNESS u-frame: hoeklatten gebruiken penant.x als u; mapLen plaatst ze (zie getPenantBoxes).
+    const pX = penant.x ?? 0;
     const pH = Math.max(1, penant.hoogte ?? 2000);
+    const skipL = (penant.diepteLinks  ?? penant.diepte ?? 150) <= 0;   // zijde op 0 → geen hoeklatten die kant
+    const skipR = (penant.diepteRechts ?? penant.diepte ?? 150) <= 0;
     const penMinH = Math.max(0, penantStartOffset);   // penant-latten volgen de groep-startlijn
     const penH = pH - penMinH;
     if (penH <= 0) return [];
@@ -231,10 +238,10 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, allWalls,
     const xLeft  = pX + brickDepth + panelT + ld / 2;
     const xRight = pX + pB - brickDepth - panelT - ld / 2;
     return [
-      [xLeft,  depthBack],
-      [xRight, depthBack],
-      [xLeft,  depthFront],
-      [xRight, depthFront],
+      ...(skipL ? [] : [[xLeft,  depthBack]]),
+      ...(skipR ? [] : [[xRight, depthBack]]),
+      ...(skipL ? [] : [[xLeft,  depthFront]]),
+      ...(skipR ? [] : [[xRight, depthFront]]),
     ].map(([gxCenter, depthCenter]) => {
       const ifc = { x: 0, y: 0, z: 0 };
       ifc[rwo.lengthAxis]    = mapLen(groupMinX, groupWidth, gxCenter, mir);
@@ -272,6 +279,56 @@ function PenantMesh3D({ penant, rwo, groupMinX, groupMinH, groupColor, allWalls,
             <boxGeometry args={box.size} />
             <meshStandardMaterial color="#b45309" transparent opacity={0.9} />
           </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+// HOOFDVLAK-STRUCTUUR: latten + panelen als box-meshes. Diepte-stapeling vanaf het gevelvlak naar buiten:
+// latten 0..latDikte, panelen latDikte..latDikte+panelDikte, strips daarvoor (GroupBricks3D). Data komt
+// uit groupPatterns[gid].structure3d (in App berekend, zelfde bron als 2D).
+function MainStructure3D({ gp, settings, allWalls }) {
+  const rwo = gp?.refWallOrigin;
+  const st = gp?.structure3d;
+  const flip = !!(settings?.outsideDirFlip);
+  const boxes = useMemo(() => {
+    if (!rwo || !st) return { latten: [], panels: [] };
+    const rawFace = getOutsideFaceInfo(rwo, allWalls);
+    const outsidePos = rawFace.outsidePos;
+    const outsideDir = (flip ? -1 : 1) * rawFace.outsideDir;
+    const gMinX = gp.groupMinX ?? 0, gMinH = gp.groupMinH ?? 0;
+    const gWidth = gp.facadeData?.groupWidth ?? 0;   // GEVEL_HANDEDNESS u-frame: latten/panelen mee-mappen
+    const mir = !!gp.facadeData?.mirrored;
+    const latDikte = st.latDikte ?? 28, panelDikte = st.panelDikte ?? 8;
+    const mk = (faceX, faceY, faceW, faceH, depthCenter, depthThick) => {
+      const ifc = { x: 0, y: 0, z: 0 };
+      ifc[rwo.lengthAxis]    = mapLen(gMinX, gWidth, faceX + faceW / 2, mir);
+      ifc[rwo.heightAxis]    = gMinH + faceY + faceH / 2;
+      ifc[rwo.thicknessAxis] = outsidePos + outsideDir * depthCenter;
+      const dims = { x: 1, y: 1, z: 1 };
+      dims[rwo.lengthAxis]    = faceW;
+      dims[rwo.heightAxis]    = faceH;
+      dims[rwo.thicknessAxis] = depthThick;
+      return { pos: ifcToThree(ifc.x, ifc.y, ifc.z), size: ifcToThree(dims.x, dims.y, dims.z).map(Math.abs) };
+    };
+    return {
+      latten: (st.latten ?? []).filter((l) => l.width > 0 && l.height > 0).map((l) => mk(l.x, l.y, l.width, l.height, latDikte / 2, latDikte)),
+      panels: (st.panels ?? []).filter((p) => p.width > 0 && p.height > 0).map((p) => mk(p.x, p.y, p.width, p.height, latDikte + panelDikte / 2, panelDikte)),
+    };
+  }, [rwo, st, allWalls, flip, gp]);
+  if (!st) return null;
+  return (
+    <group>
+      {st.showLatten !== false && boxes.latten.map((b, i) => (
+        <group key={`l-${i}`} position={b.pos}>
+          <mesh><boxGeometry args={b.size} /><meshStandardMaterial color="#b45309" transparent opacity={0.8} /></mesh>
+        </group>
+      ))}
+      {st.showPanelen !== false && boxes.panels.map((b, i) => (
+        <group key={`p-${i}`} position={b.pos}>
+          <mesh><boxGeometry args={b.size} /><meshStandardMaterial color="#cbd5e1" transparent opacity={0.55} /></mesh>
+          <mesh><boxGeometry args={b.size} /><meshBasicMaterial color="#94a3b8" wireframe /></mesh>
         </group>
       ))}
     </group>
@@ -1759,6 +1816,20 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
 
         {groups.map((group) => {
           if (hiddenGroupIds.has(group.id)) return null;
+          const gp = groupPatterns?.[group.id];
+          if (!gp?.structure3d) return null;
+          return (
+            <MainStructure3D
+              key={`struct-${group.id}`}
+              gp={gp}
+              settings={groupSettings(group.id)}
+              allWalls={walls}
+            />
+          );
+        })}
+
+        {groups.map((group) => {
+          if (hiddenGroupIds.has(group.id)) return null;
           const settings = groupSettings(group.id);
           if ((settings?.backingType ?? 'hout') !== 'aluminium_slimfort') return null;
           const gp = groupPatterns?.[group.id];
@@ -1806,8 +1877,7 @@ export function Viewer3D({ walls, selectedWallIds, groups, groupSettings, groupP
           const axisWalls = groupWalls.filter((w) => w.wallOrigin.lengthAxis === rwo.lengthAxis);
           const groupMinX = Math.min(...axisWalls.map((w) => w.wallOrigin.lengthStart));
           const groupMinH = Math.min(...axisWalls.map((w) => w.wallOrigin.heightStart));
-          const penGroupMaxX = Math.max(...axisWalls.map((w) => (w.wallOrigin.lengthStart ?? 0) + (w.length ?? 0)));
-          const penGroupWidth = penGroupMaxX - groupMinX;
+          const penGroupWidth = Math.max(...axisWalls.map((w) => (w.wallOrigin.lengthStart ?? 0) + (w.length ?? 0))) - groupMinX;
           const penMir = !!groupPatterns?.[group.id]?.facadeData?.mirrored;
           const penLatDikte = groupPatterns?.[group.id]?.latDikteEff ?? settings?.latten?.dikte ?? 28;
           const penBrickD   = settings?.brickDepth ?? 20;

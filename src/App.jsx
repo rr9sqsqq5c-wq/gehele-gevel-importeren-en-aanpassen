@@ -1,11 +1,13 @@
 import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense, Fragment } from 'react';
 import { createPortal } from 'react-dom';
-import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, parseIfcSparingElements, scanIfcSparingTypes, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
+import { scanIfcWallTypes, parseIfc, exportGroupsToIfc, warmupWebIFC, parseIfcGridLines, scanIfcElementTypes, parseIfcZoneElements, parseIfcSparingElements, scanIfcSparingTypes, parseIfcLekdorpels, runGeometryValidation, resolveOutsideDirections } from './lib/ifc.js';
 import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements.js';
+import { parseGhCladding } from './lib/ghCladding.js';
+import { attachLekdorpelToWalls } from './lib/lekdorpel.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isGevelHandedness, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isGhImport, isGeenVerband, isBlankBaseVerband, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
-import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor } from './lib/zoneRegions.js';
+import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor, applyVentZonesToBatches, solidifyRows } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
 import { buildBestFitFacadePattern } from './lib/facadePlane.js';
 import { reset as resetCoordinates, restoreProjectInfo, registerIfcContext } from './lib/projectCoordinates.js';
@@ -13,9 +15,9 @@ import handleidingMd from '../HANDLEIDING.md?raw';
 warmupWebIFC();
 import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loadParsedWalls, clearParsedWalls, saveFileHandle, loadFileHandle, deleteFileHandle, supportsFileSystemAccess, saveProjectState, loadProjectState, clearProjectState, saveSourceIfc, loadSourceIfc } from './lib/storage.js';
 import { detectAdjacencies, detectAdjacenciesAsync, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
-import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern } from './lib/pattern.js';
+import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern, buildPenantSidePattern, snapWidthToWholeStone } from './lib/pattern.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
-import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateCombinedMoldPrintHTML, getMoldTemplates, buildWildverbandPanelGrid, moldIdLabel, cutVentHolesFromPanels } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateCombinedMoldPrintHTML, getMoldTemplates, buildWildverbandPanelGrid, moldIdLabel, cutVentHolesFromPanels, attachHolesToPanels, computeHorizontalLatten, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones } from './lib/panelization.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -32,6 +34,7 @@ const Uittrekstaat = lazy(() => import('./Uittrekstaat.jsx').then((m) => ({ defa
 const WildverbandPanelView = lazy(() => import('./WildverbandPanel.jsx').then((m) => ({ default: m.WildverbandPanel })));
 const SlimFortWerktekening = lazy(() => import('./SlimFortWerktekening.jsx').then((m) => ({ default: m.SlimFortWerktekening })));
 const DetailBoek = lazy(() => import('./DetailBoek.jsx').then((m) => ({ default: m.DetailBoek })));
+const GhCladdingView = lazy(() => import('./GhCladdingView.jsx').then((m) => ({ default: m.GhCladdingView })));
 
 const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWeightM2: 40 };
 // FASE 2b stompe-butt (achter vlag corner85): aansluitende strip/paneel 8 mm vóór de
@@ -39,12 +42,33 @@ const DEFAULT_MATERIAL = { steenL: 210, steenH: 50, lint: 12, stoot: 10, brickWe
 const CORNER85_STRIP_GAP = 8; // mm — = voegW in HoekAansluitDetail (App.jsx:699)
 const CORNER85_LAT_GAP = 5;   // mm
 
+// Lattendikte UIT DE GROEPSAANDUIDING: een gekozen latten-artikel (BATTEN_CATALOG) wint van
+// het handmatige latten.dikte; 28 is enkel de laatste terugval. Zo hangt de hoek-berekening niet
+// vast op 28 zodra er een artikel of eigen dikte in de groep is gekozen.
+function groupLattenDikte(s) {
+  const artId = (s?.lattenArtikelen ?? [])[0] ?? null;
+  const art = artId ? BATTEN_CATALOG.find((a) => a.id === artId) : null;
+  return art ? art.dikteMM : (s?.latten?.dikte ?? 28);
+}
+
+// Aantal lat-LAGEN uit het hout-achterconstructie-systeem (Houtimport Rijssen):
+//   'enkel'     = enkele horizontale dubbelgeventileerde lat → 1 laag.
+//   'kruislaag' = lat-op-lat (gekruist)                      → 2 lagen.
+// ÉÉN bron voor de lat-diepte (3D + export/IFC). Terugval bij oude projecten zonder `systeem`:
+// de vroegere proxy `richting === 'verticaal' → 2×` → byte-identiek voor bestaande projecten.
+function lattenLagen(s) {
+  const sys = s?.latten?.systeem;
+  if (sys === 'kruislaag') return 2;
+  if (sys === 'enkel') return 1;
+  return (s?.latten?.richting === 'verticaal') ? 2 : 1;
+}
+
 function computeCornerOffsets(mainSettings, secondarySettings) {
   const secMat = secondarySettings.material ?? DEFAULT_MATERIAL;
   const sv_sec = secMat.stoot ?? 10;
   const stripDikte_sec = secondarySettings.brickDepth ?? 20;
   const paneelDikte_sec = secondarySettings.panelen?.enabled ? (secondarySettings.panelen?.dikte ?? 8) : 0;
-  const latDikte_sec = secondarySettings.latten?.enabled ? (secondarySettings.latten?.dikte ?? 28) : 0;
+  const latDikte_sec = secondarySettings.latten?.enabled ? groupLattenDikte(secondarySettings) : 0;
   const d_sec = latDikte_sec + paneelDikte_sec + stripDikte_sec;
   return {
     main: {
@@ -486,6 +510,11 @@ const CHANGELOG = [
 const DIM_TOL = 50;
 const OP_TOL = 50;
 const POS_TOL = 150;
+// UNIT-DETECTIE (vlag unitDetectie): een unit-kandidaat is een verdiepingshoog, paneel-breed
+// BUITENwand-paneel. Deze drempels sluiten veneer-banden/lateien (laag) en smalle penanten/
+// retouren (smal) uit, zodat alleen de echte repeterende gevelvlakken overblijven.
+const UNIT_MIN_HEIGHT = 2000; // mm — verdiepingshoog
+const UNIT_MIN_LENGTH = 1000; // mm — paneel-breed
 
 function wallCenter(wall) {
   const wo = wall.wallOrigin;
@@ -654,10 +683,22 @@ function detectSubstrateType(wallObjs) {
   return 'unknown';
 }
 
-function useGroupSettings() {
+function useGroupSettings(projectDefaults = null) {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', stripColor: null, verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, startLijn: null, penanten: [], zoneSettings: [], panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, panelen: true, latten: true, penanten: true }, ifcLayerVisibility: { strips: true, panelen: true, latten: true }, endExtensions: { left: { strips: 0, battens: 0, panels: 0 }, right: { strips: 0, battens: 0, panels: 0 } }, overgangsvoeg: 10, backingType: 'hout', wallSubstrateType: 'unknown', concreteCladdingSettings: { claddingDepthInward: 0, isEntrancePortalWall: false, cladSideFaces: true, cladFrontFace: true, cladPortalInnerFaces: false, insulationThickness: 140, uProfileWidth: 60, uProfileDepth: 30, uProfileSpacing: 600, mountingOffset: 10, panelVentilationGap: 20 }, slimFortSettings: { ...SLIMFORT_DEFAULTS } });
-  const get = useCallback((id) => ({ ...defaults(id), ...map[id] }), [map]);
+  const defaults = (id) => ({ name: id, color: '#a64033', stripColor: null, verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, startLijn: null, materiaalVolgtProject: true, startLijnVolgtProject: true, penanten: [], zoneSettings: [], panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, panelen: true, latten: true, penanten: true }, ifcLayerVisibility: { strips: true, panelen: true, latten: true }, endExtensions: { left: { strips: 0, battens: 0, panels: 0 }, right: { strips: 0, battens: 0, panels: 0 } }, overgangsvoeg: 8, backingType: 'hout', wallSubstrateType: 'unknown', concreteCladdingSettings: { claddingDepthInward: 0, isEntrancePortalWall: false, cladSideFaces: true, cladFrontFace: true, cladPortalInnerFaces: false, insulationThickness: 140, uProfileWidth: 60, uProfileDepth: 30, uProfileSpacing: 600, mountingOffset: 10, panelVentilationGap: 20 }, slimFortSettings: { ...SLIMFORT_DEFAULTS } });
+  const get = useCallback((id) => {
+    const s = { ...defaults(id), ...map[id] };
+    // PROJECT_DEFAULTS: een groep die 'volgt project' erft de project-startlijn en/of het project-
+    // steenstrip+voeg. projectDefaults is null als de vlag uit staat → byte-identiek (geen resolutie).
+    if (projectDefaults) {
+      if (s.materiaalVolgtProject !== false && projectDefaults.material) {
+        s.material = { ...projectDefaults.material };
+        if (projectDefaults.material.dikte != null) s.brickDepth = projectDefaults.material.dikte;  // stripdikte
+      }
+      if (s.startLijnVolgtProject !== false && projectDefaults.startLijn !== undefined) s.startLijn = projectDefaults.startLijn;
+    }
+    return s;
+  }, [map, projectDefaults]);
   const update = useCallback((id, patch) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), ...prev[id], ...patch } })), []);
   const initColor = useCallback((id, color, name) => setMap((prev) => prev[id] ? prev : { ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } }), []);
   const forceInit = useCallback((id, color, name) => setMap((prev) => ({ ...prev, [id]: { ...defaults(id), color, ...(name ? { name } : {}) } })), []);
@@ -696,14 +737,14 @@ function evalPenantX(expr, gapCenters) {
   }
 }
 
-function HoekAansluitDetail({ mainS, secS }) {
-  const Sm   = mainS.brickDepth ?? 20;
+function HoekAansluitDetail({ mainS, secS, projectDikte = null }) {
+  const Sm   = projectDikte != null ? projectDikte : (mainS.brickDepth ?? 20);   // stripdikte: project eerst
   const Pm   = mainS.panelen?.enabled ? (mainS.panelen?.dikte ?? 8) : 0;
-  const Lm   = mainS.latten?.enabled  ? (mainS.latten?.dikte  ?? 28) : 0;
+  const Lm   = mainS.latten?.enabled  ? groupLattenDikte(mainS) : 0;              // lattendikte uit de groep (artikel-bewust)
   const Wm   = 60;
-  const Ssec = secS.brickDepth ?? 20;
+  const Ssec = projectDikte != null ? projectDikte : (secS.brickDepth ?? 20);
   const Psec = secS.panelen?.enabled ? (secS.panelen?.dikte ?? 8) : 0;
-  const Lsec = secS.latten?.enabled  ? (secS.latten?.dikte  ?? 28) : 0;
+  const Lsec = secS.latten?.enabled  ? groupLattenDikte(secS) : 0;
   const Wsec = 150;
   const sv   = (secS.material ?? DEFAULT_MATERIAL).stoot ?? 10;
   const d_sec = Lsec + Psec + Ssec;
@@ -901,7 +942,7 @@ function computePerpendicularHints(groupId, allGroups, wallMap) {
   };
 }
 
-function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked, gapCenters, groupWidth, doorBottomYs = [], resolvedOutsideInfo = null, onManualOutsideDir, cornerConfigs = {}, allGroups = [], getSettings, onAddCorner, onUpdateCorner, onRemoveCorner, adjacentGroupIds = null, adjacentHints = [], wallMap = {}, onUpdateGroupSettings = null }) {
+function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked, gapCenters, groupWidth, doorBottomYs = [], resolvedOutsideInfo = null, onManualOutsideDir, cornerConfigs = {}, allGroups = [], getSettings, onAddCorner, onUpdateCorner, onRemoveCorner, adjacentGroupIds = null, adjacentHints = [], wallMap = {}, onUpdateGroupSettings = null, projectDikte = null }) {
   const mat = settings.material ?? { ...DEFAULT_MATERIAL };
   const DEFAULT_OPEN = { stripzones: true };
   const [openSections, setOpenSections] = useState({});
@@ -956,11 +997,21 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
             <option value="wildverband">Wildverband</option>
             {isGroothuisWildverband() && <option value="groothuis_wildverband">Groothuis wildverband</option>}
             {isGroothuisWildverband2() && <option value="groothuis_wildverband_2">Groothuis wildverband 2</option>}
+            {isGeenVerband() && <option value="geen">Geen verband (blanco)</option>}
           </select>
         </Field>
       )}
 
       <CollapsibleSection title="Steenstrip afmetingen" tip={"Afmetingen van de brickslip (steenstrip):\n· Lengte = zichtbare lengte van de strip\n· Hoogte = zichtbare hoogte van de strip\n· Lintvoeg = horizontale voeg tussen lagen\n· Stootvoeg = verticale voeg tussen stenen"} isOpen={isOpen('strips')} onToggle={() => toggle('strips')}>
+        {isProjectDefaults() && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, padding: '3px 6px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 4 }}>
+            <input type="checkbox" id="mat-volgproject" checked={settings.materiaalVolgtProject !== false}
+              onChange={(e) => e.target.checked ? onUpdate({ materiaalVolgtProject: true }) : onUpdate({ materiaalVolgtProject: false, material: { ...settings.material } })} />
+            <label htmlFor="mat-volgproject" style={{ fontSize: 11, color: '#0369a1', cursor: 'pointer' }}>
+              Volg project-steenstrip{settings.materiaalVolgtProject !== false ? ` (${settings.material?.steenL}×${settings.material?.steenH}, voeg ${settings.material?.lint}/${settings.material?.stoot})` : ' — vink uit voor een eigen keuze'}
+            </label>
+          </div>
+        )}
         {(() => {
           const selId = (settings.steenstripsArtikelen ?? [])[0] ?? null;
           const selArt = selId ? STEENSTRIP_CATALOG.find((a) => a.id === selId) : null;
@@ -1026,11 +1077,21 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                     onChange={(e) => onUpdate({ brickDepth: Number(e.target.value) })}
                     style={{ ...inp, width: '100%', opacity: _mSelArt ? 0.6 : 1 }} />
                 </Field>
-                <Field label="Gewicht (kg/m²)" tip="Gewicht van de steenstrips per vierkante meter (kg/m²). Wordt gebruikt voor de berekening van het maximale paneelgewicht.">
+                <Field label="Gewicht (kg/m²)" tip="Gewicht van de steenstrips per vierkante meter (kg/m²). Wordt gebruikt voor de berekening van het maximale paneelgewicht. Wordt genegeerd als 'Gewicht per strip' is ingevuld.">
                   <input type="number" min={0} step={1} value={matVal('brickWeightM2', 40)}
                     disabled={!!_mSelArt}
                     onChange={(e) => onUpdate({ material: { ...mat, brickWeightM2: Number(e.target.value) } })}
                     style={{ ...inp, width: '100%', opacity: _mSelArt ? 0.6 : 1 }} />
+                </Field>
+                <Field label="Gewicht per strip (kg)" tip="Gewicht van één losse steenstrip (kg). Ingevuld → hieruit wordt het strip-gewicht per m² berekend (gewicht per strip × aantal strips per m²); dit gaat vóór het kg/m²-veld. Leeg laten om kg/m² te gebruiken.">
+                  <input type="number" min={0} step={0.001} value={mat.stripKg ?? ''}
+                    placeholder="bijv. 0.472"
+                    onChange={(e) => { const v = e.target.value; onUpdate({ material: { ...mat, stripKg: v === '' ? undefined : Number(v) } }); }}
+                    style={{ ...inp, width: '100%' }} />
+                  {mat.stripKg > 0 && (() => {
+                    const _mod = (((mat.steenL ?? 210) + (mat.stoot ?? 10)) * ((mat.steenH ?? 50) + (mat.lint ?? 12))) / 1e6;
+                    return <div style={{ fontSize: 9, color: '#16a34a', marginTop: 2 }}>= {(mat.stripKg / _mod).toFixed(1)} kg/m²  ·  {Math.round(1 / _mod)} strips/m²</div>;
+                  })()}
                 </Field>
               </div>
             </>
@@ -1080,31 +1141,49 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
             Inschakelen
           </label>
         </div>
-        {settings.maxHoogte !== null && (
+        {settings.maxHoogte !== null && (<>
           <Field label="Hoogte (mm)">
             <input type="number" min={0} step={10} value={settings.maxHoogte}
               onChange={(e) => onUpdate({ maxHoogte: Number(e.target.value) })}
               style={{ ...inp, width: 80 }} />
           </Field>
-        )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+            <input type="checkbox" id="mh-fill" checked={settings.maxHoogteVullen ?? false}
+              onChange={(e) => onUpdate({ maxHoogteVullen: e.target.checked })} />
+            <label htmlFor="mh-fill" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>
+              Optrekken naar maxlijn (bekleding + panelen + latten doorlopen boven de wand)
+            </label>
+          </div>
+        </>)}
       </CollapsibleSection>
 
-      <CollapsibleSection title="Startlijn t.o.v. peil = 0" tip={"Bepaalt de laagste referentielijn vanaf waar steenstrips starten.\nStrips buiten de X-breedte van openingen worden niet getoond onder deze lijn.\nVlakken onder openingen (bijv. onder een raam) behouden hun eigen startlogica en tonen strips tot de wand-onderkant.\nNegatieve waarden: startlijn ligt onder peil = 0 (strips starten volledig onderaan)."} isOpen={isOpen('startlijn')} onToggle={() => toggle('startlijn')} badge={settings.startLijn !== null ? `${settings.startLijn} mm` : null}>
+      <CollapsibleSection title="Startlijn t.o.v. onderzijde wandelement" tip={"Bepaalt de laagste referentielijn vanaf waar steenstrips starten.\nStrips buiten de X-breedte van openingen worden niet getoond onder deze lijn.\nVlakken onder openingen (bijv. onder een raam) behouden hun eigen startlogica en tonen strips tot de wand-onderkant.\nNegatieve waarden: startlijn ligt onder de onderzijde van het wandelement (strips starten volledig onderaan)."} isOpen={isOpen('startlijn')} onToggle={() => toggle('startlijn')} badge={settings.startLijn !== null ? `${settings.startLijn} mm` : null}>
+        {isProjectDefaults() && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, padding: '3px 6px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 4 }}>
+            <input type="checkbox" id="startlijn-volgproject" checked={settings.startLijnVolgtProject !== false}
+              onChange={(e) => onUpdate({ startLijnVolgtProject: e.target.checked })} />
+            <label htmlFor="startlijn-volgproject" style={{ fontSize: 11, color: '#0369a1', cursor: 'pointer' }}>
+              Volg project-startlijn{settings.startLijnVolgtProject !== false ? ` (nu: ${settings.startLijn ?? 'uit'})` : ''}
+            </label>
+          </div>
+        )}
+        {!(isProjectDefaults() && settings.startLijnVolgtProject !== false) && (<>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
           <input type="checkbox" id="startlijn-enable"
             checked={settings.startLijn !== null}
-            onChange={(e) => onUpdate({ startLijn: e.target.checked ? 0 : null })} />
+            onChange={(e) => onUpdate({ startLijn: e.target.checked ? 0 : null, startLijnVolgtProject: false })} />
           <label htmlFor="startlijn-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>
             Inschakelen
           </label>
         </div>
         {settings.startLijn !== null && (
-          <Field label="Hoogte t.o.v. peil (mm)">
+          <Field label="Hoogte t.o.v. onderzijde wandelement (mm)">
             <input type="number" step={10} value={settings.startLijn}
-              onChange={(e) => onUpdate({ startLijn: Number(e.target.value) })}
+              onChange={(e) => onUpdate({ startLijn: Number(e.target.value), startLijnVolgtProject: false })}
               style={{ ...inp, width: 80 }} />
           </Field>
         )}
+        </>)}
       </CollapsibleSection>
 
       <CollapsibleSection title="Penanten" tip={"Een penant is een uitstekende verticale lijst in de gevel.\nGeef de X-positie, breedte, diepte en hoogte op in mm.\n· X positie = afstand van de linker groepsrand\n· Breedte = breedte van het penant\n· Diepte = uitsteek t.o.v. het gevelvlak\n· Hoogte = hoogte van het penant\n· Steenstrips starten symmetrisch vanuit het midden van de voorzijde"} isOpen={isOpen('penanten')} onToggle={() => toggle('penanten')} badge={(settings.penanten ?? []).length > 0 ? `${(settings.penanten ?? []).length}` : null} extra={(() => { const _szBlocked = (settings.stripZones ?? []).some((z) => z?.enabled === true); return <button disabled={_szBlocked} title={_szBlocked ? 'Dit vlak heeft actieve strip-zones — penanten zijn hier uitgesloten (wederzijds). Zet de zones uit om penanten te gebruiken.' : undefined} onClick={() => { if (_szBlocked) return; onUpdate({ penanten: [...(settings.penanten ?? []), { id: Date.now(), x: 500, breedte: 400, diepte: 150, hoogte: 2000, hoekprofiel: { enabled: true, dikte: 2, breedteZijkant: 40, breedteVoorkant: 40 } }] }); }} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '2px 8px', cursor: _szBlocked ? 'not-allowed' : 'pointer', opacity: _szBlocked ? 0.5 : 1 }}>+ Toevoegen</button>; })()}>
@@ -1113,7 +1192,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
           <input type="checkbox" id="penant-startlijn-enable"
             checked={settings.startLijn !== null}
             onChange={(e) => onUpdate({ startLijn: e.target.checked ? 0 : null })} />
-          <label htmlFor="penant-startlijn-enable" title="Schakelt de startlijn (t.o.v. peil = 0) voor deze groep in/uit — dezelfde instelling als in de sectie 'Startlijn t.o.v. peil = 0'." style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>
+          <label htmlFor="penant-startlijn-enable" title="Schakelt de startlijn (t.o.v. onderzijde wandelement) voor deze groep in/uit — dezelfde instelling als in de sectie 'Startlijn t.o.v. onderzijde wandelement'." style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>
             Startlijn inschakelen voor deze groep
           </label>
         </div>
@@ -1166,12 +1245,12 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                     style={{ ...inp, width: '100%' }} />
                 </Field>
               ))}
-              <Field label="Diepte links mm" tip="Diepte van de linkerzijde van het penant (mm). Bepaalt hoe ver de linker arm uitsteekt.">
+              <Field label="Diepte links mm" tip={"LINKERzijde: de steenstriplengte op het zijvlak (= uitsteek t.o.v. het gevelvlak, mm).\nHet zijpaneel (drager) erachter loopt dieper door:\ndiepte + steenstripdikte + stootvoeg + paneeldikte."}>
                 <input type="number" min={0} step={10} value={p.diepteLinks ?? p.diepte ?? 150}
                   onChange={(e) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, diepteLinks: Number(e.target.value) } : q) })}
                   style={{ ...inp, width: '100%' }} />
               </Field>
-              <Field label="Diepte rechts mm" tip="Diepte van de rechterzijde van het penant (mm). Bepaalt hoe ver de rechter arm uitsteekt.">
+              <Field label="Diepte rechts mm" tip={"RECHTERzijde: de steenstriplengte op het zijvlak (= uitsteek t.o.v. het gevelvlak, mm).\nHet zijpaneel (drager) erachter loopt dieper door:\ndiepte + steenstripdikte + stootvoeg + paneeldikte."}>
                 <input type="number" min={0} step={10} value={p.diepteRechts ?? p.diepte ?? 150}
                   onChange={(e) => onUpdate({ penanten: (settings.penanten ?? []).map((q) => q.id === p.id ? { ...q, diepteRechts: Number(e.target.value) } : q) })}
                   style={{ ...inp, width: '100%' }} />
@@ -1512,6 +1591,11 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               const zs = resolveZone(sz);
               const zm = zs.material ?? DEFAULT_ZONE_MAT;
               const zoneStripArt = sz.steenstripArtikelId ? STEENSTRIP_CATALOG.find((a) => a.id === sz.steenstripArtikelId) : null;
+              // GROEP-STANDAARD volgt de groep-steenstrip (die zelf de project-steenstrip kan erven): de
+              // effectieve groep-steenmaat = het groep-artikel of settings.material (= projectMateriaal bij 'volgt project').
+              const _grpStripArtId = (settings.steenstripsArtikelen ?? [])[0];
+              const _grpStripArt = _grpStripArtId ? STEENSTRIP_CATALOG.find((a) => a.id === _grpStripArtId) : null;
+              const groupSteen = { steenL: _grpStripArt?.steenL ?? settings.material?.steenL ?? DEFAULT_MATERIAL.steenL, steenH: _grpStripArt?.steenH ?? settings.material?.steenH ?? DEFAULT_MATERIAL.steenH, lint: settings.material?.lint ?? DEFAULT_MATERIAL.lint, stoot: settings.material?.stoot ?? DEFAULT_MATERIAL.stoot };
               const otherIds = szArr.filter((z) => z.id !== sz.id).map((z) => z.id);
               return (
                 <div key={sz.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4, padding: 6, marginBottom: 4 }}>
@@ -1573,7 +1657,9 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                           onChange={(e) => {
                             const id = e.target.value || null;
                             const art = id ? STEENSTRIP_CATALOG.find((a) => a.id === id) : null;
-                            updZone(sz.id, { steenstripArtikelId: id, material: art ? { ...zm, steenL: art.steenL, steenH: art.steenH } : zm });
+                            // Groep-standaard: geen eigen maat/voeg meer (material null) → steenmaat + voegen volgen de groep/project.
+                            const _m = art ? { ...zm, steenL: art.steenL, steenH: art.steenH } : null;
+                            updZone(sz.id, { steenstripArtikelId: id, material: _m });
                           }}
                           style={inp}>
                           <option value="">Groep-standaard</option>
@@ -1589,8 +1675,13 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       )}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
                         {[['Lengte mm', 'steenL', true], ['Hoogte mm', 'steenH', true], ['Lintvoeg mm', 'lint', false], ['Stootvoeg mm', 'stoot', false]].map(([lbl, key, fromArt]) => {
-                          const locked = !!zoneStripArt && fromArt;
-                          const val = locked ? (zoneStripArt[key] ?? DEFAULT_MATERIAL[key]) : (zm[key] ?? DEFAULT_MATERIAL[key]);
+                          // Groep-standaard: steenmaat ÉN voegen (lint/stoot) volgen de groep → alle vier locked +
+                          // groep-maat tonen. Eigen artikel: steenmaat uit het artikel (locked), voegen zone-eigen.
+                          const isGroupStd = !sz.steenstripArtikelId;
+                          const locked = isGroupStd || (fromArt && !!zoneStripArt);
+                          const val = (zoneStripArt && fromArt) ? (zoneStripArt[key] ?? DEFAULT_MATERIAL[key])
+                            : isGroupStd ? (groupSteen[key] ?? DEFAULT_MATERIAL[key])
+                            : (zm[key] ?? DEFAULT_MATERIAL[key]);
                           return (
                             <Field key={key} label={lbl}>
                               <input type="number" min={1} step={1} value={val}
@@ -1613,53 +1704,40 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                         {zs.maxHoogte !== null && <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>}
                       </div>
 
-                      {/* ── Achterconstructie per zone ── */}
-                      <Field label="Achterconstructie" tip="Eigen achterconstructie voor deze zone. 'Groep-standaard' volgt de groepskeuze.">
-                        <select value={zs.zoneBackingType ?? ''} onChange={(e) => updZone(sz.id, { zoneBackingType: e.target.value || null })} style={inp}>
-                          <option value="">Groep-standaard ({backingShort(groupBacking)})</option>
-                          <option value="hout">Houten achterconstructie</option>
-                          <option value="aluminium">Aluminium U-profiel</option>
-                          <option value="aluminium_slimfort">SlimFort XT® 4.7</option>
-                        </select>
-                      </Field>
-                      {(zs.zoneBackingType || groupBacking) === 'hout' && (() => {
-                        const zLatArt = zs.zoneLattenArtikelId ? BATTEN_CATALOG.find((a) => a.id === zs.zoneLattenArtikelId) : null;
-                        const zPlaat = zs.zoneBasisplaatId ? BASISPLAAT_CATALOG.find((p) => p.id === zs.zoneBasisplaatId) : null;
+                      {/* ── ZONE_START_STOP (vlag): numerieke Start-X / Stop-X + hele-steen-snap (3D/2D/IFC) ── */}
+                      {isZoneStartStop() && (() => {
+                        const effMat = { steenL: zm.steenL ?? DEFAULT_MATERIAL.steenL, steenH: zm.steenH ?? DEFAULT_MATERIAL.steenH, stoot: zm.stoot ?? DEFAULT_MATERIAL.stoot };
+                        const curStop = (sz.x ?? 0) + (sz.width ?? 0);
+                        const snapped = snapWidthToWholeStone(sz.width ?? 0, effMat, zs.verband);
+                        const heel = Math.abs(snapped - (sz.width ?? 0)) < 1;
                         return (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, padding: '5px 6px' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#334155', cursor: 'pointer' }}>
-                              <input type="checkbox" checked={zs.zoneLattenEnabled ?? false} onChange={(e) => updZone(sz.id, { zoneLattenEnabled: e.target.checked })} />
-                              Latten
-                            </label>
-                            {zs.zoneLattenEnabled && (
-                              <Field label="Latten-artikel" tip="Latten-artikel voor deze zone (Mulder's Houtimport).">
-                                <select value={zs.zoneLattenArtikelId ?? ''} onChange={(e) => updZone(sz.id, { zoneLattenArtikelId: e.target.value || null })} style={inp}>
-                                  <option value="">— kies artikel —</option>
-                                  {BATTEN_CATALOG.map((a) => (
-                                    <option key={a.id} value={a.id}>{a.naam}</option>
-                                  ))}
-                                </select>
+                          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 4, padding: '5px 6px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <div style={{ fontSize: 10, color: '#1e40af', fontWeight: 600 }}>Horizontale optimalisatie (Start-X / Stop-X)</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                              <Field label="Start X mm" tip="Linkerrand van de zone. Bij anker 'Zone (linksonder)' begint hier een HELE steen — schuif dit om te optimaliseren.">
+                                <input type="number" step={1} value={Math.round(sz.x ?? 0)}
+                                  onChange={(e) => { const nx = Number(e.target.value); updZone(sz.id, { x: nx, width: Math.max(1, curStop - nx) }); }}
+                                  style={{ ...inp, width: '100%' }} />
                               </Field>
-                            )}
-                            {zLatArt && <div style={{ fontSize: 9, color: '#64748b' }}>{zLatArt.afmetingen} · {zLatArt.brandklasse} · € {zLatArt.prijsM1.toFixed(3)}/m¹</div>}
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#334155', cursor: 'pointer' }}>
-                              <input type="checkbox" checked={zs.zonePanelenEnabled ?? false} onChange={(e) => updZone(sz.id, { zonePanelenEnabled: e.target.checked })} />
-                              Panelen (basisplaat)
-                            </label>
-                            {zs.zonePanelenEnabled && (
-                              <Field label="Basisplaat" tip="Basisplaat-artikel voor deze zone.">
-                                <select value={zs.zoneBasisplaatId ?? ''} onChange={(e) => updZone(sz.id, { zoneBasisplaatId: e.target.value || null })} style={inp}>
-                                  <option value="">— kies basisplaat —</option>
-                                  {BASISPLAAT_CATALOG.map((p) => (
-                                    <option key={p.id} value={p.id}>{p.naam ?? p.id}</option>
-                                  ))}
-                                </select>
+                              <Field label="Stop X mm" tip="Rechterrand van de zone (harde knip; laatste steen kan een pasmaat zijn — gebruik '↦ hele steen').">
+                                <input type="number" step={1} value={Math.round(curStop)}
+                                  onChange={(e) => { const ns = Number(e.target.value); updZone(sz.id, { width: Math.max(1, ns - (sz.x ?? 0)) }); }}
+                                  style={{ ...inp, width: '100%' }} />
                               </Field>
-                            )}
-                            {zPlaat && <div style={{ fontSize: 9, color: '#64748b' }}>{zPlaat.dikteMM} mm · {zPlaat.gewichtM2} kg/m²</div>}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <button onClick={() => updZone(sz.id, { width: snapped })}
+                                style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 3, padding: '2px 8px', fontSize: 10, cursor: 'pointer', whiteSpace: 'nowrap' }}>↦ hele steen</button>
+                              <span style={{ fontSize: 9.5, color: heel ? '#16a34a' : '#64748b' }}>
+                                {heel ? '✓ heel aantal stenen' : `snap breedte → ${Math.round(snapped)} mm`}
+                              </span>
+                            </div>
                           </div>
                         );
                       })()}
+
+                      {/* Achterconstructie (panelen + latten) is GROEP-breed, niet per zone: de zone-backing
+                          volgt de groep-instellingen (buildZoneBackingPanels gebruikt s.panelen/s.latten). */}
                     </div>
                   )}
                 </div>
@@ -2036,6 +2114,28 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                   ))}
                 </div>
 
+                {/* Achterconstructie-systeem — bepaalt het aantal lat-lagen en dus de diepte (Houtimport Rijssen). */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 6 }}>
+                  <div style={{ fontSize: 9.5, color: '#475569', fontWeight: 600 }}>Achterconstructie-systeem</div>
+                  {(() => {
+                    const effSys = lat.systeem ?? ((lat.richting === 'verticaal') ? 'kruislaag' : 'enkel');
+                    return [
+                      { id: 'enkel', naam: 'Enkele lat (dubbelgeventileerd)', lagen: 1 },
+                      { id: 'kruislaag', naam: 'Lat-op-lat (kruislaag)', lagen: 2 },
+                    ].map((o) => (
+                      <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer',
+                        color: effSys === o.id ? '#0f172a' : '#475569',
+                        background: effSys === o.id ? '#f0fdf4' : 'transparent',
+                        border: `1px solid ${effSys === o.id ? '#86efac' : '#e2e8f0'}`, borderRadius: 4, padding: '4px 6px' }}>
+                        <input type="radio" name={`lat-systeem-${groupId}`} checked={effSys === o.id}
+                          onChange={() => upd({ systeem: o.id })} style={{ accentColor: '#16a34a' }} />
+                        <span style={{ flex: 1 }}>{o.naam}</span>
+                        <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#64748b' }}>{o.lagen}× · {dikte * o.lagen} mm</span>
+                      </label>
+                    ));
+                  })()}
+                </div>
+
                 {/* Latten-artikelkeuze INLINE (net als de basisplaat onder Panelen) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
                   <div style={{ fontSize: 9.5, color: '#475569', fontWeight: 600 }}>Latten artikelkeuze</div>
@@ -2051,7 +2151,9 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                         borderRadius: 4, padding: '4px 6px',
                       }}>
                         <input type="radio" name={`lat-artikel-${groupId}`} checked={aChecked}
-                          onChange={() => onUpdate({ lattenArtikelen: aChecked ? [] : [art.id] })}
+                          onChange={() => onUpdate(aChecked
+                            ? { lattenArtikelen: [] }
+                            : { lattenArtikelen: [art.id], latten: { ...(settings.latten ?? {}), breedte: art.breedteMM, dikte: art.dikteMM } })}
                           style={{ marginTop: 2, flexShrink: 0, accentColor: '#16a34a' }} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 600, fontSize: 10.5, color: '#1e293b', lineHeight: 1.3 }}>{art.naam}</div>
@@ -2780,16 +2882,15 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       const mainWT = wallThk(mainWalls);
                       const secWT  = wallThk(secWalls);
                       const pkgOf = (s) => {
-                        const artId = (s.lattenArtikelen ?? [])[0] ?? null;
-                        const art = artId ? BATTEN_CATALOG.find((a) => a.id === artId) : null;
-                        const lat = s.latten?.enabled !== false ? (art ? art.dikteMM : (s.latten?.dikte ?? 28)) : 0;
+                        const lat = s.latten?.enabled !== false ? groupLattenDikte(s) : 0;
                         const pan = s.panelen?.enabled !== false ? (s.panelen?.dikte ?? 8) : 0;
-                        const str = s.brickDepth ?? 20;
+                        // Stripdikte: EERST de projectaanduiding (project-steenstrip dikte, via prop), anders de groep.
+                        const str = projectDikte != null ? projectDikte : (s.brickDepth ?? 20);
                         return { lat, pan, str, total: lat + pan + str };
                       };
                       const mainPkg = pkgOf(mainS);
                       const secPkg  = pkgOf(secS);
-                      const overgangsvoeg = cfg.overgangsvoeg ?? 10;
+                      const overgangsvoeg = cfg.overgangsvoeg ?? 8;
                       const mainIntEnd = detectSecondaryCornerEnd(secWalls, mainWalls);
                       const secIntEnd  = detectSecondaryCornerEnd(mainWalls, secWalls);
                       const mainInFront = detectMainInFront(secWalls, mainWalls);
@@ -2838,7 +2939,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                             <input
                               type="number"
                               step={1}
-                              value={cfg.overgangsvoeg ?? 10}
+                              value={cfg.overgangsvoeg ?? 8}
                               onChange={(e) => {
                                 const newOG = Number(e.target.value);
                                 onUpdateCorner(cornerId, { overgangsvoeg: newOG });
@@ -2888,7 +2989,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                     <div style={{ marginTop: 6 }}>
                       <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Horizontaal aansluitdetail (plattegrond)</div>
                       <div style={{ overflowX: 'auto' }}>
-                        <HoekAansluitDetail mainS={isMain ? settings : otherSettings} secS={isMain ? otherSettings : settings} />
+                        <HoekAansluitDetail mainS={isMain ? settings : otherSettings} secS={isMain ? otherSettings : settings} projectDikte={projectDikte} />
                       </div>
                     </div>
                   </div>
@@ -3027,6 +3128,12 @@ function Tooltip({ text, children, block }) {
   const [visible, setVisible] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const Tag = block ? 'div' : 'span';
+  // Clamp de (fixed) tooltip binnen het venster — anders verdwijnt 'ie rechts/onder buiten beeld.
+  const TW = 260, MARGIN = 12;
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+  const tipLeft = Math.max(8, Math.min(pos.x + MARGIN, vw - TW - MARGIN));
+  const tipTop  = Math.max(8, Math.min(pos.y + 4, vh - 80));
   return (
     <Tag
       style={{ position: 'relative', display: block ? 'block' : 'inline-flex', alignItems: 'center' }}
@@ -3038,8 +3145,8 @@ function Tooltip({ text, children, block }) {
       {visible && (
         <div style={{
           position: 'fixed',
-          left: pos.x + 12,
-          top: pos.y + 4,
+          left: tipLeft,
+          top: tipTop,
           zIndex: 9999,
           background: '#0f172a',
           color: '#e2e8f0',
@@ -3213,6 +3320,9 @@ export default function App() {
   const [similarSuggestions, setSimilarSuggestions] = useState(null);
   const [duplicateGroupsModal, setDuplicateGroupsModal] = useState(null);
   const [groupLinks, setGroupLinks] = useState({});
+  // UNIT-DETECTIE (vlag unitDetectie): één-regel-melding met de uitslag van detecteerUnits().
+  // Alleen gezet/gerenderd achter de vlag → byte-identiek uit.
+  const [unitDetectMsg, setUnitDetectMsg] = useState(null);
   const [cornerConfigs, setCornerConfigs] = useState({});
   const [gridLines, setGridLines] = useState([]);
   const [showGridLines, setShowGridLines] = useState(true);
@@ -3232,21 +3342,36 @@ export default function App() {
   const [sparingElements, setSparingElements] = useState([]);
   const [sparingOffset, setSparingOffset] = useState(10);
   const [sparingScan, setSparingScan] = useState(null); // { file, types:[{ifcEntityType,count}], selected:Set, busy }
+  // Vlag ghImport: geïmporteerde Grasshopper-gevel (parseGhCladding-result + ifcText + fileName). Eigen full-screen view.
+  const [ghResult, setGhResult] = useState(null);
+  const [ghBusy, setGhBusy] = useState(false);
   // KOZIJN-OFFSET (vlag kozijnOffset) — globale per-zijde marge (mm) tussen kozijnrand en bekleding.
   const [kozijnOffset, setKozijnOffset] = useState({ left: 0, right: 0, top: 0, bottom: 0 });
-  // Parameter voor de patroon-builders: null wanneer de vlag UIT is → byte-identiek gedrag.
-  const kozOffsetParam = isKozijnOffset() ? kozijnOffset : null;
+  // WATERSLAG-OFFSET (vlag lekdorpelReferentie) — APARTE per-zijde marge voor deur-openingen die de
+  // waterslag volgen (los van de kozijn/lekdorpel-offset).
+  const [waterslagOffset, setWaterslagOffset] = useState({ left: 0, right: 0, top: 0, bottom: 0 });
+  // Parameter voor de patroon-builders: null wanneer de vlag UIT is → byte-identiek gedrag. De aparte
+  // waterslag-offset reist mee als sub-object (kozOffsetParam.waterslag) → geen extra param nodig.
+  const kozOffsetParam = isKozijnOffset()
+    ? { ...kozijnOffset, waterslag: isLekdorpelReferentie() ? waterslagOffset : undefined }
+    : null;
   // OPENING_EDGE_QUARTER (vlag openingEdgeQuarter) — instelbare stapel-delta (mm) waaronder een opening-
   // rand-strip naar ¼ steen mag i.p.v. altijd ½ (kop). null wanneer de vlag UIT is → byte-identiek.
   const [minStackDelta, setMinStackDelta] = useState(50);
   const edgeStaggerParam = isOpeningEdgeQuarter() ? { minDelta: minStackDelta } : null;
   const [kozijnen, setKozijnen] = useState([]); // raam/deur-bboxen (uit parseIfc via projectInfo) voor 3D-weergave
+  const [lekdorpels, setLekdorpels] = useState([]); // LEKDORPEL_REFERENTIE — wereld-bboxen uit los IFC
   const [flagsOpen, setFlagsOpen] = useState(false); // vlaggen-schakelaar-paneel
   const [flagState, setFlagState] = useState(() => Object.fromEntries(FLAG_REGISTRY.map((f) => [f.key, getFlag(f.key)])));
   const [flagsDirty, setFlagsDirty] = useState(false);
   const forceOrientation = 'AUTO';
+  // PROJECT_DEFAULTS (vlag projectDefaults) — project-brede startlijn (t.o.v. peil) + steenstrip/voeg.
+  // projectDefaults is null als de vlag uit staat → getSettings resolt niets (byte-identiek).
+  const [projectStartLijn, setProjectStartLijn] = useState(null);
+  const [projectMateriaal, setProjectMateriaal] = useState(() => ({ ...DEFAULT_MATERIAL, dikte: 20 }));
+  const projectDefaults = isProjectDefaults() ? { startLijn: projectStartLijn, material: projectMateriaal } : null;
   // projectInfo React state vervalt — module-state in projectCoordinates.js is de enige bron
-  const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings();
+  const { get: getSettings, update: updateSettings, initColor, forceInit, map: settingsMap, setMap: setSettingsMap } = useGroupSettings(projectDefaults);
 
   const _gidRef = useRef(1);
   // Zelf-bevattende projecten: bron-IFC's van deze sessie [{prefix, file}] — alleen
@@ -3280,7 +3405,12 @@ export default function App() {
     const ov = wallDimOverrides[w.expressID];
     return ov ? { ...w, ...ov } : w;
   }), [allWalls, wallDimOverrides]);
-  const wallMap = useMemo(() => Object.fromEntries(effectiveWalls.map((w) => [w.expressID, w])), [effectiveWalls]);
+  // LEKDORPEL-REFERENTIE: hang op.lekdorpelX aan de raam/deur-openingen (achter de vlag + geladen
+  // lekdorpels). Propageert via wallMap naar beide bouw-paden; andere consumenten negeren het veld.
+  const effectiveWallsLek = useMemo(() =>
+    (isLekdorpelReferentie() && lekdorpels.length) ? attachLekdorpelToWalls(effectiveWalls, lekdorpels) : effectiveWalls,
+    [effectiveWalls, lekdorpels]);
+  const wallMap = useMemo(() => Object.fromEntries(effectiveWallsLek.map((w) => [w.expressID, w])), [effectiveWallsLek]);
   // Actieve synthetische calc-wand (voor de live maat-editor). Bewerken muteert allWalls →
   // effectiveWalls → wallMap → allPatterns → 3D/2D/uittrekstaat/IFC-export volgen vanzelf.
   const activeSynWall = useMemo(() => {
@@ -3328,7 +3458,8 @@ export default function App() {
       const _art3d = _artId3d ? BATTEN_CATALOG.find((a) => a.id === _artId3d) : null;
       const latDikte3d = _art3d ? _art3d.dikteMM : (s.latten?.dikte ?? 28);
       const hasVertLat3d = s.latten?.richting === 'verticaal';
-      const effectiveLatDepth3d = hasVertLat3d ? 2 * latDikte3d : latDikte3d;
+      // Lat-DIEPTE volgt het achterconstructie-systeem (enkel 1× / kruislaag 2×), niet de richting.
+      const effectiveLatDepth3d = lattenLagen(s) * latDikte3d;
       const panelDikte3d = s.panelen?.dikte ?? 8;
       const _3dStripArtId = (s.steenstripsArtikelen ?? [])[0];
       const _3dStripArt = _3dStripArtId ? STEENSTRIP_CATALOG.find((a) => a.id === _3dStripArtId) : null;
@@ -3382,6 +3513,12 @@ export default function App() {
         };
         const _sr = sparingRectsForGroup(sparingElements, _gf, sparingOffset);
         if (_sr.length) facadeData = { ...facadeData, rows: clipRowsAroundRects(facadeData.rows, _sr, _rowHsp), sparingRects: _sr };
+      }
+      // GEEN_VERBAND: basisvlak blanco (geen strips). coverageRows = de gemaskeerde dekking, maar
+      // SOLIDE gemaakt (mortelvoegen dicht) zodat getekende zones niet op de uitgelijnde stootvoegen
+      // van het 'geen'-fallbackverband genotcht worden (→ verticale lijnen). Openingen blijven gaten.
+      if (facadeData && isBlankBaseVerband(s.verband ?? DEFAULT_VERBAND)) {
+        facadeData = { ...facadeData, coverageRows: facadeData.coverageRows ?? solidifyRows(facadeData.rows, (s.material?.stoot ?? 10) + 2), rows: [] };
       }
       if (!facadeData) {
         const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
@@ -3615,7 +3752,9 @@ export default function App() {
           }).filter((p) => p.length > 1),
         })).filter((row) => row.pieces.length > 0);
         const zoneBrickH3d = zoneVerband3d === 'staand_tegelverband' ? zoneMat.steenL : zoneMat.steenH;
-        enabledZones.push({ zX1, zX2, rows: clipRows, color: zs.color ?? s.color ?? '#a64033', brickH: zoneBrickH3d });
+        // SPARING-ELEMENTEN: ook de penant-zone-strips rond de onderdelen knippen (verse buildFullGroupFacadePattern → niet vanzelf geknipt).
+        const clipRowsSpar = facadeData.sparingRects?.length ? clipRowsAroundRects(clipRows, facadeData.sparingRects, zoneBrickH3d) : clipRows;
+        enabledZones.push({ zX1, zX2, rows: clipRowsSpar, color: zs.color ?? s.color ?? '#a64033', brickH: zoneBrickH3d });
       }
 
       const generalRows = maskedRows.map((row) => ({
@@ -3661,16 +3800,26 @@ export default function App() {
       for (const pen of (s.penanten ?? [])) {
         const pX  = pen.x   ?? 0;
         const pB  = Math.max(1, pen.breedte ?? 400);
+        // ZIJDE OP 0 = GEEN zijkant: bij ruwe diepte ≤ 0 wordt de arm volledig overgeslagen (strip +
+        // paneel + latten). De Math.max(1,…) hieronder klemt alleen de RESTERENDE (actieve) armen.
+        const skipPenL3 = (pen.diepteLinks  ?? pen.diepte ?? 150) <= 0;
+        const skipPenR3 = (pen.diepteRechts ?? pen.diepte ?? 150) <= 0;
         const pDL3 = Math.max(1, pen.diepteLinks  ?? pen.diepte ?? 150);
         const pDR3 = Math.max(1, pen.diepteRechts ?? pen.diepte ?? 150);
-        const pDmax3 = Math.max(pDL3, pDR3);
+        const pDmax3 = Math.max(skipPenL3 ? 0 : pDL3, skipPenR3 ? 0 : pDR3, 1);
         const maxH = s.maxHoogte ?? 0;
         const pH  = Math.max(1, (maxH != null && maxH > 0) ? Math.min(pen.hoogte ?? 2000, maxH) : (pen.hoogte ?? 2000));
         const panelDikte = panelDikte3d;
-        const latD = isSlimFort3d ? sfDepths3d.facadeBaseDepth : latDikte3d;
+        const latD = isSlimFort3d ? sfDepths3d.facadeBaseDepth : latDikte3d;   // penant-basis: enkele laag (kruislaag-penant = FASE P-migratie)
         const penStoot = pen.stoot ?? mat.stoot ?? 10;
-        const penShift = panelDikte + brickD3d + penStoot + pDmax3;
-        const depthFromFace = latD + penShift + brickD3d / 2;
+        // Zijstrip: achterkant 6 mm vóór het buitenvlak van de vlakke-gevel-strippen (6 mm negge);
+        // lengte = ingegeven diepte + stootvoeg + stripdikte.
+        const flatStripOuter3 = latD + panelDikte + brickD3d;   // buitenvlak vlakke-gevel-strip
+        const sideBackDepth = flatStripOuter3 + 6;              // achterkant zijstrip
+        const maxArmDepth = pDmax3 + penStoot + brickD3d;       // langste (diepste) zijstrip
+        // Vóórvlak loopt VOORLANGS: de vóórstrip zit één stripdikte vóór de zijstrippen; z'n ACHTERkant
+        // sluit op de voorkant van de diepste zijstrip. depthFromFace = strip-hart = zijkant-voor + ½ strip.
+        const depthFromFace = sideBackDepth + maxArmDepth + brickD3d / 2;
         const penSL3 = Math.max(0, s.startLijn ?? 0);   // penant-strips volgen de groep-startlijn
         const penEffPH3 = pH - penSL3;                   // zichtbare penant-hoogte boven de startlijn (top blijft op pH)
         const shiftPenY3 = (rows) => penSL3 > 0 ? rows.map((row) => ({ ...row, y: Math.round((row.y + penSL3) * 100) / 100 })) : rows;
@@ -3682,27 +3831,24 @@ export default function App() {
         }));
         batches.push({ rows: offsetRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, depthFromFace });
 
-        const sideClipOff = Math.max(penStoot, panelDikte);
-        const sideDepthOffsetBase = latD + panelDikte + brickD3d + sideClipOff + 6;
-        const sideDepthOffsetLeft = sideDepthOffsetBase + (pDmax3 - pDL3);
-        const sideDepthOffsetRight = sideDepthOffsetBase + (pDmax3 - pDR3);
-        const clipSideFront = (rawRows, armDepth) => {
-          const clipEnd = armDepth - sideClipOff;
-          return rawRows.map((row) => ({
-            ...row,
-            pieces: row.pieces.flatMap((pc) => {
-              if (pc.start >= clipEnd) return [];
-              if (pc.start + pc.length <= clipEnd) return [pc];
-              return [{ ...pc, length: Math.round((clipEnd - pc.start) * 100) / 100 }];
-            }),
-          })).filter((row) => row.pieces.length > 0);
-        };
-        const leftArmDepth = Math.max(1, pDL3 - 6);
-        const rightArmDepth = Math.max(1, pDR3 - 6);
-        const leftRows = clipSideFront(shiftPenY3(buildFacePattern(leftArmDepth, penEffPH3, effectiveMat3d, groupVerband3d)), leftArmDepth);
-        const rightRows = clipSideFront(shiftPenY3(buildFacePattern(rightArmDepth, penEffPH3, effectiveMat3d, groupVerband3d)), rightArmDepth);
+        // Zijstrip-plaatsing: achterkant op sideBackDepth (6 mm-negge), lengte per zijde hieronder.
+        const sideDepthOffsetLeft = sideBackDepth;
+        const sideDepthOffsetRight = sideBackDepth;
+        // PENANT-ZIJDE (vlag penantHoekStoot): de UI-diepte IS de zijstrip-LENGTE (buildPenantSidePattern:
+        // ≤ 1 strip → 1 strip recht gestapeld, geen verspringing; groter → verdelen). De voorstrip/totale diepte
+        // (maxArmDepth) blijft ongewijzigd berekend. Vlag uit → origineel (buildFacePattern op pDL+stoot+brickD).
+        const leftArmDepth = Math.max(1, pDL3 + penStoot + brickD3d);
+        const rightArmDepth = Math.max(1, pDR3 + penStoot + brickD3d);
+        const leftRows = skipPenL3 ? [] : shiftPenY3(isPenantHoekStoot() ? buildPenantSidePattern(pDL3, penEffPH3, effectiveMat3d, groupVerband3d) : buildFacePattern(leftArmDepth, penEffPH3, effectiveMat3d, groupVerband3d));
+        const rightRows = skipPenR3 ? [] : shiftPenY3(isPenantHoekStoot() ? buildPenantSidePattern(pDR3, penEffPH3, effectiveMat3d, groupVerband3d) : buildFacePattern(rightArmDepth, penEffPH3, effectiveMat3d, groupVerband3d));
         if (leftRows.length) batches.push({ rows: leftRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, sideType: 'left', penantX: pX, penantB: pB, sideDepthOffset: sideDepthOffsetLeft });
         if (rightRows.length) batches.push({ rows: rightRows, color: s.color ?? '#a64033', brickH: groupBrickH3d, sideType: 'right', penantX: pX, penantB: pB, sideDepthOffset: sideDepthOffsetRight });
+      }
+
+      // VENTILATIE op penant-groep: buildStripZoneRegions is hier overgeslagen (hasPenants); pas de
+      // vent-zones alsnog toe op de penant-strip-batches (grille + gat), met behoud van de kleuren.
+      if (hasPenants(s) && _ventZones3d.length) {
+        batches = applyVentZonesToBatches(batches, _ventZones3d, facadeData, mat, groupVerband3d, s.color ?? '#a64033', { stripArt: _3dStripArt, depthFromFace: depthFromFaceGeneral });
       }
 
       const clipFull = (rows) => {
@@ -3840,6 +3986,73 @@ export default function App() {
 
       const _sfStitching3d = _sfFaces3d ? computeGroupStitching(_sfFaces3d) : null;
 
+      // STRUCTUUR-3D: hoofdvlak-latten + panelen voor de 3D-weergave (zelfde bron-functies als 2D).
+      // Alleen bij hout-achterconstructie; wildverband heeft geen paneelraster.
+      let panels3d = [], latten3d = [];
+      const backing3d = s.backingType ?? 'hout';
+      const vis3d = s.layerVisibility ?? {};
+      const verb3d = s.verband ?? DEFAULT_VERBAND;
+      const isWv3d = verb3d === 'wildverband' || verb3d === 'groothuis_wildverband' || verb3d === 'groothuis_wildverband_2';
+      // GEEN_VERBAND: blanco basisvlak → geen panelen/latten in 3D (facadeData.rows is al leeg voor strips).
+      if (backing3d === 'hout' && facadeData?.rows && !isBlankBaseVerband(verb3d)) {
+        const gW3d = facadeData.groupWidth, gH3d = facadeData.groupHeight;
+        const lintHalf3d = (mat.lint ?? 12) / 2;
+        const allRowYs3d = (facadeData.rows ?? []).map((r) => r.y).sort((a, b) => a - b);
+        const snapRowY3d = (y) => allRowYs3d.length ? allRowYs3d.reduce((b, ry) => Math.abs(ry - (y + lintHalf3d)) < Math.abs(b - (y + lintHalf3d)) ? ry : b) : y;
+        const battenYs3d = generateBattenPositions(gH3d, mat, Math.max(50, s.latten?.maxInterval ?? 400), { minHOH: s.latten?.minHOH, maxHOH: s.latten?.maxHOH, targetPanelH: s.panelen?.hoogte, minPanelH: 800 }).map(snapRowY3d);
+        if (s.panelen?.enabled && !isWv3d) {
+          const basePanel3d = computeEffectiveBasePanel(s.panelen, mat.brickWeightM2 ?? 40, mat);
+          const opForZones3d = (facadeData.groupOpenings ?? []).filter((op) => op.type !== 'ventilatie').map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
+          const penOp3d = (s.penanten ?? []).map((p, i) => { const px = (p.x ?? 0) + 20, pw = Math.max(1, p.breedte ?? 400) - 40; return pw > 0 ? { id: `pen_${i}`, x: px, y: 0, width: pw, height: gH3d, polyPts: null } : null; }).filter(Boolean);
+          for (const zone of buildFacadeZones(gW3d, gH3d, [...opForZones3d, ...penOp3d])) {
+            const res = panelizeZone(zone, battenYs3d, basePanel3d, allRowYs3d.length ? snapRowY3d : null, mat, verb3d);
+            if (res.ok) panels3d.push(...res.panels);
+          }
+          panels3d = panels3d.filter((p) => p.height >= 200 && p.width >= 10);
+          // GEEN-STRIP-GEEN-PANEEL (vlag strip3dFilter): 3D krijgt dezelfde strip-overlap-filter als
+          // View2D/Werktekening/export — paneel weg als het nergens een steenstrip-stuk raakt. De latten
+          // (buildFacadeLatten hieronder met deze panels3d) volgen automatisch. Vlag uit → ongewijzigd.
+          if (isStrip3dFilter() && verb3d !== 'wildverband') {
+            const rowH3d = verb3d === 'staand_tegelverband' ? effectiveMat3d.steenL : effectiveMat3d.steenH;
+            panels3d = panels3d.filter((panel) => {
+              for (const row of (facadeData.rows ?? [])) {
+                if (!row?.pieces?.length) continue;
+                if (row.y + rowH3d <= panel.y || row.y >= panel.y + panel.height) continue;
+                for (const piece of row.pieces) {
+                  const s = Math.max(piece.start, panel.x);
+                  const e = Math.min(piece.start + piece.length, panel.x + panel.width);
+                  if (e - s > 1) return true;
+                }
+              }
+              return false;
+            });
+          }
+        }
+        if (s.latten?.enabled) {
+          if (isUnifiedLatten()) {   // FASE 1 — één gedeelde latten-berekening (effectiveMat3d = zelfde als facadeData.rows)
+            latten3d = buildFacadeLatten({ facadeData, latten: s.latten, mat: effectiveMat3d, panelen: s.panelen, panels: panels3d, penanten: s.penanten ?? [], startLijn: s.startLijn, verband: verb3d, backingType: backing3d, sparingRects: facadeData.sparingRects });
+          } else if ((s.latten.richting ?? 'horizontaal') === 'horizontaal') {
+            latten3d = computeHorizontalLatten({ facadeData, latten: s.latten, mat, panelen: s.panelen, startLijn: s.startLijn, backingType: backing3d, verband: verb3d });
+          } else {
+            const latB3d = Math.max(5, s.latten.breedte ?? 50);
+            const xs3d = new Set([0, gW3d]);
+            for (const p of panels3d) { xs3d.add(Math.round(p.x)); xs3d.add(Math.round(p.x + p.width / 2)); xs3d.add(Math.round(p.x + p.width)); }
+            latten3d = [...xs3d].sort((a, b) => a - b).map((x, i) => ({ id: `lat-v-${i}`, richting: 'verticaal', x: x - latB3d / 2, y: 0, width: latB3d, height: gH3d }));
+          }
+        }
+      }
+      // GEEN_VERBAND: panelen/latten volgen de getekende zones (elk vak z'n eigen achterconstructie).
+      else if (backing3d === 'hout' && isBlankBaseVerband(verb3d)) {
+        const azf3d = getActiveStripZones(s);
+        if (azf3d.length) {
+          panels3d = buildZoneBackingPanels({ facadeData, activeZones: azf3d, panelen: s.panelen, latten: s.latten, mat: effectiveMat3d, verband: verb3d, startLijn: s.startLijn, sparingRects: facadeData.sparingRects });
+          if (s.latten?.enabled) {
+            const _baseLat3d = buildFacadeLatten({ facadeData, latten: s.latten, mat: effectiveMat3d, panelen: s.panelen, panels: panels3d, penanten: [], startLijn: s.startLijn, verband: verb3d, backingType: backing3d, sparingRects: facadeData.sparingRects });
+            latten3d = clipLattenToZones(_baseLat3d, azf3d);
+          }
+        }
+      }
+
       result[group.id] = {
         batches: clippedBatches,
         cornerWraps,
@@ -3848,6 +4061,7 @@ export default function App() {
         refWallOrigin: _rwo3d,
         outsideDirFlip: !!(s.outsideDirFlip),
         latDikteEff: latDikte3d,
+        structure3d: { latten: latten3d, panels: panels3d, latDikte: latDikte3d, panelDikte: panelDikte3d, showLatten: vis3d.latten !== false, showPanelen: vis3d.panelen !== false },
         facadeData,
         slimFortFaces: _sfFaces3d,
         slimFortStitching: _sfStitching3d,
@@ -3856,7 +4070,7 @@ export default function App() {
       };
     }
     return result;
-  }, [groups, getSettings, wallMap, showPattern, viewMode, adjacencies, cornerConfigs, settingsMap, groupEnvelopeVisibility, sparingElements, sparingOffset, kozijnOffset, minStackDelta]);
+  }, [groups, getSettings, wallMap, showPattern, viewMode, adjacencies, cornerConfigs, settingsMap, groupEnvelopeVisibility, sparingElements, sparingOffset, kozijnOffset, waterslagOffset, minStackDelta]);
 
   // SPARING-ELEMENTEN debug/voortgangs-controle — per groep hoeveel sparing-rechthoeken daadwerkelijk
   // uit de bekleding zijn geknipt (uit allPatterns). 0 → coördinaten sluiten niet aan of diepte-check faalt.
@@ -4095,9 +4309,9 @@ export default function App() {
     addLog(`Bestand: ${pendingFile.name} (${(pendingFile.size / 1024 / 1024).toFixed(1)} MB)`);
     try {
       const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
-      const CACHE_SCHEMA_V = 16; // v16: ventilatieZone-retag (kleine sparing boven raam → 'ventilatie')
+      const CACHE_SCHEMA_V = 18; // v18: kozijnRect op EXACTE (raster-vrije) projectie i.p.v. 20mm-raster
       const pathTag = isNewOpeningDerivation() ? 'newOpenings' : 'legacy';
-      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}|${pathTag}|koz${isShowKozijnen() ? 1 : 0}|okoz${isOpeningFromKozijn() ? 1 : 0}|vent${isVentilatieZone() ? 1 : 0}|gh${isGevelHandedness() ? 1 : 0}`;
+      const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}|${pathTag}|koz${isShowKozijnen() ? 1 : 0}|okoz${isOpeningFromKozijn() ? 1 : 0}|vent${isVentilatieZone() ? 1 : 0}|klik${isKliklijstReferentie() ? 1 : 0}|gh${isGevelHandedness() ? 1 : 0}`;
 
       addLog(filter ? `Filter: ${[...filter].join(', ')}` : 'Alle wandtypen worden geladen');
       addLog('Cache controleren…');
@@ -4462,7 +4676,13 @@ export default function App() {
         setGroupLinks(state.groupLinks ?? {});
         if (state.cornerConfigs && typeof state.cornerConfigs === 'object') setCornerConfigs(state.cornerConfigs);
         if (state.kozijnOffset && typeof state.kozijnOffset === 'object') setKozijnOffset({ left: 0, right: 0, top: 0, bottom: 0, ...state.kozijnOffset });
+        if (state.waterslagOffset && typeof state.waterslagOffset === 'object') setWaterslagOffset({ left: 0, right: 0, top: 0, bottom: 0, ...state.waterslagOffset });
         if (Number.isFinite(state.minStackDelta)) setMinStackDelta(state.minStackDelta);
+        if (state.projectStartLijn !== undefined && state.projectStartLijn !== null) setProjectStartLijn(state.projectStartLijn);
+        if (state.projectMateriaal && typeof state.projectMateriaal === 'object') setProjectMateriaal(state.projectMateriaal);
+        // SPARING-ELEMENTEN: geïmporteerde onderdelen overleven nu een reload/project-laden (voorheen alleen live-state).
+        if (Array.isArray(state.sparingElements) && state.sparingElements.length) setSparingElements(state.sparingElements);
+        if (Number.isFinite(state.sparingOffset)) setSparingOffset(state.sparingOffset);
         setSettingsMap(sm);
         if (state.wallDimOverrides && typeof state.wallDimOverrides === 'object') setWallDimOverrides(state.wallDimOverrides);
         if (Array.isArray(state.allWalls) && state.allWalls.length > 0) {
@@ -4494,10 +4714,10 @@ export default function App() {
       const _pGroups = _hasSyn ? groups.filter((g) => !g.synthetic) : groups;
       const _synGids = _hasSyn ? new Set(groups.filter((g) => g.synthetic).map((g) => g.id)) : null;
       const _pSettings = _hasSyn ? Object.fromEntries(Object.entries(settingsMap).filter(([gid]) => !_synGids.has(gid))) : settingsMap;
-      saveProjectState({ groups: _pGroups, groupLinks, cornerConfigs, settingsMap: _pSettings, ifcFileName, wallDimOverrides, allWalls: _pWalls, kozijnOffset, minStackDelta }).catch(() => {});
+      saveProjectState({ groups: _pGroups, groupLinks, cornerConfigs, settingsMap: _pSettings, ifcFileName, wallDimOverrides, allWalls: _pWalls, kozijnOffset, waterslagOffset, minStackDelta, projectStartLijn, projectMateriaal, sparingElements, sparingOffset }).catch(() => {});
     }, 1500);
     return () => clearTimeout(_saveTimerRef.current);
-  }, [groups, groupLinks, cornerConfigs, settingsMap, ifcFileName, wallDimOverrides, allWalls, kozijnOffset, minStackDelta]);
+  }, [groups, groupLinks, cornerConfigs, settingsMap, ifcFileName, wallDimOverrides, allWalls, kozijnOffset, waterslagOffset, minStackDelta, projectStartLijn, projectMateriaal, sparingElements, sparingOffset]);
 
   // --- PLAN_BRIDGE (achter isPlanBridge(), default UIT) — engineering-samenvatting voor de planner ---
   // Volledig ADDITIEF: met de vlag uit registreert de useEffect hieronder niets en wordt
@@ -4645,6 +4865,74 @@ export default function App() {
     setGroups(newGroups);
     setSelectedWallIds(new Set());
     setActiveGroupId(newGroups[0]?.id ?? null);
+  }
+
+  // UNIT-DETECTIE (vlag unitDetectie): herken REPETERENDE gevel-units — verdiepingshoge BUITENwand-
+  // panelen met dezelfde maat + opening-layout — en zet elk voorkomen als een gevelgroep weg; identieke
+  // voorkomens delen een linkId zodat hun settings synchroon lopen (1× instellen → alle kopieën volgen,
+  // via het bestaande syncToLinked). Puur ADDITIEF: bestaande groepen blijven, al-gegroepeerde wanden
+  // worden overgeslagen. Signature is positie-ONAFHANKELIJK (zelfde maat + opening-layout = zelfde type),
+  // gekwantiseerd op DIM_TOL/OP_TOL — exact zoals findDuplicateGroupClusters, maar per één-wand-paneel.
+  // Spiegelt createGroup/autoGroupByWindrichting (newGid/nextColor/forceInit/detectSubstrateType).
+  function detecteerUnits() {
+    const alreadyGrouped = new Set(groups.flatMap((g) => g.wallIds));
+    const candidates = allWalls.filter((w) => {
+      if (alreadyGrouped.has(w.expressID)) return false;
+      const wo = w.wallOrigin;
+      if (!wo) return false;
+      if (wo.isExterior === false) return false;          // alleen buitenwanden (bevestigd-binnen eruit)
+      if (!(w.height >= UNIT_MIN_HEIGHT)) return false;    // verdiepingshoog (geen veneer-band/latei)
+      if (!(w.length >= UNIT_MIN_LENGTH)) return false;    // paneel-breed (geen smalle penant/retour)
+      return true;
+    });
+    const unitKey = (w) => {
+      const dims = `${Math.round(w.length / DIM_TOL)}x${Math.round(w.height / DIM_TOL)}`;
+      const ops = (w.openings ?? []).slice().sort((a, b) => a.x - b.x)
+        .map((op) => [op.type ?? '', Math.round(op.x / OP_TOL), Math.round(op.y / OP_TOL), Math.round(op.breedte / OP_TOL), Math.round(op.hoogte / OP_TOL)].join(',')).join(';');
+      return `${dims}|${ops}`;
+    };
+    const byKey = new Map();
+    for (const w of candidates) {
+      const k = unitKey(w);
+      if (!byKey.has(k)) byKey.set(k, []);
+      byKey.get(k).push(w);
+    }
+    // Alleen REPETERENDE types (≥2 voorkomens) worden units; unieke panelen laten we ongemoeid.
+    const repeating = [...byKey.values()].filter((ws) => ws.length >= 2).sort((a, b) => b.length - a.length);
+    const singles = [...byKey.values()].filter((ws) => ws.length === 1).length;
+    if (!repeating.length) {
+      setUnitDetectMsg(`Geen repeterende units gevonden (${candidates.length} kandidaat-paneel${candidates.length === 1 ? '' : 'en'}${singles ? `, ${singles} uniek` : ''}).`);
+      return;
+    }
+    pushHistory(groups);
+    const newGroups = [];
+    const linkAssign = [];
+    repeating.forEach((ws, typeIdx) => {
+      const label = typeIdx < 26 ? String.fromCharCode(65 + typeIdx) : `${typeIdx + 1}`;
+      const gids = ws.map(() => newGid());
+      const linkId = `UL${gids[0]}`;
+      ws.forEach((w, i) => {
+        const gid = gids[i];
+        const color = nextColor();
+        forceInit(gid, color, i === 0 ? `Unit ${label}` : `Unit ${label}-${i + 1}`);
+        const substrate = detectSubstrateType([w]);
+        if (substrate !== 'unknown') {
+          updateSettings(gid, { wallSubstrateType: substrate, ...(substrate === 'beton' ? { backingType: 'aluminium_slimfort' } : {}) });
+        }
+        newGroups.push({ id: gid, wallIds: [w.expressID], manual: true });
+        linkAssign.push({ gid, linkId });
+      });
+    });
+    setGroups((prev) => [...prev, ...newGroups]);
+    setGroupLinks((prev) => {
+      const next = { ...prev };
+      for (const { gid, linkId } of linkAssign) next[gid] = linkId;
+      return next;
+    });
+    setSelectedWallIds(new Set());
+    setActiveGroupId(newGroups[0]?.id ?? null);
+    const overzicht = repeating.slice(0, 8).map((ws, i) => `${i < 26 ? String.fromCharCode(65 + i) : i + 1}×${ws.length}`).join(', ');
+    setUnitDetectMsg(`${newGroups.length} units in ${repeating.length} type${repeating.length === 1 ? '' : 's'} (${overzicht}${repeating.length > 8 ? ', …' : ''})${singles ? `; ${singles} uniek paneel overgeslagen` : ''}.`);
   }
 
   // SYNTHETISCHE CALC-WAND (vlag syntheticWall): voeg een wand toe uit L×H×dikte en maak er
@@ -4941,6 +5229,7 @@ export default function App() {
     for (const group of groups) {
       const s = getSettings(group.id);
       if (!s.panelen?.enabled) continue;
+      if (isBlankBaseVerband(s.verband ?? DEFAULT_VERBAND)) continue; // GEEN_VERBAND: blanco basisvlak → geen panelen
 
       const walls = group.wallIds.map((id) => wallMap[id]).filter(Boolean);
       const mat = s.material ?? DEFAULT_MATERIAL;
@@ -4977,7 +5266,15 @@ export default function App() {
       }
 
       const { groupWidth, groupHeight, groupOpenings } = facadeData;
-      const battenYs = generateBattenPositions(groupHeight, mat, Math.max(50, s.latten?.maxInterval ?? 400), { minHOH: s.latten?.minHOH, maxHOH: s.latten?.maxHOH, targetPanelH: s.panelen?.hoogte, minPanelH: 800 });
+      // UITTREKSTAAT_SNAP (vlag): mal-recept panelen op steenrijen snappen (gelijk aan tekening/export), net
+      // als de uittrekstaat. Vlag UIT → null + ongesnapte battenYs (byte-identiek).
+      const _mrSnapOn = isUittrekstaatSnap();
+      const _mrLintHalf = (mat.lint ?? 12) / 2;
+      const _mrRowYs = _mrSnapOn ? (facadeData.rows ?? []).map((r) => r.y).sort((a, b) => a - b) : [];
+      const _mrSnap = (y) => { if (!_mrRowYs.length) return y; const t = y + _mrLintHalf; return _mrRowYs.reduce((best, ry) => Math.abs(ry - t) < Math.abs(best - t) ? ry : best); };
+      const _mrSnapFn = (_mrSnapOn && _mrRowYs.length) ? _mrSnap : null;
+      const _mrBaseBattenYs = generateBattenPositions(groupHeight, mat, Math.max(50, s.latten?.maxInterval ?? 400), { minHOH: s.latten?.minHOH, maxHOH: s.latten?.maxHOH, targetPanelH: s.panelen?.hoogte, minPanelH: 800 });
+      const battenYs = _mrSnapFn ? _mrBaseBattenYs.map(_mrSnap) : _mrBaseBattenYs;
       const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, s.material ?? mat);
 
       const openingsForZones = groupOpenings.filter((op) => op.type !== 'ventilatie').map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
@@ -4995,7 +5292,7 @@ export default function App() {
       } else {
         const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
         for (const zone of zones) {
-          const res = panelizeZone(zone, battenYs, basePanel, null, mat, verband);
+          const res = panelizeZone(zone, battenYs, basePanel, _mrSnapFn, mat, verband);
           if (res.ok) panels.push(...res.panels);
         }
       }
@@ -5029,25 +5326,61 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
+  // LEKDORPEL-REFERENTIE — laad een los IFC en houd de lekdorpel-proxies (wereld-bbox) vast.
+  async function handleLekdorpelFile(file) {
+    if (!file) return;
+    console.log('[lekdorpel] laden:', file.name, `(${(file.size / 1048576).toFixed(1)} MB)`);
+    try {
+      const els = await parseIfcLekdorpels(file, (p) => { if (p?.log) console.log('[lekdorpel]', p.log); });
+      if (!els.length) { alert('Geen lekdorpels (IfcBuildingElementProxy met "lekdorpel" in de naam) gevonden.'); return; }
+      const r = Math.round;
+      const E = els.reduce((a, e) => ({ minX: Math.min(a.minX, e.bbox.minX), maxX: Math.max(a.maxX, e.bbox.maxX), minY: Math.min(a.minY, e.bbox.minY), maxY: Math.max(a.maxY, e.bbox.maxY), minZ: Math.min(a.minZ, e.bbox.minZ), maxZ: Math.max(a.maxZ, e.bbox.maxZ) }), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity });
+      console.log(`[lekdorpel] ${els.length} delen · wereld-bbox (mm): X[${r(E.minX)}..${r(E.maxX)}] Y[${r(E.minY)}..${r(E.maxY)}] Z[${r(E.minZ)}..${r(E.maxZ)}]`);
+      setLekdorpels(els);
+    } catch (e) { console.error('[lekdorpel] laden mislukt:', e); alert('Lekdorpel laden mislukt: ' + (e?.message ?? e)); }
+  }
+
   // SPARING-ELEMENTEN — laad een IFC, scan de niet-wand kandidaat-types, importeer de gekozen types.
   // Sentinels voor de naam-selectie-sleutels: `TYPE##BB##naam`; naamloze elementen krijgen <naamloos>.
   const SPARING_SEP = '##BB##';         // scheidt entity-type en naam in de selectie-sleutel
   const SPARING_NULL_NAME = '<naamloos>'; // naam-deel voor elementen zonder Name
+  const SPARING_CHILD_SEP = '##CH##';   // scheidt assembly-naam en onderdeel-naam (3e niveau)
   async function handleSparingFile(file) {
     if (!file) return;
     console.log('[sparingen] scan gestart:', file.name, `(${(file.size / 1048576).toFixed(1)} MB)`);
-    setSparingScan({ file, types: [], selected: new Set(), selectedNames: new Set(), busy: true, progress: 'Bestand scannen…' });
+    setSparingScan({ file, types: [], selected: new Set(), selectedNames: new Set(), selectedChildren: new Set(), busy: true, progress: 'Bestand scannen…' });
     try {
       const types = await scanIfcSparingTypes(file);
       console.log('[sparingen] scan klaar — types met geometrie:', types.map((t) => `${t.ifcEntityType.replace(/^IFC/, '')}×${t.count}`).join(', ') || '(geen)');
       if (!types.length) { alert('Geen fysieke onderdelen (met geometrie) in dit bestand gevonden.'); setSparingScan(null); return; }
-      setSparingScan({ file, types, selected: new Set(), selectedNames: new Set(), busy: false });
+      setSparingScan({ file, types, selected: new Set(), selectedNames: new Set(), selectedChildren: new Set(), busy: false });
     } catch (e) { console.error('[sparingen] scan mislukt:', e); alert('Scannen mislukt: ' + (e?.message ?? e)); setSparingScan(null); }
+  }
+  // GH-IMPORT (vlag ghImport): Grasshopper/GG-IFC met al-gemodelleerde bekleding (geen wanden). Lees de
+  // ruwe STEP-tekst, leid gevels/panelen af (lib/ghCladding.js) en toon de eigen GhCladdingView.
+  async function handleGhFile(file) {
+    if (!file) return;
+    setGhBusy(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const text = new TextDecoder('latin1').decode(buf); // IFC = STEP-tekst (latin1/ASCII)
+      const res = parseGhCladding(text);
+      if (!res.ok) { alert('Geen Grasshopper-bekleding herkend in dit bestand.\n' + (res.reason || '')); setGhBusy(false); return; }
+      res.ifcText = text; res.fileName = file.name;
+      console.log('[gh-import]', file.name, `→ ${res.totalPanels} panelen, ${res.gevels.length} gevels`);
+      setGhResult(res);
+    } catch (e) { console.error('[gh-import] mislukt:', e); alert('Import mislukt: ' + (e?.message ?? e)); }
+    setGhBusy(false);
   }
   async function handleSparingImport() {
     if (!sparingScan?.file) return;
-    const sel = [...(sparingScan.selected ?? [])];
-    if (!sel.length) { alert('Selecteer minstens één type.'); return; }
+    // TAG-FILTER: plak één of meer IFC-Tags (bv. '5L5') → importeer UITSLUITEND die exemplaren. Zijn er
+    // tags én is er geen type aangevinkt, dan doorzoeken we ALLE gescande types (de tag is precies genoeg).
+    const tagRaw = (sparingScan.tags ?? '').trim();
+    const tagSet = tagRaw ? new Set(tagRaw.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean)) : null;
+    let sel = [...(sparingScan.selected ?? [])];
+    if (tagSet && tagSet.size && !sel.length) sel = (sparingScan.types ?? []).map((t) => t.ifcEntityType);
+    if (!sel.length) { alert('Selecteer minstens één type, of vul een tag in.'); return; }
     // Bouw de naam-filter uit de aangevinkte naam-sleutels ("TYPE##BB##naam"). Alleen types waarvan
     // ≥1 naam is aangevinkt komen in de map; types zonder naam-selectie blijven "alle namen" (oud gedrag).
     const nameFilter = {};
@@ -5059,16 +5392,38 @@ export default function App() {
       if (!sel.includes(type)) continue;               // type niet (meer) aangevinkt → naam negeren
       (nameFilter[type] ??= []).push(namePart === SPARING_NULL_NAME ? null : namePart);
     }
+    // 3e niveau: bouw de onderdeel-filter uit "TYPE##BB##assembly##CH##onderdeel"-sleutels. Als voor een
+    // samenstelling losse onderdelen zijn gekozen, knippen we per onderdeel; de assembly-naam moet dan óók
+    // in de naam-filter zitten (anders valt de samenstelling al op naam af vóór we bij de onderdelen zijn).
+    const childFilter = {};
+    for (const key of (sparingScan.selectedChildren ?? [])) {
+      const si = key.indexOf(SPARING_SEP);
+      if (si < 0) continue;
+      const type = key.slice(0, si);
+      if (!sel.includes(type)) continue;
+      const rest = key.slice(si + SPARING_SEP.length);
+      const ci = rest.indexOf(SPARING_CHILD_SEP);
+      if (ci < 0) continue;
+      const namePart = rest.slice(0, ci);
+      const childPart = rest.slice(ci + SPARING_CHILD_SEP.length);
+      const nmSent = namePart === SPARING_NULL_NAME ? ' ' : namePart;
+      const chSent = childPart === SPARING_NULL_NAME ? ' ' : childPart;
+      ((childFilter[type] ??= {})[nmSent] ??= []).push(chSent);
+      const nmVal = namePart === SPARING_NULL_NAME ? null : namePart;
+      const arr = (nameFilter[type] ??= []);
+      if (!arr.includes(nmVal)) arr.push(nmVal);
+    }
+    const hasChildFilter = Object.keys(childFilter).length > 0;
     const hasNameFilter = Object.keys(nameFilter).length > 0;
     setSparingScan((s) => (s ? { ...s, busy: true, progress: 'Importeren…' } : s));
     try {
       const els = await parseIfcSparingElements(sparingScan.file, sel, (p) => {
         if (p?.log) console.log('[sparingen]', p.log);
         setSparingScan((s) => (s ? { ...s, busy: true, progress: p?.log ?? s.progress } : s));
-      }, hasNameFilter ? nameFilter : null);
+      }, hasNameFilter ? nameFilter : null, hasChildFilter ? childFilter : null, (tagSet && tagSet.size) ? tagSet : null);
       // DEBUG-RAPPORT na afloop: aantal + wereld-bbox + eerste onderdelen (zie ook de per-groep-knip-log).
       console.group('%c[sparingen] import-rapport', 'color:#f97316;font-weight:bold');
-      console.log(`${els.length} onderdelen geïmporteerd — types: ${sel.join(', ')}${hasNameFilter ? ` · naam-filter: ${JSON.stringify(nameFilter)}` : ''}`);
+      console.log(`${els.length} onderdelen geïmporteerd — types: ${sel.join(', ')}${hasNameFilter ? ` · naam-filter: ${JSON.stringify(nameFilter)}` : ''}${hasChildFilter ? ` · onderdeel-filter: ${JSON.stringify(childFilter)}` : ''}`);
       if (els.length) {
         const r = Math.round;
         const E = els.reduce((a, e) => ({
@@ -5081,7 +5436,15 @@ export default function App() {
         if (els.length > 30) console.log(`… en nog ${els.length - 30} meer (zie sparingElements-state)`);
       }
       console.groupEnd();
-      setSparingElements(els);
+      // AANVULLEN: bestaande sparingen behouden + de nieuwe erbij, ontdubbeld op type+wereld-bbox (zodat
+      // dezelfde onderdelen 2× importeren niet dubbelt). Een tweede IFC met extra onderdelen telt zo echt op.
+      const _sparKey = (e) => `${e.ifcEntityType}|${Math.round(e.bbox?.minX ?? 0)}|${Math.round(e.bbox?.minY ?? 0)}|${Math.round(e.bbox?.minZ ?? 0)}|${Math.round(e.bbox?.maxX ?? 0)}|${Math.round(e.bbox?.maxY ?? 0)}|${Math.round(e.bbox?.maxZ ?? 0)}`;
+      setSparingElements((prev) => {
+        const seen = new Set((prev ?? []).map(_sparKey));
+        const toAdd = els.filter((e) => !seen.has(_sparKey(e)));
+        console.log(`[sparingen] ${toAdd.length} nieuw toegevoegd, ${els.length - toAdd.length} al aanwezig → ${(prev?.length ?? 0) + toAdd.length} totaal`);
+        return [...(prev ?? []), ...toAdd];
+      });
       setSparingScan(null);
       if (!els.length) alert('Geen geometrie gevonden voor de gekozen types.');
     } catch (e) { console.error('[sparingen] import mislukt:', e); alert('Import mislukt: ' + (e?.message ?? e)); setSparingScan((s) => (s ? { ...s, busy: false } : null)); }
@@ -5208,6 +5571,31 @@ export default function App() {
         const _gr = buildGroothuis2Rows(facadeData.groupWidth, facadeData.groupHeight, mat, facadeData.groupOpenings ?? []);
         facadeData = { ...facadeData, rows: _gr.rows };
       }
+      // SPARING-ELEMENTEN (vlag) — knip de bekleding rondom geïmporteerde onderdelen óók in de EXPORT,
+      // met exact dezelfde rects/clip als het scherm (zie 3443-3455). Zet facadeData.sparingRects zodat
+      // buildStripZoneRegions de onderdelen ook uit de zone-regio's knipt → IFC-export == 2D/3D.
+      if (facadeData && isSparingElementen() && sparingElements.length && facadeData.refWallOrigin) {
+        const _rwo = facadeData.refWallOrigin;
+        const _rowHsp = (s.verband ?? DEFAULT_VERBAND) === 'staand_tegelverband' ? mat.steenL : mat.steenH;
+        const _tS = _rwo.thicknessStart, _tE = _rwo.thicknessEnd;
+        const _gf = {
+          lengthAxis: _rwo.lengthAxis, heightAxis: _rwo.heightAxis, thicknessAxis: _rwo.thicknessAxis,
+          groupMinX: facadeData.groupMinX, groupMinH: facadeData.groupMinH,
+          groupWidth: facadeData.groupWidth, groupHeight: facadeData.groupHeight,
+          thickMin: (Number.isFinite(_tS) && Number.isFinite(_tE)) ? Math.min(_tS, _tE) : null,
+          thickMax: (Number.isFinite(_tS) && Number.isFinite(_tE)) ? Math.max(_tS, _tE) : null,
+        };
+        const _sr = sparingRectsForGroup(sparingElements, _gf, sparingOffset);
+        if (_sr.length) facadeData = { ...facadeData, rows: clipRowsAroundRects(facadeData.rows, _sr, _rowHsp), sparingRects: _sr };
+      }
+
+      // GEEN_VERBAND: basisvlak blanco in de export (geen strips). coverageRows behoudt de dekking
+      // voor de zone-clip (buildStripZoneRegions). Idempotent: bij best-fit komt facadeData al geblankt
+      // uit allPatterns → coverageRows niet overschrijven. _blankBaseExport gate't ook panelen/latten.
+      const _blankBaseExport = isBlankBaseVerband(s.verband ?? DEFAULT_VERBAND);
+      if (facadeData && _blankBaseExport) {
+        facadeData = { ...facadeData, coverageRows: facadeData.coverageRows ?? solidifyRows(facadeData.rows, (s.material?.stoot ?? 10) + 2), rows: [] };
+      }
 
       let panels = [];
       let lattenData = [];
@@ -5244,7 +5632,7 @@ export default function App() {
           : [];
         const battenYs = baseBattenYs.map(snapToRowYExport);
 
-        if (s.panelen?.enabled && vis.panelen !== false) {
+        if (s.panelen?.enabled && vis.panelen !== false && !_blankBaseExport) {
           const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, s.material ?? mat);
           const openingsForZones = groupOpenings.filter((op) => op.type !== 'ventilatie').map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
           const PENANT_PANEL_INSET_EX = 20;
@@ -5299,6 +5687,21 @@ export default function App() {
           });
         }
         panels = cutVentHolesFromPanels(panels, groupOpenings.filter((op) => op.type === 'ventilatie'));
+        // SPARING-ELEMENTEN: paneel HEEL houden + het gat markeren (panel.holes) i.p.v. opknippen → export == 2D.
+        panels = attachHolesToPanels(panels, facadeData?.sparingRects);
+
+        // GEEN_VERBAND: panelen + latten volgen de getekende zones (export == 2D/3D). Overschrijft de
+        // (voor 'geen' lege) panels/lattenData; de reguliere latten-tak hierboven is al gegate op !_blankBaseExport.
+        if (_blankBaseExport && (s.backingType ?? 'hout') === 'hout') {
+          const _azfx = getActiveStripZones(s);
+          if (_azfx.length) {
+            panels = vis.panelen !== false ? buildZoneBackingPanels({ facadeData, activeZones: _azfx, panelen: s.panelen, latten: s.latten, mat, verband: s.verband, startLijn: s.startLijn, sparingRects: facadeData?.sparingRects }) : [];
+            if (s.latten?.enabled && vis.latten !== false) {
+              const _blx = buildFacadeLatten({ facadeData, latten: s.latten, mat, panelen: s.panelen, panels, penanten: [], startLijn: s.startLijn, verband: s.verband, backingType: (s.backingType ?? 'hout'), sparingRects: facadeData?.sparingRects });
+              lattenData = clipLattenToZones(_blx, _azfx);
+            }
+          }
+        }
 
         if (isAluminium && facadeData) {
           const ccs = s.concreteCladdingSettings ?? {};
@@ -5388,7 +5791,10 @@ export default function App() {
           uProfileData = slimFortData?.profiles ?? [];
         }
 
-        if (!isAluminium && !isSlimFort && s.latten?.enabled && vis.latten !== false) {
+        if (!isAluminium && !isSlimFort && s.latten?.enabled && vis.latten !== false && !_blankBaseExport && isUnifiedLatten()) {
+          // FASE 1 — één gedeelde latten-berekening (positionering + opening/paneel/sparing-clip).
+          lattenData = buildFacadeLatten({ facadeData, latten: s.latten, mat, panelen: s.panelen, panels, penanten: s.penanten ?? [], startLijn: s.startLijn, verband: s.verband ?? DEFAULT_VERBAND, backingType: (s.backingType ?? 'hout'), sparingRects: facadeData?.sparingRects });
+        } else if (!isAluminium && !isSlimFort && s.latten?.enabled && vis.latten !== false && !_blankBaseExport) {
           const latBreedte = Math.max(5, _art ? _art.breedteMM : (s.latten.breedte ?? 50));
           const richting = s.latten.richting ?? 'horizontaal';
 
@@ -5470,38 +5876,32 @@ export default function App() {
           return lat;
         }).filter(Boolean);
       }
+      // SPARING-ELEMENTEN: de onderdelen ook uit de latten knippen (contour-volgend, dezelfde rects als de strips) → export == 2D.
+      lattenData = cutVentHolesFromPanels(lattenData, facadeData?.sparingRects);
 
       const penantFaceRows = (s.penanten ?? []).map((p) => {
         const pB = Math.max(1, p.breedte ?? 400);
+        const skipPenL2 = (p.diepteLinks  ?? p.diepte ?? 150) <= 0;   // zijde op 0 → geen zijkant
+        const skipPenR2 = (p.diepteRechts ?? p.diepte ?? 150) <= 0;
         const pDL2 = Math.max(1, p.diepteLinks  ?? p.diepte ?? 150);
         const pDR2 = Math.max(1, p.diepteRechts ?? p.diepte ?? 150);
         const pH = Math.max(1, p.hoogte ?? 2000);
         const brickDepth = s.brickDepth ?? 20;
-        const panelDikteP = s.panelen?.dikte ?? 8;
         const stoot = p.stoot ?? mat.stoot ?? 10;
-        const sideDepthL = Math.max(1, pDL2 - 6);
-        const sideDepthR = Math.max(1, pDR2 - 6);
-        const clipOff = Math.max(stoot, panelDikteP);
+        // Zijstrip-lengte = ingegeven diepte + stootvoeg + stripdikte (geen −6 / front-clip meer).
+        const sideDepthL = Math.max(1, pDL2 + stoot + brickDepth);
+        const sideDepthR = Math.max(1, pDR2 + stoot + brickDepth);
+        // PENANT-ZIJDE (vlag): zijstrip = UI-diepte pDL2 via buildPenantSidePattern (≤1 strip recht gestapeld,
+        // anders verdelen); sideDepthL (voorstrip/totale diepte) blijft ongewijzigd. Vlag uit → origineel.
         const penSL2 = Math.max(0, s.startLijn ?? 0);   // penant-strips volgen de groep-startlijn
         const penEffPH2 = pH - penSL2;
         const shiftPenY2 = (rows) => penSL2 > 0 ? rows.map((row) => ({ ...row, y: Math.round((row.y + penSL2) * 100) / 100 })) : rows;
         const frontRows = shiftPenY2(buildCenteredFacePattern(pB, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND));
-        const rawLeft = shiftPenY2(buildFacePattern(sideDepthL, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND));
-        const rawRight = shiftPenY2(buildFacePattern(sideDepthR, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND));
-        const clipSideFront = (rawRows, armDepth) => {
-          const clipEnd = armDepth - clipOff;
-          return rawRows.map((row) => ({
-            ...row,
-            pieces: row.pieces.flatMap((pc) => {
-              if (pc.start >= clipEnd) return [];
-              if (pc.start + pc.length <= clipEnd) return [pc];
-              return [{ ...pc, length: Math.round((clipEnd - pc.start) * 100) / 100 }];
-            }),
-          })).filter((row) => row.pieces.length > 0);
-        };
-        const leftRows = clipSideFront(rawLeft, sideDepthL);
-        const rightRows = clipSideFront(rawRight, sideDepthR);
-        return { frontRows, leftRows, rightRows, sideDepthL, sideDepthR, pDL: pDL2, pDR: pDR2 };
+        const rawLeft = shiftPenY2(isPenantHoekStoot() ? buildPenantSidePattern(pDL2, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND) : buildFacePattern(sideDepthL, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND));
+        const rawRight = shiftPenY2(isPenantHoekStoot() ? buildPenantSidePattern(pDR2, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND) : buildFacePattern(sideDepthR, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND));
+        const leftRows = skipPenL2 ? [] : rawLeft;
+        const rightRows = skipPenR2 ? [] : rawRight;
+        return { frontRows, leftRows, rightRows, sideDepthL, sideDepthR, pDL: pDL2, pDR: pDR2, skipLeft: skipPenL2, skipRight: skipPenR2 };
       });
 
       const _stripBatchArtId = (s.steenstripsArtikelen ?? [])[0];
@@ -5537,7 +5937,10 @@ export default function App() {
               return [{ ...piece, start: cs, length: ce - cs }];
             }).filter((p) => p.length > 1),
           })).filter((row) => row.pieces.length > 0);
-          enabledZones.push({ zX1, zX2, rows: clipRows, material: zoneMat, color: zs.color ?? s.color, verband: zoneVerband });
+          // SPARING-ELEMENTEN: ook de penant-zone-strips rond de onderdelen knippen (export == 2D/3D).
+          const zBrickH = zoneVerband === 'staand_tegelverband' ? zoneMat.steenL : zoneMat.steenH;
+          const clipRowsSpar = facadeData?.sparingRects?.length ? clipRowsAroundRects(clipRows, facadeData.sparingRects, zBrickH) : clipRows;
+          enabledZones.push({ zX1, zX2, rows: clipRowsSpar, material: zoneMat, color: zs.color ?? s.color, verband: zoneVerband });
         }
         if (!enabledZones.length) return null;
         const generalRows = baseRows.map((row) => ({
@@ -5589,6 +5992,10 @@ export default function App() {
       if (facadeData && isFeatureZones() && !hasPenants(s) && (getActiveStripZones(s).length + _ventZonesExp.length) > 0) {
         const _regions = buildStripZoneRegions(facadeData, [...(s.stripZones ?? []), ..._ventZonesExp], mat, s.verband ?? DEFAULT_VERBAND, s.color ?? '#a64033', { stripArt: _stripBatchArt });
         if (_regions) baseStripBatches = _regions.map((r) => ({ rows: r.rows, material: r.material, color: r.color, verband: r.verband }));
+      }
+      // VENTILATIE op penant-groep (export): buildStripZoneRegions overgeslagen; grille + gat alsnog toepassen.
+      if (hasPenants(s) && _ventZonesExp.length && baseStripBatches) {
+        baseStripBatches = applyVentZonesToBatches(baseStripBatches, _ventZonesExp, facadeData, mat, s.verband ?? DEFAULT_VERBAND, s.color ?? '#a64033', { stripArt: _stripBatchArt });
       }
       const finalStripBatches = baseStripBatches && ifcGW > 0
         ? baseStripBatches.map((b) => ({ ...b, rows: _applyCornerToRows(b.rows, ifcGW) })).filter((b) => b.rows.length > 0)
@@ -5711,6 +6118,7 @@ export default function App() {
         panels: finalPanels,
         lattenData: finalLattenData,
         latDikte: latDikteEff ?? (s.latten?.dikte ?? 28),
+        lattenLagen: lattenLagen(s),
         facadeData,
         stripBatches: finalStripBatches,
         cornerWraps: exportCornerWraps,
@@ -5758,6 +6166,8 @@ export default function App() {
     return s.penanten.map((p) => {
       const pX = p.x ?? 0;
       const pB = Math.max(1, p.breedte ?? 400);
+      const skipPenL = (p.diepteLinks  ?? p.diepte ?? 150) <= 0;   // zijde op 0 → geen zijkant
+      const skipPenR = (p.diepteRechts ?? p.diepte ?? 150) <= 0;
       const pDL = Math.max(1, p.diepteLinks  ?? p.diepte ?? 150);
       const pDR = Math.max(1, p.diepteRechts ?? p.diepte ?? 150);
       const pH = Math.max(1, p.hoogte ?? 2000);
@@ -5767,32 +6177,16 @@ export default function App() {
       const frontRows = shiftPenY(buildCenteredFacePattern(pB, penEffPH, mat, verband));
 
       const brickDepth = s.brickDepth ?? 20;
-      const panelDikte = s.panelen?.dikte ?? 8;
       const stoot = p.stoot ?? mat.stoot ?? 10;
-      const panelDepthL = Math.max(1, pDL - brickDepth - stoot);
-      const panelDepthR = Math.max(1, pDR - brickDepth - stoot);
-      const sideClipOffset = Math.max(stoot, panelDikte);
-      const clipLeft = (rows, pd) => rows.map((row) => ({
-        ...row,
-        pieces: row.pieces.flatMap((pc) => {
-          const clipEnd = pd - sideClipOffset;
-          if (pc.start >= clipEnd) return [];
-          if (pc.start + pc.length <= clipEnd) return [pc];
-          return [{ ...pc, length: Math.round((clipEnd - pc.start) * 100) / 100 }];
-        }),
-      })).filter((row) => row.pieces.length > 0);
-      const clipRight = (rows) => rows.map((row) => ({
-        ...row,
-        pieces: row.pieces.flatMap((pc) => {
-          if (pc.start + pc.length <= sideClipOffset) return [];
-          if (pc.start >= sideClipOffset) return [pc];
-          const newStart = Math.round(sideClipOffset * 100) / 100;
-          return [{ ...pc, start: newStart, length: Math.round((pc.start + pc.length - newStart) * 100) / 100 }];
-        }),
-      })).filter((row) => row.pieces.length > 0);
-      const leftRows = clipLeft(shiftPenY(buildFacePattern(panelDepthL, penEffPH, mat, verband)), panelDepthL);
-      const rightRows = clipRight(shiftPenY(buildFacePattern(panelDepthR, penEffPH, mat, verband)));
-      return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: pH, groupMinH, sideClipOffset, panelDepthL, panelDepthR, pDL, pDR };
+      // Zijstrip-lengte = ingegeven diepte + stootvoeg + stripdikte (één waarheid; geen clip).
+      const panelDepthL = Math.max(1, pDL + stoot + brickDepth);
+      const panelDepthR = Math.max(1, pDR + stoot + brickDepth);
+      const sideClipOffset = 0;
+      // PENANT-ZIJDE (vlag): zijstrip = UI-diepte pDL via buildPenantSidePattern (≤1 strip recht gestapeld,
+      // anders verdelen); de teruggegeven panelDepthL (voorstrip/totale diepte) blijft. Vlag uit → origineel.
+      const leftRows = skipPenL ? [] : shiftPenY(isPenantHoekStoot() ? buildPenantSidePattern(pDL, penEffPH, mat, verband) : buildFacePattern(panelDepthL, penEffPH, mat, verband));
+      const rightRows = skipPenR ? [] : shiftPenY(isPenantHoekStoot() ? buildPenantSidePattern(pDR, penEffPH, mat, verband) : buildFacePattern(panelDepthR, penEffPH, mat, verband));
+      return { penant: p, front: frontRows, left: leftRows, right: rightRows, height: pH, groupMinH, sideClipOffset, panelDepthL, panelDepthR, pDL, pDR, skipLeft: skipPenL, skipRight: skipPenR };
     });
   }, [activeGroup, getSettings, wallMap, adjacencies]);
   const adjWallIds = useMemo(() => new Set(adjacencies.flatMap((a) => [a.wallIdA, a.wallIdB])), [adjacencies]);
@@ -6118,6 +6512,15 @@ export default function App() {
           </Tooltip>
           <input id="ifc-file-input" type="file" accept=".ifc" onChange={handleFileChange} style={{ display: 'none' }} />
           <input id="ifc-merge-file-input" type="file" accept=".ifc" onChange={handleMergeFileChange} style={{ display: 'none' }} />
+          {isGhImport() && (
+            <Tooltip text={"Laad een Grasshopper/Geometry-Gym IFC waarin panelen/strippen/latten AL gemodelleerd zijn (geen wanden).\nDe gevels worden afgeleid, de panelen genummerd (1 plaat = 1 paneel, onder→boven/links→rechts) en per gevel getoond als beoordelingsaanzicht + uittrekstaat, met genummerde-IFC-download."}>
+              <label style={{ background: '#7c3aed', color: '#fff', padding: '4px 10px', borderRadius: 4, fontSize: 11, cursor: ghBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap', opacity: ghBusy ? 0.6 : 1 }}>
+                {ghBusy ? '⏳ Bezig…' : '📐 Grasshopper-gevel'}
+                <input type="file" accept=".ifc,.IFC" style={{ display: 'none' }} disabled={ghBusy}
+                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; handleGhFile(f); }} />
+              </label>
+            </Tooltip>
+          )}
           {allWalls.length > 0 && (
             <Tooltip text={"Voeg elementen uit een tweede IFC-bestand toe aan het huidige project. Bestaande groepen blijven behouden."}>
               <button
@@ -6306,6 +6709,37 @@ export default function App() {
                 </Tooltip>
               </>
             )}
+            {isLekdorpelReferentie() && (
+              <>
+                <div style={{ width: 1, height: 16, background: '#334155' }} />
+                <Tooltip text={"Laad de referentie-IFC met lekdorpels (boven kozijn) én waterslagen (onder kozijn) — IfcBuildingElementProxy met 'lekdorpel'/'waterslag' in de naam.\nRAAM: L/R-rand volgt de lekdorpel erboven; DEUR: volgt de waterslag eronder. De X geldt alleen waar de opening is; de hoogte blijft van het kozijn."}>
+                  <label style={{ background: '#0369a1', color: '#fff', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    📎 Lekdorpels/waterslagen laden
+                    <input type="file" accept=".ifc,.IFC" style={{ display: 'none' }}
+                      onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; handleLekdorpelFile(f); }} />
+                  </label>
+                </Tooltip>
+                {lekdorpels.length > 0 && (
+                  <span style={{ fontSize: 10, color: '#38bdf8', whiteSpace: 'nowrap' }}>
+                    {lekdorpels.length} lekdorpel/waterslag-deel{lekdorpels.length !== 1 ? 'en' : ''}
+                    <button onClick={() => setLekdorpels([])} title="Lekdorpels wissen" style={{ marginLeft: 4, background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 11 }}>✕</button>
+                  </span>
+                )}
+                <Tooltip text={"APARTE per-zijde marge (mm) voor DEUR-openingen die de waterslag volgen — los van de kozijn/lekdorpel-offset. Werkt alleen met 'Kozijn-offset' aan."}>
+                  <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap', cursor: 'help' }}>Waterslag-offset</span>
+                </Tooltip>
+                {[['left', 'L'], ['right', 'R'], ['top', 'B'], ['bottom', 'O']].map(([key, lbl]) => (
+                  <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <span style={{ fontSize: 10, color: '#64748b' }}>{lbl}</span>
+                    <input type="number" step={1} value={waterslagOffset[key]}
+                      onChange={(e) => setWaterslagOffset((o) => ({ ...o, [key]: Number(e.target.value) || 0 }))}
+                      title={`Waterslag-marge (mm) aan de ${key === 'left' ? 'linker' : key === 'right' ? 'rechter' : key === 'top' ? 'boven' : 'onder'}zijde`}
+                      style={{ width: 42, fontSize: 11, padding: '2px 4px', border: '1px solid #334155', borderRadius: 4, background: '#0f172a', color: '#e2e8f0', outline: 'none' }} />
+                  </span>
+                ))}
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>
+              </>
+            )}
             {isSparingElementen() && (
               <>
                 <div style={{ width: 1, height: 16, background: '#334155' }} />
@@ -6336,7 +6770,7 @@ export default function App() {
             {isKozijnOffset() && (
               <>
                 <div style={{ width: 1, height: 16, background: '#334155' }} />
-                <Tooltip text={"Globale marge (mm) tussen de kozijnrand en de steenstripgevel (strips + panelen + latten volgen dezelfde openingen).\nPer zijde instelbaar voor het hele gebouw. Positief = bekleding wijkt terug (groter gat rond het kozijn).\nWerkt het duidelijkst met 'Openingen op kozijn-rand' aan (dan wordt vanaf de kozijnrand gemeten)."}>
+                <Tooltip text={"Globale marge (mm) tussen de kozijnrand en de steenstripgevel (strips + panelen + latten volgen dezelfde openingen).\nPer zijde instelbaar voor het hele gebouw. Positief = bekleding wijkt terug (groter gat rond het kozijn).\nDe marge wordt vanaf het KOZIJN (raam/deur) gemeten — vereist een import ná v17."}>
                   <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap', cursor: 'help' }}>Kozijn-offset</span>
                 </Tooltip>
                 {[['left', 'L'], ['right', 'R'], ['top', 'B'], ['bottom', 'O']].map(([key, lbl]) => (
@@ -6358,12 +6792,46 @@ export default function App() {
                     </span>
                   ) : null;
                 })()}
-                {!isOpeningFromKozijn() && (
-                  <span style={{ fontSize: 10, color: '#38bdf8', whiteSpace: 'nowrap', cursor: 'help' }}
-                    title={"De offset wordt nu gemeten vanaf de RUWE opening (void), niet vanaf het kozijn.\nZet vlag 'Openingen op kozijn-rand' aan én importeer opnieuw om vanaf de kozijnrand te meten."}>
-                    ⓘ meet vanaf void — zet 'Openingen op kozijn-rand' aan (+ herimport) voor kozijnrand
+                <span style={{ fontSize: 10, color: '#38bdf8', whiteSpace: 'nowrap', cursor: 'help' }}
+                  title={"De offset wordt gemeten vanaf het KOZIJN (raam/deur), ook zonder 'Openingen op kozijn-rand'.\nVereist een import ná deze versie (v17). Openingen zonder gedetecteerd kozijn (⚠️) vallen terug op de ruwe void."}>
+                  ⓘ meet vanaf de kozijnrand (na herimport v17)
+                </span>
+              </>
+            )}
+            {isProjectDefaults() && (
+              <>
+                <div style={{ width: 1, height: 16, background: '#334155' }} />
+                <Tooltip text={"Project-brede standaard voor het hele gebouw: startlijn (t.o.v. peil) en steenstrip + voegen (lint/stoot).\nElke groep die 'volg project' aan heeft, erft deze waarden. Kies binnen een groep een eigen startlijn of steenstrip om die groep los te koppelen."}>
+                  <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap', cursor: 'help' }}>Project</span>
+                </Tooltip>
+                <span style={{ fontSize: 10, color: '#64748b' }} title="Project-startlijn t.o.v. onderzijde wandelement (mm). Leeg = geen startlijn.">start</span>
+                <input type="number" step={10} value={projectStartLijn ?? ''} placeholder="—"
+                  onChange={(e) => setProjectStartLijn(e.target.value === '' ? null : Number(e.target.value))}
+                  style={{ width: 54, fontSize: 11, padding: '2px 4px', border: '1px solid #334155', borderRadius: 4, background: '#0f172a', color: '#e2e8f0', outline: 'none' }} />
+                {[['steenL', 'L'], ['steenH', 'H'], ['dikte', 'dikte'], ['lint', 'lint'], ['stoot', 'stoot']].map(([k, lbl]) => (
+                  <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <span style={{ fontSize: 10, color: '#64748b' }}>{lbl}</span>
+                    <input type="number" step={1} value={projectMateriaal?.[k] ?? 0}
+                      onChange={(e) => setProjectMateriaal((m) => ({ ...m, [k]: Number(e.target.value) || 0 }))}
+                      title={`Project-steenstrip ${lbl} (mm)`}
+                      style={{ width: 44, fontSize: 11, padding: '2px 4px', border: '1px solid #334155', borderRadius: 4, background: '#0f172a', color: '#e2e8f0', outline: 'none' }} />
                   </span>
-                )}
+                ))}
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>
+              </>
+            )}
+            {isVentilatieZone() && (
+              <>
+                <div style={{ width: 1, height: 16, background: '#334155' }} />
+                <Tooltip text={"Ventilatiezone project-breed: zet de ventilatie-zone voor ALLE groepen tegelijk aan of uit. Daarna kun je per groep nog afwijken via het Ventilatiezone-paneel in die groep."}>
+                  <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap', cursor: 'help' }}>Ventilatie</span>
+                </Tooltip>
+                <button onClick={() => { for (const g of groups) updateSettings(g.id, { ventilatie: { ...(getSettings(g.id).ventilatie ?? {}), enabled: true } }); }}
+                  title="Ventilatiezone AAN voor alle groepen"
+                  style={{ fontSize: 11, padding: '2px 8px', border: '1px solid #334155', borderRadius: 4, background: '#0f172a', color: '#e2e8f0', cursor: 'pointer' }}>alle aan</button>
+                <button onClick={() => { for (const g of groups) updateSettings(g.id, { ventilatie: { ...(getSettings(g.id).ventilatie ?? {}), enabled: false } }); }}
+                  title="Ventilatiezone UIT voor alle groepen"
+                  style={{ fontSize: 11, padding: '2px 8px', border: '1px solid #334155', borderRadius: 4, background: '#0f172a', color: '#e2e8f0', cursor: 'pointer' }}>alle uit</button>
               </>
             )}
             {isOpeningEdgeQuarter() && (
@@ -6393,14 +6861,46 @@ export default function App() {
             <button onClick={() => setSparingScan(null)}
               style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}>Annuleren</button>
           </div>
+          {/* TAG/GUID-FILTER: sparen op IFC-Tag (merk, bv. 5L5 → álle van dat merk) of GlobalId (1 exemplaar). */}
+          <div style={{ marginBottom: 8 }}>
+            <label style={{ fontSize: 10, color: '#94a3b8', display: 'block', marginBottom: 2 }}>Sparen op Tag óf GUID — spatie/komma-gescheiden:</label>
+            <input type="text" value={sparingScan.tags ?? ''} placeholder="Tag 5L5 = merk (alle) · GUID = 1 exemplaar"
+              onChange={(e) => setSparingScan((s) => (s ? { ...s, tags: e.target.value } : s))}
+              style={{ width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 4, padding: '4px 6px', fontSize: 11 }} />
+            {(sparingScan.tags ?? '').trim() && <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 2 }}>Filter-modus: alleen elementen met deze Tag(s)/GUID(s) worden geïmporteerd (type-selectie optioneel).</div>}
+          </div>
           {sparingScan.busy && <div style={{ fontSize: 11, color: '#38bdf8' }}>⏳ {sparingScan.progress ?? 'Bezig…'}</div>}
           <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
           {!sparingScan.busy && (sparingScan.types ?? []).map((t) => {
             const typeChecked = sparingScan.selected.has(t.ifcEntityType);
             const names = t.names ?? [];
             const showNames = typeChecked && names.length > 1;   // alleen zin bij >1 naam
-            const anyNameSel = names.some((nm) => sparingScan.selectedNames?.has(t.ifcEntityType + SPARING_SEP + (nm.name ?? SPARING_NULL_NAME)));
+            const nameKeys = names.map((nm) => t.ifcEntityType + SPARING_SEP + (nm.name ?? SPARING_NULL_NAME));
+            const anyNameSel = nameKeys.some((k) => sparingScan.selectedNames?.has(k));
+            const allNameSel = nameKeys.length > 0 && nameKeys.every((k) => sparingScan.selectedNames?.has(k));
             const badge = t.isAssembly ? 'SAMENSTELLING' : t.ifcEntityType.replace(/^IFC/, '');
+            // 3e niveau: onderdelen (ligger/plaat/bout) binnen een samenstelling, apart aan te vinken.
+            // De uitsparing volgt dan de bbox van het gekozen onderdeel i.p.v. de hele samenstelling.
+            const renderChildren = (nm) => {
+              if (!nm.children?.length) return null;
+              return (
+                <div style={{ marginLeft: 20, marginBottom: 4 }}>
+                  {nm.children.map((c) => {
+                    const ckey = t.ifcEntityType + SPARING_SEP + (nm.name ?? SPARING_NULL_NAME) + SPARING_CHILD_SEP + (c.childName ?? SPARING_NULL_NAME);
+                    const on = sparingScan.selectedChildren?.has(ckey) ?? false;
+                    const clabel = c.childName ?? (c.childType ? c.childType.replace(/^IFC/, '') : '(onderdeel)');
+                    const tagStr = c.tags?.length ? `tag ${c.tags.slice(0, 3).join(', ')}${c.tags.length > 3 ? '…' : ''}` : '';
+                    return (
+                      <label key={ckey} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#93c5fd', padding: '1px 0', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={on}
+                          onChange={(e) => setSparingScan((s) => { const sc = new Set(s.selectedChildren ?? []); if (e.target.checked) sc.add(ckey); else sc.delete(ckey); return { ...s, selectedChildren: sc }; })} />
+                        ⌊ {clabel} <span style={{ color: '#475569' }}>({c.count})</span>{tagStr && <span style={{ color: '#64748b', fontSize: 10 }}>· {tagStr}</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              );
+            };
             return (
               <div key={t.ifcEntityType}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#cbd5e1', padding: '2px 0', cursor: 'pointer' }}>
@@ -6408,26 +6908,43 @@ export default function App() {
                     onChange={(e) => setSparingScan((s) => {
                       const sel = new Set(s.selected);
                       const sn = new Set(s.selectedNames ?? []);
+                      const sc = new Set(s.selectedChildren ?? []);
                       if (e.target.checked) sel.add(t.ifcEntityType);
-                      else { sel.delete(t.ifcEntityType); for (const k of [...sn]) if (k.startsWith(t.ifcEntityType + SPARING_SEP)) sn.delete(k); }
-                      return { ...s, selected: sel, selectedNames: sn };
+                      else {
+                        sel.delete(t.ifcEntityType);
+                        for (const k of [...sn]) if (k.startsWith(t.ifcEntityType + SPARING_SEP)) sn.delete(k);
+                        for (const k of [...sc]) if (k.startsWith(t.ifcEntityType + SPARING_SEP)) sc.delete(k);
+                      }
+                      return { ...s, selected: sel, selectedNames: sn, selectedChildren: sc };
                     })} />
                   {badge} <span style={{ color: '#64748b' }}>({t.count})</span>
                 </label>
+                {typeChecked && names.length === 1 && names[0].children?.length > 0 && renderChildren(names[0])}
                 {showNames && (
                   <div style={{ marginLeft: 20, marginBottom: 4 }}>
-                    <div style={{ fontSize: 10, color: '#64748b', marginBottom: 1 }}>
-                      {anyNameSel ? 'alleen gekozen onderdelen' : 'alle onderdelen — vink aan om te filteren (bv. DRAADEIND)'}
-                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#94a3b8', marginBottom: 2, cursor: 'pointer', fontWeight: 600 }}>
+                      <input type="checkbox" checked={allNameSel}
+                        ref={(el) => { if (el) el.indeterminate = anyNameSel && !allNameSel; }}
+                        onChange={(e) => setSparingScan((s) => {
+                          const sn = new Set(s.selectedNames ?? []);
+                          if (e.target.checked) nameKeys.forEach((k) => sn.add(k));
+                          else nameKeys.forEach((k) => sn.delete(k));
+                          return { ...s, selectedNames: sn };
+                        })} />
+                      Alles in deze sectie ({names.length}){anyNameSel ? '' : ' — of vink los aan (bv. DRAADEIND)'}
+                    </label>
                     {names.map((nm) => {
                       const nameKey = t.ifcEntityType + SPARING_SEP + (nm.name ?? SPARING_NULL_NAME);
                       const on = sparingScan.selectedNames?.has(nameKey) ?? false;
                       return (
-                        <label key={nameKey} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#94a3b8', padding: '1px 0', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={on}
-                            onChange={(e) => setSparingScan((s) => { const sn = new Set(s.selectedNames ?? []); if (e.target.checked) sn.add(nameKey); else sn.delete(nameKey); return { ...s, selectedNames: sn }; })} />
-                          {nm.name ?? '(naamloos)'} <span style={{ color: '#475569' }}>({nm.count})</span>
-                        </label>
+                        <div key={nameKey}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#94a3b8', padding: '1px 0', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={on}
+                              onChange={(e) => setSparingScan((s) => { const sn = new Set(s.selectedNames ?? []); if (e.target.checked) sn.add(nameKey); else sn.delete(nameKey); return { ...s, selectedNames: sn }; })} />
+                            {nm.name ?? '(naamloos)'} <span style={{ color: '#475569' }}>({nm.count})</span>
+                          </label>
+                          {on && renderChildren(nm)}
+                        </div>
                       );
                     })}
                   </div>
@@ -6493,6 +7010,18 @@ export default function App() {
                     🧭 Auto-groeperen per windrichting (N/O/Z/W)
                   </button>
                 </Tooltip>
+                {isUnitDetectie() && (
+                  <Tooltip block text={"Herkent repeterende gevel-units: verdiepingshoge buitenwand-panelen met dezelfde maat en raam/deur-layout worden als gekoppelde groepen weggezet.\nStel één unit-type in → alle kopieën volgen (settings gekoppeld). Puur additief: bestaande groepen blijven."}>
+                    <button onClick={detecteerUnits} style={btn('#0d9488')}>
+                      🧩 Detecteer repeterende units
+                    </button>
+                  </Tooltip>
+                )}
+                {isUnitDetectie() && unitDetectMsg && (
+                  <div style={{ padding: '4px 8px', fontSize: 11, color: '#0f766e', background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: 4 }}>
+                    {unitDetectMsg}
+                  </div>
+                )}
                 {isSyntheticWall() && (
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', padding: '4px 0' }} title="Maak een synthetische calc-wand (geen IFC) uit lengte × hoogte × dikte (mm). Wordt een bekleedbare één-wand-groep. Sessie-only.">
                     {[['L', 'L'], ['H', 'H'], ['dikte', 'dikte']].map(([key, lbl]) => (
@@ -6872,6 +7401,9 @@ export default function App() {
                     groupMinH={gMinH}
                     penantFaceData={penantFaceData}
                     zoneSettings={s.zoneSettings ?? []}
+                    stripZones={s.stripZones ?? []}
+                    sparingElements={isSparingElementen() ? sparingElements : []}
+                    sparingOffset={sparingOffset}
                     epcSettings={{ projectNummer: s.epcProjectNummer ?? '00000', level: s.epcLevel ?? 0 }}
                     outsideDirFlip={(() => {
                       const _f = !!s.outsideDirFlip;
@@ -6910,6 +7442,8 @@ export default function App() {
               getSettings={getSettings}
               adjacencies={adjacencies}
               cornerTrimsMap={Object.fromEntries(groups.map((g) => [g.id, endExtensionsToTrims(getSettings(g.id).endExtensions)]))}
+              sparingElements={isSparingElementen() ? sparingElements : []}
+              sparingOffset={sparingOffset}
             />
             </Suspense>
           ) : viewMode === 'wildverband_planner' ? (
@@ -6960,6 +7494,7 @@ export default function App() {
               <GroupConfigPanel
                 groupId={activeGroup.id}
                 settings={getSettings(activeGroup.id)}
+                projectDikte={isProjectDefaults() && projectMateriaal?.dikte != null ? projectMateriaal.dikte : null}
                 onUpdate={(patch) => updateSettings(activeGroup.id, patch)}
                 onDelete={() => deleteGroup(activeGroup.id)}
                 linkedCount={(() => {
@@ -7377,6 +7912,11 @@ export default function App() {
             )}
           </div>
         </div>
+      )}
+      {isGhImport() && ghResult && (
+        <Suspense fallback={<div style={{ position: 'fixed', inset: 0, zIndex: 9000, background: '#0b1220', color: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Segoe UI, Arial' }}>Laden…</div>}>
+          <GhCladdingView result={ghResult} onClose={() => setGhResult(null)} />
+        </Suspense>
       )}
     </div>
   );

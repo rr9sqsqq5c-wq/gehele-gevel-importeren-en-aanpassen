@@ -3,3 +3,8 @@ dist/
 .cache/
 *.log
 .claude/
+
+# Grote IFC-testmodellen buiten git (memory: IFCs buiten git)
+public/BIL-*
+*.ifc
+*.IFC

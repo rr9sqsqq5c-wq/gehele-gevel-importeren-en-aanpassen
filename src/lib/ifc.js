@@ -2,7 +2,7 @@ import { getOpeningPoly } from './pattern.js';
 import { STEENSTRIP_CATALOG } from './battens.js';
 import { SLIMFORT_DEFAULTS, getSlimFortDepths } from './slimfort.js';
 import { registerIfcContext, getProjectInfo, getLastConfidentUpAxis, setLastConfidentUpAxis, setGeometryDerivedRenderOrigin, getWorldAnchor } from './projectCoordinates.js';
-import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly, isDropOversizedOpenings, isOpeningFromKozijn, isShowKozijnen, isOutsideDirSync, isVentilatieZone, isGevelHandedness } from './featureFlags.js';
+import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOnly, isDropOversizedOpenings, isOpeningFromKozijn, isShowKozijnen, isOutsideDirSync, isVentilatieZone, isKliklijstReferentie, isGevelHandedness } from './featureFlags.js';
 
 // VENTILATIE_ZONE — detectiedrempels voor een ventilatie-opening (klein ongevuld gat bóven een raam).
 const VENT_MAX_W = 900;    // mm — breder telt niet als ventilatie
@@ -586,6 +586,9 @@ export async function scanIfcSparingTypes(file) {
   //    draadeind-geval (assembly Name='DRAADEIND', geometrie in beams/plates/fasteners).
   const modelID = api.OpenModel(bytes, {});
   const out = [];
+  let aggMap = null;                                  // lazy: alleen bouwen als er samenstellingen zijn
+  const codeToName = new Map();                        // entity-type-code → naam (voor onderdeel-badge)
+  for (const nm of present) { const c = IFC[nm]; if (c !== undefined) codeToName.set(c, nm); }
   try {
     for (const name of present) {
       const code = IFC[name];
@@ -605,17 +608,80 @@ export async function scanIfcSparingTypes(file) {
       if (!includable) continue;
       // 3. groepeer op Name (bv. 'DRAADEIND', 'Huls', 'PLAAT') — het menselijk-leesbare onderdeel-kenmerk
       //    waarop de gebruiker filtert. GetLine (geen mesh) is goedkoop.
+      // 3e NIVEAU (samenstellingen): enumereer per assembly-Name óók de DIRECTE onderdelen (ligger/plaat/
+      //    bout) via IfcRelAggregates, gegroepeerd op hun Name — met tag(s) ter herkenning. Zo kan de
+      //    gebruiker één onderdeel apart kiezen en er de sparing omheen knippen (i.p.v. de hele samenstelling).
       const nameMap = new Map();
+      const childMap = isAssembly ? new Map() : null;   // assemblyName → (childName → {childName,childType,count,tags})
+      if (isAssembly) aggMap ??= _buildAggregatesMap(IFC, api, modelID);
       for (let i = 0; i < n; i++) {
+        const eID = vec.get(i);
         let nm = null;
-        try { const v = api.GetLine(modelID, vec.get(i), false)?.Name?.value; if (v != null && v !== '') nm = String(v); } catch {}
+        try { const v = api.GetLine(modelID, eID, false)?.Name?.value; if (v != null && v !== '') nm = String(v); } catch {}
         nameMap.set(nm, (nameMap.get(nm) ?? 0) + 1);
+        if (isAssembly) {
+          const perName = childMap.get(nm) ?? new Map();
+          for (const kid of (aggMap.get(eID) || [])) {
+            let cName = null, cTag = null, cType = null;
+            try {
+              const cl = api.GetLine(modelID, kid, false);
+              const cv = cl?.Name?.value; if (cv != null && cv !== '') cName = String(cv);
+              const tv = cl?.Tag?.value;  if (tv != null && tv !== '') cTag = String(tv);
+              cType = codeToName.get(cl?.type) ?? null;
+            } catch {}
+            const agg = perName.get(cName) ?? { childName: cName, childType: cType, count: 0, tags: new Set() };
+            agg.count++;
+            if (cTag) agg.tags.add(cTag);
+            if (!agg.childType && cType) agg.childType = cType;
+            perName.set(cName, agg);
+          }
+          childMap.set(nm, perName);
+        }
       }
-      const names = [...nameMap.entries()].map(([nm, count]) => ({ name: nm, count })).sort((a, b) => b.count - a.count);
+      const names = [...nameMap.entries()].map(([nm, count]) => {
+        const entry = { name: nm, count };
+        const perName = childMap?.get(nm);
+        if (perName && perName.size) {
+          entry.children = [...perName.values()]
+            .map((c) => ({ childName: c.childName, childType: c.childType, count: c.count, tags: [...c.tags].slice(0, 8) }))
+            .sort((a, b) => b.count - a.count);
+        }
+        return entry;
+      }).sort((a, b) => b.count - a.count);
       out.push({ ifcEntityType: name, count: n, isAssembly, names });
     }
   } finally { try { api.CloseModel(modelID); } catch {} }
   out.sort((a, b) => b.count - a.count);
+  return out;
+}
+
+// LEKDORPEL-REFERENTIE: laad de lekdorpels uit een los IFC. Alle IfcBuildingElementProxy met 'lekdorpel'
+// in de Name; wereld-bbox in mm (zelfde frame als wall.wallOrigin), zodat App ze per gevelgroep op positie
+// kan koppelen aan de openingen. Retourneert [{ expressID, name, bbox:{minX,maxX,minY,maxY,minZ,maxZ} }].
+export async function parseIfcLekdorpels(file, onProgress = null) {
+  const { IFC, api } = await getApi();
+  onProgress?.({ phase: 'open', log: 'Lekdorpel-IFC openen…' });
+  const modelID = api.OpenModel(new Uint8Array(await file.arrayBuffer()), {});
+  const out = [];
+  try {
+    let vec; try { vec = api.GetLineIDsWithType(modelID, IFC.IFCBUILDINGELEMENTPROXY); } catch { vec = null; }
+    const nTot = vec ? vec.size() : 0;
+    for (let i = 0; i < nTot; i++) {
+      const eID = vec.get(i);
+      let name = null;
+      try { const v = api.GetLine(modelID, eID, false)?.Name?.value; if (v != null) name = String(v); } catch {}
+      if (!name || !/lekdorpel|waterslag/i.test(name)) continue;   // lekdorpel = boven, waterslag = onder
+      const b = getBBox(api, modelID, eID);
+      if (!b) continue;
+      out.push({ expressID: eID, name, bbox: {
+        minX: Math.round(b.minX * 1000), maxX: Math.round(b.maxX * 1000),
+        minY: Math.round(b.minY * 1000), maxY: Math.round(b.maxY * 1000),
+        minZ: Math.round(b.minZ * 1000), maxZ: Math.round(b.maxZ * 1000),
+      } });
+      if (out.length % 200 === 0) onProgress?.({ phase: 'progress', count: out.length, log: `${out.length} lekdorpel-delen…` });
+    }
+  } finally { try { api.CloseModel(modelID); } catch {} }
+  onProgress?.({ phase: 'done', count: out.length, log: `Klaar: ${out.length} lekdorpel-delen geladen.` });
   return out;
 }
 
@@ -624,7 +690,10 @@ export async function scanIfcSparingTypes(file) {
 // ÁLLE namen van dat type (byte-identiek oud gedrag zolang de aanroeper geen nameFilter meegeeft).
 // Assemblies (IfcElementAssembly) hebben zelf geen mesh → de bbox wordt uit de onderdelen (IfcRelAggregates)
 // samengesteld via _bboxWithChildren, zodat een DRAADEIND-assembly toch een correcte sparing-rechthoek geeft.
-export async function parseIfcSparingElements(file, entityTypeNames, onProgress = null, nameFilter = null) {
+// childFilter (optioneel) = { IFCELEMENTASSEMBLY: { 'DRAADEIND': ['Ligger', ' '] } } — per samenstelling-
+// type een map van assembly-Name → toegestane ONDERDEEL-namen (' ' = naamloos). Staat een assembly-naam
+// hierin, dan knippen we de sparing PER gekozen onderdeel (eigen bbox) i.p.v. de bbox van de hele samenstelling.
+export async function parseIfcSparingElements(file, entityTypeNames, onProgress = null, nameFilter = null, childFilter = null, tagFilter = null) {
   const { IFC, api } = await getApi();
   onProgress?.({ phase: 'open', log: 'IFC-model openen…' });
   const modelID = api.OpenModel(new Uint8Array(await file.arrayBuffer()), {});
@@ -646,9 +715,29 @@ export async function parseIfcSparingElements(file, entityTypeNames, onProgress 
       let skipped = 0, nameFiltered = 0;
       for (let i = 0; i < nTot; i++) {
         const eID = vec.get(i);
-        let name = null, tag = null;
-        try { const line = api.GetLine(modelID, eID, false); const nv = line?.Name?.value; if (nv != null && nv !== '') name = String(nv); const tv = line?.Tag?.value; if (tv != null && tv !== '') tag = String(tv); } catch {}
+        let name = null, tag = null, guid = null;
+        try { const line = api.GetLine(modelID, eID, false); const nv = line?.Name?.value; if (nv != null && nv !== '') name = String(nv); const tv = line?.Tag?.value; if (tv != null && tv !== '') tag = String(tv); const gv = line?.GlobalId?.value; if (gv != null && gv !== '') guid = String(gv); } catch {}
+        if (tagFilter && !tagFilter.has(tag) && !tagFilter.has(guid)) continue;   // TAG/GUID-FILTER: alleen deze Tag(s) of GlobalId(s)
         if (allow && !allow.has(name)) { nameFiltered++; continue; }   // niet in de gekozen namen
+        // 3e niveau: zijn er voor deze samenstelling(-naam) losse onderdelen gekozen? Dan knippen we PER
+        // onderdeel (bv. alleen de ligger) op z'n eigen bbox, i.p.v. de bbox van de hele samenstelling.
+        const cfForType = childFilter?.[entityName];
+        const allowChild = cfForType ? new Set(cfForType[name ?? ' '] || []) : null;
+        if (allowChild && allowChild.size) {
+          for (const kid of (aggMap.get(eID) || [])) {
+            let cName = null, cTag = null;
+            try { const cl = api.GetLine(modelID, kid, false); const cv = cl?.Name?.value; if (cv != null && cv !== '') cName = String(cv); const tv = cl?.Tag?.value; if (tv != null && tv !== '') cTag = String(tv); } catch {}
+            if (!allowChild.has(cName ?? ' ')) continue;
+            const cb = _bboxWithChildren(api, modelID, aggMap, kid);
+            if (!cb) { skipped++; continue; }
+            out.push({ expressID: kid, name: cName, tag: cTag, ifcEntityType: entityName, parentName: name, bbox: {
+              minX: Math.round(cb.minX * 1000), maxX: Math.round(cb.maxX * 1000),
+              minY: Math.round(cb.minY * 1000), maxY: Math.round(cb.maxY * 1000),
+              minZ: Math.round(cb.minZ * 1000), maxZ: Math.round(cb.maxZ * 1000),
+            } });
+          }
+          continue;   // samenstelling zelf niet als geheel toevoegen
+        }
         const b = _bboxWithChildren(api, modelID, aggMap, eID);        // eigen mesh óf unie van onderdelen
         if (!b) { skipped++; continue; }
         // web-ifc levert geometrie in METERS; de wanden worden in parseIfc met × 1000 naar mm
@@ -1036,6 +1125,62 @@ function deriveWallAxes(dx, dy, dz, heightAxis) {
   };
 }
 
+// KLIKLIJST-REFERENTIE (vlag kliklijstReferentie). Een kozijn (fill = IfcWindow/Door) bestaat uit
+// aparte sub-geometrieën met verschillende diepte (buitenframe ~vol-diep, middenprofiel, en de KLIKLIJST
+// = het dunne profiel aan het BUITENSTE dikte-vlak). De buitenrand van die kliklijst RONDOM het frame is
+// de referentie voor de kozijn-offset (i.p.v. de platgeslagen envelope). Retourneert de rect in
+// wand-lokale mm (x/y = min-hoek t.o.v. wallMins, breedte/hoogte) + het buitenvlak (outsideT/outsideFace)
+// als onafhankelijk buiten/binnen-signaal. null = geen duidelijk dun buitenprofiel → caller valt terug op
+// de envelope + melding. Zie geheugen 'kliklijst-offset-en-buitenzijde'.
+function getKliklijstRect(api, modelID, expressID, lAxis, hAxis, tAxis, wallMins) {
+  let mesh; try { mesh = api.GetFlatMesh(modelID, expressID); } catch { return null; }
+  if (!mesh || mesh.geometries.size() === 0) return null;
+  const AX = { x: 0, y: 1, z: 2 };
+  const lI = AX[lAxis], hI = AX[hAxis], tI = AX[tAxis];
+  const subs = []; let allTmin = Infinity, allTmax = -Infinity;
+  for (let gi = 0; gi < mesh.geometries.size(); gi++) {
+    const placed = mesh.geometries.get(gi);
+    let geom; const b = { lmin: Infinity, lmax: -Infinity, hmin: Infinity, hmax: -Infinity, tmin: Infinity, tmax: -Infinity };
+    try {
+      geom = api.GetGeometry(modelID, placed.geometryExpressID);
+      const v = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
+      const m = placed.flatTransformation;
+      for (let vi = 0; vi < v.length; vi += 6) {
+        const x = v[vi], y = v[vi + 1], z = v[vi + 2];
+        const w = [m[0]*x+m[4]*y+m[8]*z+m[12], m[1]*x+m[5]*y+m[9]*z+m[13], m[2]*x+m[6]*y+m[10]*z+m[14]];
+        const L = w[lI], H = w[hI], T = w[tI];
+        if (L < b.lmin) b.lmin = L; if (L > b.lmax) b.lmax = L;
+        if (H < b.hmin) b.hmin = H; if (H > b.hmax) b.hmax = H;
+        if (T < b.tmin) b.tmin = T; if (T > b.tmax) b.tmax = T;
+      }
+    } catch {} finally { geom?.delete(); }
+    if (b.tmin === Infinity) continue;
+    subs.push(b); if (b.tmin < allTmin) allTmin = b.tmin; if (b.tmax > allTmax) allTmax = b.tmax;
+  }
+  if (subs.length < 2) return null;
+  const depth = allTmax - allTmin; if (depth <= 0) return null;
+  const span = (b) => b.tmax - b.tmin;
+  const thinnest = subs.reduce((a, b) => span(b) < span(a) ? b : a);
+  if (span(thinnest) >= depth * 0.6) return null;                       // geen duidelijk dun profiel
+  const faceMax = (allTmax - thinnest.tmax) <= (thinnest.tmin - allTmin); // dunste raakt Tmax- of Tmin-vlak
+  const TOL = Math.max(depth * 0.15, 0.003);                            // ~3 mm of 15% diepte
+  const klik = subs.filter((b) => span(b) < depth * 0.6 && (faceMax ? (allTmax - b.tmax) <= TOL : (b.tmin - allTmin) <= TOL));
+  if (!klik.length) return null;
+  const lmin = Math.min(...klik.map((b) => b.lmin)), lmax = Math.max(...klik.map((b) => b.lmax));
+  const hmin = Math.min(...klik.map((b) => b.hmin)), hmax = Math.max(...klik.map((b) => b.hmax));
+  const kw = Math.round((lmax - lmin) * 1000), kh = Math.round((hmax - hmin) * 1000);
+  if (kw < 50 || kh < 50) return null;
+  return {
+    rect: {
+      x: Math.max(0, Math.round((lmin - wallMins[lAxis]) * 1000)),
+      y: Math.max(0, Math.round((hmin - wallMins[hAxis]) * 1000)),
+      breedte: kw, hoogte: kh, polyPts: null,
+    },
+    outsideT: Math.round((faceMax ? allTmax : allTmin) * 1000),          // wereld-dikte van het buitenvlak (mm)
+    outsideFace: faceMax ? 'max' : 'min',
+  };
+}
+
 function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
   let mesh;
   try { mesh = api.GetFlatMesh(modelID, expressID); } catch { return null; }
@@ -1049,6 +1194,9 @@ function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
   const MARGIN = 600;
 
   let minGL = Infinity, maxGL = -Infinity, minGH = Infinity, maxGH = -Infinity;
+  // EXACTE (raster-vrije) projectie-grenzen — voor de kozijn-offset-referentie, zodat die niet op het
+  // 20mm-raster snapt (dat blaast een 1790-kozijn op tot 1800-1820). De polygoon-VORM blijft het raster.
+  let exLMin = Infinity, exLMax = -Infinity, exHMin = Infinity, exHMax = -Infinity;
   const cellArr = [];
 
   for (let gi = 0; gi < mesh.geometries.size(); gi++) {
@@ -1092,6 +1240,14 @@ function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
         if (ah < -MARGIN && bh < -MARGIN && ch2 < -MARGIN) continue;
         if (al > wallLenMM+MARGIN && bl > wallLenMM+MARGIN && cl2 > wallLenMM+MARGIN) continue;
         if (ah > wallHgtMM+MARGIN && bh > wallHgtMM+MARGIN && ch2 > wallHgtMM+MARGIN) continue;
+
+        // exacte grenzen over de vertices van deze (in-range) driehoek
+        if (al < exLMin) exLMin = al; if (al > exLMax) exLMax = al;
+        if (bl < exLMin) exLMin = bl; if (bl > exLMax) exLMax = bl;
+        if (cl2 < exLMin) exLMin = cl2; if (cl2 > exLMax) exLMax = cl2;
+        if (ah < exHMin) exHMin = ah; if (ah > exHMax) exHMax = ah;
+        if (bh < exHMin) exHMin = bh; if (bh > exHMax) exHMax = bh;
+        if (ch2 < exHMin) exHMin = ch2; if (ch2 > exHMax) exHMax = ch2;
 
         const addSeg = (l1, h1, l2, h2) => {
           const steps = Math.max(1, Math.ceil(Math.max(Math.abs(l2-l1), Math.abs(h2-h1)) / GRID));
@@ -1191,7 +1347,10 @@ function getFacadePolygon(api, modelID, expressID, lAxis, hAxis, wallBB) {
     }
   }
 
-  return poly.length >= 3 ? poly : null;
+  if (poly.length < 3) return null;
+  // exacte (raster-vrije) bounding — meegegeven voor de kozijn-offset-referentie
+  if (exLMax > exLMin) poly._exact = { lMin: exLMin, lMax: exLMax, hMin: exHMin, hMax: exHMax };
+  return poly;
 }
 
 function validateWallGeometryShape(facadePoly, dims, heightAxis) {
@@ -1810,6 +1969,45 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
               }
               // EINDE TIJDELIJK DEBUG
 
+              // KOZIJN-OFFSET: bewaar óók het KOZIJN (fill = raam/deur) als aparte rechthoek in DEZELFDE
+              // opening-lokale mm-frame als de void. Het kozijn staat niet altijd symmetrisch in de void,
+              // dus de marge rondom de bekleding moet vanaf het KOZIJN gemeten worden, niet vanaf de ruwe
+              // void. null = geen fill (kozijnloze opening → offset valt terug op de void + melding).
+              let kozijnRect = null;
+              let kozijnKlikOutsideT = null;   // buiten/binnen-signaal uit de kliklijst-positie (Part 2, controle)
+              if (fillID) {
+                // KLIKLIJST-REFERENTIE (vlag): buitenrand van het dunne buitenprofiel rondom → offset-referentie.
+                if (isKliklijstReferentie()) {
+                  const _klik = getKliklijstRect(api, modelID, fillID, lengthAxis, heightAxis, thicknessAxis, wallMins);
+                  if (_klik) { kozijnRect = _klik.rect; kozijnKlikOutsideT = _klik.outsideT; }
+                }
+              }
+              if (fillID && !kozijnRect) {
+                // Fallback (of vlag uit): de envelope van het hele kozijn (huidige logica).
+                const fPoly = _polyFill();
+                if (fPoly && fPoly.length >= 3) {
+                  // KOZIJN-OFFSET-referentie: gebruik de EXACTE (raster-vrije) projectie-grenzen i.p.v. de
+                  // 20mm-raster-gesnapte polygoon-hoeken (die blazen de breedte tot ±20mm op). polyPts:null →
+                  // de knip volgt de exacte bbox, niet de raster-vorm (kozijn is rechthoekig).
+                  const ex = fPoly._exact;
+                  const flMin = ex ? ex.lMin : Math.min(...fPoly.map((p) => p.l));
+                  const flMax = ex ? ex.lMax : Math.max(...fPoly.map((p) => p.l));
+                  const fhMin = ex ? ex.hMin : Math.min(...fPoly.map((p) => p.h));
+                  const fhMax = ex ? ex.hMax : Math.max(...fPoly.map((p) => p.h));
+                  const kw = Math.round(flMax - flMin), kh = Math.round(fhMax - fhMin);
+                  if (kw >= 50 && kh >= 50) kozijnRect = { x: Math.max(0, Math.round(flMin)), y: Math.max(0, Math.round(fhMin)), breedte: kw, hoogte: kh, polyPts: null };
+                } else if (fillBB) {
+                  const fDims = { x: fillBB.maxX - fillBB.minX, y: fillBB.maxY - fillBB.minY, z: fillBB.maxZ - fillBB.minZ };
+                  const fMins = { x: fillBB.minX, y: fillBB.minY, z: fillBB.minZ };
+                  const kw = Math.round(fDims[lengthAxis] * 1000), kh = Math.round(fDims[heightAxis] * 1000);
+                  if (kw >= 50 && kh >= 50) kozijnRect = {
+                    x: Math.max(0, Math.round((fMins[lengthAxis] - wallMins[lengthAxis]) * 1000)),
+                    y: Math.max(0, Math.round((fMins[heightAxis] - wallMins[heightAxis]) * 1000)),
+                    breedte: kw, hoogte: kh, polyPts: null,
+                  };
+                }
+              }
+
               openings.push({
                 id: oID,
                 type: openingType[oID] ?? "sparing",
@@ -1822,6 +2020,10 @@ export async function parseIfc(file, allowedTypes = null, onProgress = null, { f
                 // KOZIJN-OFFSET-melding: is er een raam/deur (fill = kozijn) aan deze void gekoppeld?
                 // false = kozijnloze opening → de gevel wordt hier niet uitgeknipt (vlag kozijnOffset).
                 hasFill: !!fillID,
+                // KOZIJN-OFFSET: het echte kozijn-vlak (fill) in opening-lokale mm; referentie voor de marge.
+                kozijnRect,
+                // KLIKLIJST buiten/binnen-signaal (wereld-dikte van het buitenvlak, mm) — controle op outsideDir.
+                kozijnKlikOutsideT,
               });
 
               // KOZIJN — verzamel de echte raam/deur-bbox (× 1000 → mm) van DEZE geparste wand.
@@ -2272,7 +2474,9 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
     const sfDepths = isSlimFort ? getSlimFortDepths(_sfS, panelVentGap, panelDikte, brickD) : null;
     const latDikte = group.latDikte ?? 28;
     const hasVertLat = (group.lattenData ?? []).some((l) => l.richting === 'verticaal');
-    const effectiveLatDepth = isSlimFort ? sfDepths.facadeBaseDepth : (hasVertLat ? 2 * latDikte : latDikte);
+    // Lat-lagen uit het achterconstructie-systeem (enkel 1× / kruislaag 2×); terugval = oude richting-proxy.
+    const latLagen = group.lattenLagen ?? (hasVertLat ? 2 : 1);
+    const effectiveLatDepth = isSlimFort ? sfDepths.facadeBaseDepth : (latLagen * latDikte);
     const vis = group.layerVisibility ?? {};
     const rwo = group.refWallOrigin;
     const groupMinX = group.groupMinX ?? 0;
@@ -2330,8 +2534,6 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
     const groupToWorld = (gx, outDepth, gz) => {
       if (!rwo) return [gx, outDepth, gz];
       const p = { x: 0, y: 0, z: 0 };
-      // GEVEL_HANDEDNESS u-frame: gx is een u-coördinaat (u=0 = buiten-links). Map naar wereld net als
-      // 3D (mapLen): gespiegeld vlak → buiten-links ligt aan de wereld-max-kant. Vlag UIT → mirrored=false.
       p[rwo.lengthAxis]    = groupMinX + (group.facadeData?.mirrored ? ((group.facadeData?.groupWidth ?? 0) - gx) : gx);
       p[rwo.thicknessAxis] = grpOutPos + grpOutDir * outDepth;
       p[rwo.heightAxis]    = groupMinH + gz;
@@ -2676,6 +2878,8 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
         const pen = penanten[pi];
         const pX  = pen.x   ?? 0;
         const pB  = Math.max(1, pen.breedte ?? 400);
+        const skipPenL = (pen.diepteLinks  ?? pen.diepte ?? 150) <= 0;   // zijde op 0 → geen zijkant (geen been/strip)
+        const skipPenR = (pen.diepteRechts ?? pen.diepte ?? 150) <= 0;
         const pDL = Math.max(1, pen.diepteLinks  ?? pen.diepte ?? 150);
         const pDR = Math.max(1, pen.diepteRechts ?? pen.diepte ?? 150);
         const pH  = Math.max(1, (maxHoogte != null && maxHoogte > 0) ? Math.min(pen.hoogte ?? 2000, maxHoogte) : (pen.hoogte ?? 2000));
@@ -2684,7 +2888,10 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
         const penSideDL = Math.max(1, pDL + brickD + penStoot + panelDikte);
         const penSideDR = Math.max(1, pDR + brickD + penStoot + panelDikte);
         const penPanelT = panelDikte;
-        const penShift = panelDikte + brickD + penStoot + Math.max(pDL, pDR);
+        // +6 (6 mm-negge achter de zijstrip) + brickD (vóórstrip loopt één stripdikte VOORLANGS over de
+        // zijstrippen) — gelijk aan de 3D-penant. Alle penShift-onderdelen (vóórpaneel/-strip, zijbenen,
+        // hoeklatjes) schuiven zo samen mee → coherent.
+        const penShift = panelDikte + brickD + penStoot + Math.max(pDL, pDR) + 6 + brickD;
 
         const emitPenantBox = (gxCenter, depthCenter, boxW, boxThick, label) => {
           const [bwx, bwy, bwz] = groupToWorld(gxCenter, depthCenter, 0);
@@ -2702,10 +2909,10 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
           allProxyIds.push(bPrx);
         };
 
-        const _penBase = isSlimFort ? sfDepths.facadeBaseDepth : latDikte;
+        const _penBase = isSlimFort ? sfDepths.facadeBaseDepth : latDikte;   // penant-basis: enkele laag (kruislaag-penant = FASE P-migratie)
         emitPenantBox(pX + pB / 2, _penBase + penShift - penPanelT / 2, penFrontW, penPanelT, 'Penant voorzijde');
-        emitPenantBox(pX + brickD + penPanelT / 2, _penBase + penShift - penPanelT - penSideDL / 2, penPanelT, penSideDL, 'Penant linkerbeen');
-        emitPenantBox(pX + pB - brickD - penPanelT / 2, _penBase + penShift - penPanelT - penSideDR / 2, penPanelT, penSideDR, 'Penant rechterbeen');
+        if (!skipPenL) emitPenantBox(pX + brickD + penPanelT / 2, _penBase + penShift - penPanelT - penSideDL / 2, penPanelT, penSideDL, 'Penant linkerbeen');
+        if (!skipPenR) emitPenantBox(pX + pB - brickD - penPanelT / 2, _penBase + penShift - penPanelT - penSideDR / 2, penPanelT, penSideDR, 'Penant rechterbeen');
 
         const penFaceData = penantFaceRows[pi] ?? {};
         const fRows = penFaceData.frontRows ?? penFaceData ?? [];
@@ -2732,10 +2939,10 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
         const cornerBattenDepthBack  = _penBase + latDikte / 2;
         const cornerBattenDepthFront = _penBase + penShift - penPanelT - latDikte / 2;
         if (!isSlimFort) for (const [gxCenter, depthCenter, cLabel] of [
-          [pX + brickD + penPanelT + latDikte / 2,       cornerBattenDepthBack,  'Penant Hoeklatje L-back'],
-          [pX + pB - brickD - penPanelT - latDikte / 2,  cornerBattenDepthBack,  'Penant Hoeklatje R-back'],
-          [pX + brickD + penPanelT + latDikte / 2,       cornerBattenDepthFront, 'Penant Hoeklatje L-front'],
-          [pX + pB - brickD - penPanelT - latDikte / 2,  cornerBattenDepthFront, 'Penant Hoeklatje R-front'],
+          ...(skipPenL ? [] : [[pX + brickD + penPanelT + latDikte / 2,      cornerBattenDepthBack,  'Penant Hoeklatje L-back']]),
+          ...(skipPenR ? [] : [[pX + pB - brickD - penPanelT - latDikte / 2, cornerBattenDepthBack,  'Penant Hoeklatje R-back']]),
+          ...(skipPenL ? [] : [[pX + brickD + penPanelT + latDikte / 2,      cornerBattenDepthFront, 'Penant Hoeklatje L-front']]),
+          ...(skipPenR ? [] : [[pX + pB - brickD - penPanelT - latDikte / 2, cornerBattenDepthFront, 'Penant Hoeklatje R-front']]),
         ]) {
           const [cbwx, cbwy, cbwz] = groupToWorld(gxCenter, depthCenter, 0);
           const cbPt   = PT(cbwx, cbwy, cbwz);
@@ -2758,10 +2965,10 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
         const rightRefId = E(`IFCDIRECTION((${r(-thickDir.x)},${r(-thickDir.y)},${r(-thickDir.z)}))`);
         const _haVec = rwo.heightAxis === 'z' ? [0,0,1] : rwo.heightAxis === 'y' ? [0,1,0] : [1,0,0];
         const sideAxisId = E(`IFCDIRECTION((${_haVec.join(',')}))`);
-        const pDmax = Math.max(pDL, pDR);
-        const sideClipOffPen = Math.max(penStoot, panelDikte);
-        const sideDepthOffsetLeft  = _penBase + panelDikte + brickD + sideClipOffPen + 6 + (pDmax - pDL);
-        const sideDepthOffsetRight = _penBase + panelDikte + brickD + sideClipOffPen + 6 + (pDmax - pDR);
+        // Zijstrip-achterkant op de 6 mm-negge (buitenvlak vlakke strip + 6), per zijde de eigen lengte
+        // uit het patroon (pD + stoot + strip). Gelijk aan 3D: geen clip-offset, geen pDmax-alignering.
+        const sideDepthOffsetLeft  = _penBase + panelDikte + brickD + 6;
+        const sideDepthOffsetRight = _penBase + panelDikte + brickD + 6;
 
         for (const row of (penFaceData.leftRows ?? [])) {
           for (const piece of row.pieces) {

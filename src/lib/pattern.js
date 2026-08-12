@@ -1,5 +1,5 @@
 import { polyXRangesAtY } from './geometry.js';
-import { isDropOversizedOpenings, isVentilatieZone, isPenantTweeRijen, isGevelHandedness, isConcaveOpeningMerge } from './featureFlags.js';
+import { isDropOversizedOpenings, isVentilatieZone, isPenantTweeRijen, isGevelHandedness, isConcaveOpeningMerge, isKopTolerantie } from './featureFlags.js';
 
 // GEVEL_HANDEDNESS — moet de horizontale richting van dit vlak gespiegeld worden zodat het van BUITEN
 // links→rechts leest? Kijker-rechts = up × buitennormaal = outsideDir·ε(up,normaal,lengte)·ê_lengte.
@@ -20,6 +20,10 @@ export function facadeNeedsMirror(upAxis, normalAxis, lengthAxis, outsideDir) {
 // op een 300 mm band) overschrijdt dit ruim. Zie isDropOversizedOpenings (featureFlags.js).
 const OVERSIZED_OPENING_TOL = 100;
 
+// KOP_TOLERANTIE (vlag kopTolerantie) — marge in mm rond een hele kop waarbinnen een EIND-rest als kop
+// wordt toegepast i.p.v. een drieklezoor te forceren. Alleen actief met de vlag; vlag UIT → 0 (byte-identiek).
+const KOP_TOL = 2;
+
 function round2(v) {
   return Math.round(v * 100) / 100;
 }
@@ -33,6 +37,19 @@ export function getOpeningPoly(op) {
     { l: x + width, h: y + height },
     { l: x,         h: y + height },
   ];
+}
+
+// ZONE_START_STOP — snap een zone-breedte naar een HEEL aantal stenen, zodat de laatste steen geen
+// splinter wordt (optimalisatie-hulp). Een rij van n hele stenen is n×steen + (n−1)×stoot breed =
+// n×(steen+stoot) − stoot. steen = steenL (horizontaal verband) of steenH (staand tegelverband, tegel-
+// breedte = steenH). Retourneert de dichtstbijzijnde zulke breedte (minimaal 1 steen). Pure functie.
+export function snapWidthToWholeStone(width, material, verband) {
+  const stoot = material?.stoot ?? 10;
+  const stone = (verband === 'staand_tegelverband' ? (material?.steenH ?? 50) : (material?.steenL ?? 210));
+  const mod = stone + stoot;
+  if (mod <= 0) return width;
+  const n = Math.max(1, Math.round(((width ?? 0) + stoot) / mod));
+  return round2(n * mod - stoot);
 }
 
 export function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, startX) {
@@ -76,9 +93,16 @@ export function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, 
 
   pieces = recomputeStarts(pieces, stoot);
 
+  // KOP_TOLERANTIE (vlag kopTolerantie, default UIT): een eind-rest binnen ±KOP_TOL mm van een hele kop
+  // geldt als kop → de laatste strek wordt NIET naar een drieklezoor getrokken en de rest heet 'Kop'.
+  // Vlag UIT → kopTol=0 (drieklezoor-drempel = < kop) en kopLabelTol=0.01 (label = < 0,01): beide condities
+  // zijn dan woord-voor-woord het origineel (byte-identiek).
+  const kopTol = isKopTolerantie() ? KOP_TOL : 0;
+  const kopLabelTol = isKopTolerantie() ? KOP_TOL : 0.01;
+
   let rest = getRest(pieces, totalWidth);
 
-  if (rest > stoot && rest - stoot < kop) {
+  if (rest > stoot && rest - stoot < kop - kopTol) {
     let lastFullIndex = -1;
     for (let i = pieces.length - 1; i >= 0; i--) {
       if (pieces[i].label === 'Strek') { lastFullIndex = i; break; }
@@ -95,7 +119,7 @@ export function buildRowPiecesForWidth(totalWidth, material, verband, rowIndex, 
     pieces.push({
       start: round2(totalWidth - restLen),
       length: restLen,
-      label: Math.abs(restLen - kop) < 0.01 ? 'Kop' : 'Rest',
+      label: Math.abs(restLen - kop) < kopLabelTol ? 'Kop' : 'Rest',
     });
   }
 
@@ -408,7 +432,7 @@ export function rectilinearUnion(polyA, polyB) {
   return loop.map((k) => { const [i, j] = k.split(',').map(Number); return { l: xs[i], h: ys[j] }; });
 }
 
-export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, kozijnOffset = null, edgeStagger = null, fillToMax = false) {
+export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, kozijnOffset = null, edgeStagger = null, fillToMax = false, lekdorpels = null) {
   const { steenL, steenH, lint, stoot } = material;
   const lagenmaat = getLagenmaat(material, verband);
   const rowH = verband === 'staand_tegelverband' ? material.steenL : steenH;
@@ -419,12 +443,13 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const refWall = [...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0];
   const refLengthAxis = refWall.wallOrigin.lengthAxis;
   const refHeightAxis = refWall.wallOrigin.heightAxis;
+  const refThicknessAxis = refWall.wallOrigin.thicknessAxis;
   // CONCAVE_OPENING_MERGE (vlag, default UIT): mergeTwo levert de echte L/U-unie i.p.v. de bbox.
   const concaveOpeningMerge = isConcaveOpeningMerge();
   // GEVEL_HANDEDNESS (vlag): moet de bond horizontaal gespiegeld worden zodat het vlak van buiten
   // links→rechts leest? Werkt ook voor het best-fit-pad (de virtuele wandorigin draagt dezelfde
   // assen + resolvedOutside.outsideDir). Vlag UIT → false → byte-identiek.
-  const mirrorBond = isGevelHandedness() && facadeNeedsMirror(refHeightAxis, refWall.wallOrigin.thicknessAxis, refLengthAxis, refWall.wallOrigin.resolvedOutside?.outsideDir);
+  const mirrorBond = isGevelHandedness() && facadeNeedsMirror(refHeightAxis, refThicknessAxis, refLengthAxis, refWall.wallOrigin.resolvedOutside?.outsideDir);
   const axisWalls = withOrigin.filter((w) => w.wallOrigin.lengthAxis === refLengthAxis);
 
   const groupMinX = Math.min(...axisWalls.map((w) => w.wallOrigin.lengthStart ?? 0));
@@ -474,10 +499,37 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
       // groupOpenings terecht — waar de zone-generator 'm op detecteert. Vlag UIT → alleen raam/deur.
       const isNamedOpening = op.type === 'raam' || op.type === 'deur' || (op.type === 'ventilatie' && isVentilatieZone());
       if (!isNamedOpening) continue;
-      const groupPolyPts = op.polyPts
-        ? op.polyPts.map((p) => ({ l: round2(p.l + wallOffsetX), h: round2(p.h + wallOffsetH) }))
+      // KOZIJN-OFFSET: de clip-rechthoek volgt het KOZIJN (fill) wanneer de offset aan staat en er een
+      // kozijn bekend is — het kozijn staat asymmetrisch in de void, dus de marge moet dáárvan af. Geen
+      // kozijn (of vlag uit) → de ruwe void (byte-identiek). De per-zijde inflate komt hierna (:444).
+      const _base = (kozijnOffset && op.kozijnRect) ? op.kozijnRect : op;
+      const bx = round2(wallOffsetX + (_base.x ?? op.x ?? 0));
+      const by = round2(wallOffsetH + (_base.y ?? op.y ?? 0));
+      const bw = _base.breedte ?? _base.width ?? ow;
+      const bh = _base.hoogte ?? _base.height ?? oh;
+      // CONCAVE-VOID GUARD: de knip-VORM volgt de kozijn-polygoon wanneer die er is; is de kozijn-
+      // referentie echter een RECHTHOEK (polyPts null) terwijl de VOID concave is (L/U, >4 punten),
+      // dan valt de vorm terug op de VOID-polygoon. Anders slaat de rechthoekige kozijnRect de L plat
+      // en wordt het massieve muurdeel (notch) ONDER het raam ten onrechte weggeknipt (de kozijn-bbox
+      // dekt de notch, maar daar zit géén glas — het is metselwerk). De bbox bx/by/bw/bh (offset-
+      // referentie) blijft van de kozijn. Rechthoekige void (≤4 punten) → ongewijzigd (byte-identiek).
+      const _shapePoly = _base.polyPts ?? ((op.polyPts && op.polyPts.length > 4) ? op.polyPts : null);
+      const groupPolyPts = _shapePoly
+        ? _shapePoly.map((p) => ({ l: round2(p.l + wallOffsetX), h: round2(p.h + wallOffsetH) }))
         : null;
-      rawOpenings.push({ x: ox, y: oy, width: ow, height: oh, polyPts: groupPolyPts, type: op.type });
+      // KOZIJN-weergave (vlag showKozijnen): het RAUWE kozijn-vlak (fill) in groep-coördinaten, los van
+      // de offset-inflate — zodat 2D/3D de kozijnrand kan tonen naast de (offset-)knipgrens ter controle.
+      const kozijnRaw = op.kozijnRect
+        ? { x: round2(wallOffsetX + (op.kozijnRect.x ?? 0)), y: round2(wallOffsetH + (op.kozijnRect.y ?? 0)), width: op.kozijnRect.breedte ?? 0, height: op.kozijnRect.hoogte ?? 0 }
+        : null;
+      // LEKDORPEL-REFERENTIE: vervang de X-randen (start/einde) door de LEKDORPEL. op.lekdorpelX is in
+      // dezelfde wand-lokale frame als op.x (in App gematcht, in best-fit meegereprojecteerd) → frame-
+      // onafhankelijk. De hoogte (by/bh) blijft van het kozijn/void. Geen lekdorpel → ongewijzigd.
+      const _lek = op.lekdorpelX;
+      const lekOverride = !!(_lek && (_lek.breedte ?? _lek.width));
+      const lekBx = lekOverride ? round2(wallOffsetX + (_lek.x ?? 0)) : bx;
+      const lekBw = lekOverride ? round2(_lek.breedte ?? _lek.width) : bw;
+      rawOpenings.push({ x: lekBx, y: by, width: lekBw, height: bh, polyPts: lekOverride ? null : groupPolyPts, type: op.type, kozijnRaw, lekSource: lekOverride ? op.lekSource : null });
     }
   }
 
@@ -485,12 +537,13 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   // OPENINGEN naar het u-frame (u=0 = buiten-links), zodat álles — bond, openingen, panelen, latten —
   // in hetzelfde van-buiten links→rechts-frame zit. De bond blijft natuurlijk links-uitgelijnd (= u).
   // 3D/export mappen u→wereld (mapLen: mir ? groupMaxX−u : groupMinX+u). Vlag UIT → mirrorBond=false →
-  // rawOpenings onaangeroerd (byte-identiek). Rand-extensies hoeven NIET te wisselen: u<0 mapt vanzelf
-  // naar de buiten-linkerkant. De per-zijde kozijnoffset WEL: een gespiegelde opening verwisselt z'n
-  // fysieke L/R-randen in u, dus de marge moet mee-swappen.
+  // rawOpenings onaangeroerd (byte-identiek). kozijnRaw (WIP-overlay) spiegelt mee; per-zijde kozijnoffset
+  // swapt L↔R (een gespiegelde opening verwisselt z'n fysieke randen). Rand-extensies hoeven NIET: u<0
+  // mapt vanzelf naar de buiten-linkerkant.
   if (mirrorBond) {
     for (const op of rawOpenings) {
       if (op.polyPts) op.polyPts = op.polyPts.map((p) => ({ l: round2(groupWidth - p.l), h: p.h }));
+      if (op.kozijnRaw) op.kozijnRaw = { ...op.kozijnRaw, x: round2(groupWidth - op.kozijnRaw.x - op.kozijnRaw.width) };
       op.x = round2(groupWidth - op.x - op.width);
     }
     if (kozijnOffset && (kozijnOffset.left != null || kozijnOffset.right != null)) {
@@ -551,7 +604,10 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
 
   // KOZIJN-OFFSET: rek elke opening per zijde op zodat strips (maskOpenings), panelen (openingsForZones)
   // én latten (facadeData.groupOpenings) dezelfde marge tot de kozijnrand aanhouden. null/0 → ongemoeid.
-  const groupOpenings = kozijnOffset ? merged.map((op) => inflateOpeningPerSide(op, kozijnOffset)) : merged;
+  // Waterslag-bron (deur) krijgt de APARTE offset kozijnOffset.waterslag (indien gezet); anders de gewone.
+  const groupOpenings = kozijnOffset
+    ? merged.map((op) => inflateOpeningPerSide(op, (op.lekSource === 'waterslag' && kozijnOffset.waterslag) ? kozijnOffset.waterslag : kozijnOffset))
+    : merged;
 
   function expandPolygon(pts, dx, dy) {
     if (!pts || pts.length < 3) return pts;
@@ -627,6 +683,8 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     const rawPieces = extendLeft > 0
       ? builtPieces.map((p) => ({ ...p, start: round2(p.start - extendLeft) }))
       : builtPieces;
+    // GEVEL_HANDEDNESS u-frame: de bond blijft links-uitgelijnd (= u). De spiegeling zit nu bij de
+    // OPENINGEN (hierboven) + de u→wereld-mapping in 3D/export, niet meer in de bond zelf.
     const clipped = [];
     for (const piece of rawPieces) {
       const parts = splitAroundOpenings(piece, rowY);
@@ -795,6 +853,23 @@ export function buildFacePattern(width, height, material, verband, rowOffset = 0
     if (pieces.length) rows.push({ y: rowY, pieces });
   }
   return rows;
+}
+
+// PENANT-ZIJDE (vlag penantHoekStoot): de opgegeven diepte IS de zijstrip-lengte (ruimte tussen voorstrip en
+// gevelvlak). Past er maar 1 strip (diepte ≤ steenL) → 1 strip per rij, NIET verspringen (recht gestapeld).
+// Is de diepte groter → normaal verdelen via buildFacePattern (halfsteens verspringing enz.).
+export function buildPenantSidePattern(depth, height, material, verband, rowOffset = 0) {
+  const steenL = material?.steenL ?? 210;
+  if (depth <= steenL + 0.5) {
+    const lagenmaat = getLagenmaat(material, verband);
+    const lagen = lagenmaat > 0 ? Math.ceil(height / lagenmaat) : 0;
+    const len = round2(depth);
+    const label = len < steenL - 0.001 ? 'Rest' : 'Strek';
+    const rows = [];
+    for (let r = 0; r < lagen; r++) rows.push({ y: round2(r * lagenmaat), pieces: [{ start: 0, length: len, label }] });
+    return rows;
+  }
+  return buildFacePattern(depth, height, material, verband, rowOffset);
 }
 
 function mirrorPieces(pieces, totalWidth) {

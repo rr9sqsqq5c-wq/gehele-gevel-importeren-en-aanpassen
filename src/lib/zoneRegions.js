@@ -16,6 +16,7 @@
 import { buildFacePattern } from './pattern.js';
 import { buildTruthRows } from './wildverbandKoppelstrip.js';
 import { isWildverbandKoppelstrip } from './featureFlags.js';
+import { clipRowsAroundRects } from './sparingElements.js';
 
 function round2(v) { return Math.round(v * 100) / 100; }
 
@@ -137,11 +138,35 @@ function intersectInterval(parts, a, b) {
   return out;
 }
 
+// GEEN_VERBAND: maak van bond-rijen een SOLIDE dekking (= wandoppervlak − openingen) door binnen
+// elke rij de MORTELVOEGEN (kleine gaten ≤ maxGap) te dichten. Grote gaten (openingen/contour)
+// blijven staan. Nodig omdat de behouden 'geen'-dekking een DOORLOPEND verband is met verticaal
+// uitgelijnde stootvoegen; zonder dichten worden zone-stenen op elke voeg genotcht → verticale
+// lijnen. Alleen aangeroepen op coverageRows (uitsluitend 'geen'); het normale pad blijft onaangeraakt.
+export function solidifyRows(rows, maxGap) {
+  const g = Math.max(0, maxGap ?? 0);
+  return (rows ?? []).map((row) => {
+    const ps = [...(row.pieces ?? [])].sort((a, b) => a.start - b.start);
+    const out = [];
+    for (const p of ps) {
+      const last = out[out.length - 1];
+      if (last && p.start - (last.start + last.length) <= g + 1e-6) {
+        last.length = round2((p.start + p.length) - last.start);
+      } else {
+        out.push({ start: round2(p.start), length: round2(p.length), label: 'Cover' });
+      }
+    }
+    return { y: row.y, pieces: out };
+  });
+}
+
 // dekking van het vlak (vlak − openingen) over de hoogte-span [yLo,yHi]: unie van de
 // x-intervallen van facadeData-rijen waarvan de laag [row.y, row.y+planeRowH] de span raakt.
 function planeCoverageForSpan(facadeData, yLo, yHi, planeRowH) {
   const ivs = [];
-  for (const row of (facadeData.rows ?? [])) {
+  // GEEN_VERBAND: bij een blanco basisvlak is facadeData.rows leeggemaakt; de dekkings-mask
+  // (vlak − openingen) staat dan in coverageRows, zodat getekende zones tóch correct clippen.
+  for (const row of (facadeData.coverageRows ?? facadeData.rows ?? [])) {
     if (row.y + planeRowH <= yLo + 1e-6 || row.y >= yHi - 1e-6) continue;
     for (const p of row.pieces) ivs.push([p.start, p.start + p.length]);
   }
@@ -208,12 +233,20 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
     const r = rects[i];
     const zoneVerband = zone.verband ?? defaultVerband;
     const zoneMatBase = { ...mat, ...(zone.material ?? {}) };
-    // Eigen steenstrip-artikel per zone (de UI heeft zone.material al op die maten gezet)
-    // overschrijft de groep-stripArt; zonder eigen artikel volgt de zone de groep (applyArt).
-    let zoneMat = zone.steenstripArtikelId ? zoneMatBase : applyArt(zoneMatBase);
-    // VENTILATIE_ZONE: een expliciete zone-steenL (verticale strip OP LENGTE = zone-hoogte) mag NIET
-    // door de groep-stripArt (applyArt zet steenL=artikel-lengte) worden overschreven.
-    if (zone.material?.steenL != null) zoneMat = { ...zoneMat, steenL: zone.material.steenL };
+    // Eigen steenstrip-artikel per zone (zone.material draagt die maten) → gebruik die. GROEP-STANDAARD
+    // (geen eigen artikel) → de STEENMAAT ÉN de VOEGEN (lint/stoot) volgen de GROEP: mat + de groep-stripArt
+    // (applyArt), óók als de groep die van het project erft. Een in de UI bevroren zone-maat/voeg wordt hier
+    // NIET gebruikt (anders "volgt de groep-standaard niet").
+    let zoneMat;
+    if (zone.steenstripArtikelId) {
+      zoneMat = zoneMatBase;
+    } else {
+      zoneMat = applyArt({ ...mat });
+    }
+    // VENTILATIE_ZONE: een expliciete zone-steenL (verticale strip OP LENGTE = zone-hoogte) mag NIET door
+    // de groep-stripArt worden overschreven. ALLEEN voor de auto-vent-zone (kind 'ventilation'), niet voor
+    // een gewone zone-op-groep-standaard (die moet juist de groep-steenL volgen).
+    if (zone.kind === 'ventilation' && zone.material?.steenL != null) zoneMat = { ...zoneMat, steenL: zone.material.steenL };
     const zoneColor = zone.color ?? defaultColor;
     const zRowH = bondRowH(zoneVerband, zoneMat);
     const zW = r.x1 - r.x0, zH = r.y1 - r.y0;
@@ -253,5 +286,46 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
     regions.push({ rows: clippedRows, material: zoneMat, color: zoneColor, verband: zoneVerband });
   });
 
+  // SPARING-ELEMENTEN — knip de geïmporteerde onderdelen óók uit de zone-regio's. Een zone bouwt een
+  // VERSE bond (buildZoneBondRows) die de gaten anders alleen grofmazig via planeCoverageForSpan erft
+  // (per rij-span geünieerd → "geneest" bij deel-overlap). facadeData.sparingRects staan in hetzelfde
+  // plane-frame; per regio met de eigen bond-rijhoogte klippen — identiek aan de hoofdgevel-knip.
+  // Geen sparingRects (geen onderdelen / vlag uit) → clipRowsAroundRects is een no-op (byte-identiek).
+  if (facadeData.sparingRects?.length) {
+    for (const reg of regions) {
+      reg.rows = clipRowsAroundRects(reg.rows, facadeData.sparingRects, bondRowH(reg.verband, reg.material));
+    }
+  }
+
   return regions;
+}
+
+// VENTILATIE op een PENANT-groep: buildStripZoneRegions wordt daar overgeslagen (hasPenants), dus de
+// vent-grille + het gat komen niet automatisch. Deze helper past de vent-zones toe OP de al opgebouwde
+// penant-strip-batches: elke batch houdt z'n eigen kleur/verband (we knippen alleen de clearRect eruit),
+// en per vent-zone voegen we de grille-regio (loodrecht verband, gat opengeknipt) als extra batch toe.
+// De grille-regio's komen uit buildStripZoneRegions op de gecombineerde dekking (complement genegeerd,
+// want die zou de per-batch kleuren platslaan). opts.depthFromFace (3D) wordt op de grille-batches gezet.
+export function applyVentZonesToBatches(batches, ventZones, facadeData, mat, defaultVerband, defaultColor, opts = {}) {
+  if (!ventZones?.length || !batches?.length) return batches;
+  const stripArt = opts.stripArt ?? null;
+  // gecombineerde dekking = alle VLAKKE penant-strips (geen zijkant-batches) → coverage + gat-knip.
+  const covFd = { ...facadeData, rows: batches.flatMap((b) => (b.sideType ? [] : (b.rows ?? []))) };
+  const regions = buildStripZoneRegions(covFd, ventZones, mat, defaultVerband, defaultColor, { stripArt });
+  const grilles = regions ? regions.slice(1) : [];   // [0] = complement (platte kleuren) → negeren
+  const clears = ventZones.map((z) => {
+    const mx = Math.max(0, z.clearMargin?.x ?? 0), my = Math.max(0, z.clearMargin?.y ?? 0);
+    return { x: (z.x ?? 0) - mx, y: (z.y ?? 0) - my, width: (z.width ?? 0) + 2 * mx, height: (z.height ?? 0) + 2 * my };
+  });
+  const cut = batches.map((b) => {
+    const rowH = b.brickH ?? bondRowH(b.verband ?? defaultVerband, b.material ?? mat);
+    return { ...b, rows: clipRowsAroundRects(b.rows ?? [], clears, rowH) };
+  });
+  const grilleBatches = grilles.map((r) => {
+    // Zowel 3D (brickH + depthFromFace) als export (material + verband) bedienen.
+    const gb = { rows: r.rows, color: r.color, material: r.material, verband: r.verband, brickH: bondRowH(r.verband, r.material) };
+    if (opts.depthFromFace !== undefined) gb.depthFromFace = opts.depthFromFace;
+    return gb;
+  });
+  return [...cut, ...grilleBatches].filter((b) => (b.rows?.length ?? 0) > 0 || b.sideType);
 }

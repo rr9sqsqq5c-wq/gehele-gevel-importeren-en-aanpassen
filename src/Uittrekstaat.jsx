@@ -1,9 +1,11 @@
 import React, { useMemo } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, attachHolesToPanels, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones } from './lib/panelization.js';
+import { buildStripZoneRegions, solidifyRows } from './lib/zoneRegions.js';
+import { sparingRectsForFacade } from './lib/sparingElements.js';
 import { openingXRangesAtY } from './lib/geometry.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2 } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUittrekstaatSnap, isBlankBaseVerband } from './lib/featureFlags.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -24,7 +26,7 @@ function polyArea(pts) {
   return Math.abs(a) / 2;
 }
 
-function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims = null) {
+function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims = null, sparingElements = [], sparingOffset = 0) {
   const s = getSettings(group.id);
   const mat = s.material ?? DEFAULT_MATERIAL;
   const verband = s.verband ?? 'halfsteens';
@@ -52,6 +54,14 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
     facadeData = { ...facadeData, rows: _gr.rows };
   }
 
+  // GEEN_VERBAND: basis blanco; de zones leveren de strips. rows = de zone-regio-rijen (union) zodat
+  // de strip-takeoff de zone-strips telt; coverageRows = solide dekking (mortelvoegen dicht) voor de clip.
+  if (isBlankBaseVerband(verband)) {
+    const az = (s.stripZones ?? []).filter((z) => z?.enabled === true);
+    const cov = solidifyRows(facadeData.rows, (mat.stoot ?? 10) + 2);
+    const regions = az.length ? buildStripZoneRegions({ ...facadeData, coverageRows: cov }, az, mat, verband, s.color ?? '#a64033', {}) : null;
+    facadeData = { ...facadeData, coverageRows: cov, rows: regions ? regions.flatMap((r) => r.rows ?? []) : [] };
+  }
   const { groupWidth, groupHeight, groupOpenings, rows } = facadeData;
 
   const tL = cornerTrims?.trimLeft ?? 0;
@@ -110,10 +120,23 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
   let panelList = [];
   let noPanelZonesAreaMM2 = 0;
   let noPanelZonesCount = 0;
-  if (s.panelen?.enabled) {
+  if (s.panelen?.enabled && !isBlankBaseVerband(verband)) {   // GEEN_VERBAND: blanco → geen panelen
     const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, mat);
     const maxInterval = s.latten?.maxInterval ?? 400;
-    const battenYs = generateBattenPositions(groupHeight, mat, maxInterval, { minHOH: s.latten?.minHOH, maxHOH: s.latten?.maxHOH, targetPanelH: s.panelen?.hoogte, minPanelH: 800 });
+    // UITTREKSTAAT_SNAP (vlag): dezelfde snap als tekening/3D/export (template View2D.jsx:108-117) —
+    // paneel-splits + battenYs op steenrijen, zodat de materiaalstaat dezelfde paneelmaten telt als getekend.
+    // Vlag UIT → _snapFn=null en ongesnapte battenYs (byte-identiek aan het huidige gedrag).
+    const _snapOn = isUittrekstaatSnap();
+    const _lintHalf = (mat.lint ?? 12) / 2;
+    const _allRowYs = _snapOn ? (rows ?? []).map((r) => r.y).sort((a, b) => a - b) : [];
+    const snapToRowY = (y) => {
+      if (!_allRowYs.length) return y;
+      const t = y + _lintHalf;
+      return _allRowYs.reduce((best, ry) => Math.abs(ry - t) < Math.abs(best - t) ? ry : best);
+    };
+    const _snapFn = (_snapOn && _allRowYs.length) ? snapToRowY : null;
+    const _baseBattenYs = generateBattenPositions(groupHeight, mat, maxInterval, { minHOH: s.latten?.minHOH, maxHOH: s.latten?.maxHOH, targetPanelH: s.panelen?.hoogte, minPanelH: 800 });
+    const battenYs = _snapFn ? _baseBattenYs.map(snapToRowY) : _baseBattenYs;
     const openingsForZones = groupOpenings.map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
     const PENANT_INSET = 20;
     const penantOpenings = (s.penanten ?? []).map((pen, pi) => {
@@ -124,7 +147,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
     }).filter(Boolean);
     const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
     for (const zone of zones) {
-      const result = panelizeZone(zone, battenYs, basePanel, null, mat, verband);
+      const result = panelizeZone(zone, battenYs, basePanel, _snapFn, mat, verband);
       if (result.ok) {
         panelList.push(...result.panels);
       } else {
@@ -134,10 +157,21 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
     }
   }
 
+  // GEEN_VERBAND: draagpanelen volgen de getekende zones.
+  if (s.panelen?.enabled && isBlankBaseVerband(verband)) {
+    panelList = buildZoneBackingPanels({ facadeData, activeZones: (s.stripZones ?? []).filter((z) => z?.enabled === true), panelen: s.panelen, latten: s.latten, mat, verband, startLijn: s.startLijn, sparingRects: [] });
+  }
+
+  // SPARING-ELEMENTEN: gaten aan de panelen hangen (heel paneel + gat) voor de frees/zagerij.
+  const sparingRects = sparingRectsForFacade(facadeData, sparingElements, sparingOffset);
+  const panelListH = attachHolesToPanels(panelList, sparingRects);
+
   const panelGroups = {};
-  for (const p of panelList) {
-    const key = `${mm2(p.width)}x${mm2(p.height)}`;
-    if (!panelGroups[key]) panelGroups[key] = { width: p.width, height: p.height, count: 0, areaMM2: 0, weightKg: 0 };
+  for (const p of panelListH) {
+    // Gat in de sleutel → paneel MÉT gat is een aparte regel dan zonder (aparte bewerking).
+    const holeSig = (p.holes ?? []).map((h) => `${mm2(h.width)}x${mm2(h.height)}`).join('+');
+    const key = `${mm2(p.width)}x${mm2(p.height)}${holeSig ? `|gat:${holeSig}` : ''}`;
+    if (!panelGroups[key]) panelGroups[key] = { width: p.width, height: p.height, count: 0, areaMM2: 0, weightKg: 0, holes: p.holes ?? null };
     panelGroups[key].count++;
     panelGroups[key].areaMM2 += p.width * p.height;
     const pWeight = s.panelen?.gewichtM2 ?? 9.4;
@@ -145,7 +179,21 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
   }
 
   let lattenSummary = {};
-  if (s.latten?.enabled) {
+  if (s.latten?.enabled && isBlankBaseVerband(verband)) {
+    // GEEN_VERBAND: latten volgen de zone-panelen, geklipt op de zone-rechthoeken.
+    const _blZ = buildFacadeLatten({ facadeData, latten: s.latten, mat, panelen: s.panelen, panels: panelListH, penanten: [], startLijn: s.startLijn, verband, backingType: s.backingType ?? 'hout', sparingRects });
+    for (const l of clipLattenToZones(_blZ, (s.stripZones ?? []).filter((z) => z?.enabled === true))) {
+      const len = Math.round(l.richting === 'verticaal' ? l.height : l.width);
+      if (len > 0) lattenSummary[len] = (lattenSummary[len] ?? 0) + 1;
+    }
+  } else if (s.latten?.enabled && !isBlankBaseVerband(verband) && isUnifiedLatten()) {   // GEEN_VERBAND: blanco → geen latten
+    // FASE 1 — één gedeelde latten-berekening; tel de lengtes (horizontaal=width, verticaal=height).
+    const latArr = buildFacadeLatten({ facadeData, latten: s.latten, mat, panelen: s.panelen, panels: panelListH, penanten: s.penanten ?? [], startLijn: s.startLijn, verband, backingType: s.backingType ?? 'hout', sparingRects });
+    for (const l of latArr) {
+      const len = Math.round(l.richting === 'verticaal' ? l.height : l.width);
+      if (len > 0) lattenSummary[len] = (lattenSummary[len] ?? 0) + 1;
+    }
+  } else if (s.latten?.enabled && !isBlankBaseVerband(verband)) {
     const latB = Math.max(5, s.latten.breedte ?? 50);
     const richting = s.latten.richting ?? 'horizontaal';
     const MAX_HOC = s.latten.maxInterval ?? 400;
@@ -363,14 +411,14 @@ function computeImportTotals(walls) {
   return { brutoMM2, openingsMM2, nettoMM2: brutoMM2 - openingsMM2, wallCount, openingCount };
 }
 
-export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose, cornerTrimsMap = {} }) {
+export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose, cornerTrimsMap = {}, sparingElements = [], sparingOffset = 0 }) {
   const importTotals = useMemo(() => computeImportTotals(walls), [walls]);
 
   const takeoffs = useMemo(() => {
     return groups
-      .map((g) => computeGroupTakeoff(g, walls, getSettings, adjacencies, cornerTrimsMap[g.id] ?? null))
+      .map((g) => computeGroupTakeoff(g, walls, getSettings, adjacencies, cornerTrimsMap[g.id] ?? null, sparingElements, sparingOffset))
       .filter(Boolean);
-  }, [groups, walls, getSettings, adjacencies, cornerTrimsMap]);
+  }, [groups, walls, getSettings, adjacencies, cornerTrimsMap, sparingElements, sparingOffset]);
 
   const totals = useMemo(() => {
     const t = { facadeAreaMM2: 0, openingsAreaMM2: 0, netFacadeAreaMM2: 0, penantAreaMM2: 0, hoekprofielLengthMM: 0, uSectiesCount: 0, vertikaleLattenLengthMM: 0, stripAreaMM2: 0, panelCount: 0, panelAreaMM2: 0, panelWeightKg: 0, lattenCount: 0, lattenLengthMM: 0 };
@@ -669,7 +717,7 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose,
                     <SectionHeader title="Panelen" />
                     {panelEntries.map(([key, pg]) => (
                       <tr key={key}>
-                        <TD>Paneel {mm2(pg.width)} × {mm2(pg.height)} mm</TD>
+                        <TD>Paneel {mm2(pg.width)} × {mm2(pg.height)} mm{pg.holes?.length ? <span style={{ color: '#dc2626', fontWeight: 600 }}> · frees-gat {pg.holes.map((h) => `${mm2(h.width)}×${mm2(h.height)}`).join(', ')} mm</span> : null}</TD>
                         <TD right mono bold>{pg.count}</TD>
                         <TD right>st ({m2(pg.areaMM2)} m² · {pg.weightKg.toFixed(1)} kg)</TD>
                       </tr>
