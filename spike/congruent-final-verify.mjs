@@ -1,8 +1,9 @@
-// VALIDATE (spike) — 2D vs Werktekening congruent NA de facadeData-share.
-// Beide views: (1) gebruiken App's gedeelde facadeData (zelfde rows/strips), (2) roepen buildGroupPanels
-// aan. View2D geeft baseMat=RAUWE mat + stripArt; Werktekening geeft baseMat=ARTIKEL-mat (mat is daar al
-// effMat) + stripArt. Beide → zelfde effMat → zelfde panelen. Koppelstrip-x: 2D=panelRightEdges,
-// werktekening=detectKoppelstrippen — moeten dezelfde naden geven.
+// ═══ CONGRUENTIE-REGRESSIE-WAAKHOND (zie CLAUDE.md §8b) ═══════════════════════════════════════════
+// Draai NA elke paneel-/strip-/latten-/koppelstrip-wijziging:  node spike/congruent-final-verify.mjs
+// Bewaakt dat 2D en werktekening voor een groep EXACT hetzelfde leveren via de gedeelde functies
+// (buildGroupPanels / detectKoppelstrippen / buildFacadeLatten). EXIT-CODE 1 = eenheid gebroken.
+// Beide views geven dezelfde gedeelde facadeData (rows/strips); View2D geeft buildGroupPanels baseMat=
+// RAUWE mat + stripArt, Werktekening baseMat=ARTIKEL-mat + stripArt → beide zelfde effMat → zelfde panelen.
 globalThis.localStorage = { getItem: (k) => (k === 'paneelOptimalisatie' || k === 'unifiedPanels') ? '1' : null, setItem() {}, removeItem() {} };
 import { buildGroupPanels, detectKoppelstrippen, buildFacadeLatten } from '../src/lib/panelization.js';
 import { buildFacePattern } from '../src/lib/pattern.js';
@@ -50,5 +51,7 @@ const latSig = (ls) => ls.map((l) => `${Math.round(l.x)},${Math.round(l.y)},${Ma
 const sl2 = latSig(lat2d), slW = latSig(latWt);
 const lattenEqual = sl2.length === slW.length && sl2.every((v, i) => v === slW[i]);
 console.log(`3) LATTEN identiek? 2D=${lat2d.length} latten, werktekening=${latWt.length} latten → ${lattenEqual ? '✓ BYTE-IDENTIEK' : '✗ VERSCHILLEND'}`);
-console.log(`\n→ ${panelsEqual && lattenEqual ? '2D EN WERKTEKENING CONGRUENT ✓ (zelfde facadeData + panelen + koppelstrippen + latten)' : 'NOG NIET ✗'}`);
+const ok = panelsEqual && lattenEqual;
+console.log(`\n→ ${ok ? '2D EN WERKTEKENING CONGRUENT ✓ (zelfde facadeData + panelen + koppelstrippen + latten)' : 'EENHEID GEBROKEN ✗ — zie CLAUDE.md §8b'}`);
 console.log('');
+process.exit(ok ? 0 : 1);   // waakhond: exit-code 1 = congruentie gebroken

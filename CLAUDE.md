@@ -265,6 +265,39 @@ Daarnaast een **aparte database `ifc-handles`, versie 1**, store `file-handles`
 
 ---
 
+## 8b. Congruentie-eenheid — één bron per laag (BINDEND, borgen bij ELKE fix)
+
+De zes weergaven van een groep — **2D-gevel · 3D · werktekening · meetstaat (uittrekstaat) ·
+IFC-export · maltekening** — MOETEN voor een groep exact hetzelfde tonen/tellen. Dit is bewust
+dichtgetimmerd (2026-08-12); **elke verdere fix bewaart deze eenheid**. Eén bron per laag:
+
+| Laag | Enige bron | Vlag (default AAN, noodrem `?…=0`) |
+|---|---|---|
+| Strips (verband) | App `allPatterns[groep].facadeData` — mét artikel-maat (`effectiveMat3d`) + kozijn-offset + edge-stagger | — |
+| Panelen | `buildGroupPanels()` (`src/lib/panelization.js`) | `unifiedPanels` |
+| Koppelstrippen | `detectKoppelstrippen()` (`src/lib/panelization.js`) | `unifiedPanels` |
+| Latten | `buildFacadeLatten()` (`src/lib/panelization.js`) | `unifiedLatten` |
+
+**Regels voor elke nieuwe fix (bindend):**
+1. **Nooit** per-view een eigen `buildFacadeZones → panelizeZone`-lus, eigen koppelstrip-test of eigen
+   latten-berekening bijbouwen. Nieuwe logica gaat ÍN de gedeelde functie hierboven → alle views erven mee.
+2. **Werktekening/meetstaat bouwen hun `facadeData` NIET zelf** met rauwe mat. Ze krijgen App's facadeData
+   (`sharedFacadeData` / `facadeDataByGroup`). Normale verbanden = App's bron; alleen blanco/groothuis/
+   wildverband houden hun eigen rows-pad.
+3. Gebruikt een view een eigen `mat`, dan de **artikel-maat** (effectiveMat = groep-materiaal met
+   `steenstripsArtikelen[0]` toegepast), NIET de rauwe groep-maat — anders liggen panelen op een andere
+   steek dan de strips.
+4. Export + mal gebruiken óók `allPatterns[groep].facadeData` + de artikel-maat (niet alleen best-fit-manual).
+
+**Regressie-waakhond** (draai na ELKE paneel-/strip-/latten-/koppelstrip-wijziging):
+```
+node spike/congruent-final-verify.mjs
+```
+→ moet melden: **2D = werktekening — panelen ÉN latten BYTE-IDENTIEK**. Byte-identiek moet byte-identiek
+blijven; wijkt het af, dan is de eenheid gebroken en moet de fix terug door de gedeelde functie.
+
+---
+
 ## 9. Open punten / backlog
 
 In het project staan twee losse notitiebestanden. **Let op:** deze gaan over fysieke
