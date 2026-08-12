@@ -4037,7 +4037,7 @@ export default function App() {
         }
         if (s.latten?.enabled) {
           if (isUnifiedLatten()) {   // FASE 1 — één gedeelde latten-berekening (effectiveMat3d = zelfde als facadeData.rows)
-            latten3d = buildFacadeLatten({ facadeData, latten: s.latten, mat: effectiveMat3d, panelen: s.panelen, panels: panels3d, penanten: s.penanten ?? [], startLijn: s.startLijn, verband: verb3d, backingType: backing3d, sparingRects: facadeData.sparingRects });
+            latten3d = buildFacadeLatten({ facadeData, latten: s.latten, mat: effectiveMat3d, panelen: s.panelen, panels: panels3d, penanten: s.penanten ?? [], startLijn: s.startLijn, verband: verb3d, backingType: backing3d, sparingRects: facadeData.sparingRects, endExtensions: s.endExtensions });
           } else if ((s.latten.richting ?? 'horizontaal') === 'horizontaal') {
             latten3d = computeHorizontalLatten({ facadeData, latten: s.latten, mat, panelen: s.panelen, startLijn: s.startLijn, backingType: backing3d, verband: verb3d });
           } else {
@@ -5820,7 +5820,7 @@ export default function App() {
 
         if (!isAluminium && !isSlimFort && s.latten?.enabled && vis.latten !== false && !_blankBaseExport && isUnifiedLatten()) {
           // FASE 1 — één gedeelde latten-berekening (positionering + opening/paneel/sparing-clip).
-          lattenData = buildFacadeLatten({ facadeData, latten: s.latten, mat, panelen: s.panelen, panels, penanten: s.penanten ?? [], startLijn: s.startLijn, verband: s.verband ?? DEFAULT_VERBAND, backingType: (s.backingType ?? 'hout'), sparingRects: facadeData?.sparingRects });
+          lattenData = buildFacadeLatten({ facadeData, latten: s.latten, mat, panelen: s.panelen, panels, penanten: s.penanten ?? [], startLijn: s.startLijn, verband: s.verband ?? DEFAULT_VERBAND, backingType: (s.backingType ?? 'hout'), sparingRects: facadeData?.sparingRects, endExtensions: s.endExtensions });
         } else if (!isAluminium && !isSlimFort && s.latten?.enabled && vis.latten !== false && !_blankBaseExport) {
           const latBreedte = Math.max(5, _art ? _art.breedteMM : (s.latten.breedte ?? 50));
           const richting = s.latten.richting ?? 'horizontaal';

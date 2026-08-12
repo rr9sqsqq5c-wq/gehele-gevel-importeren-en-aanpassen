@@ -205,7 +205,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
     }
   } else if (s.latten?.enabled && !isBlankBaseVerband(verband) && isUnifiedLatten()) {   // GEEN_VERBAND: blanco → geen latten
     // FASE 1 — één gedeelde latten-berekening; tel de lengtes (horizontaal=width, verticaal=height).
-    const latArr = buildFacadeLatten({ facadeData, latten: s.latten, mat, panelen: s.panelen, panels: panelListH, penanten: s.penanten ?? [], startLijn: s.startLijn, verband, backingType: s.backingType ?? 'hout', sparingRects });
+    const latArr = buildFacadeLatten({ facadeData, latten: s.latten, mat, panelen: s.panelen, panels: panelListH, penanten: s.penanten ?? [], startLijn: s.startLijn, verband, backingType: s.backingType ?? 'hout', sparingRects, endExtensions: s.endExtensions });
     for (const l of latArr) {
       const len = Math.round(l.richting === 'verticaal' ? l.height : l.width);
       if (len > 0) lattenSummary[len] = (lattenSummary[len] ?? 0) + 1;

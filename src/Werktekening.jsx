@@ -497,7 +497,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
     isBlankBaseVerband(verband)                 // GEEN_VERBAND: latten volgen de zone-panelen, geklipt op de zones
       ? clipLattenToZones(buildFacadeLatten({ facadeData, latten, mat, panelen, panels: allPanels, penanten: [], startLijn: groupSettings?.startLijn ?? null, verband, backingType: groupSettings?.backingType ?? 'hout', sparingRects }), (stripZones ?? []).filter((z) => z?.enabled === true))
     : isUnifiedLatten()
-      ? buildFacadeLatten({ facadeData, latten, mat, panelen, panels: allPanels, penanten, startLijn: groupSettings?.startLijn ?? null, verband, backingType: groupSettings?.backingType ?? 'hout', sparingRects })
+      ? buildFacadeLatten({ facadeData, latten, mat, panelen, panels: allPanels, penanten, startLijn: groupSettings?.startLijn ?? null, verband, backingType: groupSettings?.backingType ?? 'hout', sparingRects, endExtensions: groupSettings?.endExtensions })
       : computeLatten(facadeData, panelen, latten, mat, penanten, groupSettings?.startLijn ?? null, verband, groupSettings?.backingType ?? 'hout')
   ), [facadeData, panelen, latten, mat, penanten, groupSettings, verband, allPanels, sparingRects, stripZones]);
 

@@ -184,12 +184,8 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
 
     // FASE 1 — één gedeelde latten-berekening (vlag). Post-processing (endExtensions) blijft view-eigen.
     if (isUnifiedLatten()) {
-      let base = buildFacadeLatten({ facadeData, latten, mat: effectiveMat, panelen, panels: allPanels, penanten: groupSettings?.penanten ?? [], startLijn, verband, backingType: _bt, sparingRects: facadeData.sparingRects });
-      if (isKeepEndExtension() && richting === 'horizontaal') {
-        const _eeL = endExtensions ?? {};
-        base = extendLattenAtEnds(base, groupWidth, Math.max(0, _eeL.left?.battens ?? 0), Math.max(0, _eeL.right?.battens ?? 0));
-      }
-      return base;
+      // hoek-extensie (endExtensions) zit nu ÍN buildFacadeLatten → identiek in alle views.
+      return buildFacadeLatten({ facadeData, latten, mat: effectiveMat, panelen, panels: allPanels, penanten: groupSettings?.penanten ?? [], startLijn, verband, backingType: _bt, sparingRects: facadeData.sparingRects, endExtensions });
     }
 
     let out;

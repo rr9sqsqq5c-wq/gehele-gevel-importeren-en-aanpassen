@@ -4,7 +4,7 @@
 // effMat) + stripArt. Beide → zelfde effMat → zelfde panelen. Koppelstrip-x: 2D=panelRightEdges,
 // werktekening=detectKoppelstrippen — moeten dezelfde naden geven.
 globalThis.localStorage = { getItem: (k) => (k === 'paneelOptimalisatie' || k === 'unifiedPanels') ? '1' : null, setItem() {}, removeItem() {} };
-import { buildGroupPanels, detectKoppelstrippen } from '../src/lib/panelization.js';
+import { buildGroupPanels, detectKoppelstrippen, buildFacadeLatten } from '../src/lib/panelization.js';
 import { buildFacePattern } from '../src/lib/pattern.js';
 
 const rawMat = { steenL: 221, steenH: 51, lint: 5.6, stoot: 5.6, brickWeightM2: 34.6 };  // groep-materiaal
@@ -40,5 +40,15 @@ const seamWt = [...new Set(kopWt.map((k) => Math.round(k.x + k.width / 2)))];
 const naadHitsWt = rightEdges2d.filter((bx) => kopWt.some((k) => k.x < bx - 0.5 && (k.x + k.width) > bx + 0.5));
 console.log(`2) KOPPELSTRIP-naden: 2D-paneelranden=${rightEdges2d.length}; werktekening detecteert koppelstrip op ${naadHitsWt.length} daarvan → ${naadHitsWt.length === rightEdges2d.length ? '✓ zelfde naden' : `(${rightEdges2d.length - naadHitsWt.length} rand(en) zonder — check)`}`);
 console.log(`   paneelranden @ ${rightEdges2d.join(', ')}`);
-console.log(`\n→ ${panelsEqual ? '2D EN WERKTEKENING CONGRUENT ✓ (zelfde facadeData + zelfde panelen + koppelstrippen op de paneelranden)' : 'NOG NIET ✗'}`);
+// 3) LATTEN identiek? beide views: buildFacadeLatten met gedeelde facadeData + effMat + (byte-identieke) panelen
+const lattenCfg = { enabled: true, richting: 'horizontaal', breedte: 45, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 };
+const fdForLat = { groupWidth: gW, groupHeight: gH, groupOpenings, rows };
+const latArgs = (panels) => ({ facadeData: fdForLat, latten: lattenCfg, mat: effMat, panelen, panels, penanten: [], startLijn: null, verband, backingType: 'hout', sparingRects: [], endExtensions: null });
+const lat2d = buildFacadeLatten(latArgs(p2d));
+const latWt = buildFacadeLatten(latArgs(pWt));
+const latSig = (ls) => ls.map((l) => `${Math.round(l.x)},${Math.round(l.y)},${Math.round(l.width)},${Math.round(l.height)}`).sort();
+const sl2 = latSig(lat2d), slW = latSig(latWt);
+const lattenEqual = sl2.length === slW.length && sl2.every((v, i) => v === slW[i]);
+console.log(`3) LATTEN identiek? 2D=${lat2d.length} latten, werktekening=${latWt.length} latten → ${lattenEqual ? '✓ BYTE-IDENTIEK' : '✗ VERSCHILLEND'}`);
+console.log(`\n→ ${panelsEqual && lattenEqual ? '2D EN WERKTEKENING CONGRUENT ✓ (zelfde facadeData + panelen + koppelstrippen + latten)' : 'NOG NIET ✗'}`);
 console.log('');

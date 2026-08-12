@@ -467,7 +467,7 @@ export function computeHorizontalLatten({ facadeData, latten, mat, panelen, star
 // sparing-clip. Verticaal: paneel-x-posities (met penant-hoogte) + sparing-clip. De AANROEPER levert z'n
 // eigen `panels` (zodat de extent-clip op dezelfde panelen klopt) én de `panelen`-settings. Zo produceren
 // 2D/3D/export/werktekening/uittrekstaat identieke latten uit één bron.
-export function buildFacadeLatten({ facadeData, latten, mat, panelen, panels = [], penanten = [], startLijn, verband, backingType, sparingRects = [] }) {
+export function buildFacadeLatten({ facadeData, latten, mat, panelen, panels = [], penanten = [], startLijn, verband, backingType, sparingRects = [], endExtensions = null }) {
   const _bt = backingType ?? 'hout';
   if (!facadeData || !latten?.enabled || _bt === 'aluminium' || _bt === 'aluminium_slimfort') return [];
   const { groupWidth, groupHeight, groupOpenings } = facadeData;
@@ -518,6 +518,13 @@ export function buildFacadeLatten({ facadeData, latten, mat, panelen, panels = [
       const latH = pen ? Math.max(1, pen.hoogte ?? 2000) : groupHeight;
       return { id: `lat-v-${idx}`, richting: 'verticaal', x: lx1, y: 0, width: latBreedte, height: latH, forced: false };
     });
+  }
+  // UNIFIED_LATTEN: hoek-extensie (buitenste horizontale lat loopt door voorbij de gevelrand) hier ÍN de
+  // gedeelde helper, zodat ALLE views 'm identiek toepassen (was alleen in View2D → divergentie).
+  if (richting === 'horizontaal' && isKeepEndExtension() && endExtensions) {
+    const eL = Math.max(0, endExtensions.left?.battens ?? 0);
+    const eR = Math.max(0, endExtensions.right?.battens ?? 0);
+    if (eL > 0 || eR > 0) out = extendLattenAtEnds(out, groupWidth, eL, eR);
   }
   return (sparingRects?.length) ? cutVentHolesFromPanels(out, sparingRects) : out;
 }
