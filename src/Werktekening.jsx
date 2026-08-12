@@ -116,8 +116,8 @@ function getPanelStripsAnnotated(panel, facadeRows, verband, mat, koppelstripSet
         if (piece.start + piece.length <= panel.x + 0.5 || piece.start >= panel.x + panel.width - 0.5) continue;
         const clipX  = Math.max(piece.start, panel.x) - panel.x;
         const clipX2 = Math.min(piece.start + piece.length, panel.x + panel.width) - panel.x;
-        const clipY  = Math.max(row.y, panel.y) - panel.y;
-        const clipY2 = Math.min(row.y + stripH, panel.y + panel.height) - panel.y;
+        const clipY  = Math.max(piece.yBot ?? row.y, panel.y) - panel.y;                 // STRIP_SNIJLIJN: deel-steen tot de rand
+        const clipY2 = Math.min(piece.yTop ?? (row.y + stripH), panel.y + panel.height) - panel.y;
         if (clipX2 - clipX > 0.5 && clipY2 - clipY > 0.5) {
           strips.push({ x: clipX, y: clipY, width: clipX2 - clipX, height: clipY2 - clipY, label: piece.label, koppelstrip: !!piece.koppelstrip });
         }
@@ -131,8 +131,8 @@ function getPanelStripsAnnotated(panel, facadeRows, verband, mat, koppelstripSet
         if (piece.start + piece.length <= panel.x + 0.5 || piece.start >= panel.x + panel.width - 0.5) continue;
         const clipX  = Math.max(piece.start, panel.x) - panel.x;
         const clipX2 = Math.min(piece.start + piece.length, panel.x + panel.width) - panel.x;
-        const clipY  = Math.max(row.y, panel.y) - panel.y;
-        const clipY2 = Math.min(row.y + stripH, panel.y + panel.height) - panel.y;
+        const clipY  = Math.max(piece.yBot ?? row.y, panel.y) - panel.y;                 // STRIP_SNIJLIJN: deel-steen tot de rand
+        const clipY2 = Math.min(piece.yTop ?? (row.y + stripH), panel.y + panel.height) - panel.y;
         if (clipX2 - clipX > 0.5 && clipY2 - clipY > 0.5) {
           const len = Math.round(clipX2 - clipX);
           const ksKey = `${Math.round(piece.start)},${Math.round(row.y)},${Math.round(piece.length)}`;
@@ -179,8 +179,8 @@ function getStripsForPanel(panel, facadeRows, verband, mat) {
       if (piece.start + piece.length <= panel.x + 0.5 || piece.start >= panel.x + panel.width - 0.5) continue;
       const clipX  = Math.max(piece.start, panel.x) - panel.x;
       const clipX2 = Math.min(piece.start + piece.length, panel.x + panel.width) - panel.x;
-      const clipY  = Math.max(row.y, panel.y) - panel.y;
-      const clipY2 = Math.min(row.y + stripH, panel.y + panel.height) - panel.y;
+      const clipY  = Math.max(piece.yBot ?? row.y, panel.y) - panel.y;                 // STRIP_SNIJLIJN: deel-steen tot de rand
+      const clipY2 = Math.min(piece.yTop ?? (row.y + stripH), panel.y + panel.height) - panel.y;
       if (clipX2 - clipX > 0.5 && clipY2 - clipY > 0.5) {
         strips.push({ x: clipX, y: clipY, width: clipX2 - clipX, height: clipY2 - clipY, label: piece.label });
       }
@@ -1129,7 +1129,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
                   return localLeftRows.flatMap((row, ri) => {
                     if (row.y + stripH <= 0 || row.y >= pH) return [];
                     return row.pieces.map((pc, pi) => {
-                      const clipY1 = Math.max(row.y, 0); const clipY2 = Math.min(row.y + stripH, pH);
+                      const clipY1 = Math.max(pc.yBot ?? row.y, 0); const clipY2 = Math.min(pc.yTop ?? (row.y + stripH), pH); // STRIP_SNIJLIJN
                       if (clipY2 - clipY1 < 0.5) return null;
                       const rh = Math.max((clipY2 - clipY1) * sc, 1.5);
                       return <rect key={`ls-${ri}-${pi}`} x={ux(leftX + pc.start)} y={uy(clipY2)} width={Math.max(pc.length * sc, 1)} height={rh} fill={brickColor(pc.label, color)} stroke="rgba(0,0,0,0.25)" strokeWidth={0.3} />;
@@ -1144,8 +1144,8 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
                   return faceData.front.flatMap((row, ri) => {
                     if (row.y + stripH <= 0 || row.y >= pH) return [];
                     return row.pieces.map((pc, pi) => {
-                      const clipY1 = Math.max(row.y, 0);
-                      const clipY2 = Math.min(row.y + stripH, pH);
+                      const clipY1 = Math.max(pc.yBot ?? row.y, 0);                 // STRIP_SNIJLIJN: deel-steen tot de rand
+                      const clipY2 = Math.min(pc.yTop ?? (row.y + stripH), pH);
                       if (clipY2 - clipY1 < 0.5) return null;
                       const rx = ux(frontX + pc.start);
                       const ry = uy(clipY2);
@@ -1171,7 +1171,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
                   return localRightRows.flatMap((row, ri) => {
                     if (row.y + stripH <= 0 || row.y >= pH) return [];
                     return row.pieces.map((pc, pi) => {
-                      const clipY1 = Math.max(row.y, 0); const clipY2 = Math.min(row.y + stripH, pH);
+                      const clipY1 = Math.max(pc.yBot ?? row.y, 0); const clipY2 = Math.min(pc.yTop ?? (row.y + stripH), pH); // STRIP_SNIJLIJN
                       if (clipY2 - clipY1 < 0.5) return null;
                       const rh = Math.max((clipY2 - clipY1) * sc, 1.5);
                       return <rect key={`rs-${ri}-${pi}`} x={ux(rightX + pc.start)} y={uy(clipY2)} width={Math.max(pc.length * sc, 1)} height={rh} fill={brickColor(pc.label, color)} stroke="rgba(0,0,0,0.25)" strokeWidth={0.3} />;

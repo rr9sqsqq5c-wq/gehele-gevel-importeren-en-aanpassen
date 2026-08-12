@@ -1,3 +1,5 @@
+import { isStripSnijlijn } from './featureFlags.js';
+
 // sparingElements.js — geïmporteerde NIET-wand IFC-onderdelen (leidingen/kanalen/proxies) op het
 // vlak van een gevelgroep projecteren en de steenstripbekleding er rondom wegknippen (met offset).
 // Pure functies (geen web-ifc / geen DOM) → los testbaar. Achter vlag `sparingElementen` (default UIT).
@@ -70,8 +72,46 @@ export function sparingRectsForFacade(facadeData, elements, offset = 0, depthTol
 // Knip de sparing-rechthoeken uit de rijen (post-processing op facadeData.rows). Elk stuk metselwerk
 // dat op z'n rijhoogte binnen een sparing-rechthoek valt, wordt op de rand afgesneden (net als een
 // raam/deur-opening). rowH = steenstrip-hoogte (verband-afhankelijk). Retourneert NIEUWE rows.
+const _s2 = (n) => Math.round(n * 100) / 100;
+// STRIP_SNIJLIJN — 2D-rechthoek-aftrek: sub-rect s minus [rx0,rx1]×[ry0,ry1] → resterende sub-rects.
+// Links/rechts blijven vol hoog; onder/boven worden op de WERKELIJKE opening/sparing-rand gesneden.
+function _subtractRect(s, rx0, rx1, ry0, ry1) {
+  if (rx1 <= s.x0 + 0.01 || rx0 >= s.x1 - 0.01 || ry1 <= s.y0 + 0.01 || ry0 >= s.y1 - 0.01) return [s];
+  const out = [];
+  if (s.x0 < rx0 - 0.01) out.push({ x0: s.x0, x1: rx0, y0: s.y0, y1: s.y1 });   // links (vol hoog)
+  if (s.x1 > rx1 + 0.01) out.push({ x0: rx1, x1: s.x1, y0: s.y0, y1: s.y1 });   // rechts (vol hoog)
+  const mx0 = Math.max(s.x0, rx0), mx1 = Math.min(s.x1, rx1);
+  if (s.y0 < ry0 - 0.01) out.push({ x0: mx0, x1: mx1, y0: s.y0, y1: ry0 });     // onder (gesneden op rand)
+  if (s.y1 > ry1 + 0.01) out.push({ x0: mx0, x1: mx1, y0: ry1, y1: s.y1 });     // boven (gesneden op rand)
+  return out;
+}
+// STRIP_SNIJLIJN: knip rond de rects met een 2D-snede → een steen die de rand kruist blijft als DEEL-steen
+// staan (tot de rand), met yBot/yTop op het stuk boven/onder de rand. Rest van de rij ongemoeid.
+function _clipRowsYCut(rows, rects, rowH) {
+  const out = [];
+  for (const row of rows) {
+    const ry0 = row.y, ry1 = row.y + rowH;
+    const overlap = rects.filter((r) => r.y + r.height > ry0 && r.y < ry1);
+    if (!overlap.length) { out.push(row); continue; }
+    const pieces = [];
+    for (const p of row.pieces) {
+      let subs = [{ x0: p.start, x1: p.start + p.length, y0: ry0, y1: ry1 }];
+      for (const r of overlap) subs = subs.flatMap((s) => _subtractRect(s, r.x, r.x + r.width, r.y, r.y + r.height));
+      for (const s of subs) {
+        if (s.x1 - s.x0 <= 1 || s.y1 - s.y0 <= 0.5) continue;
+        const piece = { ...p, start: _s2(s.x0), length: _s2(s.x1 - s.x0) };
+        if (s.y0 > ry0 + 0.5 || s.y1 < ry1 - 0.5) { piece.yBot = _s2(s.y0); piece.yTop = _s2(s.y1); }  // deel-steen
+        pieces.push(piece);
+      }
+    }
+    if (pieces.length) out.push({ ...row, pieces });
+  }
+  return out;
+}
+
 export function clipRowsAroundRects(rows, rects, rowH) {
   if (!rects?.length || !rows?.length) return rows;
+  if (isStripSnijlijn()) return _clipRowsYCut(rows, rects, rowH);   // deel-steen tot de werkelijke rand
   const out = [];
   for (const row of rows) {
     const ry0 = row.y, ry1 = row.y + rowH;

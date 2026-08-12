@@ -260,7 +260,10 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
       ? buildZoneBondRows(r.x1, r.y1, zoneMat, zoneVerband) // abs coords, op vlak-oorsprong
       : buildZoneBondRows(zW, zH, zoneMat, zoneVerband).map((row) => ({
           y: row.y + r.y0,
-          pieces: row.pieces.map((p) => ({ ...p, start: p.start + r.x0 })),
+          // STRIP_SNIJLIJN: een deel-steen (yBot/yTop) schuift met de zone-Y mee; anders alleen X (byte-identiek).
+          pieces: row.pieces.map((p) => p.yBot != null
+            ? { ...p, start: p.start + r.x0, yBot: round2(p.yBot + r.y0), yTop: round2(p.yTop + r.y0) }
+            : { ...p, start: p.start + r.x0 }),
         }));
     const higherRects = clears.slice(i + 1); // latere zones = hogere z-order (incl. hun voegmarge)
 

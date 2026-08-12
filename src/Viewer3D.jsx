@@ -335,6 +335,14 @@ function MainStructure3D({ gp, settings, allWalls }) {
   );
 }
 
+// STRIP_SNIJLIJN: een deel-steen (piece.yBot/yTop, gesneden op een opening/sparing-rand) krijgt zijn
+// EIGEN verticale extent i.p.v. de volle rijhoogte. Geen yBot/yTop (vlag uit / niet-gesneden) → volle rij
+// (byte-identiek). De brick-pos-functies gebruiken (rowY, steenH) alleen voor de hoogte-as, dus dit klopt.
+function pieceVSpan(piece, rowY, steenH) {
+  if (piece.yBot != null && piece.yTop != null) return { y: piece.yBot, h: piece.yTop - piece.yBot };
+  return { y: rowY, h: steenH };
+}
+
 function getGroupBrickPos(rwo, groupMinX, groupMinH, pieceStart, pieceLen, rowY, steenH, brickD, allWalls, flipDir = false, depthFromFace = null, mir = false, groupWidth = 0) {
   const raw = getOutsideFaceInfo(rwo, allWalls);
   const outsidePos = raw.outsidePos;
@@ -1052,9 +1060,10 @@ function GroupBricks3D({ groupPattern, material, brickD, allWalls, slimFort }) {
         return {
           color: batch.color,
           bricks: batch.rows.flatMap((row) =>
-            row.pieces.map((piece) =>
-              getPenantSideBrickPos(refWallOrigin, groupMinX, groupMinH, sideType, penantX, penantB, piece.start, piece.length, row.y, steenH, depth, sideDepthOffset, allWalls, !!outsideDirFlip, mirrored, groupWidth)
-            )
+            row.pieces.map((piece) => {
+              const vs = pieceVSpan(piece, row.y, steenH);
+              return getPenantSideBrickPos(refWallOrigin, groupMinX, groupMinH, sideType, penantX, penantB, piece.start, piece.length, vs.y, vs.h, depth, sideDepthOffset, allWalls, !!outsideDirFlip, mirrored, groupWidth);
+            })
           ),
         };
       }
@@ -1062,17 +1071,19 @@ function GroupBricks3D({ groupPattern, material, brickD, allWalls, slimFort }) {
       return {
         color: batch.color,
         bricks: batch.rows.flatMap((row) =>
-          row.pieces.map((piece) =>
-            getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, row.y, steenH, depth, allWalls, !!outsideDirFlip, dfr, mirrored, groupWidth)
-          )
+          row.pieces.map((piece) => {
+            const vs = pieceVSpan(piece, row.y, steenH);
+            return getGroupBrickPos(refWallOrigin, groupMinX, groupMinH, piece.start, piece.length, vs.y, vs.h, depth, allWalls, !!outsideDirFlip, dfr, mirrored, groupWidth);
+          })
         ),
       };
     }).filter((b) => b.bricks.length > 0);
     const wrapBatches = (cornerWraps ?? []).map((wrap, wi) => {
       const bricks = wrap.rows.flatMap((row) =>
-        row.pieces.map((piece) =>
-          getGroupBrickPos(wrap.secRwo, wrap.secGroupMinX, wrap.secGroupMinH, piece.start, piece.length, row.y, wrap.brickH, wrap.brickD, allWalls, !!wrap.secOutsideDirFlip, wrap.depthFromFace)
-        )
+        row.pieces.map((piece) => {
+          const vs = pieceVSpan(piece, row.y, wrap.brickH);
+          return getGroupBrickPos(wrap.secRwo, wrap.secGroupMinX, wrap.secGroupMinH, piece.start, piece.length, vs.y, vs.h, wrap.brickD, allWalls, !!wrap.secOutsideDirFlip, wrap.depthFromFace);
+        })
       );
       return { color: wrap.color, bricks };
     }).filter((b) => b.bricks.length > 0);

@@ -491,6 +491,16 @@ export function isUnifiedLatten() {
   return readFlag('unifiedLatten', true);
 }
 
+// STRIP_SNIJLIJN — steenstrips worden op de WERKELIJKE snijlijn van een opening/sparing gesneden
+// (deel-steen tot de rand), i.p.v. de hele steen (rij) weg te knippen zodra die de boven/onderrand kruist.
+// Klantregel: sparingen ALTIJD (alle verbanden); ramen/deuren ALLEEN bij staand verband (halfsteens raam/
+// deur blijft op de laagrand, zoals nu). Raakt de twee clip-paden (clipRowsAroundRects = sparing;
+// splitAroundOpenings = raam/deur) + de tekenaars (de deel-steen krijgt yBot/yTop). DEFAULT = false →
+// exact het huidige gedrag (byte-identiek). Aanzetten: ?stripSnijlijn=1. Noodrem: ?stripSnijlijn=0.
+export function isStripSnijlijn() {
+  return readFlag('stripSnijlijn', false);
+}
+
 // UNIFIED_PANELS — ÉÉN gedeelde paneel-berekening (buildGroupPanels, panelization.js) voor
 // 2D/3D/export/werktekening/uittrekstaat/mal, zodat de weergaven niet meer uiteen kunnen lopen. Dicht
 // twee lekken waardoor 2D ≠ werktekening: (A) het steenstrip-ARTIKEL werd alleen in 2D op de panelen
@@ -616,6 +626,7 @@ export const FLAG_REGISTRY = [
   { key: 'openingEdgeQuarter',   label: 'Opening-rand ¼-steen',      note: 'Sta ¼ steen toe tegen een opening i.p.v. altijd ½ (kop) wanneer twee strips boven elkaar bijna even groot worden. Delta instelbaar.' },
   { key: 'kopTolerantie',        label: 'Kop-tolerantie ±2 mm (i.p.v. drieklezoor)', note: 'Een eind-rest binnen ±2 mm van een hele kop wordt als kop toegepast i.p.v. de laatste strek naar een drieklezoor te trekken. Lost op dat een op hele mm afgeronde wandlengte (bv. 6792,4→6792) net onder de kop-grens valt en zo een drieklezoor forceert op de verspringende rijen.' },
   { key: 'concaveOpeningMerge',  label: 'Concave opening-unie (raam+deur)', note: 'Twee overlappende openings (deur naast raam) worden tot hun echte L/U-vorm samengevoegd i.p.v. bbox, zodat het massieve muurdeel onder het raam bekleed blijft.' },
+  { key: 'stripSnijlijn',        label: 'Strips snijden op de snijlijn', note: 'Steenstrips worden op de WERKELIJKE rand van een sparing/opening gesneden (deel-steen tot de rand) i.p.v. de hele steen weg te knippen. Sparingen: altijd (elk verband). Ramen/deuren: alleen bij staand verband — halfsteens raam/deur blijft op de laagrand zoals nu. Werkt in 2D/3D/werktekening/export.' },
   { key: 'zoneStartStop',        label: 'Zone Start-X / Stop-X (numeriek)', note: 'Per tekenzone de linker- en rechterrand exact in mm intypen (i.p.v. tekenen) + "hele steen"-snap, om te optimaliseren. Werkt in 3D/2D/IFC; meetstaat/mallen nog niet.' },
   { key: 'geenVerband',          label: 'Metselverband "geen" (blanco basisvlak)', note: 'Extra keuze in de verband-dropdown: het basisvlak buiten de tekenzones krijgt geen strips/panelen/latten → blanco gevel om zelf tekenzones op te leggen. De zones brengen hun eigen verband.' },
   { key: 'paneelOptimalisatie',  label: 'Optimale paneelverdeling (standaard aan)', note: 'STANDAARD AAN. Naden op de doorlopende steen → koppelstenen overal om-en-om (ook in smalle zones); rijen even lagen binnen het gewicht (geen mini-panelen); gestapelde panelen in één kolom samengevoegd; snipper-zones < 50 mm vervallen. Uitzetten = ?paneelOptimalisatie=0.' },

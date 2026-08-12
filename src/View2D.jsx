@@ -1376,16 +1376,19 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
           for (const row of (batch.rows ?? [])) {
             const clippedTop = Math.min(row.y + bStripH, groupHeight);
             const clippedBottom = Math.max(row.y, patternStartH);
-            const actualH = clippedTop - clippedBottom;
-            if (actualH <= 0) continue;
-            const [, rowSy] = toScreen(0, clippedTop);
-            const rowSh = actualH * scale * 0.001;
+            if (clippedTop - clippedBottom <= 0) continue;
             for (const piece of row.pieces) {
               const [pSx] = toScreen(mx(piece.start, piece.length), 0);
               const pSw = piece.length * scale * 0.001;
+              // STRIP_SNIJLIJN: deel-steen (yBot/yTop) op eigen hoogte; anders de batch-rij-hoogte.
+              const pTop = Math.min(piece.yTop != null ? piece.yTop : row.y + bStripH, groupHeight);
+              const pBot = Math.max(piece.yBot != null ? piece.yBot : row.y, patternStartH);
+              if (pTop - pBot <= 0) continue;
+              const [, pSy] = toScreen(0, pTop);
+              const pSh = (pTop - pBot) * scale * 0.001;
               ctx.fillStyle = brickColor(piece.label, bColor, piece.length, kopMM);
-              ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
-              if (isTooSmall(piece.label, piece.length, kopMM)) tooSmallPieces.push({ pSx, rowSy, pSw, rowSh });
+              ctx.fillRect(pSx + 0.5, pSy + 0.5, Math.max(pSw - 1, 1), Math.max(pSh - 1, 1));
+              if (isTooSmall(piece.label, piece.length, kopMM)) tooSmallPieces.push({ pSx, rowSy: pSy, pSw, rowSh: pSh });
             }
           }
         }
@@ -1416,19 +1419,22 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
         for (const row of rows) {
           const clippedTop = Math.min(row.y + stripH, groupHeight);
           const clippedBottom = Math.max(row.y, patternStartH);
-          const actualH = clippedTop - clippedBottom;
-          if (actualH <= 0) continue;
-          const [, rowSy] = toScreen(0, clippedTop);
-          const rowSh = actualH * scale * 0.001;
+          if (clippedTop - clippedBottom <= 0) continue;
           for (const piece of row.pieces) {
             const [pSx] = toScreen(mx(piece.start, piece.length), 0);
             const pSw = piece.length * scale * 0.001;
+            // STRIP_SNIJLIJN: een deel-steen (yBot/yTop) tekent op z'n eigen hoogte; anders de rij-hoogte.
+            const pTop = Math.min(piece.yTop != null ? piece.yTop : row.y + stripH, groupHeight);
+            const pBot = Math.max(piece.yBot != null ? piece.yBot : row.y, patternStartH);
+            if (pTop - pBot <= 0) continue;
+            const [, pSy] = toScreen(0, pTop);
+            const pSh = (pTop - pBot) * scale * 0.001;
             ctx.fillStyle = (piece.koppelstrip || stripIsKoppel(piece, row.y))
               ? 'rgba(22,163,74,0.85)'
               : brickColor(piece.label, color, piece.length, kopMM);
-            ctx.fillRect(pSx + 0.5, rowSy + 0.5, Math.max(pSw - 1, 1), Math.max(rowSh - 1, 1));
+            ctx.fillRect(pSx + 0.5, pSy + 0.5, Math.max(pSw - 1, 1), Math.max(pSh - 1, 1));
             if (isTooSmall(piece.label, piece.length, kopMM)) {
-              tooSmallPieces.push({ pSx, rowSy, pSw, rowSh });
+              tooSmallPieces.push({ pSx, rowSy: pSy, pSw, rowSh: pSh });
             }
           }
         }

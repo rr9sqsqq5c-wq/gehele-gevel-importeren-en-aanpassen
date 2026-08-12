@@ -1,5 +1,5 @@
 import { polyXRangesAtY } from './geometry.js';
-import { isDropOversizedOpenings, isVentilatieZone, isPenantTweeRijen, isGevelHandedness, isConcaveOpeningMerge, isKopTolerantie } from './featureFlags.js';
+import { isDropOversizedOpenings, isVentilatieZone, isPenantTweeRijen, isGevelHandedness, isConcaveOpeningMerge, isKopTolerantie, isStripSnijlijn } from './featureFlags.js';
 
 // GEVEL_HANDEDNESS — moet de horizontale richting van dit vlak gespiegeld worden zodat het van BUITEN
 // links→rechts leest? Kijker-rechts = up × buitennormaal = outsideDir·ε(up,normaal,lengte)·ê_lengte.
@@ -26,6 +26,19 @@ const KOP_TOL = 2;
 
 function round2(v) {
   return Math.round(v * 100) / 100;
+}
+
+// STRIP_SNIJLIJN — 2D-rechthoek-aftrek: sub-rect s minus [rx0,rx1]×[ry0,ry1] → resterende sub-rects.
+// Links/rechts vol hoog; onder/boven gesneden op de WERKELIJKE opening-rand. Voor de deel-steen (yBot/yTop).
+function _subtractRect2D(s, rx0, rx1, ry0, ry1) {
+  if (rx1 <= s.x0 + 0.01 || rx0 >= s.x1 - 0.01 || ry1 <= s.y0 + 0.01 || ry0 >= s.y1 - 0.01) return [s];
+  const out = [];
+  if (s.x0 < rx0 - 0.01) out.push({ x0: s.x0, x1: rx0, y0: s.y0, y1: s.y1 });
+  if (s.x1 > rx1 + 0.01) out.push({ x0: rx1, x1: s.x1, y0: s.y0, y1: s.y1 });
+  const mx0 = Math.max(s.x0, rx0), mx1 = Math.min(s.x1, rx1);
+  if (s.y0 < ry0 - 0.01) out.push({ x0: mx0, x1: mx1, y0: s.y0, y1: ry0 });
+  if (s.y1 > ry1 + 0.01) out.push({ x0: mx0, x1: mx1, y0: ry1, y1: s.y1 });
+  return out;
 }
 
 export function getOpeningPoly(op) {
@@ -644,6 +657,28 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   }
 
   function splitAroundOpenings(piece, rowY) {
+    // STRIP_SNIJLIJN (alleen staand verband): 2D-snede → deel-steen tot de raam/deur-rand (yBot/yTop),
+    // i.p.v. de hele verticale steen weg. Halfsteens raam/deur → oude X-snede hieronder (byte-identiek).
+    if (isStripSnijlijn() && verband === 'staand_tegelverband') {
+      const ry0 = rowY, ry1 = rowY + rowH;
+      let subs = [{ x0: piece.start, x1: piece.start + piece.length, y0: ry0, y1: ry1 }];
+      for (const op of maskOpenings) {
+        if (ry1 < op.y + 1 || ry0 > op.y + op.height + 1) continue;
+        if (op.polyPts && op.polyPts.length >= 3) {
+          const midY = rowY + rowH * 0.5;
+          let ranges = polyXRangesAtY(op.polyPts, midY);
+          if (!ranges.length) ranges = [...polyXRangesAtY(op.polyPts, rowY + rowH * 0.25), ...polyXRangesAtY(op.polyPts, rowY + rowH * 0.75)];
+          for (const [ox1, ox2] of ranges) subs = subs.flatMap((s) => _subtractRect2D(s, ox1, ox2, ry0, ry1)); // polyPts → X-snede (vol hoog)
+        } else {
+          subs = subs.flatMap((s) => _subtractRect2D(s, op.x, op.x + op.width, op.y, op.y + op.height));       // 2D-snede
+        }
+      }
+      return subs.filter((s) => s.x1 - s.x0 > 0.5 && s.y1 - s.y0 > 0.5).map((s) => {
+        const q = { ...piece, start: round2(s.x0), length: round2(s.x1 - s.x0) };
+        if (s.y0 > ry0 + 0.5 || s.y1 < ry1 - 0.5) { q.yBot = round2(s.y0); q.yTop = round2(s.y1); }
+        return q;
+      });
+    }
     let segments = [{ start: piece.start, end: piece.start + piece.length }];
     for (const op of maskOpenings) {
       if (rowY + rowH < op.y + 1 || rowY > op.y + op.height + 1) continue;
@@ -731,7 +766,9 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     if (clipped.length) rows.push({ y: rowY, pieces: clipped });
   }
 
-  return { rows, groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, extendLeft, extendRight, patternStartH: effectiveMinH, groupOpenings, openingWarnings, refWallOrigin: refWall.wallOrigin, mirrored: mirrorBond };
+  // STRIP_SNIJLIJN: bovenste (overstekende) rij op de vlak-top snijden → deel-steen (yBot/yTop). Zo respecteren
+  // ook de penant-zones (App.jsx bouwt ze via deze functie) + 3D-hoofdgevel de max hoogte. Vlag uit → byte-identiek.
+  return { rows: clampRowsTopToHeight(rows, material, verband, effectiveHeight), groupMinX, groupMinH, groupWidth, groupHeight: effectiveHeight, extendLeft, extendRight, patternStartH: effectiveMinH, groupOpenings, openingWarnings, refWallOrigin: refWall.wallOrigin, mirrored: mirrorBond };
 }
 
 export function getGroupPatternLogic(walls, material, verband) {
@@ -843,6 +880,23 @@ export function buildSingleWallPattern(wall, material, verband) {
   return rows;
 }
 
+// STRIP_SNIJLIJN — een gevelvlak (penant/zone) mag met zijn strips niet BOVEN zijn eigen hoogte uitsteken.
+// ceil(height/lagenmaat) laat de bovenste strip [rowY, rowY+stripH] tot ~steenL uitsteken (zichtbaar bij
+// staand verband). Snijd die bovenste rij op `height` → deel-steen (yBot/yTop, die alle views al honoreren).
+// Vlag UIT of geen oversteek → rijen ongemoeid (byte-identiek). stripH = staand ? steenL : steenH.
+function clampRowsTopToHeight(rows, material, verband, height) {
+  if (!isStripSnijlijn() || !(height > 0)) return rows;
+  const stripH = verband === 'staand_tegelverband' ? (material.steenL ?? material.steenH ?? 50) : (material.steenH ?? 50);
+  const yTop = round2(height);
+  const out = [];
+  for (const row of rows) {
+    if (row.y + stripH <= height + 0.5) { out.push(row); continue; }   // strip past binnen de hoogte
+    if (yTop - row.y <= 0.5) continue;                                  // rij ligt geheel op/boven de top → weg
+    out.push({ ...row, pieces: row.pieces.map((p) => ({ ...p, yBot: round2(row.y), yTop })) });
+  }
+  return out;
+}
+
 export function buildFacePattern(width, height, material, verband, rowOffset = 0) {
   const lagenmaat = getLagenmaat(material, verband);
   const lagen = lagenmaat > 0 ? Math.ceil(height / lagenmaat) : 0;
@@ -852,7 +906,7 @@ export function buildFacePattern(width, height, material, verband, rowOffset = 0
     const pieces = buildRowPiecesForWidth(width, material, verband, r + rowOffset, 0);
     if (pieces.length) rows.push({ y: rowY, pieces });
   }
-  return rows;
+  return clampRowsTopToHeight(rows, material, verband, height);
 }
 
 // PENANT-ZIJDE (vlag penantHoekStoot): de opgegeven diepte IS de zijstrip-lengte (ruimte tussen voorstrip en
@@ -867,7 +921,7 @@ export function buildPenantSidePattern(depth, height, material, verband, rowOffs
     const label = len < steenL - 0.001 ? 'Rest' : 'Strek';
     const rows = [];
     for (let r = 0; r < lagen; r++) rows.push({ y: round2(r * lagenmaat), pieces: [{ start: 0, length: len, label }] });
-    return rows;
+    return clampRowsTopToHeight(rows, material, verband, height);   // STRIP_SNIJLIJN: bovenste strip op vlak-top
   }
   return buildFacePattern(depth, height, material, verband, rowOffset);
 }
@@ -903,7 +957,7 @@ export function buildCenteredFacePattern(width, height, material, verband, rowOf
       }
       if (pieces.length) rows.push({ y: rowY, pieces });
     }
-    return rows;
+    return clampRowsTopToHeight(rows, material, verband, height);   // STRIP_SNIJLIJN: bovenste staand-strip op vlak-top
   }
 
   const unit = steenL + stoot;
@@ -948,7 +1002,7 @@ export function buildCenteredFacePattern(width, height, material, verband, rowOf
     }
     if (pieces.length) rows.push({ y: rowY, pieces });
   }
-  return rows;
+  return clampRowsTopToHeight(rows, material, verband, height);   // STRIP_SNIJLIJN: bovenste strip op vlak-top
 }
 
 // PENANT_TWEE_RIJEN — bouwt de VERSPRINGENDE rij van het penant-voorvlak (halfsteens): een HELE

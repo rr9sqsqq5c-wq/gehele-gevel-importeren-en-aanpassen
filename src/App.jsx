@@ -3826,7 +3826,7 @@ export default function App() {
         const depthFromFace = sideBackDepth + maxArmDepth + brickD3d / 2;
         const penSL3 = Math.max(0, s.startLijn ?? 0);   // penant-strips volgen de groep-startlijn
         const penEffPH3 = pH - penSL3;                   // zichtbare penant-hoogte boven de startlijn (top blijft op pH)
-        const shiftPenY3 = (rows) => penSL3 > 0 ? rows.map((row) => ({ ...row, y: Math.round((row.y + penSL3) * 100) / 100 })) : rows;
+        const shiftPenY3 = (rows) => penSL3 > 0 ? rows.map((row) => ({ ...row, y: Math.round((row.y + penSL3) * 100) / 100, pieces: row.pieces.map((p) => p.yBot != null ? { ...p, yBot: Math.round((p.yBot + penSL3) * 100) / 100, yTop: Math.round((p.yTop + penSL3) * 100) / 100 } : p) })) : rows;   // STRIP_SNIJLIJN: deel-steen yBot/yTop schuift mee
         const faceRows = shiftPenY3(buildCenteredFacePattern(pB, penEffPH3, effectiveMat3d, groupVerband3d));
         if (!faceRows.length) continue;
         const offsetRows = faceRows.map((row) => ({
@@ -4320,7 +4320,7 @@ export default function App() {
     addLog(`Bestand: ${pendingFile.name} (${(pendingFile.size / 1024 / 1024).toFixed(1)} MB)`);
     try {
       const filter = selectedTypes.size < wallTypes.length ? selectedTypes : null;
-      const CACHE_SCHEMA_V = 18; // v18: kozijnRect op EXACTE (raster-vrije) projectie i.p.v. 20mm-raster
+      const CACHE_SCHEMA_V = 19; // v19: VENT_ABOVE_GAP 1200→300mm (strakkere ventilatie-detectie) — her-parse nodig
       const pathTag = isNewOpeningDerivation() ? 'newOpenings' : 'legacy';
       const cacheKey = `${pendingFile.name}|${pendingFile.size}|${filter ? [...filter].sort().join(',') : 'all'}|v${CACHE_SCHEMA_V}|${pathTag}|koz${isShowKozijnen() ? 1 : 0}|okoz${isOpeningFromKozijn() ? 1 : 0}|vent${isVentilatieZone() ? 1 : 0}|klik${isKliklijstReferentie() ? 1 : 0}|gh${isGevelHandedness() ? 1 : 0}`;
 
@@ -5928,7 +5928,7 @@ export default function App() {
         // anders verdelen); sideDepthL (voorstrip/totale diepte) blijft ongewijzigd. Vlag uit → origineel.
         const penSL2 = Math.max(0, s.startLijn ?? 0);   // penant-strips volgen de groep-startlijn
         const penEffPH2 = pH - penSL2;
-        const shiftPenY2 = (rows) => penSL2 > 0 ? rows.map((row) => ({ ...row, y: Math.round((row.y + penSL2) * 100) / 100 })) : rows;
+        const shiftPenY2 = (rows) => penSL2 > 0 ? rows.map((row) => ({ ...row, y: Math.round((row.y + penSL2) * 100) / 100, pieces: row.pieces.map((p) => p.yBot != null ? { ...p, yBot: Math.round((p.yBot + penSL2) * 100) / 100, yTop: Math.round((p.yTop + penSL2) * 100) / 100 } : p) })) : rows;   // STRIP_SNIJLIJN: deel-steen yBot/yTop schuift mee
         const frontRows = shiftPenY2(buildCenteredFacePattern(pB, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND));
         const rawLeft = shiftPenY2(isPenantHoekStoot() ? buildPenantSidePattern(pDL2, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND) : buildFacePattern(sideDepthL, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND));
         const rawRight = shiftPenY2(isPenantHoekStoot() ? buildPenantSidePattern(pDR2, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND) : buildFacePattern(sideDepthR, penEffPH2, mat, s.verband ?? DEFAULT_VERBAND));
@@ -6206,7 +6206,7 @@ export default function App() {
       const pH = Math.max(1, p.hoogte ?? 2000);
       const penSL = Math.max(0, s.startLijn ?? 0);   // penant-strips volgen de groep-startlijn
       const penEffPH = pH - penSL;
-      const shiftPenY = (rows) => penSL > 0 ? rows.map((row) => ({ ...row, y: Math.round((row.y + penSL) * 100) / 100 })) : rows;
+      const shiftPenY = (rows) => penSL > 0 ? rows.map((row) => ({ ...row, y: Math.round((row.y + penSL) * 100) / 100, pieces: row.pieces.map((p) => p.yBot != null ? { ...p, yBot: Math.round((p.yBot + penSL) * 100) / 100, yTop: Math.round((p.yTop + penSL) * 100) / 100 } : p) })) : rows;   // STRIP_SNIJLIJN: deel-steen yBot/yTop schuift mee
       const frontRows = shiftPenY(buildCenteredFacePattern(pB, penEffPH, mat, verband));
 
       const brickDepth = s.brickDepth ?? 20;

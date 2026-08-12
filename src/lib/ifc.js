@@ -7,7 +7,7 @@ import { isUpAxisInheritFallback, isGeometryDerivedOrigin, isTrueNorthMetadataOn
 // VENTILATIE_ZONE — detectiedrempels voor een ventilatie-opening (klein ongevuld gat bóven een raam).
 const VENT_MAX_W = 900;    // mm — breder telt niet als ventilatie
 const VENT_MAX_H = 350;    // mm — hoger telt niet als ventilatie (raam/deur zijn veel hoger)
-const VENT_ABOVE_GAP = 1200; // mm — max verticale afstand tussen raamtop en de vent eronder
+const VENT_ABOVE_GAP = 300; // mm — max verticale afstand tussen raamtop en de vent (strak: rooster zit VLAK boven het kozijn; een sparing hoger in de gevel telt niet meer als ventilatie)
 // BRON-GUARD (dropOversizedOpenings): een void die via IfcRelVoidsElement aan een wand hangt maar
 // veel HOGER is dan die wand (bv. de 2520 mm venster-void die ook aan een 300 mm vloerband hangt)
 // levert in de browser — waar mesh-geometrie beschikbaar is — een te-hoge opening op. Die hoort er
@@ -2552,13 +2552,18 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
           const brickExtH = batchVerband === 'staand_tegelverband' ? batchMat.steenL : batchMat.steenH;
           for (const row of batch.rows) {
             for (const piece of row.pieces) {
-              const [wx, wy, wz] = groupToWorld(piece.start + piece.length / 2, effectiveLatDepth + panelDikte + batchBrickD / 2, row.y);
+              // STRIP_SNIJLIJN: een deel-steen (piece.yBot/yTop, gesneden op een opening/sparing-rand) plaatst
+              // op zijn eigen onderkant en extrudeert zijn eigen hoogte; geen yBot/yTop → volle rij (byte-identiek).
+              const _vDeel = (piece.yBot != null && piece.yTop != null);
+              const _vBot  = _vDeel ? piece.yBot : row.y;
+              const _vExtH = _vDeel ? (piece.yTop - piece.yBot) : brickExtH;
+              const [wx, wy, wz] = groupToWorld(piece.start + piece.length / 2, effectiveLatDepth + panelDikte + batchBrickD / 2, _vBot);
               const placePt = PT(wx, wy, wz);
               const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
               const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
               const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
               const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(piece.length)},${r(batchBrickD)})`);
-              const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(brickExtH)})`);
+              const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(_vExtH)})`);
               const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
               const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
               const safeName = `${group.name ?? 'Groep'} - Strip`.replace(/'/g, "\\'");
@@ -2591,13 +2596,16 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
           const refStr  = wo.lengthAxis  === 'x' ? _mkDir2([1,0,0]) : wo.lengthAxis  === 'y' ? _mkDir2([0,1,0]) : _mkDir2([0,0,1]);
           for (const row of rows) {
             for (const piece of row.pieces) {
-              const [wx, wy, wz] = toWorld(piece.start + piece.length / 2, effectiveLatDepth + panelDikte + brickD / 2, row.y);
+              const _vDeel = (piece.yBot != null && piece.yTop != null);   // STRIP_SNIJLIJN: deel-steen tot de rand
+              const _vBot  = _vDeel ? piece.yBot : row.y;
+              const _vExtH = _vDeel ? (piece.yTop - piece.yBot) : groupBrickExtH;
+              const [wx, wy, wz] = toWorld(piece.start + piece.length / 2, effectiveLatDepth + panelDikte + brickD / 2, _vBot);
               const placePt = PT(wx, wy, wz);
               const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${axisStr},${refStr})`);
               const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
               const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
               const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(piece.length)},${r(brickD)})`);
-              const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(groupBrickExtH)})`);
+              const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(_vExtH)})`);
               const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
               const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
               const safeName = `${group.name ?? 'Groep'} - ${wall.name} - ${piece.label}`.replace(/'/g, "\\'");
@@ -2633,13 +2641,16 @@ export function exportGroupsToIfc(groups, wallSettings, fileName, dirHandle) {
         const wColor   = wrap.color ?? brickColor;
         for (const row of wrap.rows) {
           for (const piece of row.pieces) {
-            const [wx, wy, wz] = wGroupToWorld(piece.start + piece.length / 2, wrap.depthFromFace, row.y);
+            const _vDeel = (piece.yBot != null && piece.yTop != null);   // STRIP_SNIJLIJN: deel-steen tot de rand
+            const _vBot  = _vDeel ? piece.yBot : row.y;
+            const _vExtH = _vDeel ? (piece.yTop - piece.yBot) : wBrickH;
+            const [wx, wy, wz] = wGroupToWorld(piece.start + piece.length / 2, wrap.depthFromFace, _vBot);
             const placePt = PT(wx, wy, wz);
             const place3D = E(`IFCAXIS2PLACEMENT3D(#${placePt},${wAxisStr},${wRefStr})`);
             const localPl = E(`IFCLOCALPLACEMENT(#${stPl},#${place3D})`);
             const profAx  = E(`IFCAXIS2PLACEMENT2D(#${pt2D},$)`);
             const prof    = E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profAx},${r(piece.length)},${r(wBrickD)})`);
-            const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(wBrickH)})`);
+            const solid   = E(`IFCEXTRUDEDAREASOLID(#${prof},#${sAx0},#${extDir},${r(_vExtH)})`);
             const shRep   = E(`IFCSHAPEREPRESENTATION(#${gSub},'Body','SweptSolid',(#${solid}))`);
             const pds     = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shRep}))`);
             const safeName = `${group.name ?? 'Groep'} - Hoekwrap`.replace(/'/g, "\\'");
