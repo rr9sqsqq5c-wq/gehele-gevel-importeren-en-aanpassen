@@ -567,11 +567,12 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
     p.y + p.height > viewYStart + 1 && p.y < viewYEnd - 1
   ).sort((a, b) => (a.y - b.y) || (a.x - b.x));  // P-nummering: per rij links→rechts, dan een rij hoger
 
-  // PANEEL_MERK (vlag): groep-breed merk-nr per UNIEK paneeltype (maat+strippatroon+gaten, exact dezelfde
-  // signatuur als de productielijst), in montage-volgorde. Gedeeld door montage (EPC-tabel/CSV/tekening) én
-  // productielijst → koppeling productie↔montage. Plain const (geen hook) → raakt de hook-volgorde niet.
-  // Vlag UIT → null → geen merk-kolom (byte-identiek).
-  const paneelMerkMap = isPaneelMerk() ? (() => {
+  // PANEEL_MERK: groep-breed merk-nr per UNIEK paneeltype (maat+strippatroon+gaten, dezelfde signatuur als
+  // de productielijst), in montage-volgorde. ALTIJD berekend (klantkeuze: één nummering) → de tekening
+  // "Panelen plaatsing" ÉN "Paneel productie" tonen HETZELFDE merk per paneel, zodat P{merk} in beide op
+  // hetzelfde fysieke paneeltype wijst (het gat-paneel is uniek → uniek merk). De EPC/meetstaat-Merk-KOLOM
+  // blijft achter de vlag isPaneelMerk(). Plain const (geen hook) → raakt de hook-volgorde niet.
+  const paneelMerkMap = (() => {
     const sigOf = (panel) => {
       const { strips } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet);
       const stripSig = strips.map((s) => `${s.label}:${Math.round(s.width)}:${Math.round(s.x)}:${Math.round(s.y)}:${s.koppelstrip ? 'K' : ''}`).join('|');
@@ -589,7 +590,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
       merkCount.set(m, (merkCount.get(m) ?? 0) + 1);
     }
     return { get: (p) => posToMerk.get(`${Math.round(p.x)}_${Math.round(p.y)}`) ?? null, count: (m) => merkCount.get(m) ?? 0 };
-  })() : null;
+  })();
   const paneelMerkLabel = (p) => { const m = paneelMerkMap?.get(p); return m != null ? `P${m}` : ''; };
   const zoneLatten = allLatten.filter((l) =>
     l.x + l.width > viewXStart + 1 && l.x < viewXEnd - 1 &&
@@ -1878,7 +1879,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
                   textAnchor="middle" dominantBaseline="middle"
                   fontSize={lblFontSize} fill="#1e3a5f" fontFamily="Arial, sans-serif" fontWeight="bold"
                 >
-                  P{i + 1}
+                  {paneelMerkLabel(p) || `P${i + 1}`}
                 </text>
               </g>
             );
