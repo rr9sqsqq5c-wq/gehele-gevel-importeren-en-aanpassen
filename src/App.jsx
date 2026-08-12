@@ -5,7 +5,7 @@ import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements
 import { parseGhCladding } from './lib/ghCladding.js';
 import { attachLekdorpelToWalls } from './lib/lekdorpel.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isGhImport, isGeenVerband, isBlankBaseVerband, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isGhImport, isGeenVerband, isBlankBaseVerband, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor, applyVentZonesToBatches, solidifyRows } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -17,7 +17,7 @@ import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loa
 import { detectAdjacencies, detectAdjacenciesAsync, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern, buildPenantSidePattern, snapWidthToWholeStone } from './lib/pattern.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
-import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateCombinedMoldPrintHTML, getMoldTemplates, buildWildverbandPanelGrid, moldIdLabel, cutVentHolesFromPanels, attachHolesToPanels, computeHorizontalLatten, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateCombinedMoldPrintHTML, getMoldTemplates, buildWildverbandPanelGrid, moldIdLabel, cutVentHolesFromPanels, attachHolesToPanels, computeHorizontalLatten, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones, mergeStackedColumns, buildGroupPanels } from './lib/panelization.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -4001,6 +4001,10 @@ export default function App() {
         const snapRowY3d = (y) => allRowYs3d.length ? allRowYs3d.reduce((b, ry) => Math.abs(ry - (y + lintHalf3d)) < Math.abs(b - (y + lintHalf3d)) ? ry : b) : y;
         const battenYs3d = generateBattenPositions(gH3d, mat, Math.max(50, s.latten?.maxInterval ?? 400), { minHOH: s.latten?.minHOH, maxHOH: s.latten?.maxHOH, targetPanelH: s.panelen?.hoogte, minPanelH: 800 }).map(snapRowY3d);
         if (s.panelen?.enabled && !isWv3d) {
+          if (isUnifiedPanels() && verb3d !== 'wildverband') {
+            // UNIFIED_PANELS: gedeelde motor (congruent met 2D/werktekening/export/meetstaat).
+            panels3d = buildGroupPanels({ groupWidth: gW3d, groupHeight: gH3d, groupOpenings: facadeData.groupOpenings, rows: facadeData.rows, penanten: s.penanten, baseMat: mat, stripArt: _3dStripArt, panelen: s.panelen, latten: s.latten, verband: verb3d, sparingRects: facadeData.sparingRects, startLijn: s.startLijn, endExtensions: s.endExtensions }).panels;
+          } else {
           const basePanel3d = computeEffectiveBasePanel(s.panelen, mat.brickWeightM2 ?? 40, mat);
           const opForZones3d = (facadeData.groupOpenings ?? []).filter((op) => op.type !== 'ventilatie').map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
           const penOp3d = (s.penanten ?? []).map((p, i) => { const px = (p.x ?? 0) + 20, pw = Math.max(1, p.breedte ?? 400) - 40; return pw > 0 ? { id: `pen_${i}`, x: px, y: 0, width: pw, height: gH3d, polyPts: null } : null; }).filter(Boolean);
@@ -4008,7 +4012,10 @@ export default function App() {
             const res = panelizeZone(zone, battenYs3d, basePanel3d, allRowYs3d.length ? snapRowY3d : null, mat, verb3d);
             if (res.ok) panels3d.push(...res.panels);
           }
+          // PANEEL_OPTIMALISATIE: gestapelde panelen in één kolom samenvoegen (P6+P7); vlag uit → no-op.
+          panels3d = mergeStackedColumns(panels3d, [...opForZones3d, ...penOp3d], basePanel3d);
           panels3d = panels3d.filter((p) => p.height >= 200 && p.width >= 10);
+          }
           // GEEN-STRIP-GEEN-PANEEL (vlag strip3dFilter): 3D krijgt dezelfde strip-overlap-filter als
           // View2D/Werktekening/export — paneel weg als het nergens een steenstrip-stuk raakt. De latten
           // (buildFacadeLatten hieronder met deze panels3d) volgen automatisch. Vlag uit → ongewijzigd.
@@ -5289,12 +5296,19 @@ export default function App() {
       if (verband === 'wildverband') {
         const wRes = buildWildverbandPanelGrid(groupWidth, groupHeight, groupOpenings, mat, s.panelen ?? {});
         panels = wRes.panels;
+      } else if (isUnifiedPanels()) {
+        // UNIFIED_PANELS: gedeelde motor → mal-recept telt exact de getekende panelen.
+        const _mrSid = (s.steenstripsArtikelen ?? [])[0];
+        const _mrArt = _mrSid ? STEENSTRIP_CATALOG.find((a) => a.id === _mrSid) : null;
+        panels = buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows: facadeData.rows, penanten: s.penanten, baseMat: mat, stripArt: _mrArt, panelen: s.panelen, latten: s.latten, verband, sparingRects: [], startLijn: s.startLijn, endExtensions: s.endExtensions }).panels;
       } else {
         const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
         for (const zone of zones) {
           const res = panelizeZone(zone, battenYs, basePanel, _mrSnapFn, mat, verband);
           if (res.ok) panels.push(...res.panels);
         }
+        // PANEEL_OPTIMALISATIE: gestapelde panelen in één kolom samenvoegen (P6+P7); vlag uit → no-op.
+        panels = mergeStackedColumns(panels, [...openingsForZones, ...penantOpenings], basePanel);
       }
       if (s.maxHoogte != null && s.maxHoogte > 0) {
         panels = panels.map((panel) => {
@@ -5645,12 +5659,19 @@ export default function App() {
           if ((s.verband ?? DEFAULT_VERBAND) === 'wildverband') {
             const wRes = buildWildverbandPanelGrid(groupWidth, groupHeight, groupOpenings, mat, s.panelen ?? {});
             panels.push(...wRes.panels);
+          } else if (isUnifiedPanels()) {
+            // UNIFIED_PANELS: gedeelde motor → IFC-export bevat exact de getekende panelen.
+            const _exSid = (s.steenstripsArtikelen ?? [])[0];
+            const _exArt = _exSid ? STEENSTRIP_CATALOG.find((a) => a.id === _exSid) : null;
+            panels.push(...buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows: facRows, penanten: s.penanten, baseMat: mat, stripArt: _exArt, panelen: s.panelen, latten: s.latten, verband: s.verband ?? DEFAULT_VERBAND, sparingRects: [], startLijn: s.startLijn, endExtensions: s.endExtensions }).panels);
           } else {
             const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
             for (const zone of zones) {
               const res = panelizeZone(zone, battenYs, basePanel, allRowYsExport.length ? snapToRowYExport : null, mat, s.verband ?? DEFAULT_VERBAND);
               if (res.ok) panels.push(...res.panels);
             }
+            // PANEEL_OPTIMALISATIE: gestapelde panelen in één kolom samenvoegen (P6+P7); vlag uit → no-op.
+            panels = mergeStackedColumns(panels, [...openingsForZones, ...penantOpenings], basePanel);
           }
           
           if (s.maxHoogte != null && s.maxHoogte > 0) {

@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
 import { buildFullGroupFacadePattern } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, attachHolesToPanels, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, attachHolesToPanels, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones, mergeStackedColumns, buildGroupPanels } from './lib/panelization.js';
 import { buildStripZoneRegions, solidifyRows } from './lib/zoneRegions.js';
 import { sparingRectsForFacade } from './lib/sparingElements.js';
 import { openingXRangesAtY } from './lib/geometry.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUittrekstaatSnap, isBlankBaseVerband } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isUittrekstaatSnap, isBlankBaseVerband } from './lib/featureFlags.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -121,6 +121,12 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
   let noPanelZonesAreaMM2 = 0;
   let noPanelZonesCount = 0;
   if (s.panelen?.enabled && !isBlankBaseVerband(verband)) {   // GEEN_VERBAND: blanco → geen panelen
+    const _utSid = (s.steenstripsArtikelen ?? [])[0];
+    const _utArt = _utSid ? STEENSTRIP_CATALOG.find((a) => a.id === _utSid) : null;
+    if (isUnifiedPanels() && verband !== 'wildverband') {
+    // UNIFIED_PANELS: gedeelde motor → meetstaat telt exact de getekende panelen (congruent met tekening/2D/export).
+    panelList = buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows, penanten: s.penanten, baseMat: mat, stripArt: _utArt, panelen: s.panelen, latten: s.latten, verband, sparingRects: [], startLijn: s.startLijn, endExtensions: s.endExtensions }).panels;
+    } else {
     const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, mat);
     const maxInterval = s.latten?.maxInterval ?? 400;
     // UITTREKSTAAT_SNAP (vlag): dezelfde snap als tekening/3D/export (template View2D.jsx:108-117) —
@@ -154,6 +160,9 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
         noPanelZonesAreaMM2 += zone.width * zone.height;
         noPanelZonesCount++;
       }
+    }
+    // PANEEL_OPTIMALISATIE: gestapelde panelen in één kolom samenvoegen (P6+P7); vlag uit → no-op.
+    panelList = mergeStackedColumns(panelList, [...openingsForZones, ...penantOpenings], basePanel);
     }
   }
 

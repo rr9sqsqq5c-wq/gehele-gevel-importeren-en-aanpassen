@@ -3,7 +3,7 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension } from './featureFlags.js';
 
 function round2(v) {
   return Math.round(v * 100) / 100;
@@ -771,8 +771,16 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material 
   const zoneY1 = round2(zone.y);
   const zoneY2 = round2(zone.y + zone.height);
 
-  // PANEEL_OPTIMALISATIE (vlag, default UIT): optimale verdeling (kolommen gelijk+stootvoeg, rijen even
-  // lagen+gewicht) voor de horizontale/staande verbanden. Wildverband/groothuis houden hun eigen pad.
+  // PANEEL_OPTIMALISATIE (vlag, default AAN): snipper-opruiming — een zone smaller dan 50 mm (bv. een
+  // 20 mm muurstrook tussen twee dicht-op-elkaar-staande ramen) wordt géén paneel (op locatie met losse
+  // strips gevuld) i.p.v. een onwerkbaar 20 mm-paneeltje. Noodrem uit → oude gedrag (wél een paneeltje).
+  if (isPaneelOptimalisatie() && round2(zone.width) < 50) {
+    return { ok: true, orientation: 'liggend', panelCount: 0, panels: [] };
+  }
+
+  // PANEEL_OPTIMALISATIE (vlag, default AAN): optimale verdeling (kolommen op de DOORLOPENDE steen →
+  // koppelstenen om-en-om, rijen even lagen+gewicht → geen mini-panelen) voor de horizontale/staande
+  // verbanden. Wildverband/groothuis houden hun eigen pad.
   if (isPaneelOptimalisatie() && material != null && verband != null
     && verband !== 'wildverband' && verband !== 'groothuis_wildverband' && verband !== 'groothuis_wildverband_2') {
     const opt = optimalPanelizeZone(zone, basePanel, material, verband);
@@ -988,6 +996,103 @@ export function detectKoppelstrippen(panels, facadeRows, mat, verband) {
     }
   }
   return koppel;
+}
+
+// PANEEL_OPTIMALISATIE — voeg verticaal-gestapelde panelen in DEZELFDE kolom samen tot één paneel
+// (bv. P6+P7): zelfde x én breedte, ze raken (gat ≤ paneelvoeg), er zit GEEN opening in het samengevoegde
+// vlak, en samen blijven ze binnen de plaat-maat én het gewichtsplafond (opp ≤ maxArea60 = maxKg+10).
+// Zo verdwijnen de mini-panelen die ontstonden doordat een kolom op een latten-lijn werd opgeknipt terwijl
+// het gewicht één paneel toeliet. Losgekoppeld van de verbanddetectie → werkt op de al-gepanaliseerde set.
+export function mergeStackedColumns(panels, openings, basePanel) {
+  if (!isPaneelOptimalisatie()) return panels;   // vlag uit → byte-identiek (geen merge)
+  if (!panels?.length) return panels;
+  const maxArea = basePanel?.maxArea60MM2 ?? Infinity;        // gewichtsplafond (maxKg+10) als oppervlak
+  const maxDim = (basePanel?.width ?? 3005) + 0.5;            // plaat-maat (langste zijde)
+  const ops = openings ?? [];
+  const key = (p) => `${Math.round(p.x)}_${Math.round(p.width)}`;
+  const cols = new Map();
+  for (const p of panels) { const k = key(p); if (!cols.has(k)) cols.set(k, []); cols.get(k).push(p); }
+  const out = [];
+  for (const ps of cols.values()) {
+    ps.sort((a, b) => a.y - b.y);
+    let cur = { ...ps[0] };
+    for (let i = 1; i < ps.length; i++) {
+      const nx = ps[i];
+      const touch = Math.abs(nx.y - (cur.y + cur.height)) <= PANEL_GAP + 1;
+      const uY2 = nx.y + nx.height;
+      const uH = uY2 - cur.y;
+      const uArea = uH * cur.width;
+      // geen opening die het samengevoegde rechthoek raakt (nooit over een raam/deur heen mergen)
+      const hitsOpening = ops.some((o) => (o.x ?? 0) < cur.x + cur.width - 1 && (o.x ?? 0) + (o.width ?? 0) > cur.x + 1
+        && (o.y ?? 0) < uY2 - 1 && (o.y ?? 0) + (o.height ?? 0) > cur.y + 1);
+      if (touch && !hitsOpening && uH <= maxDim && uArea <= maxArea + 1) {
+        cur = { ...cur, height: round2(uH), area: round2(uArea), mergedStack: true };
+      } else { out.push(cur); cur = { ...nx }; }
+    }
+    out.push(cur);
+  }
+  return out;
+}
+
+// UNIFIED_PANELS — ÉÉN gedeelde paneel-berekening voor alle weergaven (2D/3D/export/werktekening/
+// uittrekstaat/mal). Neemt de RAUWE groep-materiaalmaat + het steenstrip-artikel en past het artikel
+// ALTIJD toe (effMat) — net als de strips (facadeData.rows) → panelen liggen overal op dezelfde steek als
+// de strips → koppelstrippen overal op dezelfde plek. Ventilatie-openingen worden ALTIJD uit de panel-
+// zones gefilterd (net als 2D/3D/export). Reproduceert het bestaande View2D-pad (het correcte) 1-op-1:
+// basePanel/battenYs/snap/zones/panelizeZone/mergeStackedColumns/height-filter/strip-overlap-filter/
+// gaten/startlijn. Alleen voor de rechthoek-verbanden; wildverband/groothuis houden hun eigen pad in de views.
+export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], rows = null, penanten = [], baseMat, stripArt = null, panelen, latten = null, verband, sparingRects = [], startLijn = null, endExtensions = null }) {
+  if (!panelen?.enabled) return { panels: [], effMat: baseMat };
+  const effMat = stripArt ? { ...baseMat, steenL: stripArt.steenL, steenH: stripArt.steenH } : baseMat;
+  const penantOpenings = (penanten ?? []).map((p, i) => {
+    const px = (p.x ?? 0) + 20, pw = Math.max(1, p.breedte ?? 400) - 40;
+    return pw > 0 ? { id: `pen_${i}`, x: px, y: 0, width: pw, height: groupHeight, polyPts: null } : null;
+  }).filter(Boolean);
+  const basePanel = computeEffectiveBasePanel(panelen, effMat.brickWeightM2 ?? 40, effMat);
+  const maxInterval = Math.max(50, latten?.maxInterval ?? 400);
+  const lintHalf = (effMat.lint ?? 12) / 2;
+  const rowYs = (rows ?? []).map((r) => r.y).sort((a, b) => a - b);
+  const snapToRowY = rowYs.length
+    ? (y) => { const t = y + lintHalf; return rowYs.reduce((best, ry) => Math.abs(ry - t) < Math.abs(best - t) ? ry : best); }
+    : null;
+  const battenYs = generateBattenPositions(groupHeight, effMat, maxInterval, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 }).map((y) => snapToRowY ? snapToRowY(y) : y);
+  const openings = (groupOpenings ?? []).filter((op) => op.type !== 'ventilatie').map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
+  const allOpenings = [...openings, ...(penantOpenings ?? [])];
+  let panels = [];
+  for (const zone of buildFacadeZones(groupWidth, groupHeight, allOpenings)) {
+    const res = panelizeZone(zone, battenYs, basePanel, snapToRowY, effMat, verband);
+    if (res.ok) panels.push(...res.panels);
+  }
+  panels = mergeStackedColumns(panels, allOpenings, basePanel);
+  panels = panels.filter((p) => p.height >= 200 && p.width >= 10);
+  if (rows && verband !== 'wildverband') {
+    const rowH = verband === 'staand_tegelverband' ? effMat.steenL : effMat.steenH;
+    panels = panels.filter((panel) => {
+      for (const row of rows) {
+        if (!row?.pieces?.length) continue;
+        if (row.y + rowH <= panel.y || row.y >= panel.y + panel.height) continue;
+        for (const piece of row.pieces) {
+          const s = Math.max(piece.start, panel.x), e = Math.min(piece.start + piece.length, panel.x + panel.width);
+          if (e - s > 1) return true;
+        }
+      }
+      return false;
+    });
+  }
+  // VENTILATIE_ZONE: het ventilatiegat er apart uitsnijden (paneel liep over de volle breedte door).
+  panels = cutVentHolesFromPanels(panels, (groupOpenings ?? []).filter((op) => op.type === 'ventilatie'));
+  // SPARING-ELEMENTEN: paneel HEEL houden + het gat markeren (voor frees/zagerij).
+  panels = attachHolesToPanels(panels, sparingRects);
+  // Handmatige einduiteinde-extensie: buitenste paneel loopt door voorbij de gevelrand (hoek-aansluiting).
+  if (isKeepEndExtension()) {
+    const ee = endExtensions ?? {};
+    panels = extendPanelsAtEnds(panels, groupWidth, Math.max(0, ee.left?.panels ?? 0), Math.max(0, ee.right?.panels ?? 0));
+  }
+  if (startLijn != null && startLijn < 0 && panels.length > 0) {
+    const minY = Math.min(...panels.map((p) => p.y));
+    panels = panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: startLijn, height: p.height + p.y - startLijn } : p);
+  }
+  return { panels, effMat, basePanel };
 }
 
 export function panelizeFacade(facadeWidth, facadeHeight, openings, battenYs, basePanel) {

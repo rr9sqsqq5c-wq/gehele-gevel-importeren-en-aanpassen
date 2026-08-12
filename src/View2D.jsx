@@ -1,12 +1,12 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { buildFullGroupFacadePattern, getOpeningPoly, facadeNeedsMirror } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten, extendPanelsAtEnds, extendLattenAtEnds, cutVentHolesFromPanels, attachHolesToPanels, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten, extendPanelsAtEnds, extendLattenAtEnds, cutVentHolesFromPanels, attachHolesToPanels, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones, mergeStackedColumns, buildGroupPanels } from './lib/panelization.js';
 import { clipRowsAroundRects } from './lib/sparingElements.js';
 import { brickColor, isTooSmall, polyXRangesAtY } from './lib/geometry.js';
 import { hasPenants } from './lib/zoneRegions.js';
 import { isFeatureZones } from './lib/featureFlags.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isKeepEndExtension, isShowKozijnen, isUnifiedLatten, isGevelHandedness, isBlankBaseVerband } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isKeepEndExtension, isShowKozijnen, isUnifiedLatten, isUnifiedPanels, isGevelHandedness, isBlankBaseVerband } from './lib/featureFlags.js';
 import { generateSlimFortGrid, generateSlimFortFaces, SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
 
 function hexToRgba(hex, alpha = 1) {
@@ -107,6 +107,10 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       return wRes.panels;
     }
     if (!panelen?.enabled) return [];
+    // UNIFIED_PANELS (vlag, default AAN): één gedeelde motor → congruent met 3D/werktekening/meetstaat/export.
+    if (isUnifiedPanels()) {
+      return buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows, penanten: groupSettings?.penanten, baseMat: mat, stripArt: _stripArt, panelen, latten, verband, sparingRects: facadeData.sparingRects, startLijn, endExtensions }).panels;
+    }
     const basePanel = computeEffectiveBasePanel(panelen, effectiveMat.brickWeightM2 ?? 40, effectiveMat);
     const maxInterval = Math.max(50, latten?.maxInterval ?? 400);
     const lintHalf = (effectiveMat.lint ?? 12) / 2;
@@ -132,6 +136,8 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       const result = panelizeZone(zone, battenYs, basePanel, allRowYsSorted.length ? snapToRowY : null, effectiveMat, verband);
       if (result.ok) panels.push(...result.panels);
     }
+    // PANEEL_OPTIMALISATIE: gestapelde panelen in één kolom samenvoegen (P6+P7); vlag uit → no-op.
+    panels = mergeStackedColumns(panels, [...openingsForZones, ...penantOpenings], basePanel);
     panels = panels.filter((panel) => panel.height >= 200 && panel.width >= 10);
     const rowH = verband === 'staand_tegelverband' ? effectiveMat.steenL : effectiveMat.steenH;
     panels = panels.filter((panel) => {

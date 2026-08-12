@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
 import { buildFullGroupFacadePattern, buildFacePattern, buildMirroredFacePattern } from './lib/pattern.js';
-import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG, clipPanelToFacadePolys, detectKoppelstrippen, PANEL_GAP, buildWildverbandPanelGrid, computeHorizontalLatten, attachHolesToPanels, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG, clipPanelToFacadePolys, detectKoppelstrippen, PANEL_GAP, buildWildverbandPanelGrid, computeHorizontalLatten, attachHolesToPanels, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones, mergeStackedColumns, buildGroupPanels } from './lib/panelization.js';
 import { buildStripZoneRegions, getActiveStripZones, solidifyRows } from './lib/zoneRegions.js';
 import { sparingRectsForFacade } from './lib/sparingElements.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isPaneelMerk, isBlankBaseVerband, isFeatureZones } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isBlankBaseVerband, isFeatureZones } from './lib/featureFlags.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -254,6 +254,7 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, startLijn, ve
         const res = panelizeZone(zone, battenYs, basePanel, null, mat, verband ?? 'halfsteens');
         if (res.ok) allPanels.push(...res.panels);
       }
+      allPanels = mergeStackedColumns(allPanels, [...openingsForZones, ...penantOpenings], basePanel);
     }
   }
 
@@ -379,6 +380,13 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
       return buildZoneBackingPanels({ facadeData, activeZones: (stripZones ?? []).filter((z) => z?.enabled === true), panelen, latten, mat, verband, startLijn: groupSettings?.startLijn, sparingRects });
     }
     const { rows, groupWidth, groupHeight, groupOpenings } = facadeData;
+    // UNIFIED_PANELS (vlag, default AAN): non-wild verband → gedeelde motor (congruent met 2D/3D/export/meetstaat).
+    const _isWildWt = verband === 'wildverband' || (verband === 'groothuis_wildverband' && isGroothuisWildverband()) || (verband === 'groothuis_wildverband_2' && isGroothuisWildverband2());
+    if (isUnifiedPanels() && !_isWildWt) {
+      const _wtSid = (groupSettings?.steenstripsArtikelen ?? [])[0];
+      const _wtArt = _wtSid ? STEENSTRIP_CATALOG.find((a) => a.id === _wtSid) : null;
+      return buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows, penanten: groupSettings?.penanten, baseMat: mat, stripArt: _wtArt, panelen, latten, verband, sparingRects, startLijn: groupSettings?.startLijn, endExtensions: groupSettings?.endExtensions }).panels;
+    }
     const basePanel = computeEffectiveBasePanel(panelen, mat.brickWeightM2 ?? 40, mat);
     const maxInterval = Math.max(50, latten?.maxInterval ?? 400);
     const lintHalf = (mat.lint ?? 12) / 2;
@@ -446,6 +454,8 @@ export function Werktekening({ walls, groupSettings, groupName, panelen, latten,
         const res = panelizeZone(zone, battenYs, basePanel, allRowYsSorted.length ? snapToRowY : null, mat, verband);
         if (res.ok) panels.push(...res.panels);
       }
+      // PANEEL_OPTIMALISATIE: gestapelde panelen in één kolom samenvoegen (P6+P7); vlag uit → no-op.
+      panels = mergeStackedColumns(panels, [...openingsForZones, ...penantOpenings], basePanel);
     }
     panels = panels.filter((panel) => panel.height >= 200 && panel.width >= 10);
     if (verband !== 'wildverband') {

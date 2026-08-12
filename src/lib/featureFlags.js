@@ -203,12 +203,19 @@ export function isBlankBaseVerband(verband) {
   return verband === 'geen' && isGeenVerband();
 }
 
-// PANEEL_OPTIMALISATIE — verdeel elke paneel-rechthoek optimaal: kolommen gelijk verdeeld met de naad
-// op een stootvoeg, rijen een EVEN aantal lagen (halfsteens) én binnen het gewicht (≤ maxKg, hard
-// ≤ maxKg+10). Vervangt de greedy breedte-verdeling + de niet-afgedwongen gewichtsgrens. DEFAULT =
-// false → exact het bestaande gedrag. NOODREM: ?paneelOptimalisatie=0.
+// PANEEL_OPTIMALISATIE — verdeel elke paneel-rechthoek optimaal: kolommen met de naad op de
+// DOORLOPENDE steen (k×(steenL+stoot) vanaf groep-0) → ALLE naden liggen in dezelfde stootvoeg-fase
+// → koppelstenen enkel OM-EN-OM (niet op elke rij, ook in smalle zones waar de 5-strek-regel niet
+// grijpt); rijen een EVEN aantal lagen (halfsteens) én binnen het gewicht (≤ maxKg, hard ≤ maxKg+10,
+// i.p.v. vaste latten-splits → geen mini-panelen). Plus: gestapelde panelen in één kolom worden
+// samengevoegd (mergeStackedColumns) en snipper-zones < 50 mm vervallen.
+// DEFAULT = true (gepromoveerd 2026-08-12 op klantverzoek "standaard aan"): het is de normale
+// paneelverdeling in alle weergaven (2D/3D/export/werktekening/uittrekstaat). DERIVE-ONLY (panelen
+// worden nergens opgeslagen → opgeslagen projecten ongemoeid). NOODREM: ?paneelOptimalisatie=0 (of
+// localStorage 'paneelOptimalisatie'='0'/'false') → exact de oude greedy breedte-verdeling + latten-
+// splits (byte-identiek aan vóór).
 export function isPaneelOptimalisatie() {
-  return readFlag('paneelOptimalisatie', false);
+  return readFlag('paneelOptimalisatie', true);
 }
 
 // REPROJECT_OPENING_POLYGON — in het best-fit-pad (handmatige groepen) behoudt
@@ -481,6 +488,20 @@ export function isUnifiedLatten() {
   return readFlag('unifiedLatten', false);
 }
 
+// UNIFIED_PANELS — ÉÉN gedeelde paneel-berekening (buildGroupPanels, panelization.js) voor
+// 2D/3D/export/werktekening/uittrekstaat/mal, zodat de weergaven niet meer uiteen kunnen lopen. Dicht
+// twee lekken waardoor 2D ≠ werktekening: (A) het steenstrip-ARTIKEL werd alleen in 2D op de panelen
+// toegepast (effectiveMat) terwijl de STRIPS (facadeData.rows) overal mét het artikel gebouwd worden →
+// panelen lagen in de andere views op een andere steek dan de strips → koppelstrippen op andere plek;
+// (B) ventilatie-openingen splitsten alleen in werktekening/uittrekstaat de panelen (2D/3D/export
+// filteren ze). De helper past ALTIJD het artikel toe (effMat) én filtert ventilatie → alle views gelijk.
+// DEFAULT = true (klantverzoek "structureel, congruent"): alle weergaven tonen dezelfde panelen +
+// koppelstrippen. DERIVE-ONLY (panelen worden nergens opgeslagen). NOODREM: ?unifiedPanels=0 (of
+// localStorage 'unifiedPanels'='0'/'false') → elke view rekent weer z'n eigen pad (byte-identiek aan vóór).
+export function isUnifiedPanels() {
+  return readFlag('unifiedPanels', true);
+}
+
 // KLIKLIJST_REFERENTIE — de kozijn-offset-referentie (kozijnRect) volgt de BUITENRAND van de KLIKLIJST
 // rondom het frame (het dunne profiel aan het buitenste dikte-vlak) i.p.v. de platgeslagen envelope
 // (meest-links/rechts-punt over alle diepten). Lost de inconsistente offset op: verschillende kozijn-
@@ -594,7 +615,7 @@ export const FLAG_REGISTRY = [
   { key: 'concaveOpeningMerge',  label: 'Concave opening-unie (raam+deur)', note: 'Twee overlappende openings (deur naast raam) worden tot hun echte L/U-vorm samengevoegd i.p.v. bbox, zodat het massieve muurdeel onder het raam bekleed blijft.' },
   { key: 'zoneStartStop',        label: 'Zone Start-X / Stop-X (numeriek)', note: 'Per tekenzone de linker- en rechterrand exact in mm intypen (i.p.v. tekenen) + "hele steen"-snap, om te optimaliseren. Werkt in 3D/2D/IFC; meetstaat/mallen nog niet.' },
   { key: 'geenVerband',          label: 'Metselverband "geen" (blanco basisvlak)', note: 'Extra keuze in de verband-dropdown: het basisvlak buiten de tekenzones krijgt geen strips/panelen/latten → blanco gevel om zelf tekenzones op te leggen. De zones brengen hun eigen verband.' },
-  { key: 'paneelOptimalisatie',  label: 'Optimale paneelverdeling', note: 'Verdeel elk paneelvlak optimaal: kolommen gelijk met de naad op een stootvoeg, rijen een even aantal lagen én binnen het gewicht (≤ maxKg, hard ≤ maxKg+10). Vervangt de greedy breedte + dwingt de gewichtsgrens af.' },
+  { key: 'paneelOptimalisatie',  label: 'Optimale paneelverdeling (standaard aan)', note: 'STANDAARD AAN. Naden op de doorlopende steen → koppelstenen overal om-en-om (ook in smalle zones); rijen even lagen binnen het gewicht (geen mini-panelen); gestapelde panelen in één kolom samengevoegd; snipper-zones < 50 mm vervallen. Uitzetten = ?paneelOptimalisatie=0.' },
   { key: 'showKozijnen',         label: 'Kozijnen tonen (2D + 3D)',  note: 'Raam/deur als 3D-doos én als amber kader in 2D (met L/R-marge tot de strips) ter controle van de uitlijning.', reimport: true },
   { key: 'ventilatieZone',       label: 'Ventilatiezone (gedraaid verband)', note: 'Klein gat boven een raam wordt open geknipt + een zone met loodrecht verband eromheen (instelbaar per groep).', reimport: true },
   { key: 'cornerButt',           label: 'Stompe hoek',               note: 'Geen omslag-steenstrips op het loodrechte vlak.' },
@@ -602,6 +623,7 @@ export const FLAG_REGISTRY = [
   { key: 'groothuisWildverband', label: 'Groothuis wildverband 1',   note: 'Het oudere groothuis-verband (versie 2 staat standaard aan).' },
   { key: 'malRecept',            label: 'Mal recept CSV',            note: 'CSV-export per paneel — bekende telbug (defect-containment).', advanced: true },
   { key: 'unifiedLatten',        label: 'Latten — één berekening',   note: 'FASE 1: één gedeelde latten-berekening voor 2D/3D/export/werktekening/uittrekstaat (positionering + opening/paneel/sparing-clip).', advanced: true },
+  { key: 'unifiedPanels',        label: 'Panelen — één berekening (standaard aan)', note: 'STANDAARD AAN. Eén gedeelde paneel-berekening voor 2D/3D/export/werktekening/uittrekstaat/mal zodat ze congruent zijn: het steenstrip-artikel wordt overal op de panelen toegepast (net als op de strips) en ventilatie-openingen overal gelijk behandeld. Uitzetten = ?unifiedPanels=0.' },
   { key: 'kliklijstReferentie',  label: 'Kliklijst als offset-rand', note: 'Kozijn-offset meet vanaf de buitenrand van de kliklijst (dun buitenprofiel) rondom het frame, i.p.v. de envelope.', reimport: true },
   { key: 'penantTweeRijen',      label: 'Penant — strek aan de randen (oneven rij)', note: 'Voorvlak van een penant (halfsteens): de verspringende rij begint/eindigt met een hele strek + symmetrisch middenstuk, i.p.v. de halve-steen-verschuiving. Bv. 563 → 221·109·221.' },
   { key: 'gevelHandedness',      label: 'Gevel-handedness (links↔rechts)', note: 'Spiegelt de steenstrip-bond én 2D/werktekening zó dat elk gevelvlak van buiten gezien links→rechts leest (3D/2D/export één waarheid). Kozijnen blijven op hun plek.' },
@@ -618,7 +640,10 @@ export const FLAG_REGISTRY = [
   { key: 'planBridge',           label: 'Planner-brug (iframe)',     note: 'Intern; alleen voor inbedding in de planningstool.', advanced: true },
 ];
 
-// Huidige effectieve waarde van een vlag (URL > localStorage > default-false).
-export function getFlag(key) { return readFlag(key, false); }
+// Vlaggen die DEFAULT AAN staan maar tóch in de registry/UI zichtbaar zijn (zodat de UI-schakelaar
+// hun echte begintoestand toont i.p.v. vals "uit"). NOODREM blijft ?key=0.
+const FLAG_DEFAULTS_ON = { paneelOptimalisatie: true, unifiedPanels: true };
+// Huidige effectieve waarde van een vlag (URL > localStorage > default).
+export function getFlag(key) { return readFlag(key, FLAG_DEFAULTS_ON[key] ?? false); }
 // Zet een vlag in localStorage (voor de UI-schakelaars).
 export function setStoredFlag(key, on) { try { localStorage.setItem(key, on ? '1' : '0'); } catch {} }
