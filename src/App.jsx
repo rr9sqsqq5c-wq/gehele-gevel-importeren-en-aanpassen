@@ -2768,6 +2768,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 ['strips', 'Steenstrips', 'De brickslip-steenstrips in de IFC-export opnemen.'],
                 ['panelen', 'Panelen', 'De draagpanelen in de IFC-export opnemen.'],
                 ['latten', 'Latten', 'De achterconstructie-latten in de IFC-export opnemen.'],
+                ...(((settings.penanten?.length ?? 0) > 0) ? [['penanten', 'Penanten', 'De penant-strips (voor- en zijvlakken) in de IFC-export opnemen.']] : []),
               ].map(([key, label, tip]) => (
                 <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', color: '#334155' }}>
                   <input type="checkbox"
@@ -3784,9 +3785,12 @@ export default function App() {
       // FASE 2 — stripZone-regio-tak achter featureZones (default UIT). Alleen op
       // NIET-penant-vlakken; penant-vlakken houden de tak hierboven byte-identiek.
       // Eén bedrading: de gedeelde buildStripZoneRegions (ook door de export-glue gebruikt).
-      const _ventZones3d = isVentilatieZone() ? ventilationZonesFor(facadeData, s, groupVerband3d, mat) : [];
+      // §8b congruentie: de vent-zone (en de zone-regio's) rekenen met de ARTIKEL-maat (effectiveMat3d),
+      // net als facadeData.rows/de gevel — anders ligt de staand-verband-zone op een ander raster dan de
+      // gevel (gevel lijkt "te hoog"). effectiveMat3d == mat als er geen steenstrip-artikel is (byte-identiek).
+      const _ventZones3d = isVentilatieZone() ? ventilationZonesFor(facadeData, s, groupVerband3d, effectiveMat3d) : [];
       if (isFeatureZones() && !hasPenants(s) && (getActiveStripZones(s).length + _ventZones3d.length) > 0) {
-        const _regions = buildStripZoneRegions(facadeData, [...(s.stripZones ?? []), ..._ventZones3d], mat, groupVerband3d, s.color ?? '#a64033', { stripArt: _3dStripArt });
+        const _regions = buildStripZoneRegions(facadeData, [...(s.stripZones ?? []), ..._ventZones3d], effectiveMat3d, groupVerband3d, s.color ?? '#a64033', { stripArt: _3dStripArt });
         if (_regions) {
           batches = _regions.map((r) => ({
             rows: r.rows,
@@ -3848,7 +3852,7 @@ export default function App() {
       // VENTILATIE op penant-groep: buildStripZoneRegions is hier overgeslagen (hasPenants); pas de
       // vent-zones alsnog toe op de penant-strip-batches (grille + gat), met behoud van de kleuren.
       if (hasPenants(s) && _ventZones3d.length) {
-        batches = applyVentZonesToBatches(batches, _ventZones3d, facadeData, mat, groupVerband3d, s.color ?? '#a64033', { stripArt: _3dStripArt, depthFromFace: depthFromFaceGeneral });
+        batches = applyVentZonesToBatches(batches, _ventZones3d, facadeData, effectiveMat3d, groupVerband3d, s.color ?? '#a64033', { stripArt: _3dStripArt, depthFromFace: depthFromFaceGeneral });
       }
 
       const clipFull = (rows) => {
@@ -5321,7 +5325,8 @@ export default function App() {
         }).filter(Boolean);
       }
 
-      panels = cutVentHolesFromPanels(panels, groupOpenings.filter((op) => op.type === 'ventilatie'));
+      // VENTILATIE: gat uit ÉÉN plaat (paneel heel + gat gemarkeerd), niet opknippen in losse platen (klantregel).
+      panels = attachHolesToPanels(panels, groupOpenings.filter((op) => op.type === 'ventilatie'));
       const moldDims = { hoogte: s.panelen.malBreedte ?? 270, lengte: s.panelen.malLengte ?? 3400, offsetX: s.panelen.malOffsetX ?? 0 };
       const groupLabel = group.name ?? group.id;
       const recipeRows = generateMoldRecipe(panels, mat, verband, s.panelen.dikte ?? 8, moldDims, groupLabel);
@@ -5713,9 +5718,9 @@ export default function App() {
             return false;
           });
         }
-        panels = cutVentHolesFromPanels(panels, groupOpenings.filter((op) => op.type === 'ventilatie'));
-        // SPARING-ELEMENTEN: paneel HEEL houden + het gat markeren (panel.holes) i.p.v. opknippen → export == 2D.
-        panels = attachHolesToPanels(panels, facadeData?.sparingRects);
+        // VENTILATIE + SPARING: gat uit ÉÉN plaat (paneel blijft HEEL, gat gemarkeerd in panel.holes),
+        // NIET het paneel opknippen in losse platen (klantregel vent). Vent + sparing in één aanroep.
+        panels = attachHolesToPanels(panels, [...groupOpenings.filter((op) => op.type === 'ventilatie'), ...(facadeData?.sparingRects ?? [])]);
 
         // GEEN_VERBAND: panelen + latten volgen de getekende zones (export == 2D/3D). Overschrijft de
         // (voor 'geen' lege) panels/lattenData; de reguliere latten-tak hierboven is al gegate op !_blankBaseExport.
@@ -5906,7 +5911,8 @@ export default function App() {
       // SPARING-ELEMENTEN: de onderdelen ook uit de latten knippen (contour-volgend, dezelfde rects als de strips) → export == 2D.
       lattenData = cutVentHolesFromPanels(lattenData, facadeData?.sparingRects);
 
-      const penantFaceRows = (s.penanten ?? []).map((p) => {
+      // IFC-laag "Penanten" uitzetbaar (net als 2D layerVisibility.penanten): geen penant-vlak-strips in de export.
+      const penantFaceRows = (s.ifcLayerVisibility?.penanten === false ? [] : (s.penanten ?? [])).map((p) => {
         const pB = Math.max(1, p.breedte ?? 400);
         const skipPenL2 = (p.diepteLinks  ?? p.diepte ?? 150) <= 0;   // zijde op 0 → geen zijkant
         const skipPenR2 = (p.diepteRechts ?? p.diepte ?? 150) <= 0;
@@ -7357,7 +7363,23 @@ export default function App() {
                     zoneSettings={getSettings(activeGroup.id).zoneSettings ?? []}
                     stripZones={getSettings(activeGroup.id).stripZones ?? []}
                     onStripZonesChange={(zones) => updateSettings(activeGroup.id, { stripZones: zones })}
-                    regionBatches={(() => { const _s = getSettings(activeGroup.id); if (!isFeatureZones() || hasPenants(_s)) return null; const _vent = isVentilatieZone() ? ventilationZonesFor(allPatterns[activeGroup.id]?.facadeData, _s, _s.verband ?? DEFAULT_VERBAND, _s.material ?? DEFAULT_MATERIAL) : []; return (getActiveStripZones(_s).length + _vent.length) > 0 ? (allPatterns[activeGroup.id]?.batches ?? null) : null; })()}
+                    regionBatches={(() => {
+                      const _s = getSettings(activeGroup.id);
+                      if (!isFeatureZones()) return null;
+                      const _fd = allPatterns[activeGroup.id]?.facadeData;
+                      const _artId = (_s.steenstripsArtikelen ?? [])[0];
+                      const _art = _artId ? STEENSTRIP_CATALOG.find((a) => a.id === _artId) : null;
+                      const _eff = _art ? { ...(_s.material ?? DEFAULT_MATERIAL), steenL: _art.steenL, steenH: _art.steenH } : (_s.material ?? DEFAULT_MATERIAL);
+                      const _vb = _s.verband ?? DEFAULT_VERBAND;
+                      const _vent = isVentilatieZone() ? ventilationZonesFor(_fd, _s, _vb, _eff) : [];
+                      if (hasPenants(_s)) {
+                        // §8b: penant-groep heeft geen scherm-batches → vent-zone op de VLAKKE facadeData.rows
+                        // toepassen (net als de IFC-export, App.jsx:6029), zodat 2D de vent-zone óók toont.
+                        if (!_vent.length || !_fd?.rows) return null;
+                        return applyVentZonesToBatches([{ rows: _fd.rows, material: _eff, color: _s.color ?? '#a64033', verband: _vb }], _vent, _fd, _eff, _vb, _s.color ?? '#a64033', { stripArt: _art });
+                      }
+                      return (getActiveStripZones(_s).length + _vent.length) > 0 ? (allPatterns[activeGroup.id]?.batches ?? null) : null;
+                    })()}
                     outsideDirFlip={(() => {
                       const _rawFlip = !!getSettings(activeGroup.id).outsideDirFlip;
                       // GEVEL_HANDEDNESS u-frame: facadeData staat al in u (buiten-links = links) → 2D tekent

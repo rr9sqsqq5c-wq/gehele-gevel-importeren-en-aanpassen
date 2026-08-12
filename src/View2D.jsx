@@ -152,10 +152,8 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       }
       return false;
     });
-    // VENTILATIE_ZONE: het ventilatiegat er apart uitsnijden (paneel liep over de volle breedte door).
-    panels = cutVentHolesFromPanels(panels, groupOpenings.filter((op) => op.type === 'ventilatie'));
-    // SPARING-ELEMENTEN: paneel HEEL houden en het gat markeren (voor frees/zagerij) i.p.v. opknippen.
-    panels = attachHolesToPanels(panels, facadeData.sparingRects);
+    // VENTILATIE + SPARING: gat uit ÉÉN plaat (paneel blijft HEEL, gat gemarkeerd), niet opknippen (klantregel).
+    panels = attachHolesToPanels(panels, [...groupOpenings.filter((op) => op.type === 'ventilatie'), ...(facadeData.sparingRects ?? [])]);
     // Handmatige einduiteinde-extensie: buitenste paneel loopt door voorbij de gevelrand (hoek-aansluiting).
     if (isKeepEndExtension()) {
       const _eeP = endExtensions ?? {};

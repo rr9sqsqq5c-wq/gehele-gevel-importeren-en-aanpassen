@@ -1086,10 +1086,11 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
       return false;
     });
   }
-  // VENTILATIE_ZONE: het ventilatiegat er apart uitsnijden (paneel liep over de volle breedte door).
-  panels = cutVentHolesFromPanels(panels, (groupOpenings ?? []).filter((op) => op.type === 'ventilatie'));
-  // SPARING-ELEMENTEN: paneel HEEL houden + het gat markeren (voor frees/zagerij).
-  panels = attachHolesToPanels(panels, sparingRects);
+  // VENTILATIE + SPARING: het gat wordt uit ÉÉN plaat gesneden (paneel blijft HEEL, gat gemarkeerd in
+  // panel.holes voor frees/zagerij), NIET het paneel opknippen in losse platen eromheen (klantregel vent).
+  // Eén attachHolesToPanels-aanroep (die overschrijft panel.holes) → vent- én sparing-gaten samen.
+  const _ventHoleRects = (groupOpenings ?? []).filter((op) => op.type === 'ventilatie');
+  panels = attachHolesToPanels(panels, [..._ventHoleRects, ...(sparingRects ?? [])]);
   // Handmatige einduiteinde-extensie: buitenste paneel loopt door voorbij de gevelrand (hoek-aansluiting).
   if (isKeepEndExtension()) {
     const ee = endExtensions ?? {};
