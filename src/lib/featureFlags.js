@@ -255,6 +255,16 @@ export function isZoneStartStop() {
   return readFlag('zoneStartStop', false);
 }
 
+// ZONE_EXTEND — per getekende stripZone een links/rechts UITLOOP (mm) per laag (strips/latten/panelen), net als de
+// groep-einduiteinden (endExtensions). Positief = de laag loopt door voorbij de zone-rand (links=x0-kant, rechts=x1-kant),
+// negatief = inkorten. Ingreep in de GEDEELDE zone-functies: zRect (strips, zoneRegions.js), buildZoneBackingPanels
+// (panelen) en clipLattenToZones (latten) → 3D/2D/IFC-export liften automatisch mee. DEFAULT = false → geen velden,
+// endExtensions genegeerd, geen effect (byte-identiek). Aanzetten: ?zoneExtend=1. Noodrem: ?zoneExtend=0.
+// LET OP: bereikt 3D/2D/IFC (zelfde grens als ZONE_START_STOP); meetstaat/mal voor zones nog niet.
+export function isZoneExtend() {
+  return readFlag('zoneExtend', false);
+}
+
 // TRUENORTH_METADATA_ONLY (FIX C) — project-noord overal. GEEN pad past trueNorth toe op de
 // GETOONDE geometrie: vlag AAN → de Ry(trueNorth)-rotatie verlaat buildProjectMatrix
 // (projectCoordinates.js) zodat 3D = 2D = export allemaal in het project-noord-frame staan;
@@ -628,6 +638,7 @@ export const FLAG_REGISTRY = [
   { key: 'concaveOpeningMerge',  label: 'Concave opening-unie (raam+deur)', note: 'Twee overlappende openings (deur naast raam) worden tot hun echte L/U-vorm samengevoegd i.p.v. bbox, zodat het massieve muurdeel onder het raam bekleed blijft.' },
   { key: 'stripSnijlijn',        label: 'Strips snijden op de snijlijn', note: 'Steenstrips worden op de WERKELIJKE rand van een sparing/opening gesneden (deel-steen tot de rand) i.p.v. de hele steen weg te knippen. Sparingen: altijd (elk verband). Ramen/deuren: alleen bij staand verband — halfsteens raam/deur blijft op de laagrand zoals nu. Werkt in 2D/3D/werktekening/export.' },
   { key: 'zoneStartStop',        label: 'Zone Start-X / Stop-X (numeriek)', note: 'Per tekenzone de linker- en rechterrand exact in mm intypen (i.p.v. tekenen) + "hele steen"-snap, om te optimaliseren. Werkt in 3D/2D/IFC; meetstaat/mallen nog niet.' },
+  { key: 'zoneExtend',           label: 'Tekenzone links/rechts uitbreiden', note: 'Per getekende tekenzone een uitloop (mm) links/rechts, apart per laag (strips/latten/panelen), net als de groep-einduiteinden. Werkt in 3D/2D/IFC-export; meetstaat/mal voor zones nog niet.' },
   { key: 'geenVerband',          label: 'Metselverband "geen" (blanco basisvlak)', note: 'Extra keuze in de verband-dropdown: het basisvlak buiten de tekenzones krijgt geen strips/panelen/latten → blanco gevel om zelf tekenzones op te leggen. De zones brengen hun eigen verband.' },
   { key: 'paneelOptimalisatie',  label: 'Optimale paneelverdeling (standaard aan)', note: 'STANDAARD AAN. Naden op de doorlopende steen → koppelstenen overal om-en-om (ook in smalle zones); rijen even lagen binnen het gewicht (geen mini-panelen); gestapelde panelen in één kolom samengevoegd; snipper-zones < 50 mm vervallen. Uitzetten = ?paneelOptimalisatie=0.' },
   { key: 'showKozijnen',         label: 'Kozijnen tonen (2D + 3D)',  note: 'Raam/deur als 3D-doos én als amber kader in 2D (met L/R-marge tot de strips) ter controle van de uitlijning.', reimport: true },

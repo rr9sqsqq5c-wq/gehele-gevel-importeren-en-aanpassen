@@ -3,7 +3,13 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend } from './featureFlags.js';
+
+// ZONE_EXTEND: per-laag mm-uitloop van een zone-rand (links = x0-kant, rechts = x1-kant). Vlag uit → 0 (byte-identiek).
+const zoneExtentFor = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
+// ZONE_EXTEND optrekken (maxHoogteVullen): effectieve zone-hoogte trekt op naar maxHoogte (alleen omhoog). Vlag/vullen
+// uit of maxHoogte ≤ getekende hoogte → getekende hoogte (byte-identiek).
+const zoneFillHeight = (z) => (isZoneExtend() && z.maxHoogteVullen && (z.maxHoogte ?? 0) > (z.height ?? 0)) ? z.maxHoogte : (z.height ?? 0);
 
 function round2(v) {
   return Math.round(v * 100) / 100;
@@ -547,7 +553,8 @@ export function buildZoneBackingPanels({ facadeData, activeZones, panelen, latte
   let panels = [];
   for (const z of activeZones) {
     const V = z.verband ?? verband ?? 'halfsteens';
-    const zx1 = z.x ?? 0, zy1 = z.y ?? 0, zx2 = zx1 + (z.width ?? 0), zy2 = zy1 + (z.height ?? 0);
+    const _pex = zoneExtentFor(z, 'panels');   // ZONE_EXTEND: panelen-uitloop verbreedt de zone-rechthoek
+    const zx1 = (z.x ?? 0) - _pex.l, zy1 = z.y ?? 0, zx2 = (z.x ?? 0) + (z.width ?? 0) + _pex.r, zy2 = zy1 + zoneFillHeight(z);
     // PANEELVOEGEN OP DE STEENRIJEN: bouw de course-grid van DEZE zone (eigen verband + anker) en
     // snap de paneel-hoogtebreaks daarop, zodat een paneelvoeg op een lintvoeg valt (net als de basis).
     const lagenmaat = V === 'staand_tegelverband' ? (steenL + lint) : (steenH + lint);
@@ -593,7 +600,8 @@ export function clipLattenToZones(latten, activeZones) {
   for (const lat of latten) {
     const lx1 = lat.x, ly1 = lat.y, lx2 = lat.x + lat.width, ly2 = lat.y + lat.height;
     for (const z of activeZones) {
-      const zx1 = z.x ?? 0, zy1 = z.y ?? 0, zx2 = zx1 + (z.width ?? 0), zy2 = zy1 + (z.height ?? 0);
+      const _lex = zoneExtentFor(z, 'battens');   // ZONE_EXTEND: latten-uitloop verbreedt de zone-rechthoek
+      const zx1 = (z.x ?? 0) - _lex.l, zy1 = z.y ?? 0, zx2 = (z.x ?? 0) + (z.width ?? 0) + _lex.r, zy2 = zy1 + zoneFillHeight(z);
       const ix1 = Math.max(lx1, zx1), iy1 = Math.max(ly1, zy1);
       const ix2 = Math.min(lx2, zx2), iy2 = Math.min(ly2, zy2);
       if (ix2 - ix1 > 1 && iy2 - iy1 > 0.5) {

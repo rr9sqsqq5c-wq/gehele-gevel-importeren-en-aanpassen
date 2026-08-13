@@ -15,7 +15,7 @@
 
 import { buildFacePattern } from './pattern.js';
 import { buildTruthRows } from './wildverbandKoppelstrip.js';
-import { isWildverbandKoppelstrip } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isZoneExtend } from './featureFlags.js';
 import { clipRowsAroundRects } from './sparingElements.js';
 
 function round2(v) { return Math.round(v * 100) / 100; }
@@ -197,11 +197,18 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
   // y1 = y0 + min(height, maxHoogte). Door de effectieve rect overal te gebruiken
   // (complement-aftrek, zone-Y-clip, z-order) valt de strook BOVEN maxHoogte binnen de
   // getekende rechthoek terug op het default-verband (complement) i.p.v. een blanco gat.
+  // ZONE_EXTEND: per-laag mm-uitloop van een zone-rand — links = x0-kant, rechts = x1-kant. Vlag uit → 0 (byte-identiek).
+  const zoneExt = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
   const zRect = (z) => {
     const y0 = z.y ?? 0;
     const h = z.height ?? 0;
-    const eff = (z.maxHoogte != null && z.maxHoogte > 0) ? Math.min(h, z.maxHoogte) : h;
-    return { x0: z.x ?? 0, y0, x1: (z.x ?? 0) + (z.width ?? 0), y1: y0 + eff };
+    // ZONE_EXTEND optrekken (maxHoogteVullen): de zone-top loopt op naar maxHoogte (nooit inkorten). Anders het
+    // bestaande gedrag: maxHoogte clipt naar beneden (min), of de getekende hoogte. Vlag/vullen uit → byte-identiek.
+    const eff = (isZoneExtend() && z.maxHoogteVullen)
+      ? Math.max(h, z.maxHoogte ?? 0)
+      : ((z.maxHoogte != null && z.maxHoogte > 0) ? Math.min(h, z.maxHoogte) : h);
+    const ex = zoneExt(z, 'strips');   // strips-uitloop verbreedt de effectieve rect → zW volgt → bond loopt door voorbij de rand
+    return { x0: (z.x ?? 0) - ex.l, y0, x1: (z.x ?? 0) + (z.width ?? 0) + ex.r, y1: y0 + eff };
   };
   const rects = active.map(zRect);
   // VENTILATIE_ZONE: clearRect = fill-rect + voegmarge (z.clearMargin {x:stoot, y:lint}). De omringende

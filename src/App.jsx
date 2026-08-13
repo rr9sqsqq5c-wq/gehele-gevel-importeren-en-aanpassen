@@ -5,7 +5,7 @@ import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements
 import { parseGhCladding } from './lib/ghCladding.js';
 import { attachLekdorpelToWalls } from './lib/lekdorpel.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isGhImport, isGeenVerband, isBlankBaseVerband, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isGhImport, isGeenVerband, isBlankBaseVerband, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor, applyVentZonesToBatches, solidifyRows } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -1571,7 +1571,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
         const DEFAULT_ZONE_MAT = { ...DEFAULT_MATERIAL };
         const groupBacking = settings.backingType ?? 'hout';
         const backingShort = (b) => b === 'hout' ? 'Hout' : b === 'aluminium' ? 'Aluminium U' : b === 'aluminium_slimfort' ? 'SlimFort' : b;
-        const resolveZone = (sz) => ({ enabled: false, color: settings.color, verband: settings.verband, material: { ...DEFAULT_ZONE_MAT }, maxHoogte: null, zoneBackingType: null, zonePanelenEnabled: null, ...sz });
+        const resolveZone = (sz) => ({ enabled: false, color: settings.color, verband: settings.verband, material: { ...DEFAULT_ZONE_MAT }, maxHoogte: null, maxHoogteVullen: false, zoneBackingType: null, zonePanelenEnabled: null, endExtensions: { left: { strips: 0, battens: 0, panels: 0 }, right: { strips: 0, battens: 0, panels: 0 } }, ...sz });
         const updZone = (id, patch) => {
           onUpdate({ stripZones: szArr.map((z) => z.id === id ? { ...resolveZone(z), ...patch } : z) });
         };
@@ -1703,6 +1703,42 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                         )}
                         {zs.maxHoogte !== null && <span style={{ fontSize: 10, color: '#94a3b8' }}>mm</span>}
                       </div>
+                      {/* ── ZONE_EXTEND optrekken: zone-strips/panelen/latten trekken op naar de zone-maxlijn (net als de groep) ── */}
+                      {isZoneExtend() && zs.maxHoogte !== null && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 20 }}>
+                          <input type="checkbox" id={`sz-mhv-${sz.id}`} checked={!!zs.maxHoogteVullen}
+                            onChange={(e) => updZone(sz.id, { maxHoogteVullen: e.target.checked })} />
+                          <label htmlFor={`sz-mhv-${sz.id}`} style={{ fontSize: 10.5, color: '#475569', cursor: 'pointer' }}>Optrekken naar maxlijn (strips + panelen + latten)</label>
+                        </div>
+                      )}
+
+                      {/* ── ZONE_EXTEND (vlag): links/rechts uitloop per laag (strips/latten/panelen), net als de groep ── */}
+                      {isZoneExtend() && (() => {
+                        const zee = zs.endExtensions ?? { left: {}, right: {} };
+                        return (
+                          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 5, marginTop: 2 }}>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: '#475569', marginBottom: 4 }}>Uitloop uiteinden (+ = uit, − = in)</div>
+                            {(settings.outsideDirFlip ? [['right', 'Links'], ['left', 'Rechts']] : [['left', 'Links'], ['right', 'Rechts']]).map(([side, sideLabel]) => {
+                              const sideEE = zee[side] ?? { strips: 0, battens: 0, panels: 0 };
+                              return (
+                                <div key={side} style={{ marginBottom: 5 }}>
+                                  <div style={{ fontSize: 9.5, fontWeight: 600, color: '#64748b', marginBottom: 2 }}>{sideLabel} uiteinde</div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 6px', alignItems: 'center' }}>
+                                    {[['strips', 'Strips'], ['battens', 'Latten'], ['panels', 'Panelen']].map(([key, lbl]) => (
+                                      <Fragment key={key}>
+                                        <span style={{ fontSize: 10, color: '#475569' }}>{lbl} mm</span>
+                                        <input type="number" step={1} value={sideEE[key] ?? 0}
+                                          onChange={(e) => updZone(sz.id, { endExtensions: { ...zee, [side]: { ...sideEE, [key]: Number(e.target.value) } } })}
+                                          style={{ ...inp, width: '100%' }} />
+                                      </Fragment>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
 
                       {/* ── ZONE_START_STOP (vlag): numerieke Start-X / Stop-X + hele-steen-snap (3D/2D/IFC) ── */}
                       {isZoneStartStop() && (() => {
