@@ -93,6 +93,44 @@ export function isKeepEndExtension() {
   return readFlag('keepEndExtension', true);
 }
 
+// END_TRIM — een NEGATIEF einduiteinde (inkorten) kort ook de PANEEL-/LATTEN-DATA in, niet alleen visueel.
+// Nu wordt inkorten enkel als rode "sv"-lijn getekend + visueel geclipt in de werktekening; het buitenste paneel/lat
+// houdt z'n oude maat (buildGroupPanels/buildFacadeLatten kappen de waarde af met Math.max(0,…) en extendPanelsAtEnds/
+// extendLattenAtEnds negeren negatief). Met de vlag schuift de buitenste paneel-/lattenrand écht mee → maat-label +
+// productielijst kloppen in ÁLLE weergaven (§8b). Buitenste element ≤ 0 na inkorten → vervalt (geen cascade). Strips
+// (de bond) blijven ongemoeid. DEFAULT = false → Math.max(0,…) blijft → byte-identiek. Aanzetten: ?endTrim=1.
+export function isEndTrim() {
+  return readFlag('endTrim', false);
+}
+
+// END_EXT_SEPARAAT — elk einduiteinde-onderdeel (strips/latten/panelen) verlengt/inkort ONAFHANKELIJK. Nu volgen de
+// LATTEN de PANEEL-verlenging (ze worden op de — verlengde — paneel-extent geknipt, buildFacadeLatten), dus een
+// paneel-uitloop sleept de latten mee ook al staat "Latten" op 0. Met de vlag wordt de latten-clip op [0, groupWidth]
+// geklemd → de latten volgen de paneel-uitloop NIET; ze verlengen enkel met hun eigen "Latten"-waarde (extendLattenAtEnds).
+// Strips/panelen waren al onafhankelijk. DEFAULT = false → latten volgen paneel (byte-identiek). Aanzetten: ?endExtSeparaat=1.
+export function isEndExtSeparaat() {
+  return readFlag('endExtSeparaat', false);
+}
+
+// PANEEL_STARTLIJN — de GROEP-brede panelen starten op de projectstart/startlijn (peil), net als de strips
+// (effectiveMinH, pattern.js) en de zone-panelen (buildZoneBackingPanels): panelen onder de startlijn worden
+// afgesneden zodat het onderste paneel op de startlijn begint. Nu doet buildGroupPanels dat alleen bij startLijn<0;
+// bij een POSITIEVE projectstart starten de groep-panelen op y=0 (mismatch met de strips). DEFAULT = false →
+// panelen starten op y=0 (byte-identiek). Aanzetten: ?paneelStartLijn=1.
+export function isPaneelStartLijn() {
+  return readFlag('paneelStartLijn', false);
+}
+
+// EXPORT_END_EXT_FIX — de IFC-export verlengt panelen/latten NIET meer dubbel. Sinds unifiedPanels/unifiedLatten
+// bakken buildGroupPanels/buildFacadeLatten de (positieve) verlenging zelf (net als 3D), maar de export-glue
+// _applyCornerToPanels/_applyCornerToLats verlengt ze daarná NOG een keer → export = 2×, 3D = 1×. Met de vlag worden
+// die twee glue-functies trim-only (net als _applyCornerToRows voor de strips) → export volgt 3D exact (1×). Inkorten
+// loopt dan via endTrim in de gedeelde motor. DEFAULT = false → dubbele verlenging blijft (byte-identiek). Aanzetten:
+// ?exportEndExtFix=1. Alleen relevant bij een groep-einduiteinde ≠ 0.
+export function isExportEndExtFix() {
+  return readFlag('exportEndExtFix', false);
+}
+
 // GEOMETRY_DERIVED_ORIGIN (Stap 1) — de RENDER-origin wordt afgeleid uit de geometrie
 // (AABB-center van wat web-ifc default uitspuugt: boom toegepast, context-WCS #20 NIET),
 // i.p.v. de context-WCS #20 (georef-bron) blind af te trekken. Lost op dat een Revit-
@@ -573,6 +611,13 @@ export function isPaneelMerk() {
   return readFlag('paneelMerk', false);
 }
 
+// PANEEL_MERK_PER_ZONE — de paneelnummering (P-nr per uniek type) telt NIET door over penant-zones heen: elke
+// zone begint weer bij P1 met een eigen nummering + eigen telling. Alleen actief bij >1 zone. DEFAULT = false →
+// groep-brede doorlopende nummering (byte-identiek). Aanzetten: ?paneelMerkPerZone=1.
+export function isPaneelMerkPerZone() {
+  return readFlag('paneelMerkPerZone', false);
+}
+
 // PANEEL_14LAAG — halfsteens paneel-afmeting verband-gedreven i.p.v. gewicht/panelen.hoogte. Breedte =
 // 5 strekken + 4 stootvoegen + (stoot−3) [= de bestaande 5-strek]. Hoogte = MAX 14 lagen: paneelhoogte =
 // 14·lagenmaat − 3 = 14·steenH + 13·lint + (lint−3); onder course-flush, top groeit (lint−3), 3 mm
@@ -623,6 +668,28 @@ export function isGhImport() {
   return readFlag('ghImport', false);
 }
 
+// LATTEN_PLAT — de lat ligt PLAT tegen de wand: de LANGE zijde in het gevelvlak (aanzicht), de KORTE als
+// diepte. Nu wordt breedteMM als aanzicht en dikteMM als diepte gebruikt; een artikel met omgekeerde maten
+// (bv. Mclad V18 45×95: breedteMM 45, dikteMM 95) steekt daardoor 95 mm uit met een 45 mm zichtzijde = op z'n
+// kant. Met de vlag wordt per lat de GROOTSTE van (breedte,dikte) het aanzicht (latBreedte) en de KLEINSTE de
+// diepte (latDikte) — dus altijd de lange zijde tegen de wand. Robuust tegen een stale opgeslagen latten.breedte
+// (max/min herstelt 95/45 ook uit een oude 45/95-config). Raakt 3D + 2D + werktekening + IFC-export + mal via de
+// gedeelde bronnen (groupLattenDims/effLatten). DEFAULT = false → breedte=aanzicht, dikte=diepte (byte-identiek).
+// Aanzetten: ?lattenPlat=1. Noodrem: ?lattenPlat=0.
+export function isLattenPlat() {
+  return readFlag('lattenPlat', false);
+}
+
+// ONDERLAT_OFFSET — de ONDERSTE horizontale lat (gevelbreed, op de projectstart/startlijn) ligt 10 mm HOGER
+// dan de starthoogte i.p.v. er precies op. Nu staat de onderlat-onderkant op minH = max(0, startLijn) (+0);
+// met de vlag op minH + 10 → de eerste lat begint altijd 10 mm boven het peil (ruimte voor start/lekprofiel).
+// Eén bron (computeHorizontalLatten) → 3D/2D/werktekening/IFC-export erven mee; consistent met het 14-laag-
+// pad dat de onderlat al op zone-onder + 10 legt. DEFAULT = false → onderlat op de starthoogte (byte-identiek).
+// Aanzetten: ?onderlatOffset=1. Noodrem: ?onderlatOffset=0.
+export function isOnderlatOffset() {
+  return readFlag('onderlatOffset', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -639,6 +706,10 @@ export const FLAG_REGISTRY = [
   { key: 'stripSnijlijn',        label: 'Strips snijden op de snijlijn', note: 'Steenstrips worden op de WERKELIJKE rand van een sparing/opening gesneden (deel-steen tot de rand) i.p.v. de hele steen weg te knippen. Sparingen: altijd (elk verband). Ramen/deuren: alleen bij staand verband — halfsteens raam/deur blijft op de laagrand zoals nu. Werkt in 2D/3D/werktekening/export.' },
   { key: 'zoneStartStop',        label: 'Zone Start-X / Stop-X (numeriek)', note: 'Per tekenzone de linker- en rechterrand exact in mm intypen (i.p.v. tekenen) + "hele steen"-snap, om te optimaliseren. Werkt in 3D/2D/IFC; meetstaat/mallen nog niet.' },
   { key: 'zoneExtend',           label: 'Tekenzone links/rechts uitbreiden', note: 'Per getekende tekenzone een uitloop (mm) links/rechts, apart per laag (strips/latten/panelen), net als de groep-einduiteinden. Werkt in 3D/2D/IFC-export; meetstaat/mal voor zones nog niet.' },
+  { key: 'endTrim',              label: 'Einduiteinde inkorten = paneel/lat echt smaller', note: 'Een negatief einduiteinde (inkorten) maakt het buitenste paneel/lat ook in de DATA smaller — maat-label + productielijst kloppen in alle weergaven, i.p.v. alleen een rode sv-lijn + visuele clip. Buitenste element ≤ 0 → vervalt.' },
+  { key: 'endExtSeparaat',       label: 'Einduiteinden per onderdeel los', note: 'Strips/latten/panelen verlengen elk ONAFHANKELIJK met hun eigen mm. Nu volgen de latten de paneel-verlenging mee (ook als "Latten" 0 is); met de vlag verlengen de latten alleen met hun eigen waarde.' },
+  { key: 'paneelStartLijn',      label: 'Panelen starten op de projectstart', note: 'De groep-brede panelen beginnen op de projectstart/startlijn (peil) — panelen onder de startlijn worden afgesneden, net als de strips en de zone-panelen. Nu starten de groep-panelen op y=0 bij een positieve startlijn.' },
+  { key: 'exportEndExtFix',      label: 'IFC-export: verlenging niet dubbel', note: 'De IFC-export verlengt panelen/latten nu dubbel (gedeelde motor + oude export-glue) → export ≠ 3D. Met de vlag wordt de export-glue trim-only, zodat de verlenging exact 3D volgt (1×). Alleen relevant bij een groep-einduiteinde.' },
   { key: 'geenVerband',          label: 'Metselverband "geen" (blanco basisvlak)', note: 'Extra keuze in de verband-dropdown: het basisvlak buiten de tekenzones krijgt geen strips/panelen/latten → blanco gevel om zelf tekenzones op te leggen. De zones brengen hun eigen verband.' },
   { key: 'paneelOptimalisatie',  label: 'Optimale paneelverdeling (standaard aan)', note: 'STANDAARD AAN. Naden op de doorlopende steen → koppelstenen overal om-en-om (ook in smalle zones); rijen even lagen binnen het gewicht (geen mini-panelen); gestapelde panelen in één kolom samengevoegd; snipper-zones < 50 mm vervallen. Uitzetten = ?paneelOptimalisatie=0.' },
   { key: 'showKozijnen',         label: 'Kozijnen tonen (2D + 3D)',  note: 'Raam/deur als 3D-doos én als amber kader in 2D (met L/R-marge tot de strips) ter controle van de uitlijning.', reimport: true },
@@ -654,8 +725,11 @@ export const FLAG_REGISTRY = [
   { key: 'gevelHandedness',      label: 'Gevel-handedness (links↔rechts)', note: 'Spiegelt de steenstrip-bond én 2D/werktekening zó dat elk gevelvlak van buiten gezien links→rechts leest (3D/2D/export één waarheid). Kozijnen blijven op hun plek.' },
   { key: 'uittrekstaatSnap',     label: 'Uittrekstaat — panelen op steenrijen', note: 'Uittrekstaat + mal-recept panelizeren met dezelfde snap (paneel-splits op steenrijen) als tekening/3D/export, zodat de materiaalstaat dezelfde paneelmaten telt.' },
   { key: 'paneelMerk',           label: 'Paneel-merk (productie↔montage)', note: 'Elk paneel krijgt een gedeeld merk (P-nr per uniek type) als kolom in de EPC-tabel/CSV + op de tekening, hergebruikt in de productielijst. Vereist "Uittrekstaat — panelen op steenrijen".', advanced: true },
+  { key: 'paneelMerkPerZone',    label: 'Paneelnummering per zone', note: 'De P-nummering telt niet door over penant-zones heen: elke zone begint weer bij P1 met eigen nummering + telling. Alleen bij >1 zone.' },
   { key: 'paneel14Laag',         label: 'Panelen — 14-laag + latten uit paneelvoegen', note: 'Halfsteens: paneelhoogte vast op 14 lagen (14·steenH+13·lint+(lint−3)) i.p.v. gewicht/hoogte-instelling; latten afgeleid uit de paneelvoegen (voeg-lat + onderlat +10mm + ~400 h.o.h. opvulling).', advanced: true },
   { key: 'strip3dFilter',        label: '3D — geen paneel/lat zonder strip', note: '3D krijgt dezelfde strip-overlap-filter als 2D/werktekening/export: een paneel (en de erop volgende latten) verdwijnt als het nergens een steenstrip raakt. Dicht het gat waardoor 3D een paneel zonder strip kon tonen (bv. smalle zone tussen openingen).', advanced: true },
+  { key: 'lattenPlat',           label: 'Latten plat (lange zijde tegen de wand)', note: 'De lat ligt plat: de langste maat in het gevelvlak (aanzicht), de kortste als diepte. Corrigeert een artikel met omgekeerde maten (bv. Mclad V18 45×95) dat anders op z\'n kant 95 mm uitsteekt. Werkt in 3D/2D/werktekening/IFC-export/mal.' },
+  { key: 'onderlatOffset',       label: 'Onderlat 10 mm boven de starthoogte', note: 'De onderste gevelbrede lat ligt 10 mm hoger dan de projectstart/startlijn (peil) i.p.v. er precies op — ruimte voor het start-/lekprofiel. Werkt in 3D/2D/werktekening/IFC-export.' },
   { key: 'penantHoekStoot',      label: 'Penant — stootvoeg voor↔zij (3D)', note: 'Zet een stootvoeg tussen de voorvlak-strip en de zijvlak-strip van een penant (3D): de zijstrip stopt een stootvoeg vóór de voorstrip i.p.v. er tegenaan (haalt de stoot uit de zijstrip-lengte).', advanced: true },
   { key: 'unitDetectie',         label: 'Detecteer repeterende units', note: 'Herkent verdiepingshoge buitenwand-panelen met dezelfde maat + raam/deur-layout en zet elk voorkomen als een gekoppelde gevelgroep weg (1× een unit-type instellen → alle kopieën volgen). Puur additief.' },
   { key: 'ghImport',             label: 'Grasshopper-gevel importeren', note: 'Laad een Grasshopper/Geometry-Gym IFC waarin panelen/strippen/latten al gemodelleerd zijn (geen wanden): leidt de gevels af, nummert de panelen per gevel en toont per gevel een beoordelingsaanzicht + uittrekstaat + zaaglijst.', reimport: true },

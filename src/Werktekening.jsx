@@ -5,7 +5,7 @@ import { buildStripZoneRegions, getActiveStripZones, solidifyRows } from './lib/
 import { sparingRectsForFacade } from './lib/sparingElements.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isBlankBaseVerband, isFeatureZones } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isPaneelMerkPerZone, isBlankBaseVerband, isFeatureZones } from './lib/featureFlags.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -579,17 +579,44 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
       const holeSig = (panel.holes ?? []).map((h) => `${Math.round(h.x - panel.x)}:${Math.round(h.y - panel.y)}:${Math.round(h.width)}:${Math.round(h.height)}`).join(',');
       return `${Math.round(panel.width)}x${Math.round(panel.height)}|${panel.type ?? ''}|${stripSig}|H:${holeSig}`;
     };
-    const sorted = [...effectivePanels].sort((a, b) => (a.y - b.y) || (a.x - b.x));
-    const sigToMerk = new Map(), posToMerk = new Map(), merkCount = new Map();
-    let next = 1;
-    for (const panel of sorted) {
-      const sig = sigOf(panel);
-      if (!sigToMerk.has(sig)) sigToMerk.set(sig, next++);
-      const m = sigToMerk.get(sig);
-      posToMerk.set(`${Math.round(panel.x)}_${Math.round(panel.y)}`, m);
-      merkCount.set(m, (merkCount.get(m) ?? 0) + 1);
+    // PANEEL_MERK_PER_ZONE (vlag): bij >1 penant-zone telt de nummering NIET door — elke zone eigen P1.. + eigen
+    // telling. Vlag uit of 1 zone → groep-brede doorlopende nummering (byte-identiek).
+    const perZone = isPaneelMerkPerZone() && facadeZones.length > 1;
+    const zoneIdxOf = (panel) => {
+      const cx = panel.x + panel.width / 2;
+      const z = facadeZones.find((zn) => cx >= zn.xStart - 1 && cx < zn.xEnd + 1);
+      return z ? z.idx : 0;
+    };
+    const pk = (p) => `${Math.round(p.x)}_${Math.round(p.y)}`;
+    const posToMerk = new Map(), posToZone = new Map(), merkCount = new Map();
+    if (perZone) {
+      const byZone = new Map();   // zoneIdx → { sigToMerk, next }
+      const sorted = [...effectivePanels].sort((a, b) => (zoneIdxOf(a) - zoneIdxOf(b)) || (a.y - b.y) || (a.x - b.x));
+      for (const panel of sorted) {
+        const zi = zoneIdxOf(panel);
+        if (!byZone.has(zi)) byZone.set(zi, { sig: new Map(), next: 1 });
+        const zst = byZone.get(zi);
+        const sig = sigOf(panel);
+        if (!zst.sig.has(sig)) zst.sig.set(sig, zst.next++);
+        const m = zst.sig.get(sig);
+        posToMerk.set(pk(panel), m); posToZone.set(pk(panel), zi);
+        merkCount.set(`${zi}:${m}`, (merkCount.get(`${zi}:${m}`) ?? 0) + 1);
+      }
+    } else {
+      const sorted = [...effectivePanels].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+      const sigToMerk = new Map(); let next = 1;
+      for (const panel of sorted) {
+        const sig = sigOf(panel);
+        if (!sigToMerk.has(sig)) sigToMerk.set(sig, next++);
+        const m = sigToMerk.get(sig);
+        posToMerk.set(pk(panel), m);
+        merkCount.set(`${m}`, (merkCount.get(`${m}`) ?? 0) + 1);
+      }
     }
-    return { get: (p) => posToMerk.get(`${Math.round(p.x)}_${Math.round(p.y)}`) ?? null, count: (m) => merkCount.get(m) ?? 0 };
+    return {
+      get: (p) => posToMerk.get(pk(p)) ?? null,
+      count: (p) => { const m = posToMerk.get(pk(p)); if (m == null) return 0; return merkCount.get(perZone ? `${posToZone.get(pk(p))}:${m}` : `${m}`) ?? 0; },
+    };
   })();
   const paneelMerkLabel = (p) => { const m = paneelMerkMap?.get(p); return m != null ? `P${m}` : ''; };
   const zoneLatten = allLatten.filter((l) =>
@@ -1432,7 +1459,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
                     // PANEEL_MERK: gebruik het GROEP-brede merk + telling (1:1 met de montage-Merk-kolom).
                     // Vlag uit → per-zone uniqueSeq + telling (byte-identiek).
                     const _merk = paneelMerkMap?.get(panel);
-                    const prodCount = _merk != null ? paneelMerkMap.count(_merk) : groups.get(e.sig).count;
+                    const prodCount = _merk != null ? paneelMerkMap.count(panel) : groups.get(e.sig).count;
                     const uniqueSeq = _merk != null ? _merk : uniqueIdx + 1;
                     const color = groupSettings?.color ?? '#a64033';
                     const PAD = 40;

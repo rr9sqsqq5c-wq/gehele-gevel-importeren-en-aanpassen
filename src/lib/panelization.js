@@ -3,7 +3,7 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset } from './featureFlags.js';
 
 // ZONE_EXTEND: per-laag mm-uitloop van een zone-rand (links = x0-kant, rechts = x1-kant). Vlag uit → 0 (byte-identiek).
 const zoneExtentFor = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
@@ -428,7 +428,8 @@ export function computeHorizontalLatten({ facadeData, latten, mat, panelen, star
   } else {
   for (const yr of [...allYs].filter(y => y >= minH && y <= gH).sort((a, b) => a - b)) {
     let latY;
-    if (yr === minH) latY = minH;
+    // ONDERLAT_OFFSET: de onderste (startlijn-)lat 10 mm boven het peil i.p.v. erop (vlag uit → +0, byte-identiek).
+    if (yr === minH) latY = isOnderlatOffset() ? minH + 10 : minH;
     else if (yr === gH) latY = yr - latBreedte;
     else if (brickTopsSet.has(yr)) latY = Math.round(yr + lintHalf - latBreedte / 2);
     else latY = Math.round(yr - lintHalf - latBreedte / 2);
@@ -503,8 +504,13 @@ export function buildFacadeLatten({ facadeData, latten, mat, panelen, panels = [
         if (panels.length) {
           const inZone = panels.filter((p) => p.y < latBot && p.y + p.height > latTop && p.x + p.width > zone.x1 && p.x < zone.x2);
           if (inZone.length) {
-            const pxMin = Math.min(...inZone.map((p) => p.x));
-            const pxMax = Math.max(...inZone.map((p) => p.x + p.width));
+            // END_EXT_SEPARAAT: klem op de ZONE-segmentgrens (groep/openingen), NIET de paneel-extent → de latten volgen
+            // de paneel-verlenging ÉN -inkorting niet; ze verlengen/inkorten enkel met hun eigen "Latten"-waarde
+            // (extendLattenAtEnds hieronder). Vlag uit → paneel-extent (byte-identiek). Basis (geen paneel-uitloop):
+            // panelen vullen het segment → zone.x1/x2 ≈ pxMin/pxMax → ook met de vlag aan geen zichtbaar verschil.
+            const _sep = isEndExtSeparaat() && !use14;
+            const pxMin = _sep ? zone.x1 : Math.min(...inZone.map((p) => p.x));
+            const pxMax = _sep ? zone.x2 : Math.max(...inZone.map((p) => p.x + p.width));
             // PANEEL_14LAAG: aan de GEVELRAND niet insetten → de rand-lat raakt x=0/groupWidth en loopt zo mee met end-extension.
             x1 = (use14 && pxMin <= 0.5) ? pxMin : pxMin + INSET;
             x2 = (use14 && pxMax >= groupWidth - 0.5) ? pxMax : pxMax - INSET;
@@ -528,9 +534,10 @@ export function buildFacadeLatten({ facadeData, latten, mat, panelen, panels = [
   // UNIFIED_LATTEN: hoek-extensie (buitenste horizontale lat loopt door voorbij de gevelrand) hier ÍN de
   // gedeelde helper, zodat ALLE views 'm identiek toepassen (was alleen in View2D → divergentie).
   if (richting === 'horizontaal' && isKeepEndExtension() && endExtensions) {
-    const eL = Math.max(0, endExtensions.left?.battens ?? 0);
-    const eR = Math.max(0, endExtensions.right?.battens ?? 0);
-    if (eL > 0 || eR > 0) out = extendLattenAtEnds(out, groupWidth, eL, eR);
+    const _clampL = (v) => isEndTrim() ? v : Math.max(0, v);   // END_TRIM: negatief (inkorten) toestaan; anders alleen uitbreiden
+    const eL = _clampL(endExtensions.left?.battens ?? 0);
+    const eR = _clampL(endExtensions.right?.battens ?? 0);
+    if (eL !== 0 || eR !== 0) out = extendLattenAtEnds(out, groupWidth, eL, eR);
   }
   return (sparingRects?.length) ? cutVentHolesFromPanels(out, sparingRects) : out;
 }
@@ -1073,8 +1080,19 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
   const battenYs = generateBattenPositions(groupHeight, effMat, maxInterval, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 }).map((y) => snapToRowY ? snapToRowY(y) : y);
   const openings = (groupOpenings ?? []).filter((op) => op.type !== 'ventilatie').map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
   const allOpenings = [...openings, ...(penantOpenings ?? [])];
+  // END_TRIM: een negatief einduiteinde (inkorten) verkleint het PANELISATIE-DOMEIN VÓÓR de optimalisatie
+  // (buitenste zone tot [trimL, groupWidth−trimR]) → panelizeZone HERVERDEELT optimaal over de kortere breedte,
+  // i.p.v. een afgehakt restpaneel. Vlag uit → trimL=trimR=0 → geen clip (byte-identiek).
+  const _eeT = endExtensions ?? {};
+  const _trimL = isEndTrim() ? Math.max(0, -(_eeT.left?.panels ?? 0)) : 0;
+  const _trimR = isEndTrim() ? Math.max(0, -(_eeT.right?.panels ?? 0)) : 0;
   let panels = [];
-  for (const zone of buildFacadeZones(groupWidth, groupHeight, allOpenings)) {
+  for (let zone of buildFacadeZones(groupWidth, groupHeight, allOpenings)) {
+    if (_trimL > 0 || _trimR > 0) {
+      const zx1 = Math.max(zone.x, _trimL), zx2 = Math.min(zone.x + zone.width, groupWidth - _trimR);
+      if (zx2 - zx1 <= 1) continue;                     // zone valt volledig binnen de inkorting → weg
+      zone = { ...zone, x: zx1, width: zx2 - zx1 };
+    }
     const res = panelizeZone(zone, battenYs, basePanel, snapToRowY, effMat, verband);
     if (res.ok) panels.push(...res.panels);
   }
@@ -1102,11 +1120,20 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
   // Handmatige einduiteinde-extensie: buitenste paneel loopt door voorbij de gevelrand (hoek-aansluiting).
   if (isKeepEndExtension()) {
     const ee = endExtensions ?? {};
+    // UITBREIDEN (positief) post-process; INKORTEN (negatief) loopt al via de zone-clip hierboven (re-optimalisatie).
     panels = extendPanelsAtEnds(panels, groupWidth, Math.max(0, ee.left?.panels ?? 0), Math.max(0, ee.right?.panels ?? 0));
   }
   if (startLijn != null && startLijn < 0 && panels.length > 0) {
     const minY = Math.min(...panels.map((p) => p.y));
     panels = panels.map((p) => p.y <= minY + 0.5 ? { ...p, y: startLijn, height: p.height + p.y - startLijn } : p);
+  } else if (isPaneelStartLijn() && startLijn != null && startLijn > 0 && panels.length > 0) {
+    // PANEEL_STARTLIJN: panelen onder de projectstart afsnijden → het onderste paneel begint op de startlijn (net als
+    // de strips + de zone-panelen). Vlag uit → panelen starten op y=0 (byte-identiek).
+    panels = panels.map((p) => {
+      if (p.y + p.height <= startLijn) return null;                                             // volledig onder de startlijn → weg
+      if (p.y < startLijn) return { ...p, y: startLijn, height: round2(p.y + p.height - startLijn) };   // deels → optrekken tot de startlijn
+      return p;
+    }).filter(Boolean);
   }
   return { panels, effMat, basePanel };
 }
@@ -1380,28 +1407,37 @@ export function moldIdLabel(mat, moldId) {
 // elementen blijven ongemoeid. Byte-identiek als eL=eR=0 (input onveranderd terug). Zelfde logica
 // als _applyCornerToPanels/_applyCornerToLats in de IFC-export, nu gedeeld met de 2D-view.
 export function extendPanelsAtEnds(panels, groupWidth, eL = 0, eR = 0) {
-  if (!(eL > 0) && !(eR > 0)) return panels;
-  return panels.map((p) => {
+  if (eL === 0 && eR === 0) return panels;
+  // eL/eR > 0 = uitbreiden (rand schuift naar buiten); < 0 = inkorten (rand schuift naar binnen). Formule `x -= eL`
+  // / `right += eR` dekt beide. Kort de rand tot niets in → paneel vervalt (END_TRIM; geen cascade).
+  const out = [];
+  for (const p of panels) {
     let x = p.x, right = p.x + p.width;
-    if (eL > 0 && p.x <= 0.5) x -= eL;
-    if (eR > 0 && p.x + p.width >= groupWidth - 0.5) right += eR;
+    if (eL !== 0 && p.x <= 0.5) x -= eL;
+    if (eR !== 0 && p.x + p.width >= groupWidth - 0.5) right += eR;
     const width = right - x;
-    return width === p.width ? p : { ...p, x, width };
-  });
+    if (width <= 0.5) continue;
+    out.push(width === p.width ? p : { ...p, x, width });
+  }
+  return out;
 }
 
 // Idem voor latten. Alleen HORIZONTALE latten lopen over de breedte en worden verlengd; verticale
 // latten staan op een vaste x en blijven ongemoeid (gelijk aan _applyCornerToLats in de export).
 export function extendLattenAtEnds(latten, groupWidth, eL = 0, eR = 0) {
-  if (!(eL > 0) && !(eR > 0)) return latten;
-  return latten.map((lat) => {
-    if (lat.richting && lat.richting !== 'horizontaal') return lat;
+  if (eL === 0 && eR === 0) return latten;
+  // eL/eR > 0 = uitbreiden; < 0 = inkorten (END_TRIM). Verticale latten ongemoeid; horizontale lat tot niets in → vervalt.
+  const out = [];
+  for (const lat of latten) {
+    if (lat.richting && lat.richting !== 'horizontaal') { out.push(lat); continue; }
     let x = lat.x, right = lat.x + lat.width;
-    if (eL > 0 && lat.x <= 0.5) x -= eL;
-    if (eR > 0 && lat.x + lat.width >= groupWidth - 0.5) right += eR;
+    if (eL !== 0 && lat.x <= 0.5) x -= eL;
+    if (eR !== 0 && lat.x + lat.width >= groupWidth - 0.5) right += eR;
     const width = right - x;
-    return width === lat.width ? lat : { ...lat, x, width };
-  });
+    if (width <= 0.5) continue;
+    out.push(width === lat.width ? lat : { ...lat, x, width });
+  }
+  return out;
 }
 
 export function generateMoldDXF(mat, verband, moldDims, moldId = 'A') {

@@ -274,17 +274,26 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
         }));
     const higherRects = clears.slice(i + 1); // latere zones = hogere z-order (incl. hun voegmarge)
 
+    // ZONE_EXTEND: de UITLOOP (voorbij de getekende zone, meestal in lege ruimte om op de aangrenzende gevel aan
+    // te sluiten) mag NIET door de wand-dekking worden weggeknipt — anders verdwijnt "links uitbreiden waar geen
+    // wandelement zit". De uitloop-regio's tellen daarom als extra "gedekt". Vlag uit → geen uitloop → leeg (byte-identiek).
+    const _exZ = zoneExt(zone, 'strips');
+    const _covExtra = [];
+    if (_exZ.l > 0) _covExtra.push([(zone.x ?? 0) - _exZ.l, zone.x ?? 0]);
+    if (_exZ.r > 0) _covExtra.push([(zone.x ?? 0) + (zone.width ?? 0), (zone.x ?? 0) + (zone.width ?? 0) + _exZ.r]);
+
     const clippedRows = [];
     for (const lr of absRows) {
       const y = round2(lr.y);
       if (y >= r.y1 - 1e-6 || y < r.y0 - 1e-6) continue; // ∩ rechthoek (Y)
       const yLo = y, yHi = y + zRowH;
       const cov = planeCoverageForSpan(facadeData, yLo, yHi, planeRowH); // vlak − openingen
+      const covUse = _covExtra.length ? [...cov, ..._covExtra] : cov;     // ZONE_EXTEND: + de uitloop-regio (lege ruimte)
       const pieces = [];
       for (const p of lr.pieces) {
         const s0 = round2(p.start), e0 = round2(s0 + p.length);
         let parts = intersectInterval([[s0, e0]], r.x0, r.x1); // ∩ rechthoek (X)
-        parts = parts.flatMap(([s, e]) => intersectInterval(cov, s, e)); // ∩ vlak − openingen
+        parts = parts.flatMap(([s, e]) => intersectInterval(covUse, s, e)); // ∩ (vlak − openingen) ∪ uitloop
         for (const hr of higherRects) {           // − hogere zones (z-order)
           if (hr.y1 <= yLo + 1e-6 || hr.y0 >= yHi - 1e-6) continue;
           parts = parts.flatMap(([s, e]) => subtractInterval([[s, e]], hr.x0, hr.x1));

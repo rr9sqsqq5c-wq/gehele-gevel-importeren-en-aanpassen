@@ -5,7 +5,7 @@ import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements
 import { parseGhCladding } from './lib/ghCladding.js';
 import { attachLekdorpelToWalls } from './lib/lekdorpel.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isGhImport, isGeenVerband, isBlankBaseVerband, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isExportEndExtFix, isGhImport, isGeenVerband, isBlankBaseVerband, isLattenPlat, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor, applyVentZonesToBatches, solidifyRows } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -45,10 +45,38 @@ const CORNER85_LAT_GAP = 5;   // mm
 // Lattendikte UIT DE GROEPSAANDUIDING: een gekozen latten-artikel (BATTEN_CATALOG) wint van
 // het handmatige latten.dikte; 28 is enkel de laatste terugval. Zo hangt de hoek-berekening niet
 // vast op 28 zodra er een artikel of eigen dikte in de groep is gekozen.
+// Lat-maten uit de groepsaanduiding, als ÉÉN bron: aanzicht (breedte) + diepte (dikte). Een gekozen
+// artikel wint van de handmatige waarden. Met vlag 'lattenPlat' ligt de lat PLAT — de GROOTSTE maat in
+// het gevelvlak (aanzicht), de KLEINSTE als diepte — zodat de lange zijde altijd tegen de wand ligt
+// (corrigeert een artikel met omgekeerde maten, bv. Mclad V18 45×95). Vlag UIT → breedte=aanzicht,
+// dikte=diepte (byte-identiek). Max/min herstelt de juiste oriëntatie óók uit een stale opgeslagen config.
+function groupLattenDims(s) {
+  const artId = (s?.lattenArtikelen ?? [])[0] ?? null;
+  const art = artId ? BATTEN_CATALOG.find((a) => a.id === artId) : null;
+  const breedte = art ? art.breedteMM : (s?.latten?.breedte ?? 50);
+  const dikte = art ? art.dikteMM : (s?.latten?.dikte ?? 28);
+  if (isLattenPlat() && dikte > breedte) return { breedte: dikte, dikte: breedte };
+  return { breedte, dikte };
+}
 function groupLattenDikte(s) {
   const artId = (s?.lattenArtikelen ?? [])[0] ?? null;
   const art = artId ? BATTEN_CATALOG.find((a) => a.id === artId) : null;
-  return art ? art.dikteMM : (s?.latten?.dikte ?? 28);
+  if (!isLattenPlat()) return art ? art.dikteMM : (s?.latten?.dikte ?? 28); // vlag uit → byte-identiek
+  return groupLattenDims(s).dikte;
+}
+function groupLattenBreedte(s) {
+  const artId = (s?.lattenArtikelen ?? [])[0] ?? null;
+  const art = artId ? BATTEN_CATALOG.find((a) => a.id === artId) : null;
+  if (!isLattenPlat()) return art ? art.breedteMM : (s?.latten?.breedte ?? 50); // vlag uit → byte-identiek
+  return groupLattenDims(s).breedte;
+}
+// De latten-config met aanzicht/diepte al naar de effectieve (plat-gecorrigeerde) waarden gezet, zodat de
+// gedeelde motoren (buildFacadeLatten/buildGroupPanels) + de 2D-views dezelfde lat-oriëntatie erven. Vlag
+// UIT → de originele config ongewijzigd (byte-identiek).
+function effLatten(s) {
+  if (!isLattenPlat() || !s?.latten) return s?.latten;
+  const { breedte, dikte } = groupLattenDims(s);
+  return { ...s.latten, breedte, dikte };
 }
 
 // Aantal lat-LAGEN uit het hout-achterconstructie-systeem (Houtimport Rijssen):
@@ -3493,7 +3521,7 @@ export default function App() {
       const mat = s.material ?? DEFAULT_MATERIAL;
       const _artId3d = (s.lattenArtikelen ?? [])[0] ?? null;
       const _art3d = _artId3d ? BATTEN_CATALOG.find((a) => a.id === _artId3d) : null;
-      const latDikte3d = _art3d ? _art3d.dikteMM : (s.latten?.dikte ?? 28);
+      const latDikte3d = groupLattenDikte(s);
       const hasVertLat3d = s.latten?.richting === 'verticaal';
       // Lat-DIEPTE volgt het achterconstructie-systeem (enkel 1× / kruislaag 2×), niet de richting.
       const effectiveLatDepth3d = lattenLagen(s) * latDikte3d;
@@ -3616,7 +3644,7 @@ export default function App() {
           const secGW = Math.max(...secAxisW.map((w) => w.wallOrigin.lengthStart + (w.length ?? 0))) - secGroupMinX;
           const secArtId = (secS.lattenArtikelen ?? [])[0] ?? null;
           const secArt = secArtId ? BATTEN_CATALOG.find((a) => a.id === secArtId) : null;
-          const secLatDikte = secArt ? secArt.dikteMM : (secS.latten?.dikte ?? 28);
+          const secLatDikte = groupLattenDikte(secS);
           const secHasVertLat = secS.latten?.richting === 'verticaal';
           const secEffLat = secHasVertLat ? 2 * secLatDikte : secLatDikte;
           const secPanelD = secS.panelen?.dikte ?? 8;
@@ -3928,7 +3956,7 @@ export default function App() {
         const secGW = Math.max(...secAxisW.map((w) => w.wallOrigin.lengthStart + (w.length ?? 0))) - secGroupMinX;
         const secArtId = (secS.lattenArtikelen ?? [])[0] ?? null;
         const secArt = secArtId ? BATTEN_CATALOG.find((a) => a.id === secArtId) : null;
-        const secLatDikte = secArt ? secArt.dikteMM : (secS.latten?.dikte ?? 28);
+        const secLatDikte = groupLattenDikte(secS);
         const secHasVertLat = secS.latten?.richting === 'verticaal';
         const secEffLat = secHasVertLat ? 2 * secLatDikte : secLatDikte;
         const secPanelD = secS.panelen?.dikte ?? 8;
@@ -4043,7 +4071,7 @@ export default function App() {
         if (s.panelen?.enabled && !isWv3d) {
           if (isUnifiedPanels() && verb3d !== 'wildverband') {
             // UNIFIED_PANELS: gedeelde motor (congruent met 2D/werktekening/export/meetstaat).
-            panels3d = buildGroupPanels({ groupWidth: gW3d, groupHeight: gH3d, groupOpenings: facadeData.groupOpenings, rows: facadeData.rows, penanten: s.penanten, baseMat: mat, stripArt: _3dStripArt, panelen: s.panelen, latten: s.latten, verband: verb3d, sparingRects: facadeData.sparingRects, startLijn: s.startLijn, endExtensions: s.endExtensions }).panels;
+            panels3d = buildGroupPanels({ groupWidth: gW3d, groupHeight: gH3d, groupOpenings: facadeData.groupOpenings, rows: facadeData.rows, penanten: s.penanten, baseMat: mat, stripArt: _3dStripArt, panelen: s.panelen, latten: effLatten(s), verband: verb3d, sparingRects: facadeData.sparingRects, startLijn: s.startLijn, endExtensions: s.endExtensions }).panels;
           } else {
           const basePanel3d = computeEffectiveBasePanel(s.panelen, mat.brickWeightM2 ?? 40, mat);
           const opForZones3d = (facadeData.groupOpenings ?? []).filter((op) => op.type !== 'ventilatie').map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
@@ -4077,9 +4105,9 @@ export default function App() {
         }
         if (s.latten?.enabled) {
           if (isUnifiedLatten()) {   // FASE 1 — één gedeelde latten-berekening (effectiveMat3d = zelfde als facadeData.rows)
-            latten3d = buildFacadeLatten({ facadeData, latten: s.latten, mat: effectiveMat3d, panelen: s.panelen, panels: panels3d, penanten: s.penanten ?? [], startLijn: s.startLijn, verband: verb3d, backingType: backing3d, sparingRects: facadeData.sparingRects, endExtensions: s.endExtensions });
+            latten3d = buildFacadeLatten({ facadeData, latten: effLatten(s), mat: effectiveMat3d, panelen: s.panelen, panels: panels3d, penanten: s.penanten ?? [], startLijn: s.startLijn, verband: verb3d, backingType: backing3d, sparingRects: facadeData.sparingRects, endExtensions: s.endExtensions });
           } else if ((s.latten.richting ?? 'horizontaal') === 'horizontaal') {
-            latten3d = computeHorizontalLatten({ facadeData, latten: s.latten, mat, panelen: s.panelen, startLijn: s.startLijn, backingType: backing3d, verband: verb3d });
+            latten3d = computeHorizontalLatten({ facadeData, latten: effLatten(s), mat, panelen: s.panelen, startLijn: s.startLijn, backingType: backing3d, verband: verb3d });
           } else {
             const latB3d = Math.max(5, s.latten.breedte ?? 50);
             const xs3d = new Set([0, gW3d]);
@@ -4092,9 +4120,9 @@ export default function App() {
       else if (backing3d === 'hout' && isBlankBaseVerband(verb3d)) {
         const azf3d = getActiveStripZones(s);
         if (azf3d.length) {
-          panels3d = buildZoneBackingPanels({ facadeData, activeZones: azf3d, panelen: s.panelen, latten: s.latten, mat: effectiveMat3d, verband: verb3d, startLijn: s.startLijn, sparingRects: facadeData.sparingRects });
+          panels3d = buildZoneBackingPanels({ facadeData, activeZones: azf3d, panelen: s.panelen, latten: effLatten(s), mat: effectiveMat3d, verband: verb3d, startLijn: s.startLijn, sparingRects: facadeData.sparingRects });
           if (s.latten?.enabled) {
-            const _baseLat3d = buildFacadeLatten({ facadeData, latten: s.latten, mat: effectiveMat3d, panelen: s.panelen, panels: panels3d, penanten: [], startLijn: s.startLijn, verband: verb3d, backingType: backing3d, sparingRects: facadeData.sparingRects });
+            const _baseLat3d = buildFacadeLatten({ facadeData, latten: effLatten(s), mat: effectiveMat3d, panelen: s.panelen, panels: panels3d, penanten: [], startLijn: s.startLijn, verband: verb3d, backingType: backing3d, sparingRects: facadeData.sparingRects });
             latten3d = clipLattenToZones(_baseLat3d, azf3d);
           }
         }
@@ -5343,7 +5371,7 @@ export default function App() {
         // UNIFIED_PANELS: gedeelde motor → mal-recept telt exact de getekende panelen.
         const _mrSid = (s.steenstripsArtikelen ?? [])[0];
         const _mrArt = _mrSid ? STEENSTRIP_CATALOG.find((a) => a.id === _mrSid) : null;
-        panels = buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows: facadeData.rows, penanten: s.penanten, baseMat: mat, stripArt: _mrArt, panelen: s.panelen, latten: s.latten, verband, sparingRects: [], startLijn: s.startLijn, endExtensions: s.endExtensions }).panels;
+        panels = buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows: facadeData.rows, penanten: s.penanten, baseMat: mat, stripArt: _mrArt, panelen: s.panelen, latten: effLatten(s), verband, sparingRects: [], startLijn: s.startLijn, endExtensions: s.endExtensions }).panels;
       } else {
         const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
         for (const zone of zones) {
@@ -5668,7 +5696,7 @@ export default function App() {
       const isAluminium = (s.backingType ?? 'hout') === 'aluminium';
       const _artId = (s.lattenArtikelen ?? [])[0] ?? null;
       const _art = _artId ? BATTEN_CATALOG.find((a) => a.id === _artId) : null;
-      const latDikteEff = _art ? _art.dikteMM : (s.latten?.dikte ?? 28);
+      const latDikteEff = groupLattenDikte(s);
       const latV18ProfilePts = _art?.v18ProfilePts ?? null;
       const latV18NokHeight = _art?.v18NokHeight ?? null;
       const latV18NokFootWidth = _art?.v18NokFootWidth ?? null;
@@ -5710,7 +5738,7 @@ export default function App() {
             // UNIFIED_PANELS: gedeelde motor → IFC-export bevat exact de getekende panelen.
             const _exSid = (s.steenstripsArtikelen ?? [])[0];
             const _exArt = _exSid ? STEENSTRIP_CATALOG.find((a) => a.id === _exSid) : null;
-            panels.push(...buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows: facRows, penanten: s.penanten, baseMat: mat, stripArt: _exArt, panelen: s.panelen, latten: s.latten, verband: s.verband ?? DEFAULT_VERBAND, sparingRects: [], startLijn: s.startLijn, endExtensions: s.endExtensions }).panels);
+            panels.push(...buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows: facRows, penanten: s.penanten, baseMat: mat, stripArt: _exArt, panelen: s.panelen, latten: effLatten(s), verband: s.verband ?? DEFAULT_VERBAND, sparingRects: [], startLijn: s.startLijn, endExtensions: s.endExtensions }).panels);
           } else {
             const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
             for (const zone of zones) {
@@ -5763,9 +5791,9 @@ export default function App() {
         if (_blankBaseExport && (s.backingType ?? 'hout') === 'hout') {
           const _azfx = getActiveStripZones(s);
           if (_azfx.length) {
-            panels = vis.panelen !== false ? buildZoneBackingPanels({ facadeData, activeZones: _azfx, panelen: s.panelen, latten: s.latten, mat, verband: s.verband, startLijn: s.startLijn, sparingRects: facadeData?.sparingRects }) : [];
+            panels = vis.panelen !== false ? buildZoneBackingPanels({ facadeData, activeZones: _azfx, panelen: s.panelen, latten: effLatten(s), mat, verband: s.verband, startLijn: s.startLijn, sparingRects: facadeData?.sparingRects }) : [];
             if (s.latten?.enabled && vis.latten !== false) {
-              const _blx = buildFacadeLatten({ facadeData, latten: s.latten, mat, panelen: s.panelen, panels, penanten: [], startLijn: s.startLijn, verband: s.verband, backingType: (s.backingType ?? 'hout'), sparingRects: facadeData?.sparingRects });
+              const _blx = buildFacadeLatten({ facadeData, latten: effLatten(s), mat, panelen: s.panelen, panels, penanten: [], startLijn: s.startLijn, verband: s.verband, backingType: (s.backingType ?? 'hout'), sparingRects: facadeData?.sparingRects });
               lattenData = clipLattenToZones(_blx, _azfx);
             }
           }
@@ -5861,9 +5889,9 @@ export default function App() {
 
         if (!isAluminium && !isSlimFort && s.latten?.enabled && vis.latten !== false && !_blankBaseExport && isUnifiedLatten()) {
           // FASE 1 — één gedeelde latten-berekening (positionering + opening/paneel/sparing-clip).
-          lattenData = buildFacadeLatten({ facadeData, latten: s.latten, mat, panelen: s.panelen, panels, penanten: s.penanten ?? [], startLijn: s.startLijn, verband: s.verband ?? DEFAULT_VERBAND, backingType: (s.backingType ?? 'hout'), sparingRects: facadeData?.sparingRects, endExtensions: s.endExtensions });
+          lattenData = buildFacadeLatten({ facadeData, latten: effLatten(s), mat, panelen: s.panelen, panels, penanten: s.penanten ?? [], startLijn: s.startLijn, verband: s.verband ?? DEFAULT_VERBAND, backingType: (s.backingType ?? 'hout'), sparingRects: facadeData?.sparingRects, endExtensions: s.endExtensions });
         } else if (!isAluminium && !isSlimFort && s.latten?.enabled && vis.latten !== false && !_blankBaseExport) {
-          const latBreedte = Math.max(5, _art ? _art.breedteMM : (s.latten.breedte ?? 50));
+          const latBreedte = Math.max(5, groupLattenBreedte(s));
           const richting = s.latten.richting ?? 'horizontaal';
 
           if (richting === 'horizontaal') {
@@ -6071,7 +6099,8 @@ export default function App() {
         : baseStripBatches;
       const _applyCornerToLats = (lats, gW) => {
         const tL = ctrimsExport.lattenTrimLeft, tR = ctrimsExport.lattenTrimRight;
-        const eL = ctrimsExport.lattenExtendLeft, eR = ctrimsExport.lattenExtendRight;
+        // EXPORT_END_EXT_FIX: de VERLENGING zit al in de gedeelde buildFacadeLatten (net als 3D) → hier niet dubbel; trim-only.
+        const eL = isExportEndExtFix() ? 0 : ctrimsExport.lattenExtendLeft, eR = isExportEndExtFix() ? 0 : ctrimsExport.lattenExtendRight;
         if (!tL && !tR && !eL && !eR) return lats;
         return lats.flatMap((lat) => {
           if (lat.richting !== 'horizontaal') return [lat];
@@ -6090,7 +6119,8 @@ export default function App() {
       const finalLattenData = ifcGW > 0 ? _applyCornerToLats(lattenData, ifcGW) : lattenData;
       const _applyCornerToPanels = (pnls, gW) => {
         const tL = ctrimsExport.panelsTrimLeft, tR = ctrimsExport.panelsTrimRight;
-        const eL = ctrimsExport.panelsExtendLeft, eR = ctrimsExport.panelsExtendRight;
+        // EXPORT_END_EXT_FIX: de VERLENGING zit al in de gedeelde buildGroupPanels (net als 3D) → hier niet dubbel; trim-only.
+        const eL = isExportEndExtFix() ? 0 : ctrimsExport.panelsExtendLeft, eR = isExportEndExtFix() ? 0 : ctrimsExport.panelsExtendRight;
         if (!tL && !tR && !eL && !eR) return pnls;
         const xMin = tL, xMax = gW - tR;
         return pnls.flatMap((p) => {
@@ -6129,7 +6159,7 @@ export default function App() {
         const secIsSlimFort = (secS.backingType ?? 'hout') === 'aluminium_slimfort';
         const secArtId = (secS.lattenArtikelen ?? [])[0] ?? null;
         const secArt = secArtId ? BATTEN_CATALOG.find((a) => a.id === secArtId) : null;
-        const secLatDikte = secArt ? secArt.dikteMM : (secS.latten?.dikte ?? 28);
+        const secLatDikte = groupLattenDikte(secS);
         const secHasVertLat = secS.latten?.richting === 'verticaal';
         const secEffLat = secHasVertLat ? 2 * secLatDikte : secLatDikte;
         const secPanelD = secS.panelen?.dikte ?? 8;
@@ -7392,7 +7422,7 @@ export default function App() {
                     penantFaceData={penantFaceData}
                     groupColor={getSettings(activeGroup.id).color}
                     panelen={getSettings(activeGroup.id).panelen}
-                    latten={getSettings(activeGroup.id).latten}
+                    latten={effLatten(getSettings(activeGroup.id))}
                     layerVisibility={getSettings(activeGroup.id).layerVisibility}
                     gridLines={showGridLines ? gridLines : []}
                     showCenterLines={showCenterLines}
@@ -7483,7 +7513,7 @@ export default function App() {
                     groupSettings={s}
                     groupName={s.name}
                     panelen={s.panelen}
-                    latten={s.latten}
+                    latten={effLatten(s)}
                     groupMinH={gMinH}
                     penantFaceData={penantFaceData}
                     zoneSettings={s.zoneSettings ?? []}
