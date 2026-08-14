@@ -4,7 +4,7 @@
 // (buildGroupPanels / detectKoppelstrippen / buildFacadeLatten). EXIT-CODE 1 = eenheid gebroken.
 // Beide views geven dezelfde gedeelde facadeData (rows/strips); View2D geeft buildGroupPanels baseMat=
 // RAUWE mat + stripArt, Werktekening baseMat=ARTIKEL-mat + stripArt → beide zelfde effMat → zelfde panelen.
-globalThis.localStorage = { getItem: (k) => (k === 'paneelOptimalisatie' || k === 'unifiedPanels') ? '1' : null, setItem() {}, removeItem() {} };
+globalThis.localStorage = { getItem: (k) => (k === 'paneelOptimalisatie' || k === 'unifiedPanels' || k === 'paneelBanden') ? '1' : null, setItem() {}, removeItem() {} };
 import { buildGroupPanels, detectKoppelstrippen, buildFacadeLatten } from '../src/lib/panelization.js';
 import { buildFacePattern } from '../src/lib/pattern.js';
 

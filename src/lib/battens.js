@@ -155,6 +155,29 @@ export const BATTEN_CATALOG = [
   },
 ];
 
+// ── Latten bestellen (klantregels 2026-08-14) ──────────────────────────────────────────────
+// • Minimale bestelhoeveelheid = 0,5 pak.
+// • Pak-aantal per maat: 45/45 → 250 latten per pak, 45/95 → 125 latten per pak.
+// • Ideale bestellengte i.v.m. de noppen op de achterzijde = 4500 mm.
+export const LAT_MIN_BESTEL_PAK = 0.5;
+export const LAT_IDEALE_BESTELLENGTE_MM = 4500;
+export function latPakAantal(art) {
+  const b = art?.breedteMM, d = art?.dikteMM;
+  if (b === 45 && d === 45) return 250;   // pak 45/45
+  if (b === 45 && d === 95) return 125;   // pak 45/95
+  return art?.pakAantal ?? null;          // overige maten: pak-aantal (nog) niet opgegeven
+}
+// Bestelling uit een totale lat-lengte (mm): aantal 4500mm-latten (naar boven afgerond), en het aantal
+// pakken (op 0,5 pak afgerond, minimaal 0,5 pak). pakAantal onbekend → pakken null (alleen lattenNodig).
+export function latBestelling(totaalLengteMM, art) {
+  const lengteMM = LAT_IDEALE_BESTELLENGTE_MM;
+  const lattenNodig = Math.max(0, Math.ceil((totaalLengteMM || 0) / lengteMM));
+  const pakAantal = latPakAantal(art);
+  if (!pakAantal) return { lattenNodig, lengteMM, pakAantal: null, pakken: null, lattenBesteld: null };
+  const pakken = lattenNodig > 0 ? Math.max(LAT_MIN_BESTEL_PAK, Math.ceil((lattenNodig / pakAantal) / 0.5) * 0.5) : 0;
+  return { lattenNodig, lengteMM, pakAantal, pakken, lattenBesteld: pakken * pakAantal };
+}
+
 const _WB_WF = { fabrikant: 'Wienerberger — Handvorm Kortemark', serie: 'Phaunis', formatCode: 'WF', behandeling: 'Handvorm', steenL: 210, steenH: 50, dikte: 18, lint: 12, stoot: 10, brickWeightM2: 35, stuksPerM2: 76, aantalPerPallet: 1900, palletM2: 25, pallettoeslag: 120, prijslijstDatum: '01-05-2026', prijsEenheid: 'per 1000 st incl. pallet, af fabriek, excl. BTW' };
 const _WB_EF = { fabrikant: 'Wienerberger — Handvorm Kortemark', serie: 'Phaunis', formatCode: 'EF', behandeling: 'Handvorm', steenL: 210, steenH: 65, dikte: 18, lint: 12, stoot: 10, brickWeightM2: 40, stuksPerM2: 60, aantalPerPallet: 1520, palletM2: 25, pallettoeslag: 120, prijslijstDatum: '01-05-2026', prijsEenheid: 'per 1000 st incl. pallet, af fabriek, excl. BTW' };
 

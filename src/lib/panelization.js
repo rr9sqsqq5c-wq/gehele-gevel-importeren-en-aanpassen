@@ -3,7 +3,7 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden } from './featureFlags.js';
 
 // ZONE_EXTEND: per-laag mm-uitloop van een zone-rand (links = x0-kant, rechts = x1-kant). Vlag uit → 0 (byte-identiek).
 const zoneExtentFor = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
@@ -717,7 +717,7 @@ function distributeEvenCourses(total, nRow) {
 // de dichtstbijzijnde stootvoeg (want daar mag gezaagd worden). Rijen: even aantal lagen (halfsteens)
 // én binnen het gewicht — de breedste kolom bepaalt de maximale rijhoogte (opp × kg/m² ≤ maxKg / +10).
 // Paneelvorm zelf komt uit buildPanelsFromBreaks (ongewijzigd); alleen de break-posities zijn slimmer.
-function optimalPanelizeZone(zone, basePanel, material, verband) {
+function optimalPanelizeZone(zone, basePanel, material, verband, snapFn = null) {
   const W = round2(zone.width), H = round2(zone.height);
   if (W <= 0 || H <= 0) return null;
   const zoneX1 = round2(zone.x), zoneY1 = round2(zone.y);
@@ -760,11 +760,13 @@ function optimalPanelizeZone(zone, basePanel, material, verband) {
     if (Math.max(...rowCourses) <= maxCHard || nRow >= totalCourses) break;
     nRow++;
   }
-  // HORIZONTALE NAAD OP DE LINTVOEG: snap elke interne rij-naad naar de doorlopende laag-lijn
-  // (courseOriginY + k×lagenmaat), óók over openingen heen, zodat een strip nooit horizontaal wordt
-  // doorsneden (dat kan enkel in een lintvoeg). Onder-/bovenrand = deelvlak-rand (raam/zone → geen paneel ernaast).
+  // HORIZONTALE NAAD OP DE LINTVOEG: snap elke interne rij-naad naar de doorlopende laag-lijn, zodat een strip
+  // nooit horizontaal wordt doorsneden (dat kan enkel in een lintvoeg).
   const courseOriginY = zone.bondOriginY ?? 0;
-  const snapY = (y) => courseOriginY + Math.round((y - courseOriginY) / lagenmaat) * lagenmaat;
+  const snapYcourse = (y) => courseOriginY + Math.round((y - courseOriginY) / lagenmaat) * lagenmaat;
+  // PANEEL_BANDEN: snap de naad op de ECHTE steenrij (snapFn = snapToRowY, vanaf startLijn/peil) i.p.v.
+  // courseOriginY=0 — zo valt de naad in de lintvoeg, óók boven een raam. Vlag uit → oude snap (byte-identiek).
+  const snapY = (isPaneelBanden() && snapFn) ? snapFn : snapYcourse;
   const yBreaks = [zoneY1];
   let acc = 0;
   for (let i = 0; i < rowCourses.length - 1; i++) {
@@ -779,6 +781,20 @@ function optimalPanelizeZone(zone, basePanel, material, verband) {
   const orientation = (W <= bpW && H <= (bpH ?? H)) ? 'liggend' : 'staand';
   const panels = buildPanelsFromBreaks(zone, xBreaks, yb, orientation, null).filter((p) => p.width > 0.001 && p.height > 0.001);
   if (!panels.length) return null;
+  // PANEEL_BANDEN: haal de zaagsnede (PANEL_GAP = 3mm kerf) af bij elke naad die NIET de ECHTE gevelrand/gevel-top
+  // is — rechterrand −3 (stootvoeg-naad), bovenrand −3 (lintvoeg-naad). Referentie = de GROEP-gevelrand
+  // (zone.gevelRight/gevelTop) i.p.v. de zone-lokale rand, zodat raamzijde-panelen én band-onder-raam-tops óók de
+  // −3 krijgen; alleen x=groupWidth en y=groupHeight niet. Onder-/linkerrand nooit −3 (directioneel, 1× per naad).
+  // Vlag uit → geen aftrek (byte-identiek).
+  if (isPaneelBanden()) {
+    const gevelR = zone.gevelRight ?? round2(xBreaks[xBreaks.length - 1]);
+    const gevelT = zone.gevelTop ?? round2(yb[yb.length - 1]);
+    for (const p of panels) {
+      if (round2(p.x + p.width) < gevelR - 0.5) p.width = round2(p.width - PANEL_GAP);
+      if (round2(p.y + p.height) < gevelT - 0.5) p.height = round2(p.height - PANEL_GAP);
+      p.area = round2(p.width * p.height);
+    }
+  }
   return { ok: true, orientation, panelCount: panels.length, panels };
 }
 
@@ -805,7 +821,7 @@ export function panelizeZone(zone, battenYs, basePanel, snapFn = null, material 
   // verbanden. Wildverband/groothuis houden hun eigen pad.
   if (isPaneelOptimalisatie() && material != null && verband != null
     && verband !== 'wildverband' && verband !== 'groothuis_wildverband' && verband !== 'groothuis_wildverband_2') {
-    const opt = optimalPanelizeZone(zone, basePanel, material, verband);
+    const opt = optimalPanelizeZone(zone, basePanel, material, verband, snapFn);
     if (opt) return opt;
   }
 
@@ -1078,7 +1094,20 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
     ? (y) => { const t = y + lintHalf; return rowYs.reduce((best, ry) => Math.abs(ry - t) < Math.abs(best - t) ? ry : best); }
     : null;
   const battenYs = generateBattenPositions(groupHeight, effMat, maxInterval, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 }).map((y) => snapToRowY ? snapToRowY(y) : y);
-  const openings = (groupOpenings ?? []).filter((op) => op.type !== 'ventilatie').map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
+  // PANEEL_BANDEN: snap de verticale extent van een raam (alléén voor de ZONE-vorming, niet de strips) op de
+  // coursing → band-onder-raam TOP op de course onder de dorpel (S), band-boven-raam ONDER op de course boven de
+  // latei (L). buildFacadeZones maakt dan vol-brede banden op S/L (doorgetrokken over de breedte); de −3 komt uit
+  // de kerf-lus in optimalPanelizeZone. Alleen rechthoekige ramen (concave polyPts ongemoeid). rowYs = course-
+  // onderkanten (startLijn + k·lagenmaat). Vlag uit → ruwe raamrand (byte-identiek).
+  const snapWin = (op) => {
+    if (!isPaneelBanden() || !rowYs.length || (op.polyPts?.length >= 3)) return op;
+    const below = rowYs.filter((c) => c <= op.y + 0.5);
+    const above = rowYs.filter((c) => c >= op.y + op.height - 0.5);
+    const S = below.length ? below[below.length - 1] : op.y;
+    const L = above.length ? above[0] : op.y + op.height;
+    return { ...op, y: S, height: round2(L - S) };
+  };
+  const openings = (groupOpenings ?? []).filter((op) => op.type !== 'ventilatie').map((op) => { const s = snapWin(op); return { id: `op_${op.x}_${op.y}`, x: s.x, y: s.y, width: s.width, height: s.height, polyPts: s.polyPts ?? null }; });
   const allOpenings = [...openings, ...(penantOpenings ?? [])];
   // END_TRIM: een negatief einduiteinde (inkorten) verkleint het PANELISATIE-DOMEIN VÓÓR de optimalisatie
   // (buitenste zone tot [trimL, groupWidth−trimR]) → panelizeZone HERVERDEELT optimaal over de kortere breedte,
@@ -1093,6 +1122,9 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
       if (zx2 - zx1 <= 1) continue;                     // zone valt volledig binnen de inkorting → weg
       zone = { ...zone, x: zx1, width: zx2 - zx1 };
     }
+    // PANEEL_BANDEN: geef de zone de ECHTE groep-gevelrand mee → de kerf-lus (optimalPanelizeZone) weet welke
+    // paneelrand de ware gevelrand/-top is (géén −3) en welke een interne/raam-/bandnaad (wél −3).
+    zone = { ...zone, gevelRight: groupWidth, gevelTop: groupHeight };
     const res = panelizeZone(zone, battenYs, basePanel, snapToRowY, effMat, verband);
     if (res.ok) panels.push(...res.panels);
   }

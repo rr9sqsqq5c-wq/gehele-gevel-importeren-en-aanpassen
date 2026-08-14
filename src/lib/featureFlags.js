@@ -690,6 +690,19 @@ export function isOnderlatOffset() {
   return readFlag('onderlatOffset', false);
 }
 
+// PANEEL_BANDEN — de paneelindeling volgt de productiemethode: (1) de horizontale paneelnaad snapt op de ECHTE
+// steenrij (lintvoeg) vanaf de startlijn/peil; (2) elke paneel-RECHTERrand = de eerstvolgende hele-steen-stootvoeg
+// − 3 mm zaagsnede, elke paneel-BOVENrand = de eerstvolgende lintvoeg − 3 mm (behalve de ECHTE gevelrand/gevel-top);
+// (3) onder een raam eindigt het paneel op de course onder de dorpel (−3), boven een raam start het op de strip-
+// onderkant boven de latei — die twee lijnen worden vol-breed doorgetrokken → horizontale banden, daarbinnen
+// optimaliseren. Vervangt de losse paneelvoegLint/paneelZaagsnede/paneelHeleLagen. De 3 mm is de zaagsnede (kerf),
+// directioneel (rechts/boven, één keer per naad) → koppelstrippen blijven heel (lint 5,6 > 3). Zit volledig in de
+// gedeelde motor (buildGroupPanels/optimalPanelizeZone) → alle 6 views congruent. DEFAULT = false → oude snap,
+// geen kerf, ruwe raamrand (byte-identiek). Aanzetten: ?paneelBanden=1. Noodrem: ?paneelBanden=0.
+export function isPaneelBanden() {
+  return readFlag('paneelBanden', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -730,6 +743,7 @@ export const FLAG_REGISTRY = [
   { key: 'strip3dFilter',        label: '3D — geen paneel/lat zonder strip', note: '3D krijgt dezelfde strip-overlap-filter als 2D/werktekening/export: een paneel (en de erop volgende latten) verdwijnt als het nergens een steenstrip raakt. Dicht het gat waardoor 3D een paneel zonder strip kon tonen (bv. smalle zone tussen openingen).', advanced: true },
   { key: 'lattenPlat',           label: 'Latten plat (lange zijde tegen de wand)', note: 'De lat ligt plat: de langste maat in het gevelvlak (aanzicht), de kortste als diepte. Corrigeert een artikel met omgekeerde maten (bv. Mclad V18 45×95) dat anders op z\'n kant 95 mm uitsteekt. Werkt in 3D/2D/werktekening/IFC-export/mal.' },
   { key: 'onderlatOffset',       label: 'Onderlat 10 mm boven de starthoogte', note: 'De onderste gevelbrede lat ligt 10 mm hoger dan de projectstart/startlijn (peil) i.p.v. er precies op — ruimte voor het start-/lekprofiel. Werkt in 3D/2D/werktekening/IFC-export.' },
+  { key: 'paneelBanden',         label: 'Paneelbanden (voeg-geleid + zaagsnede −3)', note: 'Paneelindeling volgt de productiemethode: rechterrand = eerstvolgende hele-steen-stootvoeg − 3 mm (zaagsnede), bovenrand = eerstvolgende lintvoeg − 3 mm; onder een raam eindigt het paneel op de course onder de dorpel, boven een raam start het op de strip-onderkant boven de latei, beide vol-breed doorgetrokken → horizontale banden. Alleen de echte gevelrand/gevel-top krijgt geen −3. Vervangt lintvoeg/zaagsnede/hele-lagen.' },
   { key: 'penantHoekStoot',      label: 'Penant — stootvoeg voor↔zij (3D)', note: 'Zet een stootvoeg tussen de voorvlak-strip en de zijvlak-strip van een penant (3D): de zijstrip stopt een stootvoeg vóór de voorstrip i.p.v. er tegenaan (haalt de stoot uit de zijstrip-lengte).', advanced: true },
   { key: 'unitDetectie',         label: 'Detecteer repeterende units', note: 'Herkent verdiepingshoge buitenwand-panelen met dezelfde maat + raam/deur-layout en zet elk voorkomen als een gekoppelde gevelgroep weg (1× een unit-type instellen → alle kopieën volgen). Puur additief.' },
   { key: 'ghImport',             label: 'Grasshopper-gevel importeren', note: 'Laad een Grasshopper/Geometry-Gym IFC waarin panelen/strippen/latten al gemodelleerd zijn (geen wanden): leidt de gevels af, nummert de panelen per gevel en toont per gevel een beoordelingsaanzicht + uittrekstaat + zaaglijst.', reimport: true },
