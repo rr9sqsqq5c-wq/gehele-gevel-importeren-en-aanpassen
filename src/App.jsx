@@ -5,7 +5,7 @@ import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements
 import { parseGhCladding } from './lib/ghCladding.js';
 import { attachLekdorpelToWalls } from './lib/lekdorpel.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isExportEndExtFix, isGhImport, isGeenVerband, isBlankBaseVerband, isLattenPlat, isLattenPaneelvoeg, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isExportEndExtFix, isGhImport, isGeenVerband, isBlankBaseVerband, isLattenPlat, isLattenPaneelvoeg, isPaneelRaster, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor, applyVentZonesToBatches, solidifyRows } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -713,7 +713,7 @@ function detectSubstrateType(wallObjs) {
 
 function useGroupSettings(projectDefaults = null) {
   const [map, setMap] = useState({});
-  const defaults = (id) => ({ name: id, color: '#a64033', stripColor: null, verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, startLijn: null, materiaalVolgtProject: true, startLijnVolgtProject: true, penanten: [], zoneSettings: [], panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, panelen: true, latten: true, penanten: true }, ifcLayerVisibility: { strips: true, panelen: true, latten: true }, endExtensions: { left: { strips: 0, battens: 0, panels: 0 }, right: { strips: 0, battens: 0, panels: 0 } }, overgangsvoeg: 8, backingType: 'hout', wallSubstrateType: 'unknown', concreteCladdingSettings: { claddingDepthInward: 0, isEntrancePortalWall: false, cladSideFaces: true, cladFrontFace: true, cladPortalInnerFaces: false, insulationThickness: 140, uProfileWidth: 60, uProfileDepth: 30, uProfileSpacing: 600, mountingOffset: 10, panelVentilationGap: 20 }, slimFortSettings: { ...SLIMFORT_DEFAULTS } });
+  const defaults = (id) => ({ name: id, color: '#a64033', stripColor: null, verband: DEFAULT_VERBAND, material: { ...DEFAULT_MATERIAL }, brickDepth: 20, outsideDirFlip: false, maxHoogte: null, startLijn: null, materiaalVolgtProject: true, startLijnVolgtProject: true, penanten: [], zoneSettings: [], panelen: { enabled: false, breedte: 3005, hoogte: 1200, dikte: 8, gewichtM2: 9.4, maxKg: 50, verspringen: false, methode: 'banden', rasterBreedte: 1130, rasterHoogte: 789 }, latten: { enabled: false, richting: 'horizontaal', breedte: 50, dikte: 28, maxInterval: 400, minHOH: 370, maxHOH: 430 }, lattenArtikelen: [], steenstripsArtikelen: [], layerVisibility: { strips: true, panelen: true, latten: true, penanten: true }, ifcLayerVisibility: { strips: true, panelen: true, latten: true }, endExtensions: { left: { strips: 0, battens: 0, panels: 0 }, right: { strips: 0, battens: 0, panels: 0 } }, overgangsvoeg: 8, backingType: 'hout', wallSubstrateType: 'unknown', concreteCladdingSettings: { claddingDepthInward: 0, isEntrancePortalWall: false, cladSideFaces: true, cladFrontFace: true, cladPortalInnerFaces: false, insulationThickness: 140, uProfileWidth: 60, uProfileDepth: 30, uProfileSpacing: 600, mountingOffset: 10, panelVentilationGap: 20 }, slimFortSettings: { ...SLIMFORT_DEFAULTS } });
   const get = useCallback((id) => {
     const s = { ...defaults(id), ...map[id] };
     // PROJECT_DEFAULTS: een groep die 'volgt project' erft de project-startlijn en/of het project-
@@ -1840,6 +1840,30 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 onChange={(e) => upd({ enabled: e.target.checked })} />
               <label htmlFor="pan-enable" style={{ fontSize: 11, color: '#475569', cursor: 'pointer' }}>Inschakelen</label>
             </div>
+            {pan.enabled && isPaneelRaster() && (
+              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 4, padding: '6px 8px', marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#1e40af', marginBottom: 4 }}>Paneelmethode</div>
+                <select value={pan.methode ?? 'banden'} onChange={(e) => upd({ methode: e.target.value })} style={{ ...inp, marginBottom: pan.methode === 'raster' ? 6 : 0 }}>
+                  <option value="banden">Banden (optimalisatie) — standaard</option>
+                  <option value="raster">Raster (vast, vanaf startlijn)</option>
+                </select>
+                {pan.methode === 'raster' && (<>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <label style={{ fontSize: 10, color: '#475569', flex: 1 }}>Breedte (mm)
+                      <input type="number" min={100} step={10} value={pan.rasterBreedte ?? 1130}
+                        onChange={(e) => upd({ rasterBreedte: Math.max(100, Number(e.target.value)) })} style={inp} />
+                    </label>
+                    <label style={{ fontSize: 10, color: '#475569', flex: 1 }}>Hoogte (mm)
+                      <input type="number" min={100} step={10} value={pan.rasterHoogte ?? 789}
+                        onChange={(e) => upd({ rasterHoogte: Math.max(100, Number(e.target.value)) })} style={inp} />
+                    </label>
+                  </div>
+                  <div style={{ fontSize: 9, color: '#64748b', marginTop: 4 }}>
+                    Rijen strikt {pan.rasterHoogte ?? 789} mm hoog vanaf de startlijn; kolommen {pan.rasterBreedte ?? 1130} mm breed, gesnapt op de raamranden (restje &lt; ½ paneel → vorig paneel groter). Ramen + offset uitgeknipt.
+                  </div>
+                </>)}
+              </div>
+            )}
             {pan.enabled && (() => {
               const mat = settings.material ?? DEFAULT_MATERIAL;
               const brickW = (mat).brickWeightM2 ?? 40;

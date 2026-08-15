@@ -715,6 +715,19 @@ export function isPaneelBanden() {
   return readFlag('paneelBanden', false);
 }
 
+// PANEEL_RASTER — ALTERNATIEVE paneelmethode náást de bestaande banden-methode, per groep kiesbaar via
+// settings.panelen.methode ('banden' = bestaand, default | 'raster' = nieuw). De raster-methode legt een
+// UNIFORM raster vanaf de startlijn: rijen strikt panelen.rasterHoogte (default 789) hoog, kolommen
+// panelen.rasterBreedte (default 1130) breed MAAR gesnapt op de raamzijkanten (restje < ½ paneel → vorig
+// paneel groter). Een raam vult zo exact één kolombreedte → het snijdt een schone horizontale band (geen
+// L-inkeping). Zit volledig in de gedeelde buildGroupPanels → alle 6 views (2D/3D/werktekening/meetstaat/
+// export/mal) erven mee. DEFAULT = false → de raster-tak is onbereikbaar EN de per-groep keuze verschijnt
+// niet → byte-identiek. Ook met de vlag AAN maar methode='banden' (default) blijft alles byte-identiek.
+// Aanzetten: ?paneelRaster=1 (of localStorage 'paneelRaster'='1'). Noodrem: ?paneelRaster=0.
+export function isPaneelRaster() {
+  return readFlag('paneelRaster', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -752,6 +765,7 @@ export const FLAG_REGISTRY = [
   { key: 'paneelMerk',           label: 'Paneel-merk (productie↔montage)', note: 'Elk paneel krijgt een gedeeld merk (P-nr per uniek type) als kolom in de EPC-tabel/CSV + op de tekening, hergebruikt in de productielijst. Vereist "Uittrekstaat — panelen op steenrijen".', advanced: true },
   { key: 'paneelMerkPerZone',    label: 'Paneelnummering per zone', note: 'De P-nummering telt niet door over penant-zones heen: elke zone begint weer bij P1 met eigen nummering + telling. Alleen bij >1 zone.' },
   { key: 'paneel14Laag',         label: 'Panelen — 14-laag + latten uit paneelvoegen', note: 'Halfsteens: paneelhoogte vast op 14 lagen (14·steenH+13·lint+(lint−3)) i.p.v. gewicht/hoogte-instelling; latten afgeleid uit de paneelvoegen (voeg-lat + onderlat +10mm + ~400 h.o.h. opvulling).', advanced: true },
+  { key: 'paneelRaster',         label: 'Panelen — raster-methode (kiesbaar per groep)', note: 'Alternatieve paneelmethode náást de banden-methode, per groep te kiezen (Panelen → Methode): uniform raster vanaf de startlijn, rijen strikt 789 hoog, kolommen 1130 breed gesnapt op de raamranden (restje < ½ paneel → vorig paneel groter). Ramen snijden een schone band. Default-methode blijft "banden" (byte-identiek).' },
   { key: 'strip3dFilter',        label: '3D — geen paneel/lat zonder strip', note: '3D krijgt dezelfde strip-overlap-filter als 2D/werktekening/export: een paneel (en de erop volgende latten) verdwijnt als het nergens een steenstrip raakt. Dicht het gat waardoor 3D een paneel zonder strip kon tonen (bv. smalle zone tussen openingen).', advanced: true },
   { key: 'lattenPlat',           label: 'Latten plat (lange zijde tegen de wand)', note: 'De lat ligt plat: de langste maat in het gevelvlak (aanzicht), de kortste als diepte. Corrigeert een artikel met omgekeerde maten (bv. Mclad V18 45×95) dat anders op z\'n kant 95 mm uitsteekt. Werkt in 3D/2D/werktekening/IFC-export/mal.' },
   { key: 'onderlatOffset',       label: 'Onderlat 10 mm boven de starthoogte', note: 'De onderste gevelbrede lat ligt 10 mm hoger dan de projectstart/startlijn (peil) i.p.v. er precies op — ruimte voor het start-/lekprofiel. Werkt in 3D/2D/werktekening/IFC-export.' },

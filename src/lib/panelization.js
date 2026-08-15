@@ -3,7 +3,7 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster } from './featureFlags.js';
 
 // ZONE_EXTEND: per-laag mm-uitloop van een zone-rand (links = x0-kant, rechts = x1-kant). Vlag uit → 0 (byte-identiek).
 const zoneExtentFor = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
@@ -118,7 +118,7 @@ export function attachHolesToPanels(panels, rects) {
       const y0 = Math.max(p.y, r.y), y1 = Math.min(p.y + p.height, (r.y ?? 0) + (r.height ?? 0));
       if (x1 - x0 > 0.5 && y1 - y0 > 0.5) holes.push({ x: round2(x0), y: round2(y0), width: round2(x1 - x0), height: round2(y1 - y0) });
     }
-    return holes.length ? { ...p, holes } : p;
+    return holes.length ? { ...p, holes: [...(p.holes ?? []), ...holes] } : p;
   });
 }
 
@@ -1127,6 +1127,108 @@ export function mergeStackedColumns(panels, openings, basePanel) {
   return out;
 }
 
+// PANEEL_RASTER — verticale paneelnaden op de 5-strek-stootvoeg (k·pitch − 3, GEMETEN VANAF DE BOND-OORSPRONG
+// x=0, net als halfsteensPanel5Strek) → de naad valt in de stootvoeg → koppelstrippen om-en-om. GEEN naden op de
+// raamranden: de ramen worden hierna uit de panelen GESNEDEN (raamrand = zaagsnede, geen paneel-naad) zodat er
+// ook náást een raam geen koppelstrip op elke rij komt. Rand-restje < ½ pitch → in het vorige paneel opgenomen.
+// Niet-halfsteens: vaste breedte vanaf de veldrand (fallback, geen bond-anker).
+function rasterColumnJoints(Lx, Rx, breedte, mat, verband) {
+  const unit = (mat?.steenL ?? 210) + (mat?.stoot ?? 10);
+  let std = [], pitch;
+  if (verband === 'halfsteens' && unit > 1) {
+    const nStrek = Math.max(1, Math.round((breedte || 1130) / unit));   // 1130 → 5 strekken
+    pitch = nStrek * unit;
+    for (let k = 1; k * pitch - 3 < Rx - 0.5; k++) { const e = round2(k * pitch - 3); if (e > Lx + 0.5) std.push(e); }
+  } else {
+    pitch = breedte || 1130;
+    for (let x = Lx + pitch; x < Rx - 0.5; x += pitch) std.push(round2(x));
+  }
+  let J = [...new Set([round2(Lx), round2(Rx), ...std])].sort((a, b) => a - b);
+  // Klein paneel naast een raam wordt GEACCEPTEERD: alleen echte splinters (< RASTER_MIN_COL) én veld-restjes
+  // worden in de buur opgenomen, zodat de veld-kolommen (bv. de laatste) hun volle 5-strek-maat houden.
+  const mergeMin = 200;
+  for (let removed = true; removed;) {
+    removed = false;
+    for (let i = 1; i < J.length - 1; i++) {
+      if (J[i] - J[i - 1] < mergeMin || J[i + 1] - J[i] < mergeMin) { J.splice(i, 1); removed = true; break; }
+    }
+  }
+  return J;
+}
+
+// PANEEL_RASTER — horizontale paneelnaden: target-hoogte H (default 789) MAAR gesnapt op de course-lijnen uit de
+// bond (facadeRows.y = onderkant van elke steenrij) → de naad valt in een lintvoeg → geen doorgesneden steen.
+// Laatste rest < ½ H → in de rij eronder opgenomen.
+function rasterRowJoints(By, Ty, hoogte, facadeRows) {
+  const H = hoogte > 10 ? hoogte : 789;
+  const courses = (facadeRows ?? []).map((r) => r.y).filter((y) => y > By + 1 && y < Ty - 1).sort((a, b) => a - b);
+  const snap = (y) => courses.length ? courses.reduce((b, c) => Math.abs(c - y) < Math.abs(b - y) ? c : b, courses[0]) : round2(y);
+  const J = [round2(By)];
+  for (let y = By + H; y < Ty - 1; y += H) { const s = round2(snap(y)); if (s > J[J.length - 1] + 10 && s < Ty - 1) J.push(s); }
+  if (J.length >= 2 && Ty - J[J.length - 1] < H * 0.5) J.pop();   // laatste rest → rij eronder groter
+  J.push(round2(Ty));
+  return [...new Set(J)].sort((a, b) => a - b);
+}
+
+// PANEEL_RASTER — VAST raster met UNIFORME rijhoogte (14-laag, voor montagegemak van de achterconstructie).
+// De rijen liggen course-verankerd over de HELE gevel (rasterRowJoints, niet bij ramen gesplitst → overal
+// dezelfde hoogte). Per rij tegelen we de kolommen 5-strek (bond-verankerd → naad in de stootvoeg → koppel-
+// strippen om-en-om). Een raam dat een rij VOLLEDIG dekt is een gat: de segmenten links/rechts stoppen op de
+// raamrand (waar de strips eindigen; rest-strook < ½ maat opgenomen → geen splinter, geen naad naast het raam).
+// Een raam dat een rij DEELS dekt (boven/onderrij) wordt als UITSNEDE (hoek eruit) op het paneel gezet.
+function buildRasterPanels({ groupWidth, groupHeight, openings, trimL, trimR, By, Ty, breedte, hoogte, mat, verband, facadeRows }) {
+  const Lx = trimL, Rx = round2(groupWidth - trimR);
+  if (Rx - Lx < 10 || Ty - By < 10) return [];
+  const H = hoogte > 10 ? hoogte : 789;
+  const wins = (openings ?? []).map((o) => ({ x0: o.x, x1: o.x + o.width, y0: o.y, y1: o.y + o.height }))
+    .filter((o) => o.x1 > o.x0 + 1 && o.y1 > o.y0 + 1);
+  const Hy = rasterRowJoints(By, Ty, H, facadeRows);   // UNIFORME 14-laag rijen over de hele gevel
+  const panels = []; let id = 1;
+  for (let ri = 0; ri < Hy.length - 1; ri++) {
+    const ry0 = Hy[ri], ry1 = Hy[ri + 1];
+    const full = wins.filter((w) => w.y0 <= ry0 + 1 && w.y1 >= ry1 - 1);                                    // dekt rij volledig → gat
+    const partial = wins.filter((w) => w.y1 > ry0 + 1 && w.y0 < ry1 - 1 && !(w.y0 <= ry0 + 1 && w.y1 >= ry1 - 1)); // deels → uitsnede
+    let segs = [[Lx, Rx]];
+    for (const w of full) segs = segs.flatMap(([a, b]) => {
+      const s = Math.max(a, w.x0), e = Math.min(b, w.x1);
+      if (e <= s) return [[a, b]];
+      const out = []; if (s - a > 1) out.push([a, s]); if (b - e > 1) out.push([e, b]); return out;
+    });
+    for (const [sx0, sx1] of segs) {
+      if (sx1 - sx0 < 10) continue;
+      const Vx = rasterColumnJoints(sx0, sx1, breedte, mat, verband);   // 5-strek per solide segment
+      for (let ci = 0; ci < Vx.length - 1; ci++) {
+        const cx0 = Vx[ci], cx1 = Vx[ci + 1];
+        const holes = [];
+        for (const w of partial) {
+          const hx0 = Math.max(cx0, w.x0), hx1 = Math.min(cx1, w.x1), hy0 = Math.max(ry0, w.y0), hy1 = Math.min(ry1, w.y1);
+          if (hx1 - hx0 > 0.5 && hy1 - hy0 > 0.5) holes.push({ x: round2(hx0), y: round2(hy0), width: round2(hx1 - hx0), height: round2(hy1 - hy0) });
+        }
+        if (holes.length === 1 && holes[0].width >= cx1 - cx0 - 1 && holes[0].height >= ry1 - ry0 - 1) continue;  // cel geheel weg
+        const w = round2(cx1 - cx0), h = round2(ry1 - ry0);
+        if (w < 10 || h < 1) continue;
+        const p = { id: `R${id}`, zoneId: 'raster', row: ri + 1, col: ci + 1, x: round2(cx0), y: round2(ry0), width: w, height: h, area: round2(w * h), orientation: 'liggend', staggered: false };
+        if (holes.length) p.holes = holes;
+        panels.push(p);
+        id++;
+      }
+    }
+  }
+  // 3 mm plaatsingsspeling tussen aangrenzende panelen (net als PANEL_GAP in de banden-methode): krimp elk
+  // paneel met PANEL_GAP aan de zijde waar een BUURpaneel tegenaan ligt (rechts/boven); randen tegen de gevel
+  // of een raam blijven vol. Adjacentie eerst op de ONgekrompen maten bepalen, dan pas krimpen.
+  const gapFlags = panels.map((P) => ({
+    right: panels.some((Q) => Q !== P && Math.abs(Q.x - (P.x + P.width)) < 1 && Math.min(Q.y + Q.height, P.y + P.height) - Math.max(Q.y, P.y) > 5),
+    above: panels.some((Q) => Q !== P && Math.abs(Q.y - (P.y + P.height)) < 1 && Math.min(Q.x + Q.width, P.x + P.width) - Math.max(Q.x, P.x) > 5),
+  }));
+  panels.forEach((P, i) => {
+    if (gapFlags[i].right) P.width = round2(P.width - PANEL_GAP);
+    if (gapFlags[i].above) P.height = round2(P.height - PANEL_GAP);
+    P.area = round2(P.width * P.height);
+  });
+  return panels;
+}
+
 // UNIFIED_PANELS — ÉÉN gedeelde paneel-berekening voor alle weergaven (2D/3D/export/werktekening/
 // uittrekstaat/mal). Neemt de RAUWE groep-materiaalmaat + het steenstrip-artikel en past het artikel
 // ALTIJD toe (effMat) — net als de strips (facadeData.rows) → panelen liggen overal op dezelfde steek als
@@ -1187,20 +1289,29 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
   // de fase ongemoeid (pieces niet verschoven) en trimmen ook niet → geen correctie. Vlag uit → 0 (byte-identiek).
   const _extendLeftStrips = Math.max(0, _eeT.left?.strips ?? 0);
   let panels = [];
-  for (let zone of buildFacadeZones(groupWidth, groupHeight, allOpenings)) {
-    if (_trimL > 0 || _trimR > 0) {
-      const zx1 = Math.max(zone.x, _trimL), zx2 = Math.min(zone.x + zone.width, groupWidth - _trimR);
-      if (zx2 - zx1 <= 1) continue;                     // zone valt volledig binnen de inkorting → weg
-      zone = { ...zone, x: zx1, width: zx2 - zx1 };
+  // PANEEL_RASTER (vlag paneelRaster + per-groep panelen.methode==='raster'): alternatieve paneelmethode
+  // náást de banden-methode — uniform raster vanaf de startlijn, kolommen gesnapt op de raamranden. Vlag UIT
+  // óf methode!=='raster' → de ELSE-tak draait = exact het origineel (byte-identiek).
+  if (isPaneelRaster() && panelen?.methode === 'raster') {
+    const _rW = panelen.rasterBreedte ?? 1130, _rH = panelen.rasterHoogte ?? 789;
+    const _By = (startLijn != null && startLijn !== 0) ? startLijn : 0;   // raster start op de startlijn
+    panels = buildRasterPanels({ groupWidth, groupHeight, openings: allOpenings, trimL: _trimL, trimR: _trimR, By: _By, Ty: groupHeight, breedte: _rW, hoogte: _rH, mat: effMat, verband, facadeRows: rows });
+  } else {
+    for (let zone of buildFacadeZones(groupWidth, groupHeight, allOpenings)) {
+      if (_trimL > 0 || _trimR > 0) {
+        const zx1 = Math.max(zone.x, _trimL), zx2 = Math.min(zone.x + zone.width, groupWidth - _trimR);
+        if (zx2 - zx1 <= 1) continue;                     // zone valt volledig binnen de inkorting → weg
+        zone = { ...zone, x: zx1, width: zx2 - zx1 };
+      }
+      // PANEEL_BANDEN: geef de zone de ECHTE groep-gevelrand mee → de kerf-lus (optimalPanelizeZone) weet welke
+      // paneelrand de ware gevelrand/-top is (géén −3) en welke een interne/raam-/bandnaad (wél −3).
+      zone = { ...zone, gevelRight: groupWidth, gevelTop: groupHeight };
+      if (isPaneelBanden() && _extendLeftStrips > 0) zone.bondOriginX = -_extendLeftStrips;
+      const res = panelizeZone(zone, battenYs, basePanel, snapToRowY, effMat, verband);
+      if (res.ok) panels.push(...res.panels);
     }
-    // PANEEL_BANDEN: geef de zone de ECHTE groep-gevelrand mee → de kerf-lus (optimalPanelizeZone) weet welke
-    // paneelrand de ware gevelrand/-top is (géén −3) en welke een interne/raam-/bandnaad (wél −3).
-    zone = { ...zone, gevelRight: groupWidth, gevelTop: groupHeight };
-    if (isPaneelBanden() && _extendLeftStrips > 0) zone.bondOriginX = -_extendLeftStrips;
-    const res = panelizeZone(zone, battenYs, basePanel, snapToRowY, effMat, verband);
-    if (res.ok) panels.push(...res.panels);
+    panels = mergeStackedColumns(panels, allOpenings, basePanel);
   }
-  panels = mergeStackedColumns(panels, allOpenings, basePanel);
   panels = panels.filter((p) => p.height >= 200 && p.width >= 10);
   if (rows && verband !== 'wildverband') {
     const rowH = verband === 'staand_tegelverband' ? effMat.steenL : effMat.steenH;
