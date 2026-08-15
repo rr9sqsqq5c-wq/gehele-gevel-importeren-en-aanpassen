@@ -3,7 +3,7 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg } from './featureFlags.js';
 
 // ZONE_EXTEND: per-laag mm-uitloop van een zone-rand (links = x0-kant, rechts = x1-kant). Vlag uit → 0 (byte-identiek).
 const zoneExtentFor = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
@@ -356,7 +356,7 @@ export function generateBattenPositions(groupHeight, mat, maxInterval, options =
   return _battenForN(groupHeight, steenH, lint, lagenmaat, N);
 }
 
-export function computeHorizontalLatten({ facadeData, latten, mat, panelen, startLijn, backingType, verband }) {
+export function computeHorizontalLatten({ facadeData, latten, mat, panelen, panels = [], startLijn, backingType, verband }) {
   const _bt = backingType ?? 'hout';
   if (!facadeData || !latten?.enabled || _bt === 'aluminium' || _bt === 'aluminium_slimfort') return [];
   const richting = latten.richting ?? 'horizontaal';
@@ -390,8 +390,63 @@ export function computeHorizontalLatten({ facadeData, latten, mat, panelen, star
   // PANEEL_14LAAG: latten PER ZONE op de ÉCHTE paneelvoegen (compute14LaagYBreaks, identiek aan de panelen),
   // + onderlat met z'n onderkant op +10, + dorpel-lat waar een raam op de bovenkant van de zone staat, +
   // ~maxInterval-vulling ertussen. Zo geen groep-brede fantoom-latten en geen overlappende latten onder/boven ramen.
-  const use14 = isPaneel14Laag() && verband === 'halfsteens';
-  if (use14) {
+  // LATTEN_PANEELVOEG (per-groep modus 'paneelvoeg', achter vlag): één lat op elke horizontale PANEELVOEG uit de
+  // ECHTE panelen + een start- en eind-lat + tussenliggende latten (≤ maxInterval) die grote gaten opvullen. Per
+  // zone (buildFacadeZones), zodat onder/boven ramen de dorpel/latei correct meelopen. Zet een `rol`-veld voor
+  // de tekening/telling. Vlag uit of modus≠'paneelvoeg' → overgeslagen → interval-pad (byte-identiek).
+  const usePaneelvoeg = isLattenPaneelvoeg() && (latten?.plaatsingsModus === 'paneelvoeg') && (panels?.length > 0);
+  const use14 = !usePaneelvoeg && isPaneel14Laag() && verband === 'halfsteens';
+  if (usePaneelvoeg) {
+    const half = latBreedte / 2;
+    const opsForZones = (groupOpenings ?? []).filter(op => op.type !== 'ventilatie')
+      .map(op => ({ x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
+    const zones = buildFacadeZones(groupWidth, groupHeight, opsForZones);
+    for (const zone of zones) {
+      const zb = Math.round(zone.y), zt = Math.round(zone.y + zone.height);
+      const zx1 = zone.x, zx2 = zone.x + zone.width;
+      // panelen die deze zone overlappen (x én y)
+      const zp = panels.filter(p => p.x < zx2 - 1 && p.x + p.width > zx1 + 1 && p.y + p.height > zb + 1 && p.y < zt - 1);
+      if (!zp.length) continue;
+      // rijen: groepeer op paneel-onderkant (p.y); rij-bovenkant = laagste top in die rij
+      const rowMap = new Map();
+      for (const p of zp) {
+        const by = Math.round(p.y), ty = Math.round(p.y + p.height);
+        if (!rowMap.has(by) || ty < rowMap.get(by)) rowMap.set(by, ty);
+      }
+      const rowBots = [...rowMap.keys()].sort((a, b) => a - b);
+      // interne horizontale paneelvoegen = het midden tussen (onderste-rij-top) en (bovenste-rij-onderkant)
+      const voegCenters = [];
+      for (let i = 0; i < rowBots.length - 1; i++) voegCenters.push((rowMap.get(rowBots[i]) + rowBots[i + 1]) / 2);
+      // sill = een raam staat op de bovenkant van deze zone → de eind-lat is een dorpel-lat
+      const sill = opsForZones.some(op => Math.abs(op.y - zt) < 2 && op.x < zx2 && op.x + op.width > zx1);
+      const items = [
+        { c: Math.max(zb, minH) + (isOnderlatOffset() ? 10 : 0) + half, rol: 'start' },   // onderlat: onderkant op de zone-start, maar nooit onder de starthoogte (minH); +10 met onderlatOffset
+        ...voegCenters.map(c => ({ c, rol: 'paneelvoeg' })),
+        { c: zt - half, rol: sill ? 'dorpel' : 'eind' },                  // eind-lat: bovenkant op de zone-top/gevel-top
+      ].sort((a, b) => a.c - b.c);
+      // te dicht op elkaar (< ½ lat) samenvoegen; een rand-lat (start/eind/dorpel) wint van een voeg-lat
+      const dd = [];
+      for (const it of items) {
+        const prev = dd[dd.length - 1];
+        if (prev && it.c - prev.c < Math.max(2, half)) {
+          if (!(prev.rol === 'start' || prev.rol === 'eind' || prev.rol === 'dorpel')) dd[dd.length - 1] = it;
+          continue;
+        }
+        dd.push(it);
+      }
+      for (let i = 0; i < dd.length; i++) {
+        const isRand = dd[i].rol === 'start' || dd[i].rol === 'eind' || dd[i].rol === 'dorpel';
+        result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: zone.x, y: clampY(Math.round(dd[i].c - half)), width: zone.width, height: latBreedte, forced: isRand, rol: dd[i].rol });
+        // tussenliggende latten: vul het gat tot de volgende lat op als het > maxInterval is
+        const next = i < dd.length - 1 ? dd[i + 1].c : null;
+        if (next != null && next > dd[i].c + 1) {
+          const span = next - dd[i].c;
+          const gaps = Math.max(1, Math.ceil(span / maxInterval));   // ceil → elk paneelveld ≤ maxInterval (geen te groot gat)
+          for (let j = 1; j < gaps; j++) result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: zone.x, y: clampY(Math.round(dd[i].c + j * span / gaps - half)), width: zone.width, height: latBreedte, forced: false, rol: 'tussen' });
+        }
+      }
+    }
+  } else if (use14) {
     const lagenmaat14 = (mat.steenH ?? 50) + (mat.lint ?? 12);
     const half = latBreedte / 2;
     const opsForZones = (groupOpenings ?? []).filter(op => op.type !== 'ventilatie')
@@ -449,9 +504,9 @@ export function computeHorizontalLatten({ facadeData, latten, mat, panelen, star
     return { x: op.x, width: op.width };
   };
 
-  // Losse dorpel/latei-latten per raam — voor 14-laag NIET (de per-zone-latten hierboven dekken dorpel + latei
-  // al, en deze zouden er juist overheen lopen; dat was precies de klacht "latten over elkaar onder de ramen").
-  if (!use14) for (const op of groupOpenings) {
+  // Losse dorpel/latei-latten per raam — voor 14-laag én paneelvoeg NIET (de per-zone-latten hierboven dekken
+  // dorpel + latei al, en deze zouden er juist overheen lopen; dat was precies de klacht "latten over elkaar onder de ramen").
+  if (!use14 && !usePaneelvoeg) for (const op of groupOpenings) {
     const belowLatY = Math.round(clampY(op.y)) - latBreedte;
     const rawAbove = Math.round(clampY(op.y + op.height));
     const firstAbove = allRowYsSorted.find(ry => ry >= rawAbove - 0.5) ?? rawAbove;
@@ -483,7 +538,7 @@ export function buildFacadeLatten({ facadeData, latten, mat, panelen, panels = [
   const use14 = isPaneel14Laag() && verband === 'halfsteens';   // 14-laag: gevelrand niet insetten (t.b.v. end-extension)
   let out;
   if (richting === 'horizontaal') {
-    const rawLatten = computeHorizontalLatten({ facadeData, latten, mat, panelen, startLijn, backingType: _bt, verband });
+    const rawLatten = computeHorizontalLatten({ facadeData, latten, mat, panelen, panels, startLijn, backingType: _bt, verband });
     const INSET = 5;
     const result = [];
     let gi = 0;
@@ -1107,7 +1162,17 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
     const L = above.length ? above[0] : op.y + op.height;
     return { ...op, y: S, height: round2(L - S) };
   };
-  const openings = (groupOpenings ?? []).filter((op) => op.type !== 'ventilatie').map((op) => { const s = snapWin(op); return { id: `op_${op.x}_${op.y}`, x: s.x, y: s.y, width: s.width, height: s.height, polyPts: s.polyPts ?? null }; });
+  // PANEEL_BANDEN: laat een opening die de gevel-top/maxHoogte MARGINAAL doorsnijdt (zichtbare hoogte binnen de
+  // gevel < 1 laag) de paneelzones NIET splitsen. Bij een op maxHoogte geklemde verdiepingsgevel poken de bovenste
+  // ramen soms 1 mm door de klemlijn → buildFacadeZones maakt daar een degenererende dunne band die
+  // mergeStackedColumns enkel in de smalle (getrimde) kolom opslokt → 1 top-paneel dat hoger is dan de rest van de
+  // rij. Door zo'n rest-opening te negeren loopt de bovenband vol-breed door tot de gevel-top → uniforme bovenrij.
+  // De STRIPS tonen de opening ongemoeid (dit raakt alleen de paneel-zonevorming). Vlag uit → alle openingen mee
+  // (byte-identiek).
+  const _lagenmaatPB = (effMat.steenH ?? 50) + (effMat.lint ?? 12);
+  const openings = (groupOpenings ?? []).filter((op) => op.type !== 'ventilatie')
+    .filter((op) => !isPaneelBanden() || (Math.min((op.y ?? 0) + (op.height ?? 0), groupHeight) - Math.max(op.y ?? 0, 0)) >= _lagenmaatPB)
+    .map((op) => { const s = snapWin(op); return { id: `op_${op.x}_${op.y}`, x: s.x, y: s.y, width: s.width, height: s.height, polyPts: s.polyPts ?? null }; });
   const allOpenings = [...openings, ...(penantOpenings ?? [])];
   // END_TRIM: een negatief einduiteinde (inkorten) verkleint het PANELISATIE-DOMEIN VÓÓR de optimalisatie
   // (buitenste zone tot [trimL, groupWidth−trimR]) → panelizeZone HERVERDEELT optimaal over de kortere breedte,
@@ -1115,6 +1180,12 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
   const _eeT = endExtensions ?? {};
   const _trimL = isEndTrim() ? Math.max(0, -(_eeT.left?.panels ?? 0)) : 0;
   const _trimR = isEndTrim() ? Math.max(0, -(_eeT.right?.panels ?? 0)) : 0;
+  // PANEEL_BANDEN: bij LINKS VERLENGEN schuift buildFullGroupFacadePattern de strip-pieces −extendLeft
+  // (pattern.js:718) → de stootvoeg-fase schuift mee. De paneel-kolomnaad snapt echter op k·pitch vanaf
+  // bondOriginX=0 → die zou NIET meeschuiven → naad valt niet meer in de even-rij-stootvoeg → koppelstrip op
+  // ELKE rij i.p.v. om-en-om. Laat daarom de naad-oorsprong meeschuiven (−extendLeft). Rechts-verlengen laat
+  // de fase ongemoeid (pieces niet verschoven) en trimmen ook niet → geen correctie. Vlag uit → 0 (byte-identiek).
+  const _extendLeftStrips = Math.max(0, _eeT.left?.strips ?? 0);
   let panels = [];
   for (let zone of buildFacadeZones(groupWidth, groupHeight, allOpenings)) {
     if (_trimL > 0 || _trimR > 0) {
@@ -1125,6 +1196,7 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
     // PANEEL_BANDEN: geef de zone de ECHTE groep-gevelrand mee → de kerf-lus (optimalPanelizeZone) weet welke
     // paneelrand de ware gevelrand/-top is (géén −3) en welke een interne/raam-/bandnaad (wél −3).
     zone = { ...zone, gevelRight: groupWidth, gevelTop: groupHeight };
+    if (isPaneelBanden() && _extendLeftStrips > 0) zone.bondOriginX = -_extendLeftStrips;
     const res = panelizeZone(zone, battenYs, basePanel, snapToRowY, effMat, verband);
     if (res.ok) panels.push(...res.panels);
   }

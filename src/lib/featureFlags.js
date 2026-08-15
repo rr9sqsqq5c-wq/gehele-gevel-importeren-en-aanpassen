@@ -690,6 +690,18 @@ export function isOnderlatOffset() {
   return readFlag('onderlatOffset', false);
 }
 
+// LATTEN_PANEELVOEG — een nieuwe horizontale-latten-plaatsingsmodus, per groep kiesbaar via
+// `s.latten.plaatsingsModus`: 'interval' (huidig gedrag, default) of 'paneelvoeg'. In 'paneelvoeg'-modus legt
+// de motor een lat op ELKE horizontale PANEELVOEG (paneelnaad, uit de ECHTE panelen) + een start- en eind-lat +
+// TUSSENLIGGENDE latten die te grote gaten opvullen (≤ maxInterval). Zo landt elke paneelrand op een lat
+// (schroefbaar). Generaliseert het bestaande 14-laag-pad (compute14LaagYBreaks) naar de werkelijke panelen en
+// zet een `rol`-veld ('start'|'paneelvoeg'|'tussen'|'dorpel'|'eind') op elke lat. Zit in de gedeelde
+// computeHorizontalLatten → alle 6 views erven mee. DEFAULT = false → de UI-keuze verschijnt niet en de modus
+// wordt genegeerd (altijd interval-pad → byte-identiek). Aanzetten: ?lattenPaneelvoeg=1. Noodrem: ?lattenPaneelvoeg=0.
+export function isLattenPaneelvoeg() {
+  return readFlag('lattenPaneelvoeg', false);
+}
+
 // PANEEL_BANDEN — de paneelindeling volgt de productiemethode: (1) de horizontale paneelnaad snapt op de ECHTE
 // steenrij (lintvoeg) vanaf de startlijn/peil; (2) elke paneel-RECHTERrand = de eerstvolgende hele-steen-stootvoeg
 // − 3 mm zaagsnede, elke paneel-BOVENrand = de eerstvolgende lintvoeg − 3 mm (behalve de ECHTE gevelrand/gevel-top);
@@ -743,6 +755,7 @@ export const FLAG_REGISTRY = [
   { key: 'strip3dFilter',        label: '3D — geen paneel/lat zonder strip', note: '3D krijgt dezelfde strip-overlap-filter als 2D/werktekening/export: een paneel (en de erop volgende latten) verdwijnt als het nergens een steenstrip raakt. Dicht het gat waardoor 3D een paneel zonder strip kon tonen (bv. smalle zone tussen openingen).', advanced: true },
   { key: 'lattenPlat',           label: 'Latten plat (lange zijde tegen de wand)', note: 'De lat ligt plat: de langste maat in het gevelvlak (aanzicht), de kortste als diepte. Corrigeert een artikel met omgekeerde maten (bv. Mclad V18 45×95) dat anders op z\'n kant 95 mm uitsteekt. Werkt in 3D/2D/werktekening/IFC-export/mal.' },
   { key: 'onderlatOffset',       label: 'Onderlat 10 mm boven de starthoogte', note: 'De onderste gevelbrede lat ligt 10 mm hoger dan de projectstart/startlijn (peil) i.p.v. er precies op — ruimte voor het start-/lekprofiel. Werkt in 3D/2D/werktekening/IFC-export.' },
+  { key: 'lattenPaneelvoeg',     label: 'Latten op paneelvoeg (keuze in achterconstructie)', note: 'Zet in de groep-config (Achterconstructie hout → horizontaal) een keuze aan: latten op elke paneelvoeg + een start/eind-lat + tussenliggende latten die grote gaten opvullen, i.p.v. puur op interval. Zo landt elke paneelrand op een lat (schroefbaar). Per groep kiesbaar via de radio "Plaatsing"; werkt in alle views + export/mal.' },
   { key: 'paneelBanden',         label: 'Paneelbanden (voeg-geleid + zaagsnede −3)', note: 'Paneelindeling volgt de productiemethode: rechterrand = eerstvolgende hele-steen-stootvoeg − 3 mm (zaagsnede), bovenrand = eerstvolgende lintvoeg − 3 mm; onder een raam eindigt het paneel op de course onder de dorpel, boven een raam start het op de strip-onderkant boven de latei, beide vol-breed doorgetrokken → horizontale banden. Alleen de echte gevelrand/gevel-top krijgt geen −3. Vervangt lintvoeg/zaagsnede/hele-lagen.' },
   { key: 'penantHoekStoot',      label: 'Penant — stootvoeg voor↔zij (3D)', note: 'Zet een stootvoeg tussen de voorvlak-strip en de zijvlak-strip van een penant (3D): de zijstrip stopt een stootvoeg vóór de voorstrip i.p.v. er tegenaan (haalt de stoot uit de zijstrip-lengte).', advanced: true },
   { key: 'unitDetectie',         label: 'Detecteer repeterende units', note: 'Herkent verdiepingshoge buitenwand-panelen met dezelfde maat + raam/deur-layout en zet elk voorkomen als een gekoppelde gevelgroep weg (1× een unit-type instellen → alle kopieën volgen). Puur additief.' },

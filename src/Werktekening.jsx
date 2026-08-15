@@ -552,8 +552,13 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
   const tzY = tekenZone.enabled ? (tekenZone.y ?? 0) : null;
   const tzH = tekenZone.enabled ? (tekenZone.height ?? groupHeight) : null;
 
-  const viewXStart = tzX != null ? tzX : (selectedZone ? selectedZone.xStart : 0);
-  const viewXEnd   = tzX != null ? tzX + tzW : (selectedZone ? selectedZone.xEnd : groupWidth);
+  // GEVEL_VERLENGING: zonder tekenzone/geselecteerde zone loopt de default-view van de VERLENGDE linkerrand
+  // (−cornerExtendLeft) t/m de verlengde rechterrand (groupWidth+cornerExtendRight) — net als 2D/3D, die de
+  // verlengde strips/panelen al tonen. groupWidth zelf blijft de rauwe maat; de verlenging komt uit de props
+  // (= endExtensions.strips, altijd doorgegeven). Geen verlenging → −0 / +0 → byte-identiek. Zo valt de
+  // verlenging binnen viewW_mm (→ TOTAAL) en de maatketen (xBreaks-filter erft de bredere grenzen).
+  const viewXStart = tzX != null ? tzX : (selectedZone ? selectedZone.xStart : -(cornerExtendLeft ?? 0));
+  const viewXEnd   = tzX != null ? tzX + tzW : (selectedZone ? selectedZone.xEnd : groupWidth + (cornerExtendRight ?? 0));
   const viewYStart = tzY != null ? tzY : 0;
   const viewYEnd   = tzY != null ? tzY + tzH : groupHeight;
   const viewW_mm   = Math.max(1, viewXEnd - viewXStart);
@@ -1867,7 +1872,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
             {groupName ?? 'Groep'}{activeZoneLabel ? ` — ${activeZoneLabel}` : ''} — {drawingType === 'achterconstructie' ? 'Achterconstructie (houten latten)' : 'Panelen plaatsing op gevel'}
           </text>
           <text x={OX} y={33} fontSize={8} fill="#64748b" fontFamily="Arial, sans-serif">
-            Schaal 1:{Math.round(1 / scale * 1000)} · Afmetingen in mm · Peilmaten in m t.o.v. IFC-nulpunt{activeZoneLabel ? ` · B: ${mm(viewW_mm)} mm (X ${mm(viewXStart)}–${mm(viewXEnd)}) · H: ${mm(viewH_mm)} mm (Y ${mm(viewYStart)}–${mm(viewYEnd)})` : ` · Totale breedte: ${mm(groupWidth)} mm`}
+            Schaal 1:{Math.round(1 / scale * 1000)} · Afmetingen in mm · Peilmaten in m t.o.v. IFC-nulpunt{activeZoneLabel ? ` · B: ${mm(viewW_mm)} mm (X ${mm(viewXStart)}–${mm(viewXEnd)}) · H: ${mm(viewH_mm)} mm (Y ${mm(viewYStart)}–${mm(viewYEnd)})` : ` · Totale breedte: ${mm(viewW_mm)} mm`}
           </text>
 
           <path d={facadeShapePath} fill="#f8fafc" stroke={dimColor} strokeWidth={1} fillRule="nonzero" />
@@ -1951,14 +1956,16 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
 
           {cornerExtendLeft > 0 && (
             <g>
-              <line x1={sx(viewXStart)} y1={OY} x2={sx(viewXStart)} y2={OY + H} stroke="#2563eb" strokeWidth={1.2} strokeDasharray="4,2" opacity={0.85} />
-              <text x={sx(viewXStart) + 4} y={OY + 22} fontSize={7} fill="#2563eb" fontFamily="Arial, sans-serif">← verlenging {cornerExtendLeft}mm</text>
+              {/* naad-markering op de RAUWE groep-grens (x=0): links daarvan de verlenging (view loopt nu tot −cornerExtendLeft) */}
+              <line x1={sx(0)} y1={OY} x2={sx(0)} y2={OY + H} stroke="#2563eb" strokeWidth={1.2} strokeDasharray="4,2" opacity={0.85} />
+              <text x={sx(0) + 4} y={OY + 22} fontSize={7} fill="#2563eb" fontFamily="Arial, sans-serif">← verlenging {cornerExtendLeft}mm</text>
             </g>
           )}
           {cornerExtendRight > 0 && (
             <g>
-              <line x1={sx(viewXEnd)} y1={OY} x2={sx(viewXEnd)} y2={OY + H} stroke="#2563eb" strokeWidth={1.2} strokeDasharray="4,2" opacity={0.85} />
-              <text x={sx(viewXEnd) - 4} y={OY + 22} fontSize={7} fill="#2563eb" fontFamily="Arial, sans-serif" textAnchor="end">verlenging {cornerExtendRight}mm →</text>
+              {/* naad-markering op de RAUWE groep-grens (x=groupWidth): rechts daarvan de verlenging */}
+              <line x1={sx(groupWidth)} y1={OY} x2={sx(groupWidth)} y2={OY + H} stroke="#2563eb" strokeWidth={1.2} strokeDasharray="4,2" opacity={0.85} />
+              <text x={sx(groupWidth) - 4} y={OY + 22} fontSize={7} fill="#2563eb" fontFamily="Arial, sans-serif" textAnchor="end">verlenging {cornerExtendRight}mm →</text>
             </g>
           )}
 
@@ -1997,7 +2004,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
           })}
 
           {xBreaks.length >= 2 && (
-            <DimH x1={sx(viewXStart)} x2={sx(viewXEnd)} y={dimRow2Y} label={activeZoneLabel ? `${activeZoneLabel}: ${mm(viewW_mm)} mm` : `TOTAAL ${mm(groupWidth)} mm`} color="#dc2626" />
+            <DimH x1={sx(viewXStart)} x2={sx(viewXEnd)} y={dimRow2Y} label={activeZoneLabel ? `${activeZoneLabel}: ${mm(viewW_mm)} mm` : `TOTAAL ${mm(viewW_mm)} mm`} color="#dc2626" />
           )}
 
           {drawingType !== 'achterconstructie' && zoneOpenings.map((op, i) => (
@@ -2032,6 +2039,15 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
             const span = y2 - y;
             if (span < 1) return null;
             return <DimV key={i} x={dimVSpanX} y1={sy(y2)} y2={sy(y)} label={`${mm(span)}`} color={dimColor} side="left" />;
+          })}
+
+          {/* ACHTERCONSTRUCTIE: maatketen tussen de latten, gerekend van BOVENKANT tot BOVENKANT (latYs = l.y+l.height).
+              De monteur markeert de bovenkant-lijn en hangt de lat eronder → makkelijker uitzetten. */}
+          {drawingType === 'achterconstructie' && latYs.length >= 2 && latYs.slice(0, -1).map((y, i) => {
+            const y2 = latYs[i + 1];
+            const span = y2 - y;
+            if (span < 1) return null;
+            return <DimV key={`latdim-${i}`} x={dimVSpanX} y1={sy(y2)} y2={sy(y)} label={`${mm(span)}`} color="#92400e" side="left" />;
           })}
 
           {yBreaks.length >= 2 && (

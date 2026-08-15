@@ -5,7 +5,7 @@ import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements
 import { parseGhCladding } from './lib/ghCladding.js';
 import { attachLekdorpelToWalls } from './lib/lekdorpel.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isExportEndExtFix, isGhImport, isGeenVerband, isBlankBaseVerband, isLattenPlat, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isExportEndExtFix, isGhImport, isGeenVerband, isBlankBaseVerband, isLattenPlat, isLattenPaneelvoeg, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor, applyVentZonesToBatches, solidifyRows } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -2260,6 +2260,27 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                   </div>
                 )}
 
+                {(lat.richting ?? 'horizontaal') === 'horizontaal' && isLattenPaneelvoeg() && (() => {
+                  const effM = lat.plaatsingsModus ?? 'interval';
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 3, marginBottom: 2 }}>
+                      <div style={{ fontSize: 9.5, color: '#475569', fontWeight: 600 }}>Plaatsing latten</div>
+                      {[
+                        { id: 'interval', naam: 'Interval (HOH)', sub: 'gelijkmatig op hart-op-hart' },
+                        { id: 'paneelvoeg', naam: 'Op paneelvoeg', sub: 'lat op elke paneelnaad + start/eind + tussenvulling' },
+                      ].map((o) => (
+                        <label key={o.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11, cursor: 'pointer',
+                          color: effM === o.id ? '#0f172a' : '#475569',
+                          background: effM === o.id ? '#f0fdf4' : 'transparent',
+                          border: `1px solid ${effM === o.id ? '#86efac' : '#e2e8f0'}`, borderRadius: 4, padding: '4px 6px' }}>
+                          <input type="radio" name={`lat-modus-${groupId}`} checked={effM === o.id}
+                            onChange={() => upd({ plaatsingsModus: o.id })} style={{ marginTop: 2, accentColor: '#16a34a' }} />
+                          <div style={{ flex: 1 }}><div style={{ fontWeight: 600 }}>{o.naam}</div><div style={{ fontSize: 9, color: '#94a3b8' }}>{o.sub}</div></div>
+                        </label>
+                      ))}
+                    </div>
+                  );
+                })()}
                 {(lat.richting ?? 'horizontaal') === 'horizontaal' && (
                   <div style={{ marginTop: 3, display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <Field label="HOH min mm" tip="Minimale hart-op-hart afstand (mm) voor automatische optimalisatie. Standaard 370 mm.">

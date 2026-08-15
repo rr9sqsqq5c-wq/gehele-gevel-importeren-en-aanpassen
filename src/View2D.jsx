@@ -1990,7 +1990,9 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
     ctx.fillStyle = '#64748b';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(groupWidth)}×${Math.round(groupHeight)} mm`, 8, H - 6);
+    // GEVEL_VERLENGING: toon de VERLENGDE breedte (bounds bevat de endExtensions-verbreding), niet de rauwe
+    // groupWidth — zo klopt het label met de getekende bekleding én met de werktekening-TOTAAL. Geen verlenging → gelijk.
+    ctx.fillText(`Schaal ~1:${Math.round(1 / (scale * 0.001))}  ·  ${Math.round(bounds.maxX - bounds.minX)}×${Math.round(groupHeight)} mm`, 8, H - 6);
   }, [walls, facadeData, allPanels, allLatten, zonePatterns, groupSettings, bounds, size, redrawTick, maxHoogte, startLijn, penantFaceData, groupColor, effectiveMat, color, panelen, latten, layerVisibility, gridLines, showCenterLines, stripZones, regionBatches, drawingRect, selectedZoneId, outsideDirFlip, buildingEnvelopeData, envelopeVisibility, slimFortStitching, wallDecomposition, sfFaceLayout, allSlimFortFaces]);
 
   const onWheel = useCallback((e) => {
