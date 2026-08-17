@@ -8,19 +8,20 @@
 4. [Scenario B — Zone-import (klant levert vlakken)](#scenario-b--zone-import-klant-levert-vlakken)
 5. [Aanvullen uit een tweede IFC-bestand](#aanvullen-uit-een-tweede-ifc-bestand)
 6. [Groep configureren (beide scenario's)](#groep-configureren-beide-scenarios)
-7. [Wandafmetingen overschrijven](#wandafmetingen-overschrijven)
-8. [Strip-zones handmatig tekenen in 2D](#strip-zones-handmatig-tekenen-in-2d)
-9. [Steenstrip kleurcodering in 2D](#steenstrip-kleurcodering-in-2d)
-10. [Steenstrip artikelkeuze & catalogus](#steenstrip-artikelkeuze--catalogus)
-11. [Artikelkeuze lattenwerk](#artikelkeuze-lattenwerk)
-12. [Basisplaat catalogus](#basisplaat-catalogus)
-13. [Panelen en paneeloptimalisatie](#panelen-en-paneeloptimalisatie)
-14. [3D Viewer — groepen verbergen](#3d-viewer--groepen-verbergen)
-15. [Groepen beheren](#groepen-beheren)
-16. [Maltekeningen](#maltekeningen)
-17. [Werktekeningen & export](#werktekeningen--export)
-18. [Schermindeling](#schermindeling)
-19. [Tips & sneltoetsen](#tips--sneltoetsen)
+7. [Openingen, kozijnen & ventilatie](#openingen-kozijnen--ventilatie)
+8. [Wandafmetingen overschrijven](#wandafmetingen-overschrijven)
+9. [Strip-zones handmatig tekenen in 2D](#strip-zones-handmatig-tekenen-in-2d)
+10. [Steenstrip kleurcodering in 2D](#steenstrip-kleurcodering-in-2d)
+11. [Steenstrip artikelkeuze & catalogus](#steenstrip-artikelkeuze--catalogus)
+12. [Artikelkeuze lattenwerk](#artikelkeuze-lattenwerk)
+13. [Basisplaat catalogus](#basisplaat-catalogus)
+14. [Panelen en paneeloptimalisatie](#panelen-en-paneeloptimalisatie)
+15. [3D Viewer — groepen verbergen](#3d-viewer--groepen-verbergen)
+16. [Groepen beheren](#groepen-beheren)
+17. [Maltekeningen](#maltekeningen)
+18. [Werktekeningen & export](#werktekeningen--export)
+19. [Schermindeling](#schermindeling)
+20. [Tips & sneltoetsen](#tips--sneltoetsen)
 
 ---
 
@@ -29,7 +30,10 @@
 De **IFC Brickslip Planner** is een tool voor het importeren van gevelelementen uit een IFC-bestand, het indelen van wanden in gevelgroepen, en het configureren en berekenen van een steenstripsysteem per gevelgroep. Het resultaat wordt als werktekeningen, maltekeningen, zaaglijst en IFC-export aangeboden.
 
 **Kernconcept — groepen:**
-Een groep is een verzameling van één of meer wandelementen die samen één gevelvlak vormen. Per groep stel je in welk brickslip-patroon, welk zetwerk, welke panelen en welke achterconstructie van toepassing zijn.
+Een groep is een verzameling van één of meer wandelementen die samen één gevelvlak vormen. Per groep stel je in welk brickslip-patroon (metselverband), welke panelen en welke achterconstructie van toepassing zijn.
+
+**Congruentie — alle weergaven gelijk:**
+De zes weergaven van een groep — 2D-gevel, 3D, werktekening, meetstaat (uittrekstaat), IFC-export en maltekening — tonen en tellen exact hetzelfde. Strips, panelen, koppelstrippen en latten komen uit één gedeelde bron, zodat er geen verschil kan ontstaan tussen wat je op het scherm ziet en wat er wordt geproduceerd.
 
 ---
 
@@ -114,8 +118,8 @@ Klik op een groep in de lijst links om deze te activeren. Rechts verschijnt het 
 Stel in:
 - Metselverband (halfsteens, tegelverband, staand, wildverband)
 - Steenstrip afmetingen (of kies een artikel uit de catalogus)
-- Zetwerk rondom openingen
-- Panelen (basisplaat type en maximale afmetingen)
+- Openingen: kozijn-offset & ventilatie (indien van toepassing)
+- Panelen (basisplaat type, methode banden/raster en maximale afmetingen)
 - Achterconstructie latten (horizontaal of verticaal, HOH-bandbreedte)
 - Penanten (als van toepassing)
 
@@ -298,19 +302,6 @@ Klik op een groep in de lijst links. Het **rechterpaneel** toont alle instelling
 
 ---
 
-### Zetwerk rondom openingen
-
-Aluminium of stalen randprofiel rondom ramen en deuren.
-
-| Veld | Standaard | Beschrijving |
-|---|---|---|
-| **Breedte mm** | 50 | Breedte van het profiel |
-| **Offset H mm** | 0 | Horizontale vrije ruimte |
-| **Offset V mm** | 0 | Verticale vrije ruimte |
-| **Strip gap mm** | 5 | Ruimte tussen profiel en strip |
-
----
-
 ### Panelen (basisplaat)
 
 Verdeelt de gevels in draagsysteem-panelen. Kies een **basisplaat type** uit de catalogus. Zie ook [Panelen en paneeloptimalisatie](#panelen-en-paneeloptimalisatie).
@@ -321,8 +312,12 @@ Verdeelt de gevels in draagsysteem-panelen. Kies een **basisplaat type** uit de 
 
 Houten latten als drager achter de basisplaat.
 
-- **Horizontale latten**: hartafstand wordt berekend op basis van een instelbare **HOH-bandbreedte** (standaard 370–430 mm). De optimale hartafstand binnen deze bandbreedte wordt automatisch gekozen.
+- **Horizontale latten**: de hartafstand wordt berekend binnen een instelbare **HOH-bandbreedte** (standaard 370–430 mm); de optimale afstand daarbinnen wordt automatisch gekozen zodat paneelgrenzen zoveel mogelijk op latten vallen.
 - **Verticale latten**: gesnapt op paneelgrenzen.
+- **Lat-oriëntatie**: met **latten plat** ligt de lange zijde in het gevelvlak (aanzicht) en de korte als diepte — corrigeert een artikel met omgekeerde maten (vlag `lattenPlat`).
+- **Onderlat**: de onderste gevelbrede lat kan 10 mm boven de startlijn liggen i.p.v. er precies op — ruimte voor het start-/lekprofiel (vlag `onderlatOffset`).
+- **Latten op de paneelvoeg**: optioneel ligt er een lat op elke paneelvoeg + begin/eind + gelijkmatige tussenvulling (vlag `lattenPaneelvoeg`).
+- **Bestelregels**: minimaal 0,5 pak per artikel, ideale lat-lengte 4500 mm.
 - Kies een **latartikel** uit de Mclad catalogus. Zie [Artikelkeuze lattenwerk](#artikelkeuze-lattenwerk).
 
 ---
@@ -358,6 +353,32 @@ Per penant beschikbaar onderaan de penant-kaart:
 - Het uiteinde van de aansluitende gevel (`left` / `right`) waarop de `endExtension` wordt geschreven, wordt automatisch gedetecteerd op basis van afstand tot de buitenfacade van de aanzichtsgevel.
 - View2D, Viewer3D en IFC-export pakken de `endExtension` automatisch op via de bestaande end-extension-clip — geen aparte rendercode.
 - Bestaande penanten zonder hoekkoppeling blijven ongewijzigd.
+
+---
+
+## Openingen, kozijnen & ventilatie
+
+Ramen, deuren en andere openingen worden uit de bekleding weggeknipt. Rondom kun je het gedrag fijn afstellen.
+
+### Kozijn-offset
+
+Een globale (hele-gebouw) marge per zijde — **links / rechts / boven / onder**, in mm — tussen de **kozijnrand** en de bekleding. Strips, panelen én latten volgen dezelfde opgerekte opening, dus één instelling raakt alle drie de lagen tegelijk. Valt een raam/deur-formaat opening zonder herkenbaar kozijn op, dan verschijnt een melding (⚠️). Aan te zetten met de vlag `kozijnOffset`.
+
+### Kozijnen tonen
+
+Met **Kozijnen tonen** verschijnt het echte raam/deur-kozijn als amber kader in 2D en als doos in 3D, ter controle van de uitlijning t.o.v. de strips (vlag `showKozijnen`).
+
+### Ventilatiezone
+
+Een klein ongevuld gat boven een raam (ventilatie) wordt open geknipt en krijgt een rechthoekige **zone met loodrecht verband** eromheen (halfsteens ↔ staand tegelverband). Hoogte × breedte is per groep instelbaar (vlag `ventilatieZone`). Het gat wordt uit één plaat gesneden — de plaat blijft heel en het gat is gemarkeerd voor de frees/zagerij.
+
+### Sparing-onderdelen
+
+Niet-wand IFC-onderdelen (leidingen, kanalen, proxies) kun je importeren, in 3D tonen en de bekleding er met een globale marge omheen sparen. In 2D verschijnt de maatvoering (onderdeel-breedte × hoogte + offset per zijde). Selecteer per type, naam of per exemplaar (Tag/GUID). Aan te zetten met de vlag `sparingElementen`.
+
+### Concave openingen (raam + deur)
+
+Staat een deur pal naast een raam, dan worden die twee tot hun echte L/U-vorm samengevoegd i.p.v. tot één rechthoek — zo blijft het massieve muurdeel onder het raam bekleed (vlag `concaveOpeningMerge`).
 
 ---
 
@@ -501,6 +522,15 @@ De applicatie verdeelt elk gevelvlak automatisch in panelen op basis van:
 3. **Maximaal gewicht** — instelbaar (standaard 75 kg) voor montage-eisen.
 4. **Snap op voeglijnen** — paneelgrenzen worden gesnapt op steenstripvoegen voor minimaal snijverlies.
 5. **HOH-optimalisatie latten** — de hartafstand van horizontale latten wordt automatisch geoptimaliseerd binnen de ingestelde bandbreedte (standaard 370–430 mm) zodat paneelgrenzen zoveel mogelijk op latten vallen.
+
+### Paneelmethode: banden of raster
+
+Per groep kies je onder **Panelen → Paneelmethode** hoe de basisplaten worden ingedeeld (de rasterkeuze verschijnt alleen als de vlag `paneelRaster` aan staat):
+
+- **Banden** (standaard) — de optimale, gewicht-gestuurde indeling: panelen zo groot mogelijk binnen plaatmaat en gewicht, grenzen gesnapt op de steenvoegen, met voeg-geleide banden rondom de openingen (vlag `paneelBanden`).
+- **Raster** — een vast, uniform raster: rijen op een vaste hoogte (14 lagen, voor montagegemak van de achterconstructie) en kolommen 5 strekken breed. Rondom een raam stapt de paneelrand naar de raamzijkant (een klein paneel naast een raam wordt geaccepteerd; de veld-kolommen houden hun volle maat). Instelbaar via **Breedte** en **Hoogte** in mm.
+
+**Koppelstrippen (om-en-om):** een steenstrip die over een paneelvoeg in een buurpaneel steekt heet een *koppelstrip* — die wordt op locatie geplaatst en apart geteld op de zaaglijst. Bij halfsteens vallen de paneelvoegen in de stootvoeg, zodat de koppelstrippen om-en-om liggen (nooit twee rijen pal boven elkaar). Tussen aangrenzende panelen zit 3 mm plaatsingsspeling.
 
 ### Halfsteen verspringen van paneelvoegen
 

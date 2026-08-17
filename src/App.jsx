@@ -402,6 +402,105 @@ function endExtensionsToTrims(ee) {
 const APP_VERSION = '1.12';
 const CHANGELOG = [
   {
+    version: '1.23',
+    date: '2026-08-15',
+    changes: [
+      'Raster-paneelmethode, per groep kiesbaar onder Panelen → Paneelmethode (achter vlag paneelRaster): vast raster met UNIFORME 14-laag rijhoogte (montagegemak achterconstructie) en 5-strek-stootvoeg-kolommen — koppelstrippen om-en-om',
+      'Het raster stapt naar de raamranden (paneel tegen een raam neemt de rest-strook op, klein paneel naast een raam geaccepteerd, veld-kolommen houden hun volle maat); deel-rijen bij een raam houden hun hoogte met een uitsnede; 3 mm plaatsingsspeling tussen aangrenzende panelen',
+      'Kop-tolerantie ±2 mm (vlag kopTolerantie): een eind-rest binnen 2 mm van een hele kop wordt als kop toegepast i.p.v. de laatste strek naar een drieklezoor te trekken',
+    ],
+  },
+  {
+    version: '1.22',
+    date: '2026-08-14',
+    changes: [
+      'Voeg-geleide paneelindeling (vlag paneelBanden): rechter paneelrand op de stootvoeg −3 mm, bovenrand op de lintvoeg −3 mm, raam-banden doorgetrokken op de coursing',
+      'Latten-bestelregels: minimaal 0,5 pak, ideale lat-lengte 4500 mm; latten plat (lange zijde in het gevelvlak, vlag lattenPlat); onderlat 10 mm boven de startlijn (vlag onderlatOffset); optie latten op elke paneelvoeg (vlag lattenPaneelvoeg)',
+      'Getekende strip-zones links/rechts uitbreiden + optrekken naar de maxlijn (vlag zoneExtend)',
+    ],
+  },
+  {
+    version: '1.21',
+    date: '2026-08-12',
+    changes: [
+      'Congruentie-eenheid: 2D-gevel, 3D, werktekening, meetstaat, IFC-export en maltekening tonen/tellen exact hetzelfde (vlaggen unifiedPanels + unifiedLatten, standaard aan) — één bron per laag (strips/panelen/koppelstrippen/latten)',
+      'Panelen om-en-om (koppelsteen nooit twee rijen boven elkaar) + verticaal-gestapelde panelen in dezelfde kolom samengevoegd (paneelOptimalisatie, standaard aan)',
+      'Steenstrips op de werkelijke snijlijn rond openingen — deel-steen i.p.v. de hele strip weg (vlag stripSnijlijn)',
+      'Geen-verband: blanco basisvlak met de getekende zones als complete bekledingsvakken (strips + panelen + latten)',
+      'Ventilatiegat uit één plaat gesneden (de plaat blijft heel, gat gemarkeerd voor de frees) + ventilatie voor penant-groepen',
+    ],
+  },
+  {
+    version: '1.20',
+    date: '2026-07-23',
+    changes: [
+      'Uittrekstaat: alle steenstrip-maten (lengte × hoogte) van het hele project in één overzicht',
+    ],
+  },
+  {
+    version: '1.19',
+    date: '2026-07-21',
+    changes: [
+      'Gevel-handedness (vlag gevelHandedness): elke gevel leest van buiten links→rechts — de steenstrip-bond én 2D/werktekening spiegelen consistent; kozijnen en panelen blijven op hun plek',
+      'Concave opening-unie raam+deur (vlag concaveOpeningMerge): een deur naast een raam wordt tot de echte L/U-vorm samengevoegd zodat het massieve muurdeel onder het raam bekleed blijft',
+      'Penant-voorvlak twee-rijen-verband (vlag penantTweeRijen): hele strek tegen beide randen + symmetrisch middenstuk',
+    ],
+  },
+  {
+    version: '1.18',
+    date: '2026-07-14',
+    changes: [
+      'Vaste paneelbreedte 5 strekken bij halfsteens (vlag halfsteensPanel5Strek): elke paneelvoeg valt in een stootvoeg → koppelsteen om-en-om, volgend paneel begint weer met een strek',
+      'Paneelnummering per rij (links→rechts, dan een rij hoger)',
+      'Optrekken naar de maxlijn (fillToMax) volledig doorbedraad + unieke panelen in de productie-tab',
+    ],
+  },
+  {
+    version: '1.17',
+    date: '2026-07-13',
+    changes: [
+      'Globale kozijn-offset (links/rechts/boven/onder, mm): marge tussen de kozijnrand en de bekleding — strips, panelen én latten volgen dezelfde openingen; met melding bij een opening zonder kozijn (vlag kozijnOffset)',
+      'Ventilatiezone (vlag ventilatieZone): een klein gat boven een raam wordt open geknipt met een zone in loodrecht verband eromheen (instelbaar per groep)',
+      '¼-steen-relaxatie tegen een opening-rand (vlag openingEdgeQuarter) i.p.v. altijd een halve steen',
+      'Buitenzijde één waarheid over 3D/2D/IFC-export (vlag outsideDirSync) + rechte gevelrand op de breedste wand (groupStartWidest)',
+    ],
+  },
+  {
+    version: '1.16',
+    date: '2026-07-10',
+    changes: [
+      'Sparing-onderdelen (vlag sparingElementen): niet-wand IFC-onderdelen (leidingen, kanalen, proxies) importeren, in 3D tonen en de bekleding er rondom sparen (globale offset), met maatvoering in 2D',
+      'Kozijnen: knippen vanaf de rand van het KOZIJN (raam/deur) i.p.v. de ruwe opening (vlag openingFromKozijn); echte IfcWindow/IfcDoor als 3D-doos tonen ter controle (vlag showKozijnen)',
+      'Maltekeningen: staand tegelverband met hele-strip-slots, harde slot-maten, en compacte DXF/PDF-naamgeving met verband + voegmaten',
+      'Vlaggen-schakelaar-paneel (⚙ Vlaggen): alle standaard-uit vlaggen aan/uit zetten zonder URL-parameter',
+      'Handmatig verlengen van strips/latten/panelen voorbij de gevelrand werkt nu ook in 2D (stompe hoek-aansluiting)',
+    ],
+  },
+  {
+    version: '1.15',
+    date: '2026-07-08',
+    changes: [
+      'Groothuis wildverband 1 en 2 (generatief en vast wild verband, selecteerbaar als metselverband) — doorwerkend in 2D/3D/IFC/meetstaat/werktekening',
+    ],
+  },
+  {
+    version: '1.14',
+    date: '2026-06-25',
+    changes: [
+      'Synthetische calc-wand (vlag syntheticWall): een wand zonder IFC opvoeren via lengte × hoogte × dikte en direct bekleden (3D/2D/uittrekstaat), met een live maat-editor',
+    ],
+  },
+  {
+    version: '1.13',
+    date: '2026-06-22',
+    changes: [
+      'Georeferentie-fixes: de render-origin wordt uit de geometrie afgeleid en trueNorth als export-metadata bewaard → correcte georef in de IFC-export',
+      'Wildverband als standaard i.p.v. tegelverband bij verband = wildverband (wildverbandKoppelstrip); maatgevoerde strip-zones per gevelvlak standaard aan (featureZones)',
+      'Concave/L-vormige opening: het massieve muurdeel binnen de bounding box maar buiten de L blijft bekleed (reprojectOpeningPolygon)',
+      'Per getekende zone een eigen steenstrip-artikel + eigen achterconstructie; latten-artikelkeuze inline onder Achterconstructie',
+    ],
+  },
+  {
     version: '1.12',
     date: '2026-04-21',
     changes: [
