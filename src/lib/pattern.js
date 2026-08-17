@@ -445,7 +445,7 @@ export function rectilinearUnion(polyA, polyB) {
   return loop.map((k) => { const [i, j] = k.split(',').map(Number); return { l: xs[i], h: ys[j] }; });
 }
 
-export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, kozijnOffset = null, edgeStagger = null, fillToMax = false, lekdorpels = null) {
+export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, kozijnOffset = null, edgeStagger = null, fillToMax = false, lekdorpels = null, reanchorLeft = 0, reanchorRight = 0) {
   const { steenL, steenH, lint, stoot } = material;
   const lagenmaat = getLagenmaat(material, verband);
   const rowH = verband === 'staand_tegelverband' ? material.steenL : steenH;
@@ -707,7 +707,11 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
   const driekwart = round2((steenL + stoot) * 0.75 - stoot);
 
   const kwart = round2(kop / 2);   // ¼ steen (halve kop) — ondergrens bij edgeStagger-relaxatie
-  const effectiveWidth = round2(groupWidth + extendLeft + extendRight);
+  // BANDEN_OPTIMALISATIE re-anchor: bij een INGEKORTE hoek (reanchorLeft/Right > 0, alleen doorgegeven als de vlag
+  // aan staat) wordt de bond OPNIEUW verankerd op de ingekorte rand — de bond wordt op de ingekorte breedte gelegd
+  // en +reanchorLeft verschoven, zodat de eerste steen een VOLLE strek op de hoek is (kop op de volgende rij).
+  // reanchor=0 → byte-identiek. Verlengen (extendLeft>0) en re-anchoren sluiten elkaar per zijde uit.
+  const effectiveWidth = round2(groupWidth + extendLeft + extendRight - reanchorLeft - reanchorRight);
   const rows = [];
   // OPENING_EDGE_QUARTER: onthoud de edge-lengtes van de vorige rij (per opening-rand) om stapel-
   // alignment te herkennen. Reset zodra een rij geen opening-randen heeft (verticale onderbreking).
@@ -717,7 +721,9 @@ export function buildFullGroupFacadePattern(walls, material, verband, maxHoogte,
     const builtPieces = buildRowPiecesForWidth(effectiveWidth, material, verband, r, 0);
     const rawPieces = extendLeft > 0
       ? builtPieces.map((p) => ({ ...p, start: round2(p.start - extendLeft) }))
-      : builtPieces;
+      : reanchorLeft > 0
+        ? builtPieces.map((p) => ({ ...p, start: round2(p.start + reanchorLeft) }))   // bond begint op de ingekorte hoek
+        : builtPieces;
     // GEVEL_HANDEDNESS u-frame: de bond blijft links-uitgelijnd (= u). De spiegeling zit nu bij de
     // OPENINGEN (hierboven) + de u→wereld-mapping in 3D/export, niet meer in de bond zelf.
     const clipped = [];

@@ -728,6 +728,17 @@ export function isPaneelRaster() {
   return readFlag('paneelRaster', false);
 }
 
+// BANDEN_OPTIMALISATIE — geoptimaliseerde variant van de bestaande banden-methode (niet de raster-methode).
+// Stap 1: kolombreedte = het max hele aantal strekken dat in het 2500-basispaneel past (floor(2500/(steenL+stoot))
+// × pitch, −3 kerf) → bij waalformaat 11 strekken = 2489,6 mm; naad in de stootvoeg (koppelstrippen om-en-om).
+// Stap 2: de bestaande band-indeling (buildFacadeZones) blijft ongewijzigd. Stap 3: paneelHOOGTE in LAGEN i.p.v.
+// mm — doel panelen.hoogteLagen (default 14), max 15 lagen. Stap 4: band ≤15 lagen → 1 paneel; anders het minste
+// aantal ~gelijke panelen (elk ≤15). Zit in de gedeelde buildGroupPanels → alle 6 views erven mee. DEFAULT =
+// false → de ELSE-tak (origineel) draait = byte-identiek. Aanzetten: ?bandenOptimalisatie=1. Noodrem: =0.
+export function isBandenOptimalisatie() {
+  return readFlag('bandenOptimalisatie', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -766,6 +777,7 @@ export const FLAG_REGISTRY = [
   { key: 'paneelMerkPerZone',    label: 'Paneelnummering per zone', note: 'De P-nummering telt niet door over penant-zones heen: elke zone begint weer bij P1 met eigen nummering + telling. Alleen bij >1 zone.' },
   { key: 'paneel14Laag',         label: 'Panelen — 14-laag + latten uit paneelvoegen', note: 'Halfsteens: paneelhoogte vast op 14 lagen (14·steenH+13·lint+(lint−3)) i.p.v. gewicht/hoogte-instelling; latten afgeleid uit de paneelvoegen (voeg-lat + onderlat +10mm + ~400 h.o.h. opvulling).', advanced: true },
   { key: 'paneelRaster',         label: 'Panelen — raster-methode (kiesbaar per groep)', note: 'Alternatieve paneelmethode náást de banden-methode, per groep te kiezen (Panelen → Methode): uniform raster vanaf de startlijn, rijen strikt 789 hoog, kolommen 1130 breed gesnapt op de raamranden (restje < ½ paneel → vorig paneel groter). Ramen snijden een schone band. Default-methode blijft "banden" (byte-identiek).' },
+  { key: 'bandenOptimalisatie',  label: 'Panelen — banden-methode geoptimaliseerd', note: 'Optimaliseert de bestaande banden-methode: (1) kolombreedte = max heel aantal strekken uit het 2500-basispaneel (11 strekken = 2489,6 mm bij waalformaat; naad in de stootvoeg → koppelstrippen om-en-om); (2) de band-indeling blijft; (3) paneelhoogte in LAGEN i.p.v. mm (veld "Paneelhoogte (lagen)", default 14, max 15); (4) een band ≤15 lagen wordt 1 paneel, anders het minste aantal gelijke panelen (elk ≤15 lagen). Default uit → byte-identiek.' },
   { key: 'strip3dFilter',        label: '3D — geen paneel/lat zonder strip', note: '3D krijgt dezelfde strip-overlap-filter als 2D/werktekening/export: een paneel (en de erop volgende latten) verdwijnt als het nergens een steenstrip raakt. Dicht het gat waardoor 3D een paneel zonder strip kon tonen (bv. smalle zone tussen openingen).', advanced: true },
   { key: 'lattenPlat',           label: 'Latten plat (lange zijde tegen de wand)', note: 'De lat ligt plat: de langste maat in het gevelvlak (aanzicht), de kortste als diepte. Corrigeert een artikel met omgekeerde maten (bv. Mclad V18 45×95) dat anders op z\'n kant 95 mm uitsteekt. Werkt in 3D/2D/werktekening/IFC-export/mal.' },
   { key: 'onderlatOffset',       label: 'Onderlat 10 mm boven de starthoogte', note: 'De onderste gevelbrede lat ligt 10 mm hoger dan de projectstart/startlijn (peil) i.p.v. er precies op — ruimte voor het start-/lekprofiel. Werkt in 3D/2D/werktekening/IFC-export.' },

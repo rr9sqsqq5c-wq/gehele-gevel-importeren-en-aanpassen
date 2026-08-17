@@ -5,7 +5,7 @@ import { buildStripZoneRegions, getActiveStripZones, solidifyRows } from './lib/
 import { sparingRectsForFacade } from './lib/sparingElements.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isPaneelMerkPerZone, isBlankBaseVerband, isFeatureZones } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isPaneelMerkPerZone, isBlankBaseVerband, isFeatureZones, isBandenOptimalisatie } from './lib/featureFlags.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -348,7 +348,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
     // verband)/groothuis/wildverband houden hun eigen pad (die verwerken de rijen apart, hieronder).
     const _isSpecialFd = isBlankBaseVerband(verband) || verband === 'wildverband' || verband === 'groothuis_wildverband' || verband === 'groothuis_wildverband_2';
     if (isUnifiedPanels() && sharedFacadeData && !_isSpecialFd) return sharedFacadeData;
-    const fd = buildFullGroupFacadePattern(walls, mat, verband, maxH, null, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight, null, null, groupSettings?.maxHoogteVullen);
+    const fd = buildFullGroupFacadePattern(walls, mat, verband, maxH, null, groupSettings?.startLijn, cornerExtendLeft, cornerExtendRight, null, null, groupSettings?.maxHoogteVullen, null, isBandenOptimalisatie() ? cornerTrimLeft : 0, isBandenOptimalisatie() ? cornerTrimRight : 0);
     // GEEN_VERBAND: basis blanco; de getekende zones leveren de strips. rows = de zone-regio-rijen
     // (union) zodat getPanelStripsAnnotated per paneel de zone-strips toont; coverageRows = solide
     // dekking (mortelvoegen dicht) voor de zone-clip. Geen actieve zones → volledig blanco.
@@ -660,6 +660,15 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
   const panelColor  = '#bfdbfe';
   const latColor    = '#fde68a';
   const openColor   = '#fca5a5';
+  // LATTEN_PANEELVOEG: kleur elke lat per ROL (paneelvoeg/rand/tussen) zodat de monteur ze onderscheidt. Alleen
+  // actief als de latten een rol dragen (paneelvoeg-modus); zonder rol → latColor (interval-modus, byte-identiek).
+  // Klantwens (2026-08-15, tekening): 2 kleuren — VOEGENLAT (lat op de paneelvoeg) donkerbruin, ANDERE latten
+  // (start/eind + tussen + dorpel/latei onder-boven raam) oranje. Zo onderscheidt de monteur de dragende voegenlat.
+  const VOEGENLAT_KLEUR = '#78350f';  // donkerbruin
+  const ANDERE_KLEUR    = '#f59e0b';  // oranje
+  const ROL_COLOR = { paneelvoeg: VOEGENLAT_KLEUR, start: ANDERE_KLEUR, eind: ANDERE_KLEUR, dorpel: ANDERE_KLEUR, latei: ANDERE_KLEUR, tussen: ANDERE_KLEUR };
+  const rolLatFill = (l) => ROL_COLOR[l?.rol] ?? latColor;
+  const rolLabel = { paneelvoeg: 'voegenlat', start: 'start/eind', eind: 'start/eind', dorpel: 'dorpel', latei: 'latei', tussen: 'tussen' };
 
   const hasWallPolys = wallGroupPolysRaw.length > 0;
 
@@ -682,15 +691,17 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
   const dimVTotalX = OX - 32;
 
   const lattenRichting = zoneLatten.length ? (zoneLatten[0].richting ?? 'horizontaal') : 'horizontaal';
+  const hasLatRol = zoneLatten.some((l) => l.rol);   // paneelvoeg-modus → per-rol tellen/kleuren
   const lattenSummary = (() => {
     const groups = {};
     for (const l of zoneLatten) {
       const len = Math.round(lattenRichting === 'horizontaal' ? l.width : l.height);
-      groups[len] = (groups[len] ?? 0) + 1;
+      const rol = hasLatRol ? (l.rol ?? null) : null;   // interval-modus: geen rol → groepeer enkel op lengte (byte-identiek)
+      const key = `${rol ?? ''}|${len}`;
+      if (!groups[key]) groups[key] = { rol, len, cnt: 0 };
+      groups[key].cnt++;
     }
-    return Object.entries(groups)
-      .sort((a, b) => b[1] - a[1])
-      .map(([len, cnt]) => ({ len: Number(len), cnt }));
+    return Object.values(groups).sort((a, b) => b.cnt - a.cnt);
   })();
   const summaryLines = zoneLatten.length ? lattenSummary.length + 2 : 0;
   const SUMMARY_LINE_H = 13;
@@ -1935,7 +1946,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
                   key={l.id}
                   x={sx(l.x, l.width)} y={sy(l.y + l.height)}
                   width={l.width * scale} height={l.height * scale}
-                  fill={latColor} stroke="#92400e" strokeWidth={0.5} fillOpacity={0.85}
+                  fill={rolLatFill(l)} stroke="#92400e" strokeWidth={0.5} fillOpacity={0.85}
                 />
               ))}
             </g>
@@ -2107,12 +2118,17 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
                 <text x={70} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Koppelstrip ({zoneKoppelstrippen.length})</text>
               </>}
             </>}
-            {drawingType === 'achterconstructie' && <>
+            {drawingType === 'achterconstructie' && (hasLatRol ? <>
+              <rect x={0} y={0} width={12} height={8} fill={ROL_COLOR.paneelvoeg} stroke="#92400e" strokeWidth={0.5} />
+              <text x={15} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">voegenlat</text>
+              <rect x={62} y={0} width={12} height={8} fill={ROL_COLOR.tussen} stroke="#92400e" strokeWidth={0.5} />
+              <text x={77} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">andere</text>
+            </> : <>
               <rect x={0} y={0} width={12} height={8} fill={latColor} stroke="#92400e" strokeWidth={0.5} />
               <text x={15} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Houten lat</text>
               <line x1={60} y1={4} x2={80} y2={4} stroke="#92400e" strokeWidth={0.8} strokeDasharray="4,2" />
               <text x={83} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Hart lat</text>
-            </>}
+            </>)}
             <rect x={130} y={0} width={12} height={8} fill={openColor} fillOpacity={0.5} stroke="#dc2626" strokeWidth={0.5} strokeDasharray="2,1" />
             <text x={145} y={7} fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">Opening (raam/deur)</text>
           </g>
@@ -2122,9 +2138,11 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
           const bx = PAD_LEFT;
           const bw = VIEW_W - PAD_LEFT - PAD_RIGHT;
           const summaryItems = [];
+          let contentH = 0;   // werkelijke hoogte van de hoogste samenvattings-box → bepaalt de pagina-2-SVG-hoogte
 
           if (drawingType === 'achterconstructie' && summaryBoxH > 0) {
-            const lw = 260;
+            const lw = hasLatRol ? 340 : 260;
+            contentH = Math.max(contentH, summaryBoxH);
             summaryItems.push(
               <g key="latten">
                 <rect x={bx} y={0} width={lw} height={summaryBoxH} fill="#fff" stroke="#000" strokeWidth={1} />
@@ -2133,11 +2151,14 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
                   Latten samenvatting ({lattenRichting})
                 </text>
                 <line x1={bx} y1={SUMMARY_PAD + SUMMARY_LINE_H + 2} x2={bx + lw} y2={SUMMARY_PAD + SUMMARY_LINE_H + 2} stroke="#000" strokeWidth={0.5} />
-                {lattenSummary.map(({ len, cnt }, i) => (
-                  <text key={i} x={bx + SUMMARY_PAD} y={SUMMARY_PAD + (i + 2) * SUMMARY_LINE_H + 2}
-                    fontSize={10} fill="#000" fontFamily="Arial, sans-serif">
-                    {cnt}× {len} mm
-                  </text>
+                {lattenSummary.map(({ rol, len, cnt }, i) => (
+                  <g key={i}>
+                    {rol && <rect x={bx + SUMMARY_PAD} y={SUMMARY_PAD + (i + 2) * SUMMARY_LINE_H - 7} width={8} height={8} fill={rolLatFill({ rol })} stroke="#92400e" strokeWidth={0.4} />}
+                    <text x={bx + SUMMARY_PAD + (rol ? 13 : 0)} y={SUMMARY_PAD + (i + 2) * SUMMARY_LINE_H + 2}
+                      fontSize={10} fill="#000" fontFamily="Arial, sans-serif">
+                      {cnt}× {rol ? rolLabel[rol] + ' · ' : ''}{len} mm
+                    </text>
+                  </g>
                 ))}
               </g>
             );
@@ -2151,6 +2172,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
             }
             const lines = Object.entries(sizeGroups).sort((a, b) => b[1] - a[1]);
             const bh = (lines.length + 2) * SUMMARY_LINE_H + SUMMARY_PAD * 2;
+            contentH = Math.max(contentH, bh);
             const pw = 320;
             summaryItems.push(
               <g key="panelen">
@@ -2171,7 +2193,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
           }
 
           if (!summaryItems.length) return null;
-          const totalSummaryH = Math.max(summaryBoxH, 120);
+          const totalSummaryH = Math.max(contentH, 120);   // op de werkelijke inhoud-hoogte (paneel- én latten-box), niet enkel de latten-box
           return (
             <svg ref={summarySvgRef} width={VIEW_W} height={totalSummaryH + 32}
               viewBox={`0 0 ${VIEW_W} ${totalSummaryH + 32}`}

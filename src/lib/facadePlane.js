@@ -298,7 +298,7 @@ function maskRowsToContours(rows, vwalls, groupMinX, groupMinH, rowH, extendLeft
  * vlag. Zelfde returnvorm (rows/groupMinX/.../refWallOrigin) zodat de bestaande
  * batch-/render-pijplijn ongewijzigd werkt — plus `_bestFit` diagnostiek.
  */
-export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, modelUpAxis = undefined, kozijnOffset = null, edgeStagger = null, fillToMax = false, lekdorpels = null) {
+export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft = 0, extendRight = 0, modelUpAxis = undefined, kozijnOffset = null, edgeStagger = null, fillToMax = false, lekdorpels = null, reanchorLeft = 0, reanchorRight = 0) {
   const members = (walls ?? []).filter(w => w.wallOrigin);
   if (!members.length) return null;
   // Model-up-as uit de projectcontext (robuust, dezelfde lijn als detectModelUpAxis).
@@ -307,7 +307,7 @@ export function buildBestFitFacadePattern(walls, material, verband, maxHoogte, _
   const plane = fitFacadePlane(members, upAxis);
   if (!plane) return null;
   const vwalls = members.map(m => toVirtualWall(m, plane));
-  const fd = buildFullGroupFacadePattern(vwalls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft, extendRight, kozijnOffset, edgeStagger, fillToMax);
+  const fd = buildFullGroupFacadePattern(vwalls, material, verband, maxHoogte, _minHoogte, startLijn, extendLeft, extendRight, kozijnOffset, edgeStagger, fillToMax, null, reanchorLeft, reanchorRight);
   if (!fd) return null;
   const rowH = verband === 'staand_tegelverband' ? (material.steenL ?? material.steenH ?? 50) : (material.steenH ?? 50);
   // FASE 1: vlag UIT → extend=0 doorgegeven → maskRowsToContours byte-identiek (knipt op

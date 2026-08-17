@@ -5,7 +5,7 @@ import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements
 import { parseGhCladding } from './lib/ghCladding.js';
 import { attachLekdorpelToWalls } from './lib/lekdorpel.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isExportEndExtFix, isGhImport, isGeenVerband, isBlankBaseVerband, isLattenPlat, isLattenPaneelvoeg, isPaneelRaster, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isExportEndExtFix, isGhImport, isGeenVerband, isBlankBaseVerband, isLattenPlat, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor, applyVentZonesToBatches, solidifyRows } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -1069,6 +1069,35 @@ function computePerpendicularHints(groupId, allGroups, wallMap) {
   };
 }
 
+// Getal-invoer die pas verwerkt als je KLAAR bent met typen. Terwijl het veld bewerkt wordt houdt het een lokale
+// draft-string vast (geen klemmen/herberekenen per toetsaanslag → je kunt rustig een maat intikken of het veld
+// leegmaken). Pas op blur of Enter wordt de waarde geklemd (≥min) en via onCommit doorgezet (→ herberekening).
+// Escape annuleert terug naar de huidige waarde. draft===null = niet aan het bewerken → toont de externe `value`.
+function DeferredNumberInput({ value, min = 0, step = 1, onCommit, style }) {
+  const [draft, setDraft] = useState(null);
+  const shown = draft ?? String(value);
+  const commit = () => {
+    if (draft === null) return;
+    const raw = draft.trim();
+    setDraft(null);
+    if (raw === '') return;
+    const n = Number(raw);
+    if (!isFinite(n)) return;
+    const clamped = Math.max(min, n);
+    if (clamped !== value) onCommit(clamped);
+  };
+  return (
+    <input type="number" min={min} step={step} value={shown} style={style}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        else if (e.key === 'Escape') { setDraft(null); e.currentTarget.blur(); }
+      }}
+    />
+  );
+}
+
 function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, onSyncToLinked, gapCenters, groupWidth, doorBottomYs = [], resolvedOutsideInfo = null, onManualOutsideDir, cornerConfigs = {}, allGroups = [], getSettings, onAddCorner, onUpdateCorner, onRemoveCorner, adjacentGroupIds = null, adjacentHints = [], wallMap = {}, onUpdateGroupSettings = null, projectDikte = null }) {
   const mat = settings.material ?? { ...DEFAULT_MATERIAL };
   const DEFAULT_OPEN = { stripzones: true };
@@ -1949,12 +1978,12 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 {pan.methode === 'raster' && (<>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <label style={{ fontSize: 10, color: '#475569', flex: 1 }}>Breedte (mm)
-                      <input type="number" min={100} step={10} value={pan.rasterBreedte ?? 1130}
-                        onChange={(e) => upd({ rasterBreedte: Math.max(100, Number(e.target.value)) })} style={inp} />
+                      <DeferredNumberInput value={pan.rasterBreedte ?? 1130} min={100} step={10}
+                        onCommit={(v) => upd({ rasterBreedte: v })} style={inp} />
                     </label>
                     <label style={{ fontSize: 10, color: '#475569', flex: 1 }}>Hoogte (mm)
-                      <input type="number" min={100} step={10} value={pan.rasterHoogte ?? 789}
-                        onChange={(e) => upd({ rasterHoogte: Math.max(100, Number(e.target.value)) })} style={inp} />
+                      <DeferredNumberInput value={pan.rasterHoogte ?? 789} min={100} step={10}
+                        onCommit={(v) => upd({ rasterHoogte: v })} style={inp} />
                     </label>
                   </div>
                   <div style={{ fontSize: 9, color: '#64748b', marginTop: 4 }}>
@@ -1963,6 +1992,23 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                 </>)}
               </div>
             )}
+            {pan.enabled && isBandenOptimalisatie() && (() => {
+              const _m = settings.material ?? DEFAULT_MATERIAL;
+              const _lm = (_m.steenH ?? 50) + (_m.lint ?? 12);           // lagenmaat = steenH + lint
+              const _hl = pan.hoogteLagen ?? 14;
+              return (
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, padding: '6px 8px', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#15803d', marginBottom: 4 }}>Banden geoptimaliseerd</div>
+                  <label style={{ fontSize: 10, color: '#475569', display: 'block' }}>Paneelhoogte (lagen)
+                    <DeferredNumberInput value={_hl} min={1} step={1}
+                      onCommit={(v) => upd({ hoogteLagen: Math.min(15, Math.max(1, Math.round(v))) })} style={inp} />
+                  </label>
+                  <div style={{ fontSize: 9, color: '#64748b', marginTop: 4 }}>
+                    Doel {_hl} lagen ≈ {Math.round(_hl * _lm)} mm; max 15 lagen ≈ {Math.round(15 * _lm)} mm. Kolombreedte = max hele strekken uit 2500 mm (naad in de stootvoeg). Een band ≤ 15 lagen → 1 paneel, anders het minste aantal gelijke panelen (elk ≤ 15).
+                  </div>
+                </div>
+              );
+            })()}
             {pan.enabled && (() => {
               const mat = settings.material ?? DEFAULT_MATERIAL;
               const brickW = (mat).brickWeightM2 ?? 40;
@@ -3554,6 +3600,7 @@ export default function App() {
   // Vlag ghImport: geïmporteerde Grasshopper-gevel (parseGhCladding-result + ifcText + fileName). Eigen full-screen view.
   const [ghResult, setGhResult] = useState(null);
   const [ghBusy, setGhBusy] = useState(false);
+  // Vlag ghImport: geïmporteerde strip-JSON (uit Rhino) om zelf de panelisatie achter te zetten.
   // KOZIJN-OFFSET (vlag kozijnOffset) — globale per-zijde marge (mm) tussen kozijnrand en bekleding.
   const [kozijnOffset, setKozijnOffset] = useState({ left: 0, right: 0, top: 0, bottom: 0 });
   // WATERSLAG-OFFSET (vlag lekdorpelReferentie) — APARTE per-zijde marge voor deur-openingen die de
@@ -3687,10 +3734,11 @@ export default function App() {
       // auto-groep → exact het bestaande pad (byte-identiek). Faalt de best-fit →
       // val terug op het oude pad i.p.v. niets te tonen.
       const useBestFit = isBestFitGroups() && group.manual === true;
+      const _reL3d = isBandenOptimalisatie() ? ctrimsFull.trimLeft : 0, _reR3d = isBandenOptimalisatie() ? ctrimsFull.trimRight : 0;   // BANDEN_OPT: bond re-anchoren op de ingekorte hoek
       let facadeData = (useBestFit
-        ? buildBestFitFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, undefined, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen)
+        ? buildBestFitFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, undefined, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen, null, _reL3d, _reR3d)
         : null)
-        ?? buildFullGroupFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen);
+        ?? buildFullGroupFacadePattern(walls, effectiveMat3d, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsFull.extendLeft, ctrimsFull.extendRight, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen, null, _reL3d, _reR3d);
       // FASE 2 — wildverband: vervang de strip-rijen door het vastgelegde tegel-verband
       // (buildTruthRows). Achter de vlag, default UIT → exact het bestaande pad. Voedt 3D
       // (batches uit facadeData.rows) én 2D (dezelfde facadeData) uit één bron.
@@ -4955,7 +5003,7 @@ export default function App() {
       const ctrims = endExtensionsToTrims(s.endExtensions);
       let facadeData = null;
       try {
-        facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrims.extendLeft, ctrims.extendRight, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen);
+        facadeData = buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrims.extendLeft, ctrims.extendRight, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen, null, isBandenOptimalisatie() ? ctrims.trimLeft : 0, isBandenOptimalisatie() ? ctrims.trimRight : 0);
       } catch { facadeData = null; }
       const gw = facadeData?.groupWidth ?? 0;
       const gh = facadeData?.groupHeight ?? 0;
@@ -5748,7 +5796,7 @@ export default function App() {
       // één bron. Vlag uit → alleen best-fit-manual (oud, byte-identiek). Ontbreekt de data → eigen build.
       const useBestFitExport = isBestFitGroups() && group.manual === true;
       const facadeDataRaw = ((useBestFitExport || isUnifiedPanels()) ? (allPatterns[group.id]?.facadeData ?? null) : null)
-        ?? buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsExport.extendLeft, ctrimsExport.extendRight, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen);
+        ?? buildFullGroupFacadePattern(walls, mat, s.verband ?? DEFAULT_VERBAND, s.maxHoogte, null, s.startLijn, ctrimsExport.extendLeft, ctrimsExport.extendRight, kozOffsetParam, edgeStaggerParam, s.maxHoogteVullen, null, isBandenOptimalisatie() ? ctrimsExport.trimLeft : 0, isBandenOptimalisatie() ? ctrimsExport.trimRight : 0);
       const _refWall = facadeDataRaw ? null : ([...withOrigin].sort((a, b) => (b.length ?? 0) - (a.length ?? 0))[0] ?? null);
       const refWallOrigin = facadeDataRaw?.refWallOrigin ?? _refWall?.wallOrigin ?? null;
       const _axisW = refWallOrigin ? withOrigin.filter((w) => w.wallOrigin.lengthAxis === refWallOrigin.lengthAxis) : withOrigin;
