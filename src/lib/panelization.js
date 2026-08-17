@@ -394,9 +394,60 @@ export function computeHorizontalLatten({ facadeData, latten, mat, panelen, pane
   // ECHTE panelen + een start- en eind-lat + tussenliggende latten (≤ maxInterval) die grote gaten opvullen. Per
   // zone (buildFacadeZones), zodat onder/boven ramen de dorpel/latei correct meelopen. Zet een `rol`-veld voor
   // de tekening/telling. Vlag uit of modus≠'paneelvoeg' → overgeslagen → interval-pad (byte-identiek).
-  const usePaneelvoeg = isLattenPaneelvoeg() && (latten?.plaatsingsModus === 'paneelvoeg') && (panels?.length > 0);
-  const use14 = !usePaneelvoeg && isPaneel14Laag() && verband === 'halfsteens';
-  if (usePaneelvoeg) {
+  // BANDEN_OPTIMALISATIE (klant 2026-08-17): latten UITSLUITEND achter de PANEELVOEGEN (de echte horizontale
+  // paneelranden), plus een extra brede lat in het MIDDEN van een paneel zodra de overspanning (paneelhoogte)
+  // groter is dan de max (default 450 mm; met de 8-laags verdeling ≈ 450 → één 8-laags paneel krijgt geen midden-
+  // lat). Géén "om-en-om"/interval-plaatsing meer: elke paneelrand krijgt één doorlopende lat over de
+  // aangrenzende panelen; start/eind/dorpel/latei vallen vanzelf samen met paneelranden. Wint van paneelvoeg/14-laag.
+  const useBandenOpt = isBandenOptimalisatie() && (panels?.length > 0);
+  const usePaneelvoeg = !useBandenOpt && isLattenPaneelvoeg() && (latten?.plaatsingsModus === 'paneelvoeg') && (panels?.length > 0);
+  const use14 = !useBandenOpt && !usePaneelvoeg && isPaneel14Laag() && verband === 'halfsteens';
+  if (useBandenOpt) {
+    const half = latBreedte / 2;
+    const maxSpan = Math.max(100, panelen?.latMaxOverspanning ?? 450);   // max overspanning tussen twee latten
+    const TOL = 6;   // een nominaal 8-laags paneel (≈452,8 mm) telt als "op de grens" → geen midden-lat
+    // 1) lat-lijnen verzamelen: paneel-onder/bovenrand (seam) + midden-latten (paneel opdelen ≤ maxSpan)
+    const segs = [];
+    for (const p of panels) {
+      const px1 = round2(p.x), px2 = round2(p.x + p.width);
+      const pb = round2(p.y), pt = round2(p.y + p.height);
+      if (px2 - px1 < 1 || pt - pb < 1) continue;
+      segs.push({ y: pb, x1: px1, x2: px2, seam: true });   // onderrand = paneelvoeg
+      segs.push({ y: pt, x1: px1, x2: px2, seam: true });   // bovenrand = paneelvoeg
+      const nSub = Math.max(1, Math.ceil((p.height - TOL) / maxSpan));   // # deelvlakken (ceil → harde 450-grens)
+      for (let i = 1; i < nSub; i++) segs.push({ y: round2(pb + i * p.height / nSub), x1: px1, x2: px2, seam: false });
+    }
+    // 2) clusteren op y (binnen ½ lat = fysiek overlappend → één lat-hoogte); een seam bepaalt de hoogte + wint de rol
+    segs.sort((a, b) => a.y - b.y);
+    const TOLY = Math.max(2, half);
+    const buckets = [];
+    for (const s of segs) {
+      const b = buckets[buckets.length - 1];
+      if (b && s.y - b.y <= TOLY) { b.items.push(s); if (s.seam && b.seamY == null) b.seamY = s.y; b.seam = b.seam || s.seam; }
+      else buckets.push({ y: s.y, seamY: s.seam ? s.y : null, seam: s.seam, items: [s] });
+    }
+    // 3) per lat-hoogte de x-runs samensmelten (≤100 mm gat = stoot/kerf tussen panelen → één doorlopende lat;
+    //    een raam is een groot gat → apart segment). forced:true → buildFacadeLatten laat de exacte x/breedte staan.
+    const loBoundY = Math.min(minH, startLijnN);   // negatieve startlijn (peil <0): onderste paneelrand toelaten
+    for (const b of buckets) {
+      const yc = b.seamY ?? b.y;
+      if (yc < loBoundY - 0.5 || yc > gH + 0.5) continue;
+      const arr = b.items.slice().sort((a, c) => a.x1 - c.x1);
+      const runs = [];
+      for (const s of arr) {
+        const last = runs[runs.length - 1];
+        if (last && s.x1 <= last.x2 + 100) { last.x2 = Math.max(last.x2, s.x2); last.seam = last.seam || s.seam; }
+        else runs.push({ x1: s.x1, x2: s.x2, seam: s.seam });
+      }
+      const isBottom = Math.abs(yc - minH) < 1.5;
+      // ONDERLAT_OFFSET: enkel de allereerste (start-)lat 10 mm boven het peil (vlag uit → op de paneelrand).
+      const latY = (isBottom && isOnderlatOffset()) ? clampY(minH + 10) : clampY(Math.round(yc - half));
+      for (const r of runs) {
+        if (r.x2 - r.x1 < 1) continue;
+        result.push({ id: `lat-h-${idx++}`, richting: 'horizontaal', x: round2(r.x1), y: latY, width: round2(r.x2 - r.x1), height: latBreedte, forced: true, rol: r.seam ? 'paneelvoeg' : 'tussen' });
+      }
+    }
+  } else if (usePaneelvoeg) {
     const half = latBreedte / 2;
     const opsForZones = (groupOpenings ?? []).filter(op => op.type !== 'ventilatie')
       .map(op => ({ x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
@@ -541,7 +592,7 @@ export function computeHorizontalLatten({ facadeData, latten, mat, panelen, pane
 
   // Losse dorpel/latei-latten per raam — voor 14-laag én paneelvoeg NIET (de per-zone-latten hierboven dekken
   // dorpel + latei al, en deze zouden er juist overheen lopen; dat was precies de klacht "latten over elkaar onder de ramen").
-  if (!use14 && !usePaneelvoeg) for (const op of groupOpenings) {
+  if (!use14 && !usePaneelvoeg && !useBandenOpt) for (const op of groupOpenings) {
     const belowLatY = Math.round(clampY(op.y)) - latBreedte;
     const rawAbove = Math.round(clampY(op.y + op.height));
     const firstAbove = allRowYsSorted.find(ry => ry >= rawAbove - 0.5) ?? rawAbove;
@@ -1373,15 +1424,19 @@ function buildBandenOptPanels({ groupWidth, groupHeight, openings, trimL, trimR,
     for (const p of panels) { const k = `${Math.round(p.x)}_${Math.round(p.width)}`; if (!colMap.has(k)) colMap.set(k, []); colMap.get(k).push(p); }
     const out = [];
     for (const col of colMap.values()) {
-      const adj = _winRects.some((w) => Math.abs((w.x ?? 0) - (col[0].x + col[0].width)) < 3 || Math.abs((w.x ?? 0) + (w.width ?? 0) - col[0].x) < 3);
-      if (!adj || col.length < 2) { out.push(...col); continue; }
+      // ramen waar DEZE kolom (zelfde x+breedte voor alle panelen) aan grenst met z'n linker- of rechterrand
+      const colWins = _winRects.filter((w) => Math.abs((w.x ?? 0) - (col[0].x + col[0].width)) < 3 || Math.abs((w.x ?? 0) + (w.width ?? 0) - col[0].x) < 3);
+      if (!colWins.length || col.length < 2) { out.push(...col); continue; }
       col.sort((a, b) => a.y - b.y);
       // per AANEENGESLOTEN run (= één raam-band; dezelfde smalle kolom kan bij meerdere ramen boven elkaar zitten) exact
       // doormidden → 2 grote panelen per raam-band.
       let run = [col[0]];
       const flush = () => {
-        const y0 = run[0].y, y1 = run[run.length - 1].y + run[run.length - 1].height, ym = snapC((y0 + y1) / 2), base = run[0];
-        if (run.length >= 2 && ym > y0 + 5 && ym < y1 - 5) {
+        const y0 = run[0].y, y1 = run[run.length - 1].y + run[run.length - 1].height, ym = snapC((y0 + y1) / 2), base = run[0], rH = y1 - y0;
+        // ALLEEN splitsen als de run grotendeels NAAST een aangrenzend raam ligt (y-overlap ≥ ½ run-hoogte). Zo blijft
+        // het stuk BOVEN/ONDER het raam gewoon 8-laags i.p.v. tot één veel te hoog/zwaar paneel te worden samengevoegd.
+        const beside = colWins.some((w) => (Math.min(y1, (w.y ?? 0) + (w.height ?? 0)) - Math.max(y0, w.y ?? 0)) >= rH * 0.5);
+        if (beside && run.length >= 2 && ym > y0 + 5 && ym < y1 - 5) {
           out.push({ ...base, y: round2(y0), height: round2(ym - y0), area: round2(base.width * (ym - y0)) });
           out.push({ ...base, y: round2(ym), height: round2(y1 - ym), area: round2(base.width * (y1 - ym)) });
         } else out.push(...run);

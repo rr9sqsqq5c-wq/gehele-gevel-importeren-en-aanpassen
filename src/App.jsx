@@ -1996,6 +1996,7 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
               const _m = settings.material ?? DEFAULT_MATERIAL;
               const _lm = (_m.steenH ?? 50) + (_m.lint ?? 12);           // lagenmaat = steenH + lint
               const _hl = pan.hoogteLagen ?? 14;
+              const _lmo = pan.latMaxOverspanning ?? 450;
               return (
                 <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, padding: '6px 8px', marginBottom: 8 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#15803d', marginBottom: 4 }}>Banden geoptimaliseerd</div>
@@ -2003,8 +2004,12 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                     <DeferredNumberInput value={_hl} min={1} step={1}
                       onCommit={(v) => upd({ hoogteLagen: Math.min(15, Math.max(1, Math.round(v))) })} style={inp} />
                   </label>
+                  <label style={{ fontSize: 10, color: '#475569', display: 'block', marginTop: 4 }}>Max overspanning latten (mm)
+                    <DeferredNumberInput value={_lmo} min={100} step={10}
+                      onCommit={(v) => upd({ latMaxOverspanning: Math.max(100, Math.round(v)) })} style={inp} />
+                  </label>
                   <div style={{ fontSize: 9, color: '#64748b', marginTop: 4 }}>
-                    Doel {_hl} lagen ≈ {Math.round(_hl * _lm)} mm; max 15 lagen ≈ {Math.round(15 * _lm)} mm. Kolombreedte = max hele strekken uit 2500 mm (naad in de stootvoeg). Een band ≤ 15 lagen → 1 paneel, anders het minste aantal gelijke panelen (elk ≤ 15).
+                    Doel {_hl} lagen ≈ {Math.round(_hl * _lm)} mm; max 15 lagen ≈ {Math.round(15 * _lm)} mm. Kolombreedte = max hele strekken uit 2500 mm (naad in de stootvoeg). Een band ≤ 15 lagen → 1 paneel, anders het minste aantal gelijke panelen (elk ≤ 15). Latten: één brede lat achter elke paneelvoeg; is een paneel hoger dan {_lmo} mm → extra brede lat(ten) in het midden.
                   </div>
                 </div>
               );
