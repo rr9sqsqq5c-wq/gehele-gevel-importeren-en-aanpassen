@@ -133,7 +133,7 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
     const _utArt = _utSid ? STEENSTRIP_CATALOG.find((a) => a.id === _utSid) : null;
     if (isUnifiedPanels() && verband !== 'wildverband') {
     // UNIFIED_PANELS: gedeelde motor → meetstaat telt exact de getekende panelen (congruent met tekening/2D/export).
-    panelList = buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows, penanten: s.penanten, baseMat: mat, stripArt: _utArt, panelen: s.panelen, latten: s.latten, verband, sparingRects: [], startLijn: s.startLijn, endExtensions: s.endExtensions }).panels;
+    panelList = buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows, penanten: s.penanten, baseMat: mat, stripArt: _utArt, panelen: s.panelen, latten: s.latten, verband, sparingRects: [], startLijn: s.startLijn, endExtensions: s.endExtensions, activeZones: s.stripZones ?? [] }).panels;
     } else {
     const basePanel = computeEffectiveBasePanel(s.panelen, (s.material ?? {}).brickWeightM2 ?? 40, mat);
     const maxInterval = s.latten?.maxInterval ?? 400;

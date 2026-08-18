@@ -3,13 +3,32 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen } from './featureFlags.js';
 
 // ZONE_EXTEND: per-laag mm-uitloop van een zone-rand (links = x0-kant, rechts = x1-kant). Vlag uit → 0 (byte-identiek).
 const zoneExtentFor = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
 // ZONE_EXTEND optrekken (maxHoogteVullen): effectieve zone-hoogte trekt op naar maxHoogte (alleen omhoog). Vlag/vullen
 // uit of maxHoogte ≤ getekende hoogte → getekende hoogte (byte-identiek).
 const zoneFillHeight = (z) => (isZoneExtend() && z.maxHoogteVullen && (z.maxHoogte ?? 0) > (z.height ?? 0)) ? z.maxHoogte : (z.height ?? 0);
+// ZONE_PANELEN: knip paneel-rechthoeken weg onder de zone-rechthoeken (rechthoek-aftrek → tot 4 stukken per zone).
+// zoneRects: {x1,y1,x2,y2}. Slivers < minW/minH vallen weg. Zo lopen groep-panelen niet meer door de zone heen.
+function _subtractZoneRectsFromPanels(panels, zoneRects, minW = 10, minH = 100) {
+  let cur = panels;
+  for (const z of zoneRects) {
+    const next = [];
+    for (const p of cur) {
+      const ax2 = p.x + p.width, ay2 = p.y + p.height;
+      if (z.x1 >= ax2 - 0.5 || z.x2 <= p.x + 0.5 || z.y1 >= ay2 - 0.5 || z.y2 <= p.y + 0.5) { next.push(p); continue; }   // geen overlap
+      const ix1 = Math.max(p.x, z.x1), ix2 = Math.min(ax2, z.x2), iy1 = Math.max(p.y, z.y1), iy2 = Math.min(ay2, z.y2);
+      if (p.y < iy1 - 0.5) next.push({ ...p, y: round2(p.y), height: round2(iy1 - p.y), area: round2(p.width * (iy1 - p.y)) });          // onder de zone
+      if (iy2 < ay2 - 0.5) next.push({ ...p, y: round2(iy2), height: round2(ay2 - iy2), area: round2(p.width * (ay2 - iy2)) });          // boven de zone
+      if (p.x < ix1 - 0.5) next.push({ ...p, x: round2(p.x), y: round2(iy1), width: round2(ix1 - p.x), height: round2(iy2 - iy1), area: round2((ix1 - p.x) * (iy2 - iy1)) });  // links
+      if (ix2 < ax2 - 0.5) next.push({ ...p, x: round2(ix2), y: round2(iy1), width: round2(ax2 - ix2), height: round2(iy2 - iy1), area: round2((ax2 - ix2) * (iy2 - iy1)) });  // rechts
+    }
+    cur = next;
+  }
+  return cur.filter((p) => p.width >= minW && p.height >= minH);
+}
 
 function round2(v) {
   return Math.round(v * 100) / 100;
@@ -1493,7 +1512,7 @@ function buildBandenOptPanels({ groupWidth, groupHeight, openings, trimL, trimR,
 // zones gefilterd (net als 2D/3D/export). Reproduceert het bestaande View2D-pad (het correcte) 1-op-1:
 // basePanel/battenYs/snap/zones/panelizeZone/mergeStackedColumns/height-filter/strip-overlap-filter/
 // gaten/startlijn. Alleen voor de rechthoek-verbanden; wildverband/groothuis houden hun eigen pad in de views.
-export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], rows = null, penanten = [], baseMat, stripArt = null, panelen, latten = null, verband, sparingRects = [], startLijn = null, endExtensions = null }) {
+export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], rows = null, penanten = [], baseMat, stripArt = null, panelen, latten = null, verband, sparingRects = [], startLijn = null, endExtensions = null, activeZones = null }) {
   if (!panelen?.enabled) return { panels: [], effMat: baseMat };
   const effMat = stripArt ? { ...baseMat, steenL: stripArt.steenL, steenH: stripArt.steenH } : baseMat;
   const penantOpenings = (penanten ?? []).map((p, i) => {
@@ -1614,6 +1633,16 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
       if (p.y < startLijn) return { ...p, y: startLijn, height: round2(p.y + p.height - startLijn) };   // deels → optrekken tot de startlijn
       return p;
     }).filter(Boolean);
+  }
+  // ZONE_PANELEN: getekende tekenzones uit de groep-panelen knippen + met EIGEN panelen vullen (compleet vak).
+  // Gedeeld in buildGroupPanels → alle 6 views + export erven mee. Vlag uit of geen zones → onveranderd.
+  const _az = Array.isArray(activeZones) ? activeZones.filter((z) => z?.enabled === true) : [];
+  if (isZonePanelen() && _az.length) {
+    const zoneRects = _az.map((z) => ({ x1: z.x ?? 0, y1: z.y ?? 0, x2: (z.x ?? 0) + (z.width ?? 0), y2: (z.y ?? 0) + zoneFillHeight(z) }));
+    panels = _subtractZoneRectsFromPanels(panels, zoneRects);
+    const _fd = { groupWidth, groupHeight, groupOpenings, rows, sparingRects };
+    const zonePanels = buildZoneBackingPanels({ facadeData: _fd, activeZones: _az, panelen, latten, mat: effMat, verband, startLijn, sparingRects });
+    panels = [...panels, ...zonePanels];
   }
   return { panels, effMat, basePanel };
 }

@@ -1900,20 +1900,47 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                       {isZoneStartStop() && (() => {
                         const effMat = { steenL: zm.steenL ?? DEFAULT_MATERIAL.steenL, steenH: zm.steenH ?? DEFAULT_MATERIAL.steenH, stoot: zm.stoot ?? DEFAULT_MATERIAL.stoot };
                         const curStop = (sz.x ?? 0) + (sz.width ?? 0);
+                        const curStopY = (sz.y ?? 0) + (sz.height ?? 0);
+                        // STRIPSTART-REFERENTIE (klant): Start-X/Stop-X tellen vanaf de STRIPSTART (de bekledings-
+                        // linkerrand na inkorten/verlengen = xMin = −(endExtensions.left.strips)), niet vanaf de
+                        // elementrand. displayed = elementX + stripOff; elementX = displayed − stripOff. Offset 0
+                        // (geen trim/extend) → displayed == elementX (byte-identiek). Alleen X (geen verticale offset).
+                        const stripOff = settings.endExtensions?.left?.strips ?? 0;
+                        const stripOriginX = -stripOff;
+                        // STARTLIJN-REFERENTIE (klant): Start-Y/Stop-Y tellen vanaf de STARTLIJN (peil) i.p.v. de
+                        // elementonderkant (y=0). De bekleding begint op de startlijn (panelen eronder worden weggeknipt),
+                        // dus displayed = elementY − startlijn; elementY = displayed + startlijn. startlijn 0 → byte-identiek.
+                        const yOff = settings.startLijn ?? 0;
                         const snapped = snapWidthToWholeStone(sz.width ?? 0, effMat, zs.verband);
                         const heel = Math.abs(snapped - (sz.width ?? 0)) < 1;
                         return (
                           <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 4, padding: '5px 6px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <div style={{ fontSize: 10, color: '#1e40af', fontWeight: 600 }}>Horizontale optimalisatie (Start-X / Stop-X)</div>
+                            <div style={{ fontSize: 10, color: '#1e40af', fontWeight: 600 }}>Zone-positie (Start / Stop — X en Y)</div>
+                            {stripOff !== 0 && (
+                              <div style={{ fontSize: 9, color: '#64748b' }}>X telt vanaf de stripstart (= elementrand {stripOriginX >= 0 ? '+' : '−'} {Math.abs(stripOriginX)} mm).</div>
+                            )}
+                            {yOff !== 0 && (
+                              <div style={{ fontSize: 9, color: '#64748b' }}>Y telt vanaf de startlijn (= elementonderkant {yOff >= 0 ? '+' : '−'} {Math.abs(yOff)} mm).</div>
+                            )}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-                              <Field label="Start X mm" tip="Linkerrand van de zone. Bij anker 'Zone (linksonder)' begint hier een HELE steen — schuif dit om te optimaliseren.">
-                                <input type="number" step={1} value={Math.round(sz.x ?? 0)}
-                                  onChange={(e) => { const nx = Number(e.target.value); updZone(sz.id, { x: nx, width: Math.max(1, curStop - nx) }); }}
+                              <Field label="Start X mm" tip="Linkerrand van de zone, gemeten VANAF DE STRIPSTART (de bekledings-linkerrand na inkorten/verlengen), niet de elementrand. Bij anker 'Zone (linksonder)' begint hier een HELE steen — schuif dit om te optimaliseren.">
+                                <DeferredNumberInput value={Math.round((sz.x ?? 0) + stripOff)} min={0} step={1}
+                                  onCommit={(nx) => { const ex = nx - stripOff; updZone(sz.id, { x: ex, width: Math.max(1, curStop - ex) }); }}
                                   style={{ ...inp, width: '100%' }} />
                               </Field>
-                              <Field label="Stop X mm" tip="Rechterrand van de zone (harde knip; laatste steen kan een pasmaat zijn — gebruik '↦ hele steen').">
-                                <input type="number" step={1} value={Math.round(curStop)}
-                                  onChange={(e) => { const ns = Number(e.target.value); updZone(sz.id, { width: Math.max(1, ns - (sz.x ?? 0)) }); }}
+                              <Field label="Stop X mm" tip="Rechterrand van de zone, gemeten VANAF DE STRIPSTART (harde knip; laatste steen kan een pasmaat zijn — gebruik '↦ hele steen').">
+                                <DeferredNumberInput value={Math.round(curStop + stripOff)} min={0} step={1}
+                                  onCommit={(ns) => { const ex = ns - stripOff; updZone(sz.id, { width: Math.max(1, ex - (sz.x ?? 0)) }); }}
+                                  style={{ ...inp, width: '100%' }} />
+                              </Field>
+                              <Field label="Start Y mm" tip="Onderrand van de zone, gemeten VANAF DE STARTLIJN (peil) — de onderkant van de bekleding, niet de elementonderkant.">
+                                <DeferredNumberInput value={Math.round((sz.y ?? 0) - yOff)} min={0} step={1}
+                                  onCommit={(ny) => { const ey = ny + yOff; updZone(sz.id, { y: ey, height: Math.max(1, curStopY - ey) }); }}
+                                  style={{ ...inp, width: '100%' }} />
+                              </Field>
+                              <Field label="Stop Y mm" tip="Bovenrand van de zone, gemeten VANAF DE STARTLIJN (peil).">
+                                <DeferredNumberInput value={Math.round(curStopY - yOff)} min={0} step={1}
+                                  onCommit={(nsy) => { const ey = nsy + yOff; updZone(sz.id, { height: Math.max(1, ey - (sz.y ?? 0)) }); }}
                                   style={{ ...inp, width: '100%' }} />
                               </Field>
                             </div>
@@ -4268,7 +4295,7 @@ export default function App() {
         if (s.panelen?.enabled && !isWv3d) {
           if (isUnifiedPanels() && verb3d !== 'wildverband') {
             // UNIFIED_PANELS: gedeelde motor (congruent met 2D/werktekening/export/meetstaat).
-            panels3d = buildGroupPanels({ groupWidth: gW3d, groupHeight: gH3d, groupOpenings: facadeData.groupOpenings, rows: facadeData.rows, penanten: s.penanten, baseMat: mat, stripArt: _3dStripArt, panelen: s.panelen, latten: effLatten(s), verband: verb3d, sparingRects: facadeData.sparingRects, startLijn: s.startLijn, endExtensions: s.endExtensions }).panels;
+            panels3d = buildGroupPanels({ groupWidth: gW3d, groupHeight: gH3d, groupOpenings: facadeData.groupOpenings, rows: facadeData.rows, penanten: s.penanten, baseMat: mat, stripArt: _3dStripArt, panelen: s.panelen, latten: effLatten(s), verband: verb3d, sparingRects: facadeData.sparingRects, startLijn: s.startLijn, endExtensions: s.endExtensions, activeZones: s.stripZones ?? [] }).panels;
           } else {
           const basePanel3d = computeEffectiveBasePanel(s.panelen, mat.brickWeightM2 ?? 40, mat);
           const opForZones3d = (facadeData.groupOpenings ?? []).filter((op) => op.type !== 'ventilatie').map((op) => ({ id: `op_${op.x}_${op.y}`, x: op.x, y: op.y, width: op.width, height: op.height, polyPts: op.polyPts ?? null }));
@@ -5568,7 +5595,7 @@ export default function App() {
         // UNIFIED_PANELS: gedeelde motor → mal-recept telt exact de getekende panelen.
         const _mrSid = (s.steenstripsArtikelen ?? [])[0];
         const _mrArt = _mrSid ? STEENSTRIP_CATALOG.find((a) => a.id === _mrSid) : null;
-        panels = buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows: facadeData.rows, penanten: s.penanten, baseMat: mat, stripArt: _mrArt, panelen: s.panelen, latten: effLatten(s), verband, sparingRects: [], startLijn: s.startLijn, endExtensions: s.endExtensions }).panels;
+        panels = buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows: facadeData.rows, penanten: s.penanten, baseMat: mat, stripArt: _mrArt, panelen: s.panelen, latten: effLatten(s), verband, sparingRects: [], startLijn: s.startLijn, endExtensions: s.endExtensions, activeZones: s.stripZones ?? [] }).panels;
       } else {
         const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
         for (const zone of zones) {
@@ -5935,7 +5962,7 @@ export default function App() {
             // UNIFIED_PANELS: gedeelde motor → IFC-export bevat exact de getekende panelen.
             const _exSid = (s.steenstripsArtikelen ?? [])[0];
             const _exArt = _exSid ? STEENSTRIP_CATALOG.find((a) => a.id === _exSid) : null;
-            panels.push(...buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows: facRows, penanten: s.penanten, baseMat: mat, stripArt: _exArt, panelen: s.panelen, latten: effLatten(s), verband: s.verband ?? DEFAULT_VERBAND, sparingRects: [], startLijn: s.startLijn, endExtensions: s.endExtensions }).panels);
+            panels.push(...buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows: facRows, penanten: s.penanten, baseMat: mat, stripArt: _exArt, panelen: s.panelen, latten: effLatten(s), verband: s.verband ?? DEFAULT_VERBAND, sparingRects: [], startLijn: s.startLijn, endExtensions: s.endExtensions, activeZones: s.stripZones ?? [] }).panels);
           } else {
             const zones = buildFacadeZones(groupWidth, groupHeight, [...openingsForZones, ...penantOpenings]);
             for (const zone of zones) {

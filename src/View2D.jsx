@@ -3,8 +3,8 @@ import { buildFullGroupFacadePattern, getOpeningPoly, facadeNeedsMirror } from '
 import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, buildWildverbandPanelGrid, computeHorizontalLatten, extendPanelsAtEnds, extendLattenAtEnds, cutVentHolesFromPanels, attachHolesToPanels, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones, mergeStackedColumns, buildGroupPanels, detectKoppelstrippen } from './lib/panelization.js';
 import { clipRowsAroundRects } from './lib/sparingElements.js';
 import { brickColor, isTooSmall, polyXRangesAtY } from './lib/geometry.js';
-import { hasPenants } from './lib/zoneRegions.js';
-import { isFeatureZones } from './lib/featureFlags.js';
+import { hasPenants, snapZoneRectToBond } from './lib/zoneRegions.js';
+import { isFeatureZones, isZoneVoegSnap } from './lib/featureFlags.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
 import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isKeepEndExtension, isShowKozijnen, isUnifiedLatten, isUnifiedPanels, isGevelHandedness, isBlankBaseVerband } from './lib/featureFlags.js';
 import { generateSlimFortGrid, generateSlimFortFaces, SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
@@ -38,6 +38,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
   const [drawMode, setDrawMode] = useState(false);
   const drawModeRef = useRef(false);
   const drawStartRef = useRef(null);
+  const didZoomOutRef = useRef(false);   // ZONE_VOEG_SNAP: één keer per teken-actie uitzoomen bij de eerste beweging
   const [drawingRect, setDrawingRect] = useState(null);
   const drawingRectRef = useRef(null);
   const [selectedZoneId, setSelectedZoneId] = useState(null);
@@ -109,7 +110,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
     if (!panelen?.enabled) return [];
     // UNIFIED_PANELS (vlag, default AAN): één gedeelde motor → congruent met 3D/werktekening/meetstaat/export.
     if (isUnifiedPanels()) {
-      return buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows, penanten: groupSettings?.penanten, baseMat: mat, stripArt: _stripArt, panelen, latten, verband, sparingRects: facadeData.sparingRects, startLijn, endExtensions }).panels;
+      return buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows, penanten: groupSettings?.penanten, baseMat: mat, stripArt: _stripArt, panelen, latten, verband, sparingRects: facadeData.sparingRects, startLijn, endExtensions, activeZones: stripZones ?? [] }).panels;
     }
     const basePanel = computeEffectiveBasePanel(panelen, effectiveMat.brickWeightM2 ?? 40, effectiveMat);
     const maxInterval = Math.max(50, latten?.maxInterval ?? 400);
@@ -2032,6 +2033,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       const [rawX, rawY] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
       const [wX, wY] = snapToFacadeEdge(rawX, rawY);
       drawStartRef.current = { wX, wY };
+      didZoomOutRef.current = false;   // reset; de eerste beweging (onMouseMove) zoomt uit
       drawingRectRef.current = { x: wX, y: wY, width: 0, height: 0 };
       setDrawingRect({ x: wX, y: wY, width: 0, height: 0 });
       const curZones = stripZonesRef.current;
@@ -2044,6 +2046,9 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
 
   const onMouseMove = useCallback((e) => {
     if (drawModeRef.current && drawStartRef.current) {
+      // ZONE_VOEG_SNAP: bij de EERSTE beweging van een nieuwe zone uitzoomen naar de hele gevel (je zoomde in om
+      // het startpunt te raken; zo kun je de zone doortrekken tot het eindpunt). Startpunt blijft in wereld-coörd.
+      if (isZoneVoegSnap() && !didZoomOutRef.current) { didZoomOutRef.current = true; fitToView(); return; }
       const canvas = canvasRef.current;
       const rect = canvas.getBoundingClientRect();
       const [rawX, rawY] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
@@ -2061,7 +2066,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       };
       setRedrawTick((n) => n + 1);
     }
-  }, [screenToWorld, snapToFacadeEdge]);
+  }, [screenToWorld, snapToFacadeEdge, fitToView]);
 
   const onMouseUp = useCallback(() => {
     const dr = drawingRectRef.current;
@@ -2069,18 +2074,24 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       drawStartRef.current = null;
       if (dr.width > 20 && dr.height > 20) {
         const curZones = stripZonesRef.current;
+        let base = { x: Math.round(dr.x), y: Math.round(dr.y), width: Math.round(dr.width), height: Math.round(dr.height) };
+        let clearMargin = null;
+        // ZONE_VOEG_SNAP: snap de nieuwe zone op het steenraster (hele strekken/koppen links/rechts in het bestaande
+        // vlak) + een voeg rondom (stoot verticaal, lint horizontaal) via clearMargin. Vlag uit → vrij tekenen.
+        if (isZoneVoegSnap() && facadeData?.rows?.length) {
+          base = snapZoneRectToBond(base, facadeData, effectiveMat);
+          clearMargin = { x: Math.max(0, effectiveMat?.stoot ?? effectiveMat?.lint ?? 0), y: Math.max(0, effectiveMat?.lint ?? 0) };
+        }
         const newZone = {
           id: `sz_${Date.now()}`,
-          x: Math.round(dr.x),
-          y: Math.round(dr.y),
-          width: Math.round(dr.width),
-          height: Math.round(dr.height),
+          ...base,
           label: `Zone ${String.fromCharCode(65 + curZones.length)}`,
           // eigenschappen-vooraf: de zone volgt verband + anker live, en is direct actief.
           verband: pendingRef.current.verband,
           bondAnchor: pendingRef.current.anchor,
           enabled: true,
           depthOffset: 0,
+          ...(clearMargin ? { clearMargin } : {}),
         };
         onStripZonesChangeRef.current?.([...curZones, newZone]);
         setSelectedZoneId(newZone.id);
@@ -2089,7 +2100,7 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
       setDrawingRect(null);
     }
     dragStart.current = null;
-  }, []);
+  }, [facadeData, effectiveMat]);
 
   useEffect(() => {
     const handler = () => onMouseUp();

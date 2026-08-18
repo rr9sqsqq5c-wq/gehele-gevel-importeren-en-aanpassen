@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { buildFullGroupFacadePattern, buildFacePattern, buildMirroredFacePattern } from './lib/pattern.js';
 import { buildFacadeZones, panelizeZone, computeEffectiveBasePanel, generateBattenPositions, getMoldTemplates, generateMoldSVG, generateCombinedMoldSVG, clipPanelToFacadePolys, detectKoppelstrippen, PANEL_GAP, buildWildverbandPanelGrid, computeHorizontalLatten, attachHolesToPanels, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones, mergeStackedColumns, buildGroupPanels } from './lib/panelization.js';
 import { buildStripZoneRegions, getActiveStripZones, solidifyRows } from './lib/zoneRegions.js';
@@ -314,10 +314,60 @@ function computeLatten(facadeData, panelen, latten, mat, penanten, startLijn, ve
   }
 }
 
+// ── BATCH-EXPORT helpers (download alle sub-tabbladen als aparte bestanden) ──────────────────────────────
+// De sub-tabbladen die als aparte documenten gedownload worden. kind = svg (één tekening), svg-multi (meerdere
+// tekeningen → in één SVG gestapeld) of html (tabel → opgemaakte HTML-pagina, "staat").
+const BATCH_TABS = [
+  { key: 'achterconstructie', label: 'Achterconstructie', kind: 'svg' },
+  { key: 'plaatsing',         label: 'Panelen plaatsing',  kind: 'svg' },
+  { key: 'productie',         label: 'Paneel productie',   kind: 'svg-multi' },
+  { key: 'zaaglijst',         label: 'Zaaglijst',          kind: 'html' },
+  { key: 'maltekening',       label: 'Maltekening',        kind: 'svg-multi' },
+];
+const _safeName = (s) => String(s ?? 'groep').replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, '_').slice(0, 80) || 'groep';
+const _serializeSvg = (el) => new XMLSerializer().serializeToString(el);
+const _ensureXmlns = (s) => s.includes('xmlns=') ? s : s.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+const _svgWH = (el) => {
+  const w = parseFloat(el.getAttribute('width')) || (el.viewBox && el.viewBox.baseVal && el.viewBox.baseVal.width) || 800;
+  const h = parseFloat(el.getAttribute('height')) || (el.viewBox && el.viewBox.baseVal && el.viewBox.baseVal.height) || 600;
+  return { w, h };
+};
+// namespace alle id's van één SVG (id="x" + url(#x) + href="#x") → geen botsing bij het stapelen van meerdere SVG's.
+const _nsIds = (s, pfx) => {
+  const ids = [...new Set([...s.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]))];
+  for (const id of ids) {
+    const e = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    s = s.replace(new RegExp(`\\bid="${e}"`, 'g'), `id="${pfx}-${id}"`)
+         .replace(new RegExp(`url\\(#${e}\\)`, 'g'), `url(#${pfx}-${id})`)
+         .replace(new RegExp(`((?:xlink:)?href)="#${e}"`, 'g'), `$1="#${pfx}-${id}"`);
+  }
+  return s;
+};
+// stapel meerdere SVG's verticaal in één geldige SVG (elk als geneste <svg> met eigen viewBox → juiste schaal).
+const _stackSvgs = (els) => {
+  let y = 0, maxW = 0; const parts = [];
+  els.forEach((el, i) => {
+    const { w, h } = _svgWH(el);
+    parts.push(`<g transform="translate(0,${y})">${_nsIds(_ensureXmlns(_serializeSvg(el)), 'b' + i)}</g>`);
+    y += h + 24; maxW = Math.max(maxW, w);
+  });
+  const H = Math.max(0, y - 24);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${maxW}" height="${H}" viewBox="0 0 ${maxW} ${H}">${parts.join('')}</svg>`;
+};
+const _downloadBlob = (str, name, type) => {
+  const url = URL.createObjectURL(new Blob([str], { type }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+};
+
 export function Werktekening({ walls, sharedFacadeData = null, groupSettings, groupName, panelen, latten, groupMinH, penantFaceData, zoneSettings, stripZones = [], sparingElements = [], sparingOffset = 0, epcSettings, outsideDirFlip, cornerTrimLeft = 0, cornerTrimRight = 0, cornerExtendLeft = 0, cornerExtendRight = 0, lattenTrimLeft = 0, lattenTrimRight = 0, lattenExtendLeft = 0, lattenExtendRight = 0, panelsTrimLeft = 0, panelsTrimRight = 0, panelsExtendLeft = 0, panelsExtendRight = 0 }) {
   const svgRef = useRef(null);
   const summarySvgRef = useRef(null);
   const productiePrintRef = useRef(null);
+  const contentRef = useRef(null);             // BATCH-EXPORT: content-container om per sub-tab SVG's/tabellen op te vangen
+  const batchRestoreRef = useRef(null);        // sub-tab om na de batch naar terug te keren
+  const [batchExport, setBatchExport] = useState(null);   // { i } tijdens "download alle sub-tabbladen"
   const [drawingType, setDrawingType] = useState('achterconstructie');
   const [productieGenerated, setProductieGenerated] = useState(false);
   const [selectedZoneIdx, setSelectedZoneIdx] = useState(-1);
@@ -394,7 +444,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
     if (isUnifiedPanels() && !_isWildWt) {
       const _wtSid = (groupSettings?.steenstripsArtikelen ?? [])[0];
       const _wtArt = _wtSid ? STEENSTRIP_CATALOG.find((a) => a.id === _wtSid) : null;
-      return buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows, penanten: groupSettings?.penanten, baseMat: mat, stripArt: _wtArt, panelen, latten, verband, sparingRects, startLijn: groupSettings?.startLijn, endExtensions: groupSettings?.endExtensions }).panels;
+      return buildGroupPanels({ groupWidth, groupHeight, groupOpenings, rows, penanten: groupSettings?.penanten, baseMat: mat, stripArt: _wtArt, panelen, latten, verband, sparingRects, startLijn: groupSettings?.startLijn, endExtensions: groupSettings?.endExtensions, activeZones: stripZones ?? [] }).panels;
     }
     const basePanel = computeEffectiveBasePanel(panelen, mat.brickWeightM2 ?? 40, mat);
     const maxInterval = Math.max(50, latten?.maxInterval ?? 400);
@@ -813,12 +863,62 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
     URL.revokeObjectURL(url);
   }
 
+  // ── BATCH-EXPORT: download álle sub-tabbladen als aparte bestanden (naam = tabnaam + groep) ──
+  // Elk sub-tabblad wordt kort geactiveerd (setDrawingType); ná de render vangen we de SVG's/tabel op en downloaden.
+  // Nodig omdat sub-tab-inhoud pas in de DOM staat als die tab actief is. Tekeningen → .svg, zaaglijst → .html.
+  function startBatchExport() {
+    if (batchExport) return;
+    batchRestoreRef.current = drawingType;
+    setProductieGenerated(false);
+    setDrawingType(BATCH_TABS[0].key);
+    setBatchExport({ i: 0 });
+  }
+  function captureBatchTab(cur) {
+    const fname = `${cur.label.replace(/\s+/g, '_')}_${_safeName(groupName)}`;
+    if (cur.kind === 'html') {
+      const tables = contentRef.current ? Array.from(contentRef.current.querySelectorAll('table')) : [];
+      const body = tables.length ? tables.map((t) => t.outerHTML).join('<div style="height:16px"></div>') : '<p>(geen gegevens)</p>';
+      const html = `<!DOCTYPE html><html lang="nl"><head><meta charset="utf-8"><title>${cur.label} — ${groupName ?? 'Groep'}</title>`
+        + `<style>body{font-family:Arial,Helvetica,sans-serif;margin:20px;color:#0f172a}h2{font-size:16px}`
+        + `table{border-collapse:collapse;font-size:12px;margin-bottom:16px}th,td{border:1px solid #cbd5e1;padding:4px 8px;text-align:left}th{background:#f1f5f9}</style>`
+        + `</head><body><h2>${cur.label} — ${groupName ?? 'Groep'}</h2>${body}</body></html>`;
+      _downloadBlob(html, `${fname}.html`, 'text/html;charset=utf-8');
+      return;
+    }
+    let els = [];
+    if (cur.key === 'productie') els = productiePrintRef.current ? Array.from(productiePrintRef.current.querySelectorAll('svg')) : [];
+    else if (cur.kind === 'svg-multi') els = contentRef.current ? Array.from(contentRef.current.querySelectorAll('svg')) : [];
+    else els = svgRef.current ? [svgRef.current] : (contentRef.current ? Array.from(contentRef.current.querySelectorAll('svg')).slice(0, 1) : []);
+    if (!els.length) { console.warn('[batch-export] geen tekening voor', cur.key); return; }
+    const svgStr = els.length === 1 ? _ensureXmlns(_serializeSvg(els[0])) : _stackSvgs(els);
+    _downloadBlob(svgStr, `${fname}.svg`, 'image/svg+xml;charset=utf-8');
+  }
+  useEffect(() => {
+    if (!batchExport) return;
+    const cur = BATCH_TABS[batchExport.i];
+    if (!cur) { setDrawingType(batchRestoreRef.current); setBatchExport(null); return; }
+    if (drawingType !== cur.key) return;                                              // wacht tot de sub-tab actief is
+    if (cur.key === 'productie' && !productieGenerated) { setProductieGenerated(true); return; }   // productie eerst genereren
+    const raf = requestAnimationFrame(() => requestAnimationFrame(() => {             // 2 frames → SVG's zeker gerenderd
+      try { captureBatchTab(cur); } catch (e) { console.error('[batch-export]', e); }
+      const next = batchExport.i + 1;
+      if (next < BATCH_TABS.length) { setDrawingType(BATCH_TABS[next].key); setBatchExport({ i: next }); }
+      else { setDrawingType(batchRestoreRef.current); setBatchExport(null); }
+    }));
+    return () => cancelAnimationFrame(raf);
+  }, [batchExport, drawingType, productieGenerated]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#f1f5f9' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: '#fff', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a5f', flex: 1 }}>
           Werktekening — {groupName ?? 'Groep'}
         </span>
+        <button onClick={startBatchExport} disabled={!!batchExport}
+          title={"Download alle sub-tabbladen als aparte bestanden (naam = tabblad + groep): Achterconstructie, Panelen plaatsing, Paneel productie en Maltekening als SVG, Zaaglijst als HTML."}
+          style={{ fontSize: 11, background: batchExport ? '#94a3b8' : '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: batchExport ? 'wait' : 'pointer', fontWeight: 600 }}>
+          {batchExport ? `⏳ ${batchExport.i + 1}/${BATCH_TABS.length}…` : '⬇ Alle tabbladen'}
+        </button>
         {drawingType === 'zaaglijst' ? (
           <button onClick={exportZaaglijst} style={{ fontSize: 11, background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>⬇ Export CSV</button>
         ) : drawingType === 'productie' ? (productieGenerated && (
@@ -905,7 +1005,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
         )}
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', padding: drawingType === 'productie' ? 8 : 16 }}>
+      <div ref={contentRef} style={{ flex: 1, overflow: 'auto', padding: drawingType === 'productie' ? 8 : 16 }}>
 
         {drawingType === 'penanten' && (() => {
           const pens = groupSettings?.penanten ?? [];

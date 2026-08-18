@@ -303,6 +303,43 @@ export function isZoneExtend() {
   return readFlag('zoneExtend', false);
 }
 
+// ZONE_VOEG_SNAP — een NIEUW getekende stripZone snapt op het steenraster: de linker-/rechterrand op een
+// steen-linker-/rechterhoek (k·pitch resp. k·pitch+steenL) en de onder-/bovenrand op een steen-onder/-boven
+// (course·lagenmaat resp. +steenH). Zo staan er links/rechts van de zone hele strekken/koppen in het bestaande
+// vlak. Tegelijk krijgt de zone een clearMargin {x:stoot, y:lint} → een VOEG rondom (stootvoeg verticaal,
+// lintvoeg horizontaal) tussen de zone en de omringende strips. Snap + margin worden bij het TEKENEN in de
+// zone opgeslagen (View2D onMouseUp); de zone-motor (buildStripZoneRegions) rendert de voeg via clearRect.
+// DEFAULT = false → vrij tekenen, geen margin (byte-identiek). Aanzetten: ?zoneVoegSnap=1.
+export function isZoneVoegSnap() {
+  return readFlag('zoneVoegSnap', false);
+}
+
+// ZONE_BOND_PLANE_PARITY — fix: de verticale strek/kop-PARITEIT van een tekenzone-bond (anker 'zoneBottomLeft')
+// wordt VLAK-verankerd i.p.v. zone-lokaal. Zonder deze vlag telt de pariteit vanaf de zone-onderkant, dus een
+// andere Start-Y (oneven aantal lagen) flipt de pariteit → de stenen schuiven een halve steen HORIZONTAAL
+// ("Start-Y veranderen verandert de X"). Met de vlag krijgt zone-rij 0 de pariteit van de ABSOLUTE course op y0
+// (rowOffset = round(y0/lagenmaat)) → Start-Y wijzigen laat de horizontale steek staan. De x blijft op de
+// zone-linkerrand starten. Default uit → oud gedrag (byte-identiek). Aanzetten: ?zoneBondPlaneParity=1.
+export function isZoneBondPlaneParity() {
+  return readFlag('zoneBondPlaneParity', false);
+}
+
+// ZONE_PASTEGEL — een staande tekenzone (staand_tegelverband) vult exact tot de zone-boven/-rand met een
+// PASTEGEL (deel-tegel) i.p.v. het restje weg te laten. Verticaal: hele tegels van onder, de rest bovenaan wordt
+// een pastegel; is die < ½ tegel → tel 'm op bij 1 hele tegel en deel door 2 → twee gelijke pastegels onder én
+// boven (klant-regel). Zo komt de zone precies op de opgegeven Stop-Y uit. Default uit → restje weg (byte-identiek).
+export function isZonePastegel() {
+  return readFlag('zonePastegel', false);
+}
+
+// ZONE_PANELEN — een getekende tekenzone wordt óók uit de GROEP-panelen geknipt en met EIGEN panelen gevuld
+// (buildZoneBackingPanels), i.p.v. dat de groep-panelen door de zone heen lopen. Zo is de zone een compleet
+// bekledingsvak (strips + panelen + latten). In de gedeelde buildGroupPanels → alle 6 views + export erven mee.
+// Default uit → groep-panelen door de hele gevel (byte-identiek). Aanzetten: ?zonePanelen=1.
+export function isZonePanelen() {
+  return readFlag('zonePanelen', false);
+}
+
 // TRUENORTH_METADATA_ONLY (FIX C) — project-noord overal. GEEN pad past trueNorth toe op de
 // GETOONDE geometrie: vlag AAN → de Ry(trueNorth)-rotatie verlaat buildProjectMatrix
 // (projectCoordinates.js) zodat 3D = 2D = export allemaal in het project-noord-frame staan;
@@ -755,6 +792,10 @@ export const FLAG_REGISTRY = [
   { key: 'stripSnijlijn',        label: 'Strips snijden op de snijlijn', note: 'Steenstrips worden op de WERKELIJKE rand van een sparing/opening gesneden (deel-steen tot de rand) i.p.v. de hele steen weg te knippen. Sparingen: altijd (elk verband). Ramen/deuren: alleen bij staand verband — halfsteens raam/deur blijft op de laagrand zoals nu. Werkt in 2D/3D/werktekening/export.' },
   { key: 'zoneStartStop',        label: 'Zone Start-X / Stop-X (numeriek)', note: 'Per tekenzone de linker- en rechterrand exact in mm intypen (i.p.v. tekenen) + "hele steen"-snap, om te optimaliseren. Werkt in 3D/2D/IFC; meetstaat/mallen nog niet.' },
   { key: 'zoneExtend',           label: 'Tekenzone links/rechts uitbreiden', note: 'Per getekende tekenzone een uitloop (mm) links/rechts, apart per laag (strips/latten/panelen), net als de groep-einduiteinden. Werkt in 3D/2D/IFC-export; meetstaat/mal voor zones nog niet.' },
+  { key: 'zoneVoegSnap',         label: 'Tekenzone: raster-snap + voeg rondom', note: 'Een NIEUW getekende tekenzone snapt op het steenraster (linker-/rechterrand op een steen-hoek, onder-/bovenrand op een course) zodat er links/rechts hele strekken/koppen in het bestaande vlak staan, én krijgt een voeg rondom: stootvoeg verticaal (links/rechts), lintvoeg horizontaal (onder/boven). Alleen bij het tekenen; bestaande zones ongemoeid. Default uit = vrij tekenen.' },
+  { key: 'zoneBondPlaneParity',  label: 'Tekenzone: Start-Y verschuift de X niet', note: 'Fix: de strek/kop-pariteit van een tekenzone wordt vlak-verankerd i.p.v. vanaf de zone-onderkant. Zonder deze vlag flipt een andere Start-Y (oneven aantal lagen) de pariteit → de stenen schuiven een halve steen horizontaal. Met de vlag laat Start-Y wijzigen de horizontale steek staan; de x start nog steeds op de zone-linkerrand.' },
+  { key: 'zonePastegel',         label: 'Tekenzone: pastegel tot de zone-rand', note: 'Een staande tekenzone (staand-tegelverband) vult exact tot de opgegeven Stop-Y met een pastegel (deel-tegel) i.p.v. het restje bovenaan weg te laten. Blijft er < ½ tegel over, dan wordt die bij een hele tegel opgeteld en door 2 gedeeld → twee gelijke pastegels onder én boven. Zo klopt de maatvoering met je invoer. Default uit = restje weg (huidig gedrag).' },
+  { key: 'zonePanelen',          label: 'Tekenzone: eigen panelen (uit groep geknipt)', note: 'De getekende tekenzone wordt ook uit de groep-panelen geknipt en met eigen panelen gevuld, zodat de zone een compleet bekledingsvak is (strips + panelen + latten). Zonder deze vlag lopen de groep-panelen door de zone heen (alleen de strips zijn zone-eigen). Werkt in alle views + IFC-export.' },
   { key: 'endTrim',              label: 'Einduiteinde inkorten = paneel/lat echt smaller', note: 'Een negatief einduiteinde (inkorten) maakt het buitenste paneel/lat ook in de DATA smaller — maat-label + productielijst kloppen in alle weergaven, i.p.v. alleen een rode sv-lijn + visuele clip. Buitenste element ≤ 0 → vervalt.' },
   { key: 'endExtSeparaat',       label: 'Einduiteinden per onderdeel los', note: 'Strips/latten/panelen verlengen elk ONAFHANKELIJK met hun eigen mm. Nu volgen de latten de paneel-verlenging mee (ook als "Latten" 0 is); met de vlag verlengen de latten alleen met hun eigen waarde.' },
   { key: 'paneelStartLijn',      label: 'Panelen starten op de projectstart', note: 'De groep-brede panelen beginnen op de projectstart/startlijn (peil) — panelen onder de startlijn worden afgesneden, net als de strips en de zone-panelen. Nu starten de groep-panelen op y=0 bij een positieve startlijn.' },

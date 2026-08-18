@@ -13,9 +13,9 @@
 // "vlak − openingen" hoeven we niet apart te berekenen: facadeData.rows ZIJN al de
 // contour-/openings-gemaskeerde default-bond-dekking. We snijden zones daartegen.
 
-import { buildFacePattern } from './pattern.js';
+import { buildFacePattern, buildRowPiecesForWidth } from './pattern.js';
 import { buildTruthRows } from './wildverbandKoppelstrip.js';
-import { isWildverbandKoppelstrip, isZoneExtend } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isZoneExtend, isZoneBondPlaneParity, isZonePastegel } from './featureFlags.js';
 import { clipRowsAroundRects } from './sparingElements.js';
 
 function round2(v) { return Math.round(v * 100) / 100; }
@@ -23,11 +23,32 @@ function round2(v) { return Math.round(v * 100) / 100; }
 // Bond-rijen voor een zone-rechthoek (w×h, oorsprong 0). Wildverband → het vastgelegde
 // truth-verband (zelfde bron als de hoofdgroep, Fase 2) i.p.v. de tegelverband-degradatie
 // in buildFacePattern. Vlag UIT of ander verband → buildFacePattern (byte-identiek).
-function buildZoneBondRows(w, h, mat, verband) {
+// ZONE_PASTEGEL: verticale rij-indeling van een staande zone met pastegel(s). Vult van onder met HELE tegels
+// (steek = tegelhoogte + lint); de rest bovenaan wordt een pastegel (deel-tegel). Is die pastegel < ½ tegel →
+// tel 'm op bij 1 hele tegel en deel door 2 → twee GELIJKE pastegels onder én boven (klant-regel). Geeft rijen
+// {y, h, kind} van onder naar boven; tegels + lint ertussen sommeren op h (de zone-hoogte). Bewezen in
+// spike/red-zone-pastegel.mjs.
+export function staandPastegelDivision(zH, tileH, lint) {
+  const step = tileH + lint;
+  if (!(step > 0) || zH <= 0.5) return [];
+  const nFull = Math.max(0, Math.floor((zH - tileH) / step) + 1);
+  const topFullTop = nFull > 0 ? (nFull - 1) * step + tileH : 0;
+  const pastegel = round2(zH - topFullTop - lint);   // tegel-hoogte van de bovenste pastegel
+  const half = tileH / 2;
+  const seq = (heights) => { const out = []; let y = 0; for (const [h, kind] of heights) { out.push({ y: round2(y), h: round2(h), kind }); y += h + lint; } return out; };
+  if (pastegel < 0.5) return seq(Array.from({ length: nFull }, () => [tileH, 'heel']));   // komt precies uit met hele tegels
+  if (pastegel < half && nFull >= 1) {                                                     // < ½ tegel → splitsen onder+boven
+    const hp = round2((pastegel + tileH) / 2);
+    return seq([[hp, 'pas'], ...Array.from({ length: nFull - 1 }, () => [tileH, 'heel']), [hp, 'pas']]);
+  }
+  return seq([...Array.from({ length: nFull }, () => [tileH, 'heel']), [pastegel, 'pas']]);  // enkele pastegel bovenaan
+}
+
+function buildZoneBondRows(w, h, mat, verband, rowOffset = 0) {
   if (verband === 'wildverband' && isWildverbandKoppelstrip()) {
     return buildTruthRows(w, h, mat, []).rows;
   }
-  return buildFacePattern(w, h, mat, verband, 0);
+  return buildFacePattern(w, h, mat, verband, rowOffset);
 }
 
 // ── één bron voor de penant-/stripZone-predicaten ──
@@ -183,6 +204,37 @@ function planeCoverageForSpan(facadeData, yLo, yHi, planeRowH) {
  * @returns regions: [{ rows, material, color, verband }]  (complement eerst, dan zones in tekenvolgorde)
  *          of null als er geen actieve zones zijn (caller gebruikt dan facadeData.rows = nulmeting).
  */
+// ZONE_VOEG_SNAP — snap een getekende zone-rechthoek op het steenraster zodat het bestaande vlak links/rechts
+// hele strekken/koppen houdt én de voeg (stoot verticaal, lint horizontaal) exact op de buur-steenrand valt.
+//  X: linkerrand → steen-LINKERhoek (xOrigin + k·pitch), rechterrand → steen-RECHTERhoek (+steenL). pitch = steenL+stoot.
+//  Y: onderrand → een course-onderkant (uit de ECHTE facadeData.rows), bovenrand → course-onderkant + steenH (steen-boven).
+// xOrigin = de bond-oorsprong (eerste steen-start uit facadeData.rows, meestal 0). Geeft {x,y,width,height} in
+// hetzelfde element-frame als de zone; garandeert ≥ 1 steen × ≥ 1 laag. Afgestemd op halfsteens (klant-verband).
+export function snapZoneRectToBond(rect, facadeData, mat) {
+  const steenL = mat?.steenL ?? 210, steenH = mat?.steenH ?? 50;
+  const stoot = mat?.stoot ?? mat?.lint ?? 10;
+  const pitch = steenL + stoot;
+  if (!(pitch > 0)) return rect;
+  const x0 = rect.x ?? 0, x1 = (rect.x ?? 0) + (rect.width ?? 0);
+  const y0 = rect.y ?? 0, y1 = (rect.y ?? 0) + (rect.height ?? 0);
+  const rows = facadeData?.rows ?? [];
+  const xOrigin = rows[0]?.pieces?.[0]?.start ?? 0;
+  // X — steen-hoek op de HALVE-steen-grid (pitch/2). In halfsteens is elke x-lijn op de ene laag een STREK-hoek
+  // (hele steen) en op de andere een KOP-hoek (halve steen); door op pitch/2 te snappen landt de rand op de
+  // dichtstbijzijnde strek- óf kop-hoek → je kunt links/rechts op strek EN op kop eindigen (kies via waar je tekent).
+  const halfPitch = pitch / 2;
+  let sx0 = xOrigin + Math.round((x0 - xOrigin) / halfPitch) * halfPitch;
+  let sx1 = xOrigin + Math.round((x1 - xOrigin - steenL) / halfPitch) * halfPitch + steenL;
+  if (sx1 - sx0 < halfPitch) sx1 = sx0 + halfPitch;         // minstens een halve steen breed
+  // Y — course-onderkant uit de echte rijen; boven = course-onderkant + steenH
+  const courseYs = rows.map((r) => r.y).filter((y) => Number.isFinite(y)).sort((a, b) => a - b);
+  const nearest = (arr, v) => arr.length ? arr.reduce((b, a) => Math.abs(a - v) < Math.abs(b - v) ? a : b) : v;
+  let sy0 = nearest(courseYs, y0);
+  let sy1 = nearest(courseYs.map((y) => y + steenH), y1);
+  if (sy1 - sy0 < steenH) sy1 = sy0 + steenH;               // minstens 1 laag hoog
+  return { x: round2(sx0), y: round2(sy0), width: round2(sx1 - sx0), height: round2(sy1 - sy0) };
+}
+
 export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerband, defaultColor, opts = {}) {
   if (!facadeData?.rows) return null;
   const active = (stripZones ?? []).filter((z) => z?.enabled === true);
@@ -263,15 +315,33 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
     //  'zoneBottomLeft' (default) → eigen anker, bond start in de linksonder-hoek van de zone.
     //  'planeOrigin'              → bond uitgelijnd op de vlak-oorsprong (0,0), zoals het default-verband.
     const anchor = zone.bondAnchor ?? 'zoneBottomLeft';
-    const absRows = anchor === 'planeOrigin'
-      ? buildZoneBondRows(r.x1, r.y1, zoneMat, zoneVerband) // abs coords, op vlak-oorsprong
-      : buildZoneBondRows(zW, zH, zoneMat, zoneVerband).map((row) => ({
-          y: row.y + r.y0,
-          // STRIP_SNIJLIJN: een deel-steen (yBot/yTop) schuift met de zone-Y mee; anders alleen X (byte-identiek).
-          pieces: row.pieces.map((p) => p.yBot != null
-            ? { ...p, start: p.start + r.x0, yBot: round2(p.yBot + r.y0), yTop: round2(p.yTop + r.y0) }
-            : { ...p, start: p.start + r.x0 }),
-        }));
+    // ZONE_BOND_PLANE_PARITY (fix): geef zone-rij 0 de pariteit van de ABSOLUTE course op de zone-onderkant
+    // (rowOffset = round(y0/lagenmaat)) → een andere Start-Y flipt de strek/kop-pariteit NIET meer, dus de
+    // horizontale steek blijft staan ("Start-Y veranderde de X"). Vlag uit → rowOffset 0 (zone-lokaal, byte-identiek).
+    const zLagen = (zoneVerband === 'staand_tegelverband' ? (zoneMat.steenL ?? 210) : (zoneMat.steenH ?? 50)) + (zoneMat.lint ?? 12);
+    const zRowOffset = (isZoneBondPlaneParity() && zLagen > 0) ? Math.round((r.y0 ?? 0) / zLagen) : 0;
+    // ZONE_PASTEGEL: staande zone exact tot de zone-boven met een pastegel (deel-tegel) + split-regel. De rijen
+    // komen uit staandPastegelDivision; elke rij krijgt z'n eigen tegel-hoogte via yBot/yTop (deel-steen → 2D/3D/
+    // export renderen 'm op zijn eigen hoogte). Vlag uit → onveranderd (byte-identiek).
+    const usePastegel = isZonePastegel() && zoneVerband === 'staand_tegelverband' && anchor !== 'planeOrigin';
+    let absRows;
+    if (usePastegel) {
+      const tileH = zoneMat.steenL ?? 210, lintZ = zoneMat.lint ?? 12;
+      absRows = staandPastegelDivision(zH, tileH, lintZ).map((drow, ri) => {
+        const yb = round2(drow.y + r.y0), yt = round2(drow.y + drow.h + r.y0);
+        return { y: yb, pieces: buildRowPiecesForWidth(zW, zoneMat, zoneVerband, ri + zRowOffset, 0).map((p) => ({ ...p, start: round2(p.start + r.x0), yBot: yb, yTop: yt })) };
+      });
+    } else {
+      absRows = anchor === 'planeOrigin'
+        ? buildZoneBondRows(r.x1, r.y1, zoneMat, zoneVerband) // abs coords, op vlak-oorsprong
+        : buildZoneBondRows(zW, zH, zoneMat, zoneVerband, zRowOffset).map((row) => ({
+            y: row.y + r.y0,
+            // STRIP_SNIJLIJN: een deel-steen (yBot/yTop) schuift met de zone-Y mee; anders alleen X (byte-identiek).
+            pieces: row.pieces.map((p) => p.yBot != null
+              ? { ...p, start: p.start + r.x0, yBot: round2(p.yBot + r.y0), yTop: round2(p.yTop + r.y0) }
+              : { ...p, start: p.start + r.x0 }),
+          }));
+    }
     const higherRects = clears.slice(i + 1); // latere zones = hogere z-order (incl. hun voegmarge)
 
     // ZONE_EXTEND: de UITLOOP (voorbij de getekende zone, meestal in lege ruimte om op de aangrenzende gevel aan
