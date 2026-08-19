@@ -1323,21 +1323,27 @@ function rasterColumnJoints(Lx, Rx, breedte, mat, verband, opts = {}) {
     pitch = nStrek * unit;
     for (let k = 1; k * pitch - 3 < Rx - 0.5; k++) { const e = round2(k * pitch - 3); if (e > Lx + 0.5) std.push(e); }
   } else if (verband === 'staand_tegelverband' && clean) {
-    // STAAND VERBAND: de BREEDTE loopt in KOPMATEN (kopmaat = steenH + stoot), niet in strekken. De paneelvoeg
-    // moet op een STOOTVOEG vallen; het veld wordt in GELIJKE hele-kop kolommen verdeeld (aantal = ceil(koppen /
-    // maxKop), maxKop uit rasterBreedte). Zo wordt 31 koppen bv. 16/15 (of 10/10/11 bij smallere rasterBreedte),
-    // i.p.v. de strek/rasterBreedte-kolommen die staand als halfsteens deden ogen.
+    // STAAND VERBAND: de BREEDTE loopt in KOPMATEN (kopmaat = steenH + stoot), niet in strekken. De paneelvoeg moet
+    // op een STOOTVOEG vallen; elk SUB-veld (tussen de raamranden) wordt APART in GELIJKE hele-kop kolommen verdeeld
+    // (aantal = ceil(koppen / maxKop), maxKop uit rasterBreedte). Per sub-veld i.p.v. het volle veld → de kolommen
+    // lijnen over ÁLLE rijen uit (raamrij én de rij erboven/onder gebruiken dezelfde grenzen); anders proppen we de
+    // raamrand tussen de gelijk-verdeelde grenzen en ontstaan er per rij andere (16/6/10/16-)kolommen. Zo wordt een
+    // vrij veld van 31 koppen bv. 16/15 (of 10/10/11 bij smallere rasterBreedte), en náást een raam schoon 13/13.
     const stoot = mat?.stoot ?? 10;
     const kop = (mat?.steenH ?? 50) + stoot;                                  // horizontale kopmaat
-    const totalKop = Math.max(1, Math.round((Rx - Lx + stoot) / kop));        // hele koppen in dit veld
     const maxKop = Math.max(1, Math.round((breedte || 1130) / kop));          // max koppen/kolom uit rasterBreedte
-    const nCols = Math.max(1, Math.ceil(totalKop / maxKop));
     pitch = maxKop * kop;
-    const base = Math.floor(totalKop / nCols), extra = totalKop - base * nCols;   // rest over de eerste kolommen
-    let cum = 0;
-    for (let c = 0; c < nCols - 1; c++) {
-      cum += base + (c < extra ? 1 : 0);
-      std.push(round2(Lx + cum * kop - stoot));                              // voeg op de stootvoeg ná de cum-de kop
+    const cuts = [round2(Lx), ...(clean ? (winEdges ?? []) : []).filter((x) => x > Lx + 0.5 && x < Rx - 0.5).map(round2), round2(Rx)].sort((a, b) => a - b);
+    for (let s = 0; s < cuts.length - 1; s++) {
+      const a = cuts[s], b = cuts[s + 1];
+      const totalKop = Math.max(1, Math.round((b - a + stoot) / kop));        // hele koppen in dit sub-veld
+      const nCols = Math.max(1, Math.ceil(totalKop / maxKop));
+      const base = Math.floor(totalKop / nCols), extra = totalKop - base * nCols;   // rest over de eerste kolommen
+      let cum = 0;
+      for (let c = 0; c < nCols - 1; c++) {
+        cum += base + (c < extra ? 1 : 0);
+        std.push(round2(a + cum * kop - stoot));                             // voeg op de stootvoeg ná de cum-de kop
+      }
     }
   } else {
     pitch = breedte || 1130;
@@ -1363,6 +1369,13 @@ function rasterColumnJoints(Lx, Rx, breedte, mat, verband, opts = {}) {
         if (drop >= 1) { J.splice(drop, 1); removed = true; break; }
       }
     }
+  }
+  // clean: een piepkleine RAND-kolom (bv. een raamrand net vóór de veld-/zonerand → ~1 kop reep) opnemen in de
+  // buur, óók als die grens een raamrand is — zo'n reep weegt niet op tegen de voeg-op-raamrand-regel.
+  if (clean && J.length >= 3) {
+    const tiny = 1.5 * ((mat?.steenH ?? 50) + (mat?.stoot ?? 10));   // ~1,5 kop
+    while (J.length >= 3 && J[1] - J[0] < tiny) J.splice(1, 1);
+    while (J.length >= 3 && J[J.length - 1] - J[J.length - 2] < tiny) J.splice(J.length - 2, 1);
   }
   // clean: een te brede kolom (na het opnemen van een reep) opnieuw gelijk verdelen → geen te breed/zwaar paneel.
   if (clean) {
