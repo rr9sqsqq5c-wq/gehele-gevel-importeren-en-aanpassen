@@ -5,7 +5,8 @@ import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements
 import { parseGhCladding } from './lib/ghCladding.js';
 import { attachLekdorpelToWalls } from './lib/lekdorpel.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isExportEndExtFix, isGhImport, isGeenVerband, isBlankBaseVerband, isLattenPlat, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isExportEndExtFix, isGhImport, isStijlenImport, isGeenVerband, isBlankBaseVerband, isLattenPlat, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { parseStijlenData, studLattenForGroup } from './lib/stijlen.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor, applyVentZonesToBatches, solidifyRows } from './lib/zoneRegions.js';
 import { applyProjectedOpenings } from './lib/openingDerivation.js';
@@ -3628,6 +3629,17 @@ export default function App() {
   // SPARING-ELEMENTEN (vlag sparingElementen) — geïmporteerde niet-wand IFC-onderdelen + globale offset.
   const [sparingElements, setSparingElements] = useState([]);
   const [sparingOffset, setSparingOffset] = useState(10);
+  // STIJLEN_IMPORT (vlag stijlenImport) — geladen module-stijlen (verticale-lat schroeflijnen per gevelvlak/
+  // verdieping). Blijft over een reload heen bewaard in localStorage. Puur additief; alleen gelezen als de vlag aan is.
+  const [stijlenData, setStijlenData] = useState(() => { try { const t = localStorage.getItem('stijlenData'); return t ? parseStijlenData(t) : null; } catch { return null; } });
+  function handleStijlenFile(file) {
+    if (!file) return;
+    const rd = new FileReader();
+    rd.onload = () => { const d = parseStijlenData(rd.result); if (!d) { addLog?.('Stijlen-JSON kon niet worden gelezen'); return; }
+      setStijlenData(d); try { localStorage.setItem('stijlenData', typeof rd.result === 'string' ? rd.result : JSON.stringify(d)); } catch {}
+      addLog?.(`Stijlen geladen: ${d.gevelvlakken?.length ?? 0} gevelvlakken`); };
+    rd.readAsText(file);
+  }
   const [sparingScan, setSparingScan] = useState(null); // { file, types:[{ifcEntityType,count}], selected:Set, busy }
   // Vlag ghImport: geïmporteerde Grasshopper-gevel (parseGhCladding-result + ifcText + fileName). Eigen full-screen view.
   const [ghResult, setGhResult] = useState(null);
@@ -6844,6 +6856,19 @@ export default function App() {
               </label>
             </Tooltip>
           )}
+          {isStijlenImport() && (
+            <Tooltip text={"Laad een stijlen-JSON (uit het Tekla modules-model, gemaakt met spike/extract-stijlen.mjs). De verticale-lat schroeflijnen op de module-stijlen verschijnen per verdieping op de werktekening bij een 2-lats achterconstructie."}>
+              <label style={{ background: '#7c3aed', color: '#fff', padding: '4px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                {stijlenData ? `🪵 Stijlen ✓ (${stijlenData.gevelvlakken?.length ?? 0})` : '🪵 Stijlen-JSON'}
+                <input type="file" accept=".json,.JSON" style={{ display: 'none' }}
+                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; handleStijlenFile(f); }} />
+              </label>
+            </Tooltip>
+          )}
+          {isStijlenImport() && stijlenData && (
+            <button onClick={() => { setStijlenData(null); try { localStorage.removeItem('stijlenData'); } catch {} }}
+              title="Geladen stijlen wissen" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 12 }}>✕</button>
+          )}
           {allWalls.length > 0 && (
             <Tooltip text={"Voeg elementen uit een tweede IFC-bestand toe aan het huidige project. Bestaande groepen blijven behouden."}>
               <button
@@ -7734,6 +7759,7 @@ export default function App() {
                     key={activeGroup.id}
                     walls={groupWalls}
                     sharedFacadeData={allPatterns[activeGroup.id]?.facadeData ?? null}
+                    stijlLatten={isStijlenImport() && stijlenData ? studLattenForGroup(stijlenData, allPatterns[activeGroup.id]?.facadeData, { startLijn: s.startLijn, maxHoogte: s.maxHoogte }) : null}
                     groupSettings={s}
                     groupName={s.name}
                     panelen={s.panelen}
@@ -7780,6 +7806,7 @@ export default function App() {
               groups={groups}
               walls={allWalls}
               facadeDataByGroup={Object.fromEntries(groups.map((g) => [g.id, allPatterns[g.id]?.facadeData ?? null]))}
+              stijlenData={isStijlenImport() ? stijlenData : null}
               getSettings={getSettings}
               adjacencies={adjacencies}
               cornerTrimsMap={Object.fromEntries(groups.map((g) => [g.id, endExtensionsToTrims(getSettings(g.id).endExtensions)]))}

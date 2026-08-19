@@ -6,6 +6,7 @@ import { sparingRectsForFacade } from './lib/sparingElements.js';
 import { openingXRangesAtY } from './lib/geometry.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
 import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isUittrekstaatSnap, isBlankBaseVerband } from './lib/featureFlags.js';
+import { studLattenForGroup, buildStudLatLines } from './lib/stijlen.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -26,7 +27,7 @@ function polyArea(pts) {
   return Math.abs(a) / 2;
 }
 
-function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims = null, sparingElements = [], sparingOffset = 0, sharedFacadeData = null) {
+function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims = null, sparingElements = [], sparingOffset = 0, sharedFacadeData = null, stijlenData = null) {
   const s = getSettings(group.id);
   // UNIFIED_PANELS: artikel-maat toepassen (net als App/2D) → strips, panelen én labels consistent.
   const _rawMat = s.material ?? DEFAULT_MATERIAL;
@@ -300,10 +301,20 @@ function computeGroupTakeoff(group, walls, getSettings, adjacencies, cornerTrims
 
   const totalLattenLengthMM = Object.entries(lattenSummary).reduce((sum, [len, cnt]) => sum + Number(len) * cnt, 0);
 
+  // VERTICALE LATTEN OP MODULE-STIJLEN (vlag stijlenImport) — m1 = som van de doorlopende lat-edges (de
+  // verdiepingsnaad telt mee: de lat loopt door ook al kun je daar niet schroeven), begrensd op [peil, max
+  // striphoogte] via dezelfde gedeelde functie als de werktekening. 0 zonder stijlen of zonder matchend gevelvlak.
+  let stijlLattenLengthMM = 0;
+  if (stijlenData) {
+    const _sl = studLattenForGroup(stijlenData, facadeData, { startLijn: s.startLijn, maxHoogte: s.maxHoogte });
+    const _sll = buildStudLatLines(_sl, Math.max(20, s.latten?.breedte ?? 45));
+    if (_sll) stijlLattenLengthMM = _sll.latLines.reduce((a, L) => a + L.edges.reduce((b, e) => b + (e.y1 - e.y0), 0), 0);
+  }
+
   return {
     groupId: group.id, name, color,
     groupWidth, groupHeight,
-    facadeAreaMM2, openingsAreaMM2, netFacadeAreaMM2, penantAreaMM2, hoekprofielLengthMM, uSectiesCount, vertikaleLattenLengthMM,
+    facadeAreaMM2, openingsAreaMM2, netFacadeAreaMM2, penantAreaMM2, hoekprofielLengthMM, uSectiesCount, vertikaleLattenLengthMM, stijlLattenLengthMM,
     stripCount, stripAreaMM2, stripDims,
     panelGroups,
     panelAreaMM2: Object.values(panelGroups).reduce((sum, pg) => sum + pg.areaMM2, 0),
@@ -428,17 +439,17 @@ function computeImportTotals(walls) {
   return { brutoMM2, openingsMM2, nettoMM2: brutoMM2 - openingsMM2, wallCount, openingCount };
 }
 
-export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose, cornerTrimsMap = {}, sparingElements = [], sparingOffset = 0, facadeDataByGroup = {} }) {
+export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose, cornerTrimsMap = {}, sparingElements = [], sparingOffset = 0, facadeDataByGroup = {}, stijlenData = null }) {
   const importTotals = useMemo(() => computeImportTotals(walls), [walls]);
 
   const takeoffs = useMemo(() => {
     return groups
-      .map((g) => computeGroupTakeoff(g, walls, getSettings, adjacencies, cornerTrimsMap[g.id] ?? null, sparingElements, sparingOffset, facadeDataByGroup[g.id] ?? null))
+      .map((g) => computeGroupTakeoff(g, walls, getSettings, adjacencies, cornerTrimsMap[g.id] ?? null, sparingElements, sparingOffset, facadeDataByGroup[g.id] ?? null, stijlenData))
       .filter(Boolean);
-  }, [groups, walls, getSettings, adjacencies, cornerTrimsMap, sparingElements, sparingOffset]);
+  }, [groups, walls, getSettings, adjacencies, cornerTrimsMap, sparingElements, sparingOffset, stijlenData]);
 
   const totals = useMemo(() => {
-    const t = { facadeAreaMM2: 0, openingsAreaMM2: 0, netFacadeAreaMM2: 0, penantAreaMM2: 0, hoekprofielLengthMM: 0, uSectiesCount: 0, vertikaleLattenLengthMM: 0, stripAreaMM2: 0, panelCount: 0, panelAreaMM2: 0, panelWeightKg: 0, lattenCount: 0, lattenLengthMM: 0 };
+    const t = { facadeAreaMM2: 0, openingsAreaMM2: 0, netFacadeAreaMM2: 0, penantAreaMM2: 0, hoekprofielLengthMM: 0, uSectiesCount: 0, vertikaleLattenLengthMM: 0, stijlLattenLengthMM: 0, stripAreaMM2: 0, panelCount: 0, panelAreaMM2: 0, panelWeightKg: 0, lattenCount: 0, lattenLengthMM: 0 };
     for (const to of takeoffs) {
       t.facadeAreaMM2 += to.facadeAreaMM2;
       t.openingsAreaMM2 += to.openingsAreaMM2;
@@ -447,6 +458,7 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose,
       t.hoekprofielLengthMM += (to.hoekprofielLengthMM ?? 0);
       t.uSectiesCount += (to.uSectiesCount ?? 0);
       t.vertikaleLattenLengthMM += (to.vertikaleLattenLengthMM ?? 0);
+      t.stijlLattenLengthMM += (to.stijlLattenLengthMM ?? 0);
       t.stripAreaMM2 += to.stripAreaMM2;
       for (const pg of Object.values(to.panelGroups)) {
         t.panelCount += pg.count;
@@ -598,6 +610,7 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose,
               <tr><TD>Aantal latten totaal</TD><TD right mono bold>{totals.lattenCount}</TD><TD right>st</TD></tr>
               <tr><TD>Totale latlengte</TD><TD right mono>{(totals.lattenLengthMM / 1000).toFixed(1)}</TD><TD right>m</TD></tr>
             </> : <tr><TD span={3} color="#94a3b8">Geen latten geconfigureerd</TD></tr>}
+            {totals.stijlLattenLengthMM > 0 && <tr><TD>Verticale latten op module-stijlen</TD><TD right mono bold>{(totals.stijlLattenLengthMM / 1000).toFixed(2)}</TD><TD right>m¹</TD></tr>}
 
             <SectionHeader title="Steenstrip-maten (hele project)" />
             {(() => {
@@ -670,6 +683,13 @@ export function Uittrekstaat({ groups, walls, getSettings, adjacencies, onClose,
                       <TD>&nbsp;&nbsp;— Houten latten</TD>
                       <TD right mono>{(to.totalLattenLengthMM / 1000).toFixed(1)}</TD>
                       <TD right>m¹ &nbsp;·&nbsp; {lattenCountTo} st</TD>
+                    </tr>
+                  )}
+                  {to.stijlLattenLengthMM > 0 && (
+                    <tr>
+                      <TD>&nbsp;&nbsp;— Verticale latten (module-stijlen)</TD>
+                      <TD right mono>{(to.stijlLattenLengthMM / 1000).toFixed(2)}</TD>
+                      <TD right>m¹</TD>
                     </tr>
                   )}
                 </React.Fragment>

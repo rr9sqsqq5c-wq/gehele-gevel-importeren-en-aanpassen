@@ -815,6 +815,9 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
 
   const svgTotal = VIEW_H + 16 + LEGEND_H;
 
+  // Bestandsnaam-label per tab (Q2): elke export bevat de naam van het actieve tabblad.
+  const TAB_FILE_LABEL = { achterconstructie: 'achterconstructie', verticaal: 'verticale constructie', plaatsing: 'plaatsing', productie: 'productie', penanten: 'penanten', zaaglijst: 'zaaglijst', maltekening: 'maltekening' };
+
   function exportSvg() {
     const svgEl = svgRef.current;
     if (!svgEl) return;
@@ -822,9 +825,7 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
     const blob = new Blob([xml], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = (drawingType === 'verticaal'
-      ? `werktekening verticale constructie ${groupName ?? 'groep'}`
-      : `werktekening_${(groupName ?? 'groep').replace(/\s/g, '_')}`) + '.svg'; a.click();
+    a.href = url; a.download = `werktekening ${TAB_FILE_LABEL[drawingType] ?? drawingType} ${groupName ?? 'groep'}.svg`; a.click();
     URL.revokeObjectURL(url);
   }
 
@@ -840,7 +841,7 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
       alert('Sta pop-ups toe voor deze pagina om af te drukken.');
       return;
     }
-    w.document.write(`<!DOCTYPE html><html><head><title>Werktekening ${groupName}</title><style>@page{size:A3 landscape;margin:8mm}body{margin:0;padding:0;background:#fff} svg{display:block;margin:0 auto;max-width:100%;max-height:275mm;width:auto;height:auto} @media print{body{padding:0}}</style></head><body>${xml}${page2}<script>window.onload=()=>window.print()<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><title>Werktekening ${TAB_FILE_LABEL[drawingType] ?? drawingType} ${groupName}</title><style>@page{size:A3 landscape;margin:8mm}body{margin:0;padding:0;background:#fff} svg{display:block;margin:0 auto;max-width:100%;max-height:275mm;width:auto;height:auto} @media print{body{padding:0}}</style></head><body>${xml}${page2}<script>window.onload=()=>window.print()<\/script></body></html>`);
     w.document.close();
   }
 
@@ -2020,6 +2021,19 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
               {studLatLines.floors.map((f, i) => (
                 <line key={`vfl-${i}`} x1={X(0)} y1={Y(f.y0)} x2={X(groupWidth || 0)} y2={Y(f.y0)} stroke="#cbd5e1" strokeWidth={0.5} strokeDasharray="4,4" />
               ))}
+              {/* START (peil) + MAX (striphoogte): de begrenzing waarbinnen de verticale latten lopen — dezelfde grenzen als de klem in stijlen.js. */}
+              {(() => {
+                const sL = groupSettings?.startLijn, mH = groupSettings?.maxHoogte;
+                const items = [];
+                if (sL != null && sL >= yLo - 1 && sL <= yHi + 1) items.push({ y: sL, txt: `START ${mm(sL)}`, col: '#0369a1' });
+                if (mH != null && mH > 0 && mH >= yLo - 1 && mH <= yHi + 1) items.push({ y: mH, txt: `MAX ${mm(mH)}`, col: '#dc2626' });
+                return items.map((it, i) => (
+                  <g key={`vsm-${i}`}>
+                    <line x1={X(0)} y1={Y(it.y)} x2={X(groupWidth || 0)} y2={Y(it.y)} stroke={it.col} strokeWidth={0.9} strokeDasharray="7,4" />
+                    <text x={X(0) + 3} y={Y(it.y) - 2} fontSize={8} fontWeight="bold" fill={it.col} fontFamily="Arial, sans-serif">{it.txt}</text>
+                  </g>
+                ));
+              })()}
               {studLatLines.latLines.map((L, i) => {
                 const col = L.type === 'dubbel' ? '#dc2626' : '#7c3aed';
                 const xl = X(L.xLeft), xsw = X(L.screwX);
@@ -2335,6 +2349,23 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
 
 
           <text x={peilLineX} y={OY - 6} textAnchor="middle" fontSize={FONT_LBL} fill="#334155" fontFamily="Arial, sans-serif">PEILMATEN (m)</text>
+
+          {/* START (peil) + MAX (striphoogte) op de PEILMATEN-as: waar de bekleding begint/stopt (label = abs. peil in m). Alleen als de waarde gezet is → byte-identiek wanneer leeg. */}
+          {(() => {
+            const sL = groupSettings?.startLijn, mH = maxH;
+            const items = [];
+            if (sL != null && sL >= viewYStart - 1 && sL <= viewYEnd + 1) items.push({ y: sL, txt: `START ${((peilmatenBase + sL) / 1000).toFixed(3)}`, col: '#0369a1' });
+            if (mH != null && mH > 0 && mH >= viewYStart - 1 && mH <= viewYEnd + 1) items.push({ y: mH, txt: `MAX ${((peilmatenBase + mH) / 1000).toFixed(3)}`, col: '#dc2626' });
+            return items.map((it, i) => {
+              const yy = sy(it.y);
+              return (
+                <g key={`sm-${i}`}>
+                  <line x1={peilLineX} y1={yy} x2={OX + W} y2={yy} stroke={it.col} strokeWidth={0.9} strokeDasharray="7,4" opacity={0.9} />
+                  <text x={peilLineX + 3} y={yy - 3} fontSize={FONT_LBL} fontWeight="bold" fill={it.col} fontFamily="Arial, sans-serif">{it.txt}</text>
+                </g>
+              );
+            });
+          })()}
 
           <g transform={`translate(${OX},${svgTotal - LEGEND_H + 4})`}>
             {drawingType === 'plaatsing' && <>
