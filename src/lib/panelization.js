@@ -735,6 +735,7 @@ export function buildZoneBackingPanels({ facadeData, activeZones, panelen, latte
         breedte: panelen?.rasterBreedte ?? panelen?.breedte ?? 1130,
         hoogte: panelen?.rasterHoogte ?? panelen?.hoogte ?? 789,
         mat, verband: V, facadeRows: facadeData.rows ?? [],
+        cleanCols: true,   // TEKENZONE_PLAATSING: paneelvoeg op de raamrand, geen reep (3D-verdeling)
       });
       // Veiligheid: mocht een raam net niet op een rijrand vallen (bv. tegen de zone-boven/onder), knip het alsnog vrij
       // (§8.3). Met raam-uitgelijnde rijen is dit doorgaans een no-op — géén frame, dus géén merge/900 meer nodig.
@@ -1313,7 +1314,8 @@ function splitHeavyBandPanels(panels, maxArea, maxHeight) {
 // raamranden: de ramen worden hierna uit de panelen GESNEDEN (raamrand = zaagsnede, geen paneel-naad) zodat er
 // ook náást een raam geen koppelstrip op elke rij komt. Rand-restje < ½ pitch → in het vorige paneel opgenomen.
 // Niet-halfsteens: vaste breedte vanaf de veldrand (fallback, geen bond-anker).
-function rasterColumnJoints(Lx, Rx, breedte, mat, verband) {
+function rasterColumnJoints(Lx, Rx, breedte, mat, verband, opts = {}) {
+  const { winEdges = null, mergeMin = 200, clean = false } = opts;
   const unit = (mat?.steenL ?? 210) + (mat?.stoot ?? 10);
   let std = [], pitch;
   if (verband === 'halfsteens' && unit > 1) {
@@ -1324,14 +1326,37 @@ function rasterColumnJoints(Lx, Rx, breedte, mat, verband) {
     pitch = breedte || 1130;
     for (let x = Lx + pitch; x < Rx - 0.5; x += pitch) std.push(round2(x));
   }
-  let J = [...new Set([round2(Lx), round2(Rx), ...std])].sort((a, b) => a - b);
-  // Klein paneel naast een raam wordt GEACCEPTEERD: alleen echte splinters (< RASTER_MIN_COL) én veld-restjes
-  // worden in de buur opgenomen, zodat de veld-kolommen (bv. de laatste) hun volle 5-strek-maat houden.
-  const mergeMin = 200;
+  // TEKENZONE_PLAATSING (clean): raam-verticale-randen als GEFORCEERDE kolomgrens meenemen zodat de paneelvoeg op
+  // de raamrand valt en de subtractie geen zijreep laat staan — uniform over alle rijen → geen hoek-mismatch.
+  const forced = clean ? (winEdges ?? []).filter((x) => x > Lx + 0.5 && x < Rx - 0.5).map(round2) : [];
+  const forcedSet = new Set(forced);
+  let J = [...new Set([round2(Lx), round2(Rx), ...std, ...forced])].sort((a, b) => a - b);
+  // Reep < mergeMin opnemen in de buur. Standaard (mergeMin=200) = huidig gedrag. In clean-modus behouden we de
+  // raamrand-voeg: ligt een buur-grens te dicht op een raamrand, verwijder dan de NIET-geforceerde grens.
   for (let removed = true; removed;) {
     removed = false;
     for (let i = 1; i < J.length - 1; i++) {
-      if (J[i] - J[i - 1] < mergeMin || J[i + 1] - J[i] < mergeMin) { J.splice(i, 1); removed = true; break; }
+      if (J[i] - J[i - 1] < mergeMin || J[i + 1] - J[i] < mergeMin) {
+        let drop = i;
+        if (forcedSet.has(J[i])) {
+          if (i - 1 >= 1 && !forcedSet.has(J[i - 1])) drop = i - 1;
+          else if (i + 1 <= J.length - 2 && !forcedSet.has(J[i + 1])) drop = i + 1;
+          else drop = -1;   // twee raamranden te dicht op elkaar → laat staan
+        }
+        if (drop >= 1) { J.splice(drop, 1); removed = true; break; }
+      }
+    }
+  }
+  // clean: een te brede kolom (na het opnemen van een reep) opnieuw gelijk verdelen → geen te breed/zwaar paneel.
+  if (clean) {
+    const maxCol = 1.3 * pitch;
+    for (let i = 0; i < J.length - 1; i++) {
+      const w = J[i + 1] - J[i];
+      if (w > maxCol) {
+        const n = Math.ceil(w / pitch), step = w / n, ins = [];
+        for (let k = 1; k < n; k++) ins.push(round2(J[i] + k * step));
+        J.splice(i + 1, 0, ...ins); i += ins.length;
+      }
     }
   }
   return J;
@@ -1357,7 +1382,7 @@ function rasterRowJoints(By, Ty, hoogte, facadeRows) {
 // strippen om-en-om). Een raam dat een rij VOLLEDIG dekt is een gat: de segmenten links/rechts stoppen op de
 // raamrand (waar de strips eindigen; rest-strook < ½ maat opgenomen → geen splinter, geen naad naast het raam).
 // Een raam dat een rij DEELS dekt (boven/onderrij) wordt als UITSNEDE (hoek eruit) op het paneel gezet.
-function buildRasterPanels({ groupWidth, groupHeight, openings, trimL, trimR, By, Ty, breedte, hoogte, mat, verband, facadeRows }) {
+function buildRasterPanels({ groupWidth, groupHeight, openings, trimL, trimR, By, Ty, breedte, hoogte, mat, verband, facadeRows, cleanCols = false }) {
   const Lx = trimL, Rx = round2(groupWidth - trimR);
   if (Rx - Lx < 10 || Ty - By < 10) return [];
   const H = hoogte > 10 ? hoogte : 789;
@@ -1377,7 +1402,12 @@ function buildRasterPanels({ groupWidth, groupHeight, openings, trimL, trimR, By
     });
     for (const [sx0, sx1] of segs) {
       if (sx1 - sx0 < 10) continue;
-      const Vx = rasterColumnJoints(sx0, sx1, breedte, mat, verband);   // 5-strek per solide segment
+      // clean-modus (tekenzone): raamranden (van ALLE ramen, niet enkel dit segment) als geforceerde kolomgrens →
+      // de paneelvoeg valt op de raamrand en loopt over de VOLLE hoogte door (ook boven/onder het raam), zodat de
+      // kolommen in élke rij dezelfde x hebben → de verticale merge dekt de dorpel/latei (geen wit gat) en er blijft
+      // geen zijreep staan. Korte kop/staart-reep < 1,5 strek opnemen in de buur; te brede kolom herverdelen.
+      const Vx = rasterColumnJoints(sx0, sx1, breedte, mat, verband,
+        cleanCols ? { winEdges: wins.flatMap((w) => [w.x0, w.x1]), mergeMin: Math.round(1.5 * ((mat?.steenL ?? 210) + (mat?.stoot ?? 10))), clean: true } : {});   // 5-strek per solide segment
       for (let ci = 0; ci < Vx.length - 1; ci++) {
         const cx0 = Vx[ci], cx1 = Vx[ci + 1];
         const holes = [];
