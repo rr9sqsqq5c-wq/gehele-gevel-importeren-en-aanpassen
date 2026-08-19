@@ -1418,6 +1418,10 @@ function buildRasterPanels({ groupWidth, groupHeight, openings, trimL, trimR, By
   const H = hoogte > 10 ? hoogte : 789;
   const wins = (openings ?? []).map((o) => ({ x0: o.x, x1: o.x + o.width, y0: o.y, y1: o.y + o.height }))
     .filter((o) => o.x1 > o.x0 + 1 && o.y1 > o.y0 + 1);
+  // Geforceerde kolomgrenzen (clean): ALLEEN de raamranden van ramen die de y-STROOK van DIT veld (By..Ty)
+  // overlappen. Anders forceert een raam uit een héél andere strook (bv. het bovenraam in een onderzone) een
+  // grens die daar geen raam heeft → een spookreepje tussen twee niet-samenvallende raamranden.
+  const fieldWinEdges = wins.filter((w) => w.y1 > By + 1 && w.y0 < Ty - 1).flatMap((w) => [w.x0, w.x1]);
   const Hy = rasterRowJoints(By, Ty, H, facadeRows);   // UNIFORME 14-laag rijen over de hele gevel
   const panels = []; let id = 1;
   for (let ri = 0; ri < Hy.length - 1; ri++) {
@@ -1437,7 +1441,7 @@ function buildRasterPanels({ groupWidth, groupHeight, openings, trimL, trimR, By
       // kolommen in élke rij dezelfde x hebben → de verticale merge dekt de dorpel/latei (geen wit gat) en er blijft
       // geen zijreep staan. Korte kop/staart-reep < 1,5 strek opnemen in de buur; te brede kolom herverdelen.
       const Vx = rasterColumnJoints(sx0, sx1, breedte, mat, verband,
-        cleanCols ? { winEdges: wins.flatMap((w) => [w.x0, w.x1]), mergeMin: Math.round(1.5 * ((mat?.steenL ?? 210) + (mat?.stoot ?? 10))), clean: true } : {});   // 5-strek per solide segment
+        cleanCols ? { winEdges: fieldWinEdges, mergeMin: Math.round(1.5 * ((mat?.steenL ?? 210) + (mat?.stoot ?? 10))), clean: true } : {});   // 5-strek per solide segment
       for (let ci = 0; ci < Vx.length - 1; ci++) {
         const cx0 = Vx[ci], cx1 = Vx[ci + 1];
         const holes = [];
