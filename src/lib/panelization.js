@@ -1322,6 +1322,23 @@ function rasterColumnJoints(Lx, Rx, breedte, mat, verband, opts = {}) {
     const nStrek = Math.max(1, Math.round((breedte || 1130) / unit));   // 1130 → 5 strekken
     pitch = nStrek * unit;
     for (let k = 1; k * pitch - 3 < Rx - 0.5; k++) { const e = round2(k * pitch - 3); if (e > Lx + 0.5) std.push(e); }
+  } else if (verband === 'staand_tegelverband' && clean) {
+    // STAAND VERBAND: de BREEDTE loopt in KOPMATEN (kopmaat = steenH + stoot), niet in strekken. De paneelvoeg
+    // moet op een STOOTVOEG vallen; het veld wordt in GELIJKE hele-kop kolommen verdeeld (aantal = ceil(koppen /
+    // maxKop), maxKop uit rasterBreedte). Zo wordt 31 koppen bv. 16/15 (of 10/10/11 bij smallere rasterBreedte),
+    // i.p.v. de strek/rasterBreedte-kolommen die staand als halfsteens deden ogen.
+    const stoot = mat?.stoot ?? 10;
+    const kop = (mat?.steenH ?? 50) + stoot;                                  // horizontale kopmaat
+    const totalKop = Math.max(1, Math.round((Rx - Lx + stoot) / kop));        // hele koppen in dit veld
+    const maxKop = Math.max(1, Math.round((breedte || 1130) / kop));          // max koppen/kolom uit rasterBreedte
+    const nCols = Math.max(1, Math.ceil(totalKop / maxKop));
+    pitch = maxKop * kop;
+    const base = Math.floor(totalKop / nCols), extra = totalKop - base * nCols;   // rest over de eerste kolommen
+    let cum = 0;
+    for (let c = 0; c < nCols - 1; c++) {
+      cum += base + (c < extra ? 1 : 0);
+      std.push(round2(Lx + cum * kop - stoot));                              // voeg op de stootvoeg ná de cum-de kop
+    }
   } else {
     pitch = breedte || 1130;
     for (let x = Lx + pitch; x < Rx - 0.5; x += pitch) std.push(round2(x));
