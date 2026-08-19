@@ -776,6 +776,19 @@ export function isBandenOptimalisatie() {
   return readFlag('bandenOptimalisatie', false);
 }
 
+// ZONE_OPENING_SNIJLIJN — een raam/deur/sparing wordt óók uit de ZONE-tegels op de WERKELIJKE boven/onderrand
+// gesneden (deel-tegel), niet alleen via de grove horizontale dekking. Die dekking (planeCoverageForSpan) unieert
+// per zone-rij over de VOLLE tegelhoogte (bondRowH); bij een STAANDE zone (tegel ~221 mm) "geneest" dat over de
+// raam-boven/onderrand → de tegel die de rand kruist blijft staan = een band boven én onder het raam (de kern is
+// wél weg). De fix knipt elke zone-regio waarvan de tegel HOGER is dan de vlak-rij (planeRowH) — dus staand;
+// halfsteens-zones genezen niet en blijven ongemoeid — tegen de opening-rechthoeken (facadeData.groupOpenings, al
+// offset-opgeblazen) via clipRowsAroundRects → deel-tegel tot de rand (met stripSnijlijn aan; anders grof). Zit in
+// de gedeelde buildStripZoneRegions → alle 6 views + export erven mee. DEFAULT = false → geen extra knip
+// (byte-identiek). Aanzetten: ?zoneOpeningSnijlijn=1. Noodrem: ?zoneOpeningSnijlijn=0.
+export function isZoneOpeningSnijlijn() {
+  return readFlag('zoneOpeningSnijlijn', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -796,6 +809,7 @@ export const FLAG_REGISTRY = [
   { key: 'zoneBondPlaneParity',  label: 'Tekenzone: Start-Y verschuift de X niet', note: 'Fix: de strek/kop-pariteit van een tekenzone wordt vlak-verankerd i.p.v. vanaf de zone-onderkant. Zonder deze vlag flipt een andere Start-Y (oneven aantal lagen) de pariteit → de stenen schuiven een halve steen horizontaal. Met de vlag laat Start-Y wijzigen de horizontale steek staan; de x start nog steeds op de zone-linkerrand.' },
   { key: 'zonePastegel',         label: 'Tekenzone: pastegel tot de zone-rand', note: 'Een staande tekenzone (staand-tegelverband) vult exact tot de opgegeven Stop-Y met een pastegel (deel-tegel) i.p.v. het restje bovenaan weg te laten. Blijft er < ½ tegel over, dan wordt die bij een hele tegel opgeteld en door 2 gedeeld → twee gelijke pastegels onder én boven. Zo klopt de maatvoering met je invoer. Default uit = restje weg (huidig gedrag).' },
   { key: 'zonePanelen',          label: 'Tekenzone: eigen panelen (uit groep geknipt)', note: 'De getekende tekenzone wordt ook uit de groep-panelen geknipt en met eigen panelen gevuld, zodat de zone een compleet bekledingsvak is (strips + panelen + latten). Zonder deze vlag lopen de groep-panelen door de zone heen (alleen de strips zijn zone-eigen). Werkt in alle views + IFC-export.' },
+  { key: 'zoneOpeningSnijlijn',  label: 'Tekenzone: raam/deur op de snijlijn (deel-tegel)', note: 'Een raam/deur/sparing wordt ook uit de STAANDE zone-tegels op de werkelijke boven- én onderrand gesneden (deel-tegel), i.p.v. dat de tegel die de raamrand kruist blijft staan als een band boven/onder het raam (het midden was al weg). De grove dekking geneest anders over de raamrand omdat een staande tegel (221 mm) veel hoger is dan een gevelrij. Werkt het schoonst met "Strips snijden op de snijlijn" aan. Werkt in alle views + IFC-export.' },
   { key: 'endTrim',              label: 'Einduiteinde inkorten = paneel/lat echt smaller', note: 'Een negatief einduiteinde (inkorten) maakt het buitenste paneel/lat ook in de DATA smaller — maat-label + productielijst kloppen in alle weergaven, i.p.v. alleen een rode sv-lijn + visuele clip. Buitenste element ≤ 0 → vervalt.' },
   { key: 'endExtSeparaat',       label: 'Einduiteinden per onderdeel los', note: 'Strips/latten/panelen verlengen elk ONAFHANKELIJK met hun eigen mm. Nu volgen de latten de paneel-verlenging mee (ook als "Latten" 0 is); met de vlag verlengen de latten alleen met hun eigen waarde.' },
   { key: 'paneelStartLijn',      label: 'Panelen starten op de projectstart', note: 'De groep-brede panelen beginnen op de projectstart/startlijn (peil) — panelen onder de startlijn worden afgesneden, net als de strips en de zone-panelen. Nu starten de groep-panelen op y=0 bij een positieve startlijn.' },

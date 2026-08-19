@@ -15,7 +15,7 @@
 
 import { buildFacePattern, buildRowPiecesForWidth } from './pattern.js';
 import { buildTruthRows } from './wildverbandKoppelstrip.js';
-import { isWildverbandKoppelstrip, isZoneExtend, isZoneBondPlaneParity, isZonePastegel } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isZoneExtend, isZoneBondPlaneParity, isZonePastegel, isZoneOpeningSnijlijn } from './featureFlags.js';
 import { clipRowsAroundRects } from './sparingElements.js';
 
 function round2(v) { return Math.round(v * 100) / 100; }
@@ -235,6 +235,41 @@ export function snapZoneRectToBond(rect, facadeData, mat) {
   return { x: round2(sx0), y: round2(sy0), width: round2(sx1 - sx0), height: round2(sy1 - sy0) };
 }
 
+// ZONE_OPENING_SNIJLIJN — deel-tegel-knip van ZONE-tegels op de raam/deur/sparing-randen. Als de
+// sparing-clip (_clipRowsYCut), MAAR respecteert een AL bestaande deel-tegel-hoogte (pastegel/stripSnijlijn:
+// yBot/yTop) i.p.v. blind de volle tegelhoogte zRH te nemen — anders zou een pastegel-toptegel voorbij de
+// zone-rand worden verlengd. Snijdt elke piece-box (x én y) op elke opening-rechthoek → deel-tegel met yBot/yTop.
+// Zelfstandig (raakt sparingElements.js niet → gecommit stripSnijlijn/sparing-gedrag ongemoeid).
+function clipZoneRowsAtOpenings(rows, rects, zRH) {
+  const subRect = (s, rx0, rx1, ry0, ry1) => {
+    if (rx1 <= s.x0 + 0.01 || rx0 >= s.x1 - 0.01 || ry1 <= s.y0 + 0.01 || ry0 >= s.y1 - 0.01) return [s];
+    const o = [];
+    if (s.x0 < rx0 - 0.01) o.push({ x0: s.x0, x1: rx0, y0: s.y0, y1: s.y1 });   // links (vol hoog)
+    if (s.x1 > rx1 + 0.01) o.push({ x0: rx1, x1: s.x1, y0: s.y0, y1: s.y1 });   // rechts (vol hoog)
+    const mx0 = Math.max(s.x0, rx0), mx1 = Math.min(s.x1, rx1);
+    if (s.y0 < ry0 - 0.01) o.push({ x0: mx0, x1: mx1, y0: s.y0, y1: ry0 });     // onder de opening (deel)
+    if (s.y1 > ry1 + 0.01) o.push({ x0: mx0, x1: mx1, y0: ry1, y1: s.y1 });     // boven de opening (deel)
+    return o;
+  };
+  const out = [];
+  for (const row of rows) {
+    const pieces = [];
+    for (const p of row.pieces) {
+      const py0 = p.yBot ?? row.y, py1 = p.yTop ?? (row.y + zRH);
+      let subs = [{ x0: p.start, x1: p.start + p.length, y0: py0, y1: py1 }];
+      for (const r of rects) subs = subs.flatMap((s) => subRect(s, r.x, r.x + r.width, r.y, r.y + r.height));
+      for (const s of subs) {
+        if (s.x1 - s.x0 <= 1 || s.y1 - s.y0 <= 0.5) continue;
+        const piece = { ...p, start: round2(s.x0), length: round2(s.x1 - s.x0) };
+        if (s.y0 > py0 + 0.5 || s.y1 < py1 - 0.5 || p.yBot != null) { piece.yBot = round2(s.y0); piece.yTop = round2(s.y1); }
+        pieces.push(piece);
+      }
+    }
+    if (pieces.length) out.push({ ...row, pieces });
+  }
+  return out;
+}
+
 export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerband, defaultColor, opts = {}) {
   if (!facadeData?.rows) return null;
   const active = (stripZones ?? []).filter((z) => z?.enabled === true);
@@ -383,6 +418,29 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
   if (facadeData.sparingRects?.length) {
     for (const reg of regions) {
       reg.rows = clipRowsAroundRects(reg.rows, facadeData.sparingRects, bondRowH(reg.verband, reg.material));
+    }
+  }
+
+  // ZONE_OPENING_SNIJLIJN — knip de RAAM/DEUR/sparing-openingen óók uit de zone-tegels op hun WERKELIJKE
+  // boven/onderrand (deel-tegel). De horizontale dekking (planeCoverageForSpan) unieert per zone-rij over de
+  // VOLLE tegelhoogte; bij een STAANDE zone (tegel 221 mm ≫ vlak-rij ~57 mm) geneest dat over de raamrand → de
+  // tegel die de rand kruist blijft staan = band boven/onder het raam. clipRowsAroundRects snijdt 'm op de rand af
+  // (deel-tegel met stripSnijlijn aan). ALLEEN zone-regio's (index ≥ 1; het complement [0] is al via facadeData.rows
+  // correct geknipt) én ALLEEN tegels hoger dan de vlak-rij (planeRowH → staand; halfsteens-zones genezen niet, dus
+  // ongemoeid). De openingen komen offset-opgeblazen uit facadeData.groupOpenings → de kozijn-offset loopt mee.
+  // Ventilatie-zones (eigen open zone/grille) niet meeknippen. Vlag UIT → geen extra knip (byte-identiek).
+  if (isZoneOpeningSnijlijn() && facadeData.groupOpenings?.length && regions.length > 1) {
+    const opRects = facadeData.groupOpenings
+      .filter((o) => o.type !== 'ventilatie')
+      .map((o) => ({ x: o.x ?? 0, y: o.y ?? 0, width: o.width ?? o.breedte ?? 0, height: o.height ?? o.hoogte ?? 0 }))
+      .filter((r) => r.width > 0.5 && r.height > 0.5);
+    if (opRects.length) {
+      for (let ri = 1; ri < regions.length; ri++) {
+        const reg = regions[ri];
+        const zRH = bondRowH(reg.verband, reg.material);
+        if (zRH <= planeRowH + 1) continue;   // korte tegel (bv. halfsteens zone) → geen heal → ongemoeid
+        reg.rows = clipZoneRowsAtOpenings(reg.rows, opRects, zRH);
+      }
     }
   }
 
