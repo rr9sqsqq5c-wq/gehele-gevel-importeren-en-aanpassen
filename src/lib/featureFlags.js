@@ -776,6 +776,15 @@ export function isBandenOptimalisatie() {
   return readFlag('bandenOptimalisatie', false);
 }
 
+// STIJLEN_IMPORT — laad een stijlen-JSON (uit spike/extract-stijlen.mjs op het Tekla modules-model): de
+// verticale-lat SCHROEFLIJNEN per gevelvlak per verdieping (op de module-stijlen). De app koppelt die per
+// gevelgroep (src/lib/stijlen.js → studLattenForGroup) en tekent ze op de werktekening bij een 2-lats
+// achterconstructie. PUUR ADDITIEF: eigen knop/state, geen bestaand codepad. DEFAULT = false → geen knop,
+// byte-identiek. Aanzetten: ?stijlenImport=1 (of localStorage 'stijlenImport'='1').
+export function isStijlenImport() {
+  return readFlag('stijlenImport', false);
+}
+
 // ZONE_OPENING_SNIJLIJN — een raam/deur/sparing wordt óók uit de ZONE-tegels op de WERKELIJKE boven/onderrand
 // gesneden (deel-tegel), niet alleen via de grove horizontale dekking. Die dekking (planeCoverageForSpan) unieert
 // per zone-rij over de VOLLE tegelhoogte (bondRowH); bij een STAANDE zone (tegel ~221 mm) "geneest" dat over de
@@ -787,6 +796,19 @@ export function isBandenOptimalisatie() {
 // (byte-identiek). Aanzetten: ?zoneOpeningSnijlijn=1. Noodrem: ?zoneOpeningSnijlijn=0.
 export function isZoneOpeningSnijlijn() {
   return readFlag('zoneOpeningSnijlijn', false);
+}
+
+// TEKENZONE_PLAATSING — GEBUNDELDE vlag voor de schone tekenzone-plaatsing (deelgedragingen samen aan/uit):
+//  (1) MERK per tekenzone als "letter-nr" (letter = het 2D-zonelabel, bv. C-1) i.p.v. "Z P{merk}"; bestaande gevel
+//      houdt "P{merk}" blauwgrijs; meetstaat-Merk = "P{letter}-{nr}" (EPC-code ongemoeid); zone enkel amber.
+//  (2) RASTER per tekenzone (rest via de banden-motor), raam op HELE rijen (uniform, minder merken), binnen gewicht.
+//  (3) ZONERAND-SNAP op de stootvoeg → bestaande gevel ernaast hele-steen.
+//  (4) bestaande gevel naast een raam alleen HORIZONTAAL delen (smalle band = één kolom).
+// Zit in de gedeelde motor (buildGroupPanels/buildZoneBackingPanels + Werktekening) → alle views + export erven mee.
+// (2)–(4) raken ALLEEN paneelgrenzen; de strips/het verband blijven byte-identiek. DEFAULT = false → byte-identiek.
+// Aanzetten: ?tekenzonePlaatsing=1. Noodrem: ?tekenzonePlaatsing=0.
+export function isTekenzonePlaatsing() {
+  return readFlag('tekenzonePlaatsing', false);
 }
 
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
@@ -810,6 +832,7 @@ export const FLAG_REGISTRY = [
   { key: 'zonePastegel',         label: 'Tekenzone: pastegel tot de zone-rand', note: 'Een staande tekenzone (staand-tegelverband) vult exact tot de opgegeven Stop-Y met een pastegel (deel-tegel) i.p.v. het restje bovenaan weg te laten. Blijft er < ½ tegel over, dan wordt die bij een hele tegel opgeteld en door 2 gedeeld → twee gelijke pastegels onder én boven. Zo klopt de maatvoering met je invoer. Default uit = restje weg (huidig gedrag).' },
   { key: 'zonePanelen',          label: 'Tekenzone: eigen panelen (uit groep geknipt)', note: 'De getekende tekenzone wordt ook uit de groep-panelen geknipt en met eigen panelen gevuld, zodat de zone een compleet bekledingsvak is (strips + panelen + latten). Zonder deze vlag lopen de groep-panelen door de zone heen (alleen de strips zijn zone-eigen). Werkt in alle views + IFC-export.' },
   { key: 'zoneOpeningSnijlijn',  label: 'Tekenzone: raam/deur op de snijlijn (deel-tegel)', note: 'Een raam/deur/sparing wordt ook uit de STAANDE zone-tegels op de werkelijke boven- én onderrand gesneden (deel-tegel), i.p.v. dat de tegel die de raamrand kruist blijft staan als een band boven/onder het raam (het midden was al weg). De grove dekking geneest anders over de raamrand omdat een staande tegel (221 mm) veel hoger is dan een gevelrij. Werkt het schoonst met "Strips snijden op de snijlijn" aan. Werkt in alle views + IFC-export.' },
+  { key: 'tekenzonePlaatsing',   label: 'Tekenzone-plaatsing (schoon)', note: 'Bundel voor de schone tekenzone-plaatsing: (1) merk per tekenzone als "letter-nr" uit het 2D-zonelabel (bv. C-1), bestaande gevel houdt "P{merk}" blauwgrijs, meetstaat-Merk = "P{letter}-{nr}" (EPC-code ongemoeid), binnen een zone geen groene koppelstrippen (enkel amber); (2) uniform paneelraster per tekenzone (raam op hele rijen → minder merken), rest via de banden-motor; (3) zonegrens op het steenraster gesnapt; (4) een smalle bestaande-gevel band naast een raam wordt alleen horizontaal gedeeld. (2)–(4) raken alleen paneelgrenzen; de strips lopen door. Werkt in alle views + IFC-export.' },
   { key: 'endTrim',              label: 'Einduiteinde inkorten = paneel/lat echt smaller', note: 'Een negatief einduiteinde (inkorten) maakt het buitenste paneel/lat ook in de DATA smaller — maat-label + productielijst kloppen in alle weergaven, i.p.v. alleen een rode sv-lijn + visuele clip. Buitenste element ≤ 0 → vervalt.' },
   { key: 'endExtSeparaat',       label: 'Einduiteinden per onderdeel los', note: 'Strips/latten/panelen verlengen elk ONAFHANKELIJK met hun eigen mm. Nu volgen de latten de paneel-verlenging mee (ook als "Latten" 0 is); met de vlag verlengen de latten alleen met hun eigen waarde.' },
   { key: 'paneelStartLijn',      label: 'Panelen starten op de projectstart', note: 'De groep-brede panelen beginnen op de projectstart/startlijn (peil) — panelen onder de startlijn worden afgesneden, net als de strips en de zone-panelen. Nu starten de groep-panelen op y=0 bij een positieve startlijn.' },
@@ -841,6 +864,7 @@ export const FLAG_REGISTRY = [
   { key: 'penantHoekStoot',      label: 'Penant — stootvoeg voor↔zij (3D)', note: 'Zet een stootvoeg tussen de voorvlak-strip en de zijvlak-strip van een penant (3D): de zijstrip stopt een stootvoeg vóór de voorstrip i.p.v. er tegenaan (haalt de stoot uit de zijstrip-lengte).', advanced: true },
   { key: 'unitDetectie',         label: 'Detecteer repeterende units', note: 'Herkent verdiepingshoge buitenwand-panelen met dezelfde maat + raam/deur-layout en zet elk voorkomen als een gekoppelde gevelgroep weg (1× een unit-type instellen → alle kopieën volgen). Puur additief.' },
   { key: 'ghImport',             label: 'Grasshopper-gevel importeren', note: 'Laad een Grasshopper/Geometry-Gym IFC waarin panelen/strippen/latten al gemodelleerd zijn (geen wanden): leidt de gevels af, nummert de panelen per gevel en toont per gevel een beoordelingsaanzicht + uittrekstaat + zaaglijst.', reimport: true },
+  { key: 'stijlenImport',        label: 'Module-stijlen laden (verticale latten)', note: 'Laad een stijlen-JSON (uit het Tekla modules-model) met de verticale-lat schroeflijnen per verdieping op de module-stijlen. De app koppelt ze per gevelgroep en tekent ze op de werktekening bij een 2-lats achterconstructie (per verdieping, op de stijlen, geen lat over een opening).' },
   { key: 'newOpenings',          label: 'Nieuwe opening-afleiding',  note: 'Experimenteel alternatief parse-pad; kan bestaande resultaten veranderen.', reimport: true, advanced: true },
   { key: 'openingUpAxisFix',     label: 'Opening up-as fix',         note: 'Experimenteel.', reimport: true, advanced: true },
   { key: 'selfContainedProjects',label: 'Self-contained projecten',  note: 'Experimenteel.', advanced: true },

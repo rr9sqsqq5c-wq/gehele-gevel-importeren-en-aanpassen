@@ -3,7 +3,7 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen, isTekenzonePlaatsing } from './featureFlags.js';
 
 // ZONE_EXTEND: per-laag mm-uitloop van een zone-rand (links = x0-kant, rechts = x1-kant). Vlag uit → 0 (byte-identiek).
 const zoneExtentFor = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
@@ -722,6 +722,29 @@ export function buildZoneBackingPanels({ facadeData, activeZones, panelen, latte
     const V = z.verband ?? verband ?? 'halfsteens';
     const _pex = zoneExtentFor(z, 'panels');   // ZONE_EXTEND: panelen-uitloop verbreedt de zone-rechthoek
     const zx1 = (z.x ?? 0) - _pex.l, zy1 = z.y ?? 0, zx2 = (z.x ?? 0) + (z.width ?? 0) + _pex.r, zy2 = zy1 + zoneFillHeight(z);
+    // ZONE_RASTER (vlag): elke tekenzone krijgt een UNIFORM paneelraster via de raster-motor — kolommen globaal
+    // bond-verankerd (naden lijnen uit over zones + het banden-veld → koppelstrippen om-en-om), rijen course-
+    // verankerd met vaste lagenmaat-hoogte. Openingen in de zone worden als gat/uitsnede meegenomen. Vervangt de
+    // per-zone banden-panelisatie hieronder (die per opening/massief-deel fragmenteert). Het gebied BUITEN de zones
+    // loopt onveranderd via buildGroupPanels (banden-motor). Vlag uit → de ELSE-lus draait = byte-identiek.
+    if (isTekenzonePlaatsing()) {
+      const rp = buildRasterPanels({
+        groupWidth, groupHeight, openings,
+        trimL: Math.max(0, zx1), trimR: Math.max(0, round2(groupWidth - zx2)),
+        By: Math.max(0, zy1), Ty: Math.min(groupHeight, zy2),
+        breedte: panelen?.rasterBreedte ?? panelen?.breedte ?? 1130,
+        hoogte: panelen?.rasterHoogte ?? panelen?.hoogte ?? 789,
+        mat, verband: V, facadeRows: facadeData.rows ?? [],
+      });
+      // Veiligheid: mocht een raam net niet op een rijrand vallen (bv. tegen de zone-boven/onder), knip het alsnog vrij
+      // (§8.3). Met raam-uitgelijnde rijen is dit doorgaans een no-op — géén frame, dus géén merge/900 meer nodig.
+      const _winRects = openings.map((o) => ({ x1: o.x, y1: o.y, x2: o.x + o.width, y2: o.y + o.height }));
+      const rpCut = _winRects.length
+        ? mergeStackedColumns(_subtractZoneRectsFromPanels(rp.map((p) => ({ ...p, holes: [] })), _winRects, 1, 1), openings, basePanel)
+        : rp;
+      panels.push(...rpCut.map((p) => ({ ...p, id: `zrp-${z.id}-${Math.round(p.x)}-${Math.round(p.y)}`, zoneId: z.id, zoneVerband: V })));
+      continue;
+    }
     // PANEELVOEGEN OP DE STEENRIJEN: bouw de course-grid van DEZE zone (eigen verband + anker) en
     // snap de paneel-hoogtebreaks daarop, zodat een paneelvoeg op een lintvoeg valt (net als de basis).
     const lagenmaat = V === 'staand_tegelverband' ? (steenL + lint) : (steenH + lint);
@@ -738,7 +761,9 @@ export function buildZoneBackingPanels({ facadeData, activeZones, panelen, latte
       const ix2 = Math.min(fz.x + fz.width, zx2), iy2 = Math.min(fz.y + fz.height, zy2);
       if (ix2 - ix1 > 10 && iy2 - iy1 > 10) {
         const res = panelizeZone({ x: ix1, y: iy1, width: ix2 - ix1, height: iy2 - iy1, id: `zpz-${Math.round(ix1)}-${Math.round(iy1)}`, kind: 'zone', bondOriginX: z.bondAnchor === 'planeOrigin' ? 0 : zx1, bondOriginY: z.bondAnchor === 'planeOrigin' ? 0 : zy1 }, bys, basePanel, snapFn, mat, V);
-        if (res.ok) panels.push(...res.panels);
+        // ZONE_PANELEN: tag elk zone-paneel met de zone-id + -verband → koppelstrip-detectie kan een
+        // niet-halfsteens zone overslaan, en de werktekening kan de zone-panelen apart kleuren/labelen.
+        if (res.ok) panels.push(...res.panels.map((p) => ({ ...p, zoneId: z.id, zoneVerband: V })));
       }
     }
   }
@@ -1169,6 +1194,9 @@ export function detectKoppelstrippen(panels, facadeRows, mat, verband) {
       const ex = round2(piece.start + piece.length);
       const spanning = [];
       for (const panel of panels) {
+        // ZONE_PANELEN: een tekenzone met een ANDER (bv. staand) verband heeft z'n eigen strips; de groep-
+        // horizontale strip loopt daar niet → geen (fantoom-)koppelstrip over zone-panelen die niet halfsteens zijn.
+        if (panel.zoneVerband && panel.zoneVerband !== 'halfsteens') continue;
         const px1 = round2(panel.x);
         const px2 = round2(panel.x + panel.width);
         const py1 = round2(panel.y);
@@ -1228,6 +1256,54 @@ export function mergeStackedColumns(panels, openings, basePanel) {
       } else { out.push(cur); cur = { ...nx }; }
     }
     out.push(cur);
+  }
+  return out;
+}
+
+// TEKENZONE (isTekenzonePlaatsing): een smalle VERTICALE band bestaande gevel wordt alleen HORIZONTAAL gedeeld.
+// Voeg per band-rij (zelfde y+hoogte) horizontaal-aangrenzende panelen samen tot één kolom, tot ~1 kolombreedte (colW)
+// en nooit over een raam heen → de smalle strook naast een raam wordt één kolom; brede volle-breedte banden (twee
+// kolommen samen > colW) blijven mét kolommen. Raakt ALLEEN paneelgrenzen; de strips/het verband blijven byte-identiek.
+function mergeAdjacentBandColumns(panels, openings, colW) {
+  if (!panels?.length) return panels;
+  const ops = openings ?? [];
+  const key = (p) => `${Math.round(p.y)}_${Math.round(p.height)}`;
+  const rows = new Map();
+  for (const p of panels) { const k = key(p); if (!rows.has(k)) rows.set(k, []); rows.get(k).push(p); }
+  const out = [];
+  for (const ps of rows.values()) {
+    ps.sort((a, b) => a.x - b.x);
+    let cur = { ...ps[0] };
+    for (let i = 1; i < ps.length; i++) {
+      const nx = ps[i];
+      const touch = Math.abs(nx.x - (cur.x + cur.width)) <= PANEL_GAP + 1;
+      const uW = (nx.x + nx.width) - cur.x;
+      const hitsOpening = ops.some((o) => (o.y ?? 0) < cur.y + cur.height - 1 && (o.y ?? 0) + (o.height ?? 0) > cur.y + 1
+        && (o.x ?? 0) < nx.x + nx.width - 1 && (o.x ?? 0) + (o.width ?? 0) > cur.x + 1);
+      if (touch && !hitsOpening && uW <= colW) {
+        cur = { ...cur, width: round2(uW), area: round2(uW * cur.height), mergedBand: true };
+      } else { out.push(cur); cur = { ...nx }; }
+    }
+    out.push(cur);
+  }
+  return out;
+}
+
+// TEKENZONE (isTekenzonePlaatsing): een (horizontaal samengevoegde) bestaande-gevel band die te ZWAAR is (opp >
+// gewichtsplafond) of hoger dan de plaat, wordt HORIZONTAAL in het minste aantal ~gelijke stukken gesplitst (≥ 2
+// panelen ivm gewicht), zelfde breedte → de band blijft één kolom maar valt binnen het gewicht. Raakt ALLEEN
+// paneelgrenzen; de strips lopen door (de horizontale naad valt tussen de strips, snijdt geen steen).
+function splitHeavyBandPanels(panels, maxArea, maxHeight) {
+  if (!panels?.length) return panels;
+  const out = [];
+  for (const p of panels) {
+    const n = Math.max(1, Math.ceil((p.width * p.height) / Math.max(1, maxArea)), Math.ceil(p.height / Math.max(1, maxHeight)));
+    if (n <= 1) { out.push(p); continue; }
+    const h = round2(p.height / n);
+    for (let i = 0; i < n; i++) {
+      const hh = (i < n - 1) ? h : round2(p.height - (n - 1) * h);   // laatste stuk absorbeert de afrondingsrest
+      out.push({ ...p, y: round2(p.y + i * h), height: hh, area: round2(p.width * hh), splitWeight: true });
+    }
   }
   return out;
 }
@@ -1638,10 +1714,30 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
   // Gedeeld in buildGroupPanels → alle 6 views + export erven mee. Vlag uit of geen zones → onveranderd.
   const _az = Array.isArray(activeZones) ? activeZones.filter((z) => z?.enabled === true) : [];
   if (isZonePanelen() && _az.length) {
-    const zoneRects = _az.map((z) => ({ x1: z.x ?? 0, y1: z.y ?? 0, x2: (z.x ?? 0) + (z.width ?? 0), y2: (z.y ?? 0) + zoneFillHeight(z) }));
+    // ZONE_RAND_SNAP (vlag): snap de zone-x-randen op het steenraster (stootvoeg, k·unit vanaf x=0) zodat de bestaande
+    // gevel ernaast een hele-steen-breedte krijgt (geen 89 mm-restjes). Dezelfde snap voor de KNIP én de ZONE-panelen
+    // zodat ze naadloos aansluiten. Afgeleid (niet in de opslag). Vlag uit → identiteit → _azS == _az → byte-identiek.
+    const _unit = (effMat.steenL ?? 210) + (effMat.stoot ?? 10);
+    const _snap = (isTekenzonePlaatsing() && _unit > 1) ? (x) => round2(Math.round(x / _unit) * _unit) : (x) => x;
+    const _azS = _az.map((z) => { const a = _snap(z.x ?? 0), b = _snap((z.x ?? 0) + (z.width ?? 0)); return (b - a >= _unit - 0.5) ? { ...z, x: a, width: round2(b - a) } : z; });
+    const zoneRects = _azS.map((z) => ({ x1: z.x ?? 0, y1: z.y ?? 0, x2: (z.x ?? 0) + (z.width ?? 0), y2: (z.y ?? 0) + zoneFillHeight(z) }));
     panels = _subtractZoneRectsFromPanels(panels, zoneRects);
+    // TEKENZONE — bestaande gevel: het uitknippen van de zones versnippert de groep-panelen tot smalle VERTICALE
+    // rest-stroken naast de zones/ramen (links/rechts van elke zone, per horizontale band een los stukje → P16/P34/…).
+    // Voeg die verticaal-gestapelde reststroken weer samen tot één schone verticale band (mergeStackedColumns: zelfde
+    // x+breedte, aaneensluitend, nooit over een raam heen, binnen plaat-/gewichtsmaat). Idempotent → de al-goede
+    // horizontale banden (andere breedte/positie) blijven ongemoeid. Raakt ALLEEN paneelgrenzen; de STRIPS/het verband
+    // blijven byte-identiek (§8b). Zit binnen het reeds-vlag-gated zonepad; extra gate isPaneelOptimalisatie in de merge.
+    panels = mergeStackedColumns(panels, groupOpenings, basePanel);
+    // TEKENZONE — bestaande gevel naast een raam ALLEEN horizontaal delen (isTekenzonePlaatsing): horizontaal-
+    // aangrenzende kolommen in dezelfde band-rij samenvoegen tot één kolom (≤ ~1 kolombreedte); brede banden blijven
+    // gesplitst. Ná de verticale merge, zodat de al tot band verticaal-samengevoegde strook één kolom wordt.
+    if (isTekenzonePlaatsing()) {
+      panels = mergeAdjacentBandColumns(panels, groupOpenings, 6 * ((effMat.steenL ?? 210) + (effMat.stoot ?? 10)));
+      panels = splitHeavyBandPanels(panels, basePanel?.maxArea50MM2 ?? Infinity, (basePanel?.width ?? 3005) + 0.5);   // te zware band → ≥2 horizontale panelen (op de streefgrens maxKg)
+    }
     const _fd = { groupWidth, groupHeight, groupOpenings, rows, sparingRects };
-    const zonePanels = buildZoneBackingPanels({ facadeData: _fd, activeZones: _az, panelen, latten, mat: effMat, verband, startLijn, sparingRects });
+    const zonePanels = buildZoneBackingPanels({ facadeData: _fd, activeZones: _azS, panelen, latten, mat: effMat, verband, startLijn, sparingRects });
     panels = [...panels, ...zonePanels];
   }
   return { panels, effMat, basePanel };

@@ -5,10 +5,11 @@ import { buildStripZoneRegions, getActiveStripZones, solidifyRows } from './lib/
 import { sparingRectsForFacade } from './lib/sparingElements.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isPaneelMerkPerZone, isBlankBaseVerband, isFeatureZones, isBandenOptimalisatie } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isPaneelMerkPerZone, isBlankBaseVerband, isFeatureZones, isBandenOptimalisatie, isTekenzonePlaatsing } from './lib/featureFlags.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
+import { buildStudLatLines } from './lib/stijlen.js';
 
 function generatePaneelId(entity, projectNr, level, stramienStart, stramienEnd, seqNr, panelType) {
   const e  = ((entity ?? 'P') + '').slice(0, 1).toUpperCase();
@@ -361,7 +362,7 @@ const _downloadBlob = (str, name, type) => {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 };
 
-export function Werktekening({ walls, sharedFacadeData = null, groupSettings, groupName, panelen, latten, groupMinH, penantFaceData, zoneSettings, stripZones = [], sparingElements = [], sparingOffset = 0, epcSettings, outsideDirFlip, cornerTrimLeft = 0, cornerTrimRight = 0, cornerExtendLeft = 0, cornerExtendRight = 0, lattenTrimLeft = 0, lattenTrimRight = 0, lattenExtendLeft = 0, lattenExtendRight = 0, panelsTrimLeft = 0, panelsTrimRight = 0, panelsExtendLeft = 0, panelsExtendRight = 0 }) {
+export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = null, groupSettings, groupName, panelen, latten, groupMinH, penantFaceData, zoneSettings, stripZones = [], sparingElements = [], sparingOffset = 0, epcSettings, outsideDirFlip, cornerTrimLeft = 0, cornerTrimRight = 0, cornerExtendLeft = 0, cornerExtendRight = 0, lattenTrimLeft = 0, lattenTrimRight = 0, lattenExtendLeft = 0, lattenExtendRight = 0, panelsTrimLeft = 0, panelsTrimRight = 0, panelsExtendLeft = 0, panelsExtendRight = 0 }) {
   const svgRef = useRef(null);
   const summarySvgRef = useRef(null);
   const productiePrintRef = useRef(null);
@@ -674,6 +675,52 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
     };
   })();
   const paneelMerkLabel = (p) => { const m = paneelMerkMap?.get(p); return m != null ? `P${m}` : ''; };
+
+  // TEKENZONE_PLAATSING (vlag, default UIT): getekende tekenzones (stripZones) krijgen een eigen merk
+  // "letter-nr" (letter = staart van het 2D-zonelabel, bv. "Zone C" → "C"; nr = per-zone merk-nr per uniek
+  // paneeltype), amber gerenderd met zwart 2× label. De bestaande gevel (geen tekenzone, incl. raster/banden-opt
+  // pseudo-zones) blijft blauwgrijs "P{merk}". Vlag uit → schoonZones leeg → SCHOON=false → alle takken
+  // hieronder vallen terug op het bestaande gedrag (byte-identiek). _isZonePanel is ALTIJD veilig (leeg → false).
+  const _tzpOn = isTekenzonePlaatsing();
+  const schoonZones = _tzpOn ? (stripZones ?? []).filter((z) => z?.enabled === true) : [];
+  const SCHOON = schoonZones.length > 0;
+  const _zoneLetter = (label, i) => { const m = /([A-Za-z0-9]+)\s*$/.exec(String(label ?? '').trim()); return m ? m[1].toUpperCase() : String.fromCharCode(65 + i); };
+  const schoonLetterOf = new Map();
+  schoonZones.forEach((z, i) => schoonLetterOf.set(z.id, _zoneLetter(z.label, i)));
+  const _isZonePanel = (p) => p?.zoneId != null && schoonLetterOf.has(p.zoneId);
+  const schoonMerkMap = SCHOON ? (() => {
+    const sigOf = (panel) => {
+      const { strips } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet);
+      const stripSig = strips.map((s) => `${s.label}:${Math.round(s.width)}:${Math.round(s.x)}:${Math.round(s.y)}:${s.koppelstrip ? 'K' : ''}`).join('|');
+      const holeSig = (panel.holes ?? []).map((h) => `${Math.round(h.x - panel.x)}:${Math.round(h.y - panel.y)}:${Math.round(h.width)}:${Math.round(h.height)}`).join(',');
+      return `${Math.round(panel.width)}x${Math.round(panel.height)}|${panel.type ?? ''}|${stripSig}|H:${holeSig}`;
+    };
+    const pk = (p) => `${Math.round(p.x)}_${Math.round(p.y)}`;
+    const byZone = new Map();   // zoneId → { sig→nr, next }
+    const posToLabel = new Map();
+    const sorted = effectivePanels.filter(_isZonePanel).slice().sort((a, b) => (a.y - b.y) || (a.x - b.x));
+    for (const panel of sorted) {
+      const zid = panel.zoneId;
+      if (!byZone.has(zid)) byZone.set(zid, { sig: new Map(), next: 1 });
+      const st = byZone.get(zid);
+      const sig = sigOf(panel);
+      if (!st.sig.has(sig)) st.sig.set(sig, st.next++);
+      posToLabel.set(pk(panel), `${schoonLetterOf.get(zid)}-${st.sig.get(sig)}`);
+    }
+    return { label: (p) => posToLabel.get(pk(p)) ?? null };
+  })() : null;
+  // Montage-label: zone-paneel → "letter-nr" (amber tekening); anders "P{merk}" (bestaande gevel).
+  const panelMerkDisplay = (p, fallbackSeq) => _isZonePanel(p)
+    ? ((schoonMerkMap && schoonMerkMap.label(p)) || `${schoonLetterOf.get(p.zoneId)}-${fallbackSeq}`)
+    : (paneelMerkLabel(p) || `P${fallbackSeq}`);
+  // Meetstaat/EPC Merk-kolom: "P" blijft ervoor staan → "P{letter}-{nr}" (zone) of "P{merk}" (gevel). EPC-code apart.
+  const meetstaatMerk = (p) => (SCHOON && _isZonePanel(p)) ? `P${panelMerkDisplay(p, paneelMerkMap?.get(p) ?? 1)}` : paneelMerkLabel(p);
+  // Ligt een koppelstrip in een getekende tekenzone? (dan verbergen — zones tonen geen groene koppelstrippen.)
+  const schoonInZone = (r) => {
+    const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+    return schoonZones.some((z) => cx >= (z.x ?? 0) && cx <= (z.x ?? 0) + (z.width ?? 0) && cy >= (z.y ?? 0) && cy <= (z.y ?? 0) + (z.height ?? 0));
+  };
+
   const zoneLatten = allLatten.filter((l) =>
     l.x + l.width > viewXStart + 1 && l.x < viewXEnd - 1 &&
     l.y + l.height > viewYStart + 1 && l.y < viewYEnd - 1
@@ -706,10 +753,17 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
     : OX + (x - viewXStart) * scale;
   const sy = (y) => OY + H - (y - viewYStart) * scale;
 
+  // STIJLEN_IMPORT — verticale-lat-lijnen (linkerrand + schroeflijn per verdieping) voor de aparte 'verticaal'-tab.
+  const studLatLines = useMemo(() => buildStudLatLines(stijlLatten, Math.max(20, groupSettings?.latten?.breedte ?? latten?.breedte ?? 45)), [stijlLatten, groupSettings?.latten?.breedte, latten?.breedte]);
+
   const dimColor    = '#1e3a5f';
   const panelColor  = '#bfdbfe';
   const latColor    = '#fde68a';
   const openColor   = '#fca5a5';
+  // TEKENZONE_PLAATSING: getekende tekenzone-panelen amber (i.p.v. blauwgrijs) zodat de monteur ze onderscheidt
+  // van de bestaande gevel. Alleen actief als SCHOON (zie boven); vlag uit → nergens gebruikt (byte-identiek).
+  const ZONE_PANEL_FILL   = '#fde68a';  // amber
+  const ZONE_PANEL_STROKE = '#b45309';
   // LATTEN_PANEELVOEG: kleur elke lat per ROL (paneelvoeg/rand/tussen) zodat de monteur ze onderscheidt. Alleen
   // actief als de latten een rol dragen (paneelvoeg-modus); zonder rol → latColor (interval-modus, byte-identiek).
   // Klantwens (2026-08-15, tekening): 2 kleuren — VOEGENLAT (lat op de paneelvoeg) donkerbruin, ANDERE latten
@@ -768,7 +822,9 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
     const blob = new Blob([xml], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `werktekening_${(groupName ?? 'groep').replace(/\s/g, '_')}.svg`; a.click();
+    a.href = url; a.download = (drawingType === 'verticaal'
+      ? `werktekening verticale constructie ${groupName ?? 'groep'}`
+      : `werktekening_${(groupName ?? 'groep').replace(/\s/g, '_')}`) + '.svg'; a.click();
     URL.revokeObjectURL(url);
   }
 
@@ -784,7 +840,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
       alert('Sta pop-ups toe voor deze pagina om af te drukken.');
       return;
     }
-    w.document.write(`<!DOCTYPE html><html><head><title>Werktekening ${groupName}</title><style>body{margin:0;padding:16px;background:#fff} svg{max-width:100%;height:auto} @media print{body{padding:0}}</style></head><body>${xml}${page2}<script>window.onload=()=>window.print()<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><title>Werktekening ${groupName}</title><style>@page{size:A3 landscape;margin:8mm}body{margin:0;padding:0;background:#fff} svg{display:block;margin:0 auto;max-width:100%;max-height:275mm;width:auto;height:auto} @media print{body{padding:0}}</style></head><body>${xml}${page2}<script>window.onload=()=>window.print()<\/script></body></html>`);
     w.document.close();
   }
 
@@ -799,7 +855,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
       alert('Sta pop-ups toe voor deze pagina om af te drukken.');
       return;
     }
-    w.document.write(`<!DOCTYPE html><html><head><title>Paneeltekeningen ${groupName}</title><style>body{margin:0;padding:12px;background:#fff;display:flex;flex-wrap:wrap;gap:12px} svg{border:1px solid #ccc;border-radius:4px;page-break-inside:avoid} @media print{body{padding:4px}}</style></head><body>${svgXmls}<script>window.onload=()=>window.print()<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><title>Paneeltekeningen ${groupName}</title><style>@page{size:A3 landscape;margin:8mm}body{margin:0;padding:12px;background:#fff;display:flex;flex-wrap:wrap;gap:12px} svg{border:1px solid #ccc;border-radius:4px;page-break-inside:avoid} @media print{body{padding:4px}}</style></head><body>${svgXmls}<script>window.onload=()=>window.print()<\/script></body></html>`);
     w.document.close();
   }
 
@@ -826,7 +882,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
         rows.push({
           PaneelID_EPC: paneelId,
           PaneelID_Leesbaar: formatEpcDisplay(paneelId),
-          ...(isPaneelMerk() ? { Merk: paneelMerkLabel(panel) } : {}),
+          ...(isPaneelMerk() ? { Merk: meetstaatMerk(panel) } : {}),
           Projectnummer: epcProjectNr,
           Level: String(epcLevel).padStart(2, '0'),
           Zone: zone.label,
@@ -944,6 +1000,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
       <div style={{ display: 'flex', gap: 0, background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
         {[
           { key: 'achterconstructie', label: '1. Achterconstructie' },
+          ...(stijlLatten?.verdiepingen?.length ? [{ key: 'verticaal', label: '1b. Verticale latten' }] : []),
           { key: 'plaatsing',         label: '2. Panelen plaatsing' },
           { key: 'productie',         label: '3. Paneel productie' },
           ...((groupSettings?.penanten ?? []).length > 0 ? [{ key: 'penanten', label: '4. Penanten' }] : []),
@@ -1602,7 +1659,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
                           {prodCount}× te produceren
                         </text>
                         <text x={CARD_W / 2} y={31} textAnchor="middle" fontSize={9} fontWeight="bold" fill="#1e3a5f" fontFamily="Arial, sans-serif">
-                          P{uniqueSeq}{selectedZone ? ` · ${selectedZone.label}` : ''} — {mm(panel.width)} × {mm(panel.height)} mm
+                          {SCHOON ? panelMerkDisplay(panel, uniqueSeq) : `P${uniqueSeq}`}{selectedZone ? ` · ${selectedZone.label}` : ''} — {mm(panel.width)} × {mm(panel.height)} mm
                         </text>
                         <text x={CARD_W / 2} y={41} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
                           {panel.type === 'start' ? 'Start element' : panel.type === 'eind' ? 'Eind element' : panel.type === 'midden' ? 'Volg element' : panel.type === 'volledig' ? 'Volledig element' : verband} · {strips.length} strips
@@ -1684,7 +1741,7 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
               const hvCount   = counts.filter(c => c.label === 'Halve').reduce((s, c) => s + c.n, 0);
               const restCount = counts.filter(c => c.label === 'Rest').reduce((s, c) => s + c.n, 0);
               const total     = counts.reduce((s, c) => s + c.n, 0);
-              tableRows.push({ paneelId, paneelIdDisplay: formatEpcDisplay(paneelId), merk: paneelMerkLabel(panel), zone: zone.label, breedte: Math.round(panel.width), hoogte: Math.round(panel.height), opp: areaM2.toFixed(3), gewicht: gewichtKg, vol: volCount, kop: kopCount, dk: dkCount, hv: hvCount, rest: restCount, total });
+              tableRows.push({ paneelId, paneelIdDisplay: formatEpcDisplay(paneelId), merk: meetstaatMerk(panel), zone: zone.label, breedte: Math.round(panel.width), hoogte: Math.round(panel.height), opp: areaM2.toFixed(3), gewicht: gewichtKg, vol: volCount, kop: kopCount, dk: dkCount, hv: hvCount, rest: restCount, total });
             }
           }
           const ksSummary = (() => {
@@ -1933,7 +1990,67 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
           );
         })()}
 
-        {drawingType !== 'productie' && drawingType !== 'zaaglijst' && drawingType !== 'maltekening' && <svg ref={svgRef} width={VIEW_W} height={svgTotal} viewBox={`0 0 ${VIEW_W} ${svgTotal}`} style={{ background: '#fff', display: 'block', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }} xmlns="http://www.w3.org/2000/svg">
+        {/* 1b. VERTICALE LATTEN (STIJLEN_IMPORT) — aparte, schone werktekening: lat-LINKERRAND als doorlopende
+            maatlijn (zover de stijlen recht boven elkaar liggen) + de SCHROEFLIJN (stijl-hart) gestippeld ernaast
+            (per verdieping, alleen waar een stijl zit → daar kun je schroeven). Maatketen per verdieping op de
+            linkerranden. */}
+        {drawingType === 'verticaal' && studLatLines && (() => {
+          // ZELF-SCHALEND: eigen bounds die ÁLLE inhoud omvatten (stijlen/openingen kunnen boven de geklipte
+          // achterconstructie-view uitsteken) + kop-marge, zodat de titel nooit wordt overschreven.
+          const opens = groupOpenings ?? [];
+          const yLo = Math.min(0, ...studLatLines.latLines.map((L) => L.y0), ...opens.map((o) => o.y ?? 0));
+          const yHi = Math.max(groupHeight ?? 0, ...studLatLines.latLines.map((L) => L.y1), ...opens.map((o) => (o.y ?? 0) + (o.height ?? 0)));
+          const ML = 92, MR = 40, MT = 48, rows = studLatLines.floors.length || 1, rowH = 30;
+          const drawW = Math.max(200, VIEW_W - ML - MR);
+          const sc = drawW / Math.max(1, groupWidth || 1);
+          const drawH = (yHi - yLo) * sc;
+          const dimTop = MT + drawH + 26;
+          const svgH = Math.round(dimTop + rows * rowH + 26);
+          const X = (x) => ML + x * sc;
+          const Y = (y) => MT + drawH - (y - yLo) * sc;
+          return (
+            <svg ref={svgRef} width={VIEW_W} height={svgH} viewBox={`0 0 ${VIEW_W} ${svgH}`} style={{ background: '#fff', display: 'block', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }} xmlns="http://www.w3.org/2000/svg">
+              <rect x={0} y={0} width={VIEW_W} height={svgH} fill="#fff" />
+              <text x={ML} y={18} fontSize={13} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">{groupName ?? 'Groep'} — Verticale achterconstructie (latten op de module-stijlen)</text>
+              <text x={ML} y={31} fontSize={8} fill="#64748b" fontFamily="Arial, sans-serif">Maat = LINKERZIJDE van de lat (doorlopende lijn) · gestippeld = schroeflijn (stijl-hart), alleen waar je kunt schroeven · mm</text>
+              <rect x={X(0)} y={Y(yHi)} width={(groupWidth || 0) * sc} height={drawH} fill="#f8fafc" stroke={dimColor} strokeWidth={1} />
+              {opens.map((op, i) => (
+                <rect key={`vop-${i}`} x={X(op.x ?? 0)} y={Y((op.y ?? 0) + (op.height ?? 0))} width={(op.width ?? 0) * sc} height={(op.height ?? 0) * sc} fill="#e2e8f0" stroke="#94a3b8" strokeWidth={0.6} />
+              ))}
+              {studLatLines.floors.map((f, i) => (
+                <line key={`vfl-${i}`} x1={X(0)} y1={Y(f.y0)} x2={X(groupWidth || 0)} y2={Y(f.y0)} stroke="#cbd5e1" strokeWidth={0.5} strokeDasharray="4,4" />
+              ))}
+              {studLatLines.latLines.map((L, i) => {
+                const col = L.type === 'dubbel' ? '#dc2626' : '#7c3aed';
+                const xl = X(L.xLeft), xsw = X(L.screwX);
+                return (
+                  <g key={`vll-${i}`}>
+                    {L.edges.map((e, j) => <line key={`ve-${j}`} x1={xl} y1={Y(e.y1)} x2={xl} y2={Y(e.y0)} stroke={col} strokeWidth={L.type === 'dubbel' ? 1.5 : 1.1} />)}
+                    {L.screws.map((s, j) => <line key={`vs-${j}`} x1={xsw} y1={Y(s.y1)} x2={xsw} y2={Y(s.y0)} stroke={col} strokeWidth={0.9} strokeDasharray="2,2" opacity={0.9} />)}
+                  </g>
+                );
+              })}
+              {studLatLines.floors.map((f, fi) => {
+                const inFloor = studLatLines.latLines.filter((L) => L.y1 > f.y0 + 100 && L.y0 < f.y1 - 100).sort((a, b) => a.xLeft - b.xLeft);
+                const y = dimTop + fi * rowH;
+                return (
+                  <g key={`vdim-${fi}`}>
+                    <text x={ML - 8} y={y + 3} textAnchor="end" fontSize={8} fill="#475569" fontFamily="Arial, sans-serif">{fi === 0 ? 'BG' : `${fi}e`}</text>
+                    {inFloor.slice(0, -1).map((L, i) => { const L2 = inFloor[i + 1]; const span = L2.xLeft - L.xLeft; if (span < 1) return null;
+                      return <DimH key={`vd-${i}`} x1={X(L.xLeft)} x2={X(L2.xLeft)} y={y} label={`${mm(span)}`} color={dimColor} />; })}
+                  </g>
+                );
+              })}
+              <g fontFamily="Arial, sans-serif" fontSize={8} fill="#334155">
+                <line x1={ML} y1={svgH - 12} x2={ML + 18} y2={svgH - 12} stroke="#7c3aed" strokeWidth={1.1} /><text x={ML + 22} y={svgH - 9}>enkele stijl</text>
+                <line x1={ML + 90} y1={svgH - 12} x2={ML + 108} y2={svgH - 12} stroke="#dc2626" strokeWidth={1.5} /><text x={ML + 112} y={svgH - 9}>dubbele stijl</text>
+                <line x1={ML + 190} y1={svgH - 12} x2={ML + 208} y2={svgH - 12} stroke="#7c3aed" strokeWidth={0.9} strokeDasharray="2,2" /><text x={ML + 212} y={svgH - 9}>schroeflijn (schroefbaar)</text>
+              </g>
+            </svg>
+          );
+        })()}
+
+        {drawingType !== 'productie' && drawingType !== 'zaaglijst' && drawingType !== 'maltekening' && drawingType !== 'verticaal' && <svg ref={svgRef} width={VIEW_W} height={svgTotal} viewBox={`0 0 ${VIEW_W} ${svgTotal}`} style={{ background: '#fff', display: 'block', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }} xmlns="http://www.w3.org/2000/svg">
 
           <rect x={0} y={0} width={VIEW_W} height={svgTotal} fill="#fff" />
 
@@ -2001,35 +2118,43 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
             const pxH = p.height * scale;
             const fitSize = Math.min(pxW * 0.9, pxH * 0.8, FONT_LBL);
             const lblFontSize = Math.max(3, fitSize);
+            // TEKENZONE_PLAATSING: zone-paneel → amber + zwart 2× label "letter-nr"; anders blauwgrijs "P{merk}".
+            // Vlag uit → SCHOON=false én _amber=false → byte-identiek aan de bestaande weergave.
+            const _amber = _isZonePanel(p);
+            const _pFill = _amber ? ZONE_PANEL_FILL : panelColor;
+            const _pStroke = _amber ? ZONE_PANEL_STROKE : dimColor;
+            const _txtFill = SCHOON ? (_amber ? '#000000' : dimColor) : '#1e3a5f';
+            const _txtSize = SCHOON ? lblFontSize * 2 : lblFontSize;
+            const _label = SCHOON ? panelMerkDisplay(p, i + 1) : (paneelMerkLabel(p) || `P${i + 1}`);
             return (
               <g key={p.id ?? i}>
                 {clips ? (
                   clips.map((cp, ci) => (
                     <polygon key={ci}
                       points={cp.map(pt => `${sx(pt.l)},${sy(pt.h)}`).join(' ')}
-                      fill={panelColor} stroke={dimColor} strokeWidth={0.8} fillOpacity={0.8}
+                      fill={_pFill} stroke={_pStroke} strokeWidth={0.8} fillOpacity={0.8}
                     />
                   ))
                 ) : (
                   <rect
                     x={sx(p.x, p.width)} y={sy(p.y + p.height)}
                     width={pxW} height={pxH}
-                    fill={panelColor} stroke={dimColor} strokeWidth={0.8} fillOpacity={0.8}
+                    fill={_pFill} stroke={_pStroke} strokeWidth={0.8} fillOpacity={0.8}
                   />
                 )}
                 <text
                   x={sx(cx)} y={sy(cy)}
                   textAnchor="middle" dominantBaseline="middle"
-                  fontSize={lblFontSize} fill="#1e3a5f" fontFamily="Arial, sans-serif" fontWeight="bold"
+                  fontSize={_txtSize} fill={_txtFill} fontFamily="Arial, sans-serif" fontWeight="bold"
                 >
-                  {paneelMerkLabel(p) || `P${i + 1}`}
+                  {_label}
                 </text>
               </g>
             );
           })}
           </g>
 
-          {drawingType === 'plaatsing' && zoneKoppelstrippen.map((k, i) => (
+          {drawingType === 'plaatsing' && (SCHOON ? zoneKoppelstrippen.filter((k) => !schoonInZone(k)) : zoneKoppelstrippen).map((k, i) => (
             <rect
               key={`koppel-${i}`}
               x={sx(k.x, k.width)} y={sy(k.y + k.height)}
@@ -2139,6 +2264,8 @@ export function Werktekening({ walls, sharedFacadeData = null, groupSettings, gr
               >{len}</text>
             );
           })}
+
+          {/* (verticale-lat schroeflijnen staan nu op de aparte '1b. Verticale latten'-tab) */}
 
           {yBreaks.map((y, i) => (
             drawingType !== 'achterconstructie' &&
