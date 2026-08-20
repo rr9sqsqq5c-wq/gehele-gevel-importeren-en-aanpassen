@@ -3,7 +3,7 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen, isTekenzonePlaatsing } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen, isTekenzonePlaatsing, isZaagOptimalisatie } from './featureFlags.js';
 
 // ZONE_EXTEND: per-laag mm-uitloop van een zone-rand (links = x0-kant, rechts = x1-kant). Vlag uit → 0 (byte-identiek).
 const zoneExtentFor = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
@@ -32,6 +32,44 @@ function _subtractZoneRectsFromPanels(panels, zoneRects, minW = 10, minH = 100) 
 
 function round2(v) {
   return Math.round(v * 100) / 100;
+}
+
+// ZAAG_OPTIMALISATIE — kies de paneel-MODULE (breedte = hele koppen/strekken, hoogte = hele lagen) die een
+// basisplaat (default 2500×1200) met de MINSTE snijrest tegelt, binnen maxKg. hMod/vMod = module-maat (incl.
+// voeg), hUnit/vUnit = de voeg (zodat n eenheden = n·mod − voeg breed/hoog). Beide zaagrichtingen. Retourneert
+// {W,H,nw,nh,n,util} of null. Puur reken; geen state.
+function bestCutModule({ hMod, vMod, hUnit, vUnit, densityKgM2, maxKg, sheetW = 2500, sheetH = 1200 }) {
+  if (!(hMod > 1) || !(vMod > 1)) return null;
+  const maxArea = maxKg > 0 && densityKgM2 > 0 ? (maxKg / densityKgM2) * 1e6 : Infinity;
+  // Hanteerbaarheid: geen paneel groter dan de KORTE plaatzijde in één richting → past zonder draaien én blijft
+  // te tillen (geen 2,5 m-stroken). De echt-minste-rest is soms een tall module, maar die is onwerkbaar.
+  const maxDim = Math.min(sheetW, sheetH);
+  let best = null;
+  for (let nw = 6; nw <= 60; nw++) {
+    const W = nw * hMod - hUnit;                      // paneelbreedte bij nw koppen/strekken
+    if (W > maxDim) break;
+    for (let nh = 2; nh <= 14; nh++) {
+      const Hh = nh * vMod - vUnit;                   // paneelhoogte bij nh lagen
+      if (W * Hh > maxArea) break;
+      if (Hh > maxDim) break;
+      const n = Math.max(Math.floor(sheetW / W) * Math.floor(sheetH / Hh),
+                         Math.floor(sheetH / W) * Math.floor(sheetW / Hh));   // grid, beide zaagrichtingen
+      if (n < 1) continue;
+      const util = (n * W * Hh) / (sheetW * sheetH);
+      if (!best || util > best.util + 1e-9) best = { W: round2(W), H: round2(Hh), nw, nh, n, util };
+    }
+  }
+  return best;
+}
+
+// De zaag-module voor DEZE zone-materiaal/panelen-instelling (staand vs halfsteens), of null als de vlag uit staat.
+function zoneCutModule(mat, panelen, verband) {
+  if (!isZaagOptimalisatie()) return null;
+  const stoot = mat?.stoot ?? 10, lint = mat?.lint ?? 12;
+  const staand = verband === 'staand_tegelverband';
+  const hMod = (staand ? (mat?.steenH ?? 50) : (mat?.steenL ?? 210)) + stoot;   // horizontale module
+  const vMod = (staand ? (mat?.steenL ?? 210) : (mat?.steenH ?? 50)) + lint;    // verticale module (laaghoogte)
+  return bestCutModule({ hMod, vMod, hUnit: stoot, vUnit: lint, densityKgM2: mat?.brickWeightM2 ?? 40, maxKg: panelen?.maxKg ?? 50 });
 }
 
 function polySignedArea(poly) {
@@ -728,12 +766,15 @@ export function buildZoneBackingPanels({ facadeData, activeZones, panelen, latte
     // per-zone banden-panelisatie hieronder (die per opening/massief-deel fragmenteert). Het gebied BUITEN de zones
     // loopt onveranderd via buildGroupPanels (banden-motor). Vlag uit → de ELSE-lus draait = byte-identiek.
     if (isTekenzonePlaatsing()) {
+      // ZAAG_OPTIMALISATIE: kies de plaat-optimale module → gebruik die als UNIFORME raster-breedte/-hoogte
+      // (rasterColumnJoints valt dan in het uniform-pad i.p.v. de gelijk-verdeling). Vlag uit → _cut = null → huidig.
+      const _cut = zoneCutModule(mat, panelen, V);
       const rp = buildRasterPanels({
         groupWidth, groupHeight, openings,
         trimL: Math.max(0, zx1), trimR: Math.max(0, round2(groupWidth - zx2)),
         By: Math.max(0, zy1), Ty: Math.min(groupHeight, zy2),
-        breedte: panelen?.rasterBreedte ?? panelen?.breedte ?? 1130,
-        hoogte: panelen?.rasterHoogte ?? panelen?.hoogte ?? 789,
+        breedte: _cut ? _cut.W : (panelen?.rasterBreedte ?? panelen?.breedte ?? 1130),
+        hoogte: _cut ? _cut.H : (panelen?.rasterHoogte ?? panelen?.hoogte ?? 789),
         mat, verband: V, facadeRows: facadeData.rows ?? [],
         cleanCols: true,   // TEKENZONE_PLAATSING: paneelvoeg op de raamrand, geen reep (3D-verdeling)
       });
@@ -1322,7 +1363,7 @@ function rasterColumnJoints(Lx, Rx, breedte, mat, verband, opts = {}) {
     const nStrek = Math.max(1, Math.round((breedte || 1130) / unit));   // 1130 → 5 strekken
     pitch = nStrek * unit;
     for (let k = 1; k * pitch - 3 < Rx - 0.5; k++) { const e = round2(k * pitch - 3); if (e > Lx + 0.5) std.push(e); }
-  } else if (verband === 'staand_tegelverband' && clean) {
+  } else if (verband === 'staand_tegelverband' && clean && !isZaagOptimalisatie()) {
     // STAAND VERBAND: de BREEDTE loopt in KOPMATEN (kopmaat = steenH + stoot), niet in strekken. De paneelvoeg moet
     // op een STOOTVOEG vallen; elk SUB-veld (tussen de raamranden) wordt APART in GELIJKE hele-kop kolommen verdeeld
     // (aantal = ceil(koppen / maxKop), maxKop uit rasterBreedte). Per sub-veld i.p.v. het volle veld → de kolommen

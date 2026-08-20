@@ -785,6 +785,13 @@ export function isStijlenImport() {
   return readFlag('stijlenImport', false);
 }
 
+// PRODUCTIE_SORTEER_AANTAL — de "Paneel productie"-tab toont de unieke panelen gesorteerd op AANTAL te
+// produceren (per merk), hoogste aantal eerst, i.p.v. de ruimtelijke volgorde. Puur weergave-volgorde;
+// merk-labels + telling blijven gelijk. DEFAULT = false → huidige volgorde (byte-identiek).
+export function isProductieSorteerAantal() {
+  return readFlag('productieSorteerAantal', false);
+}
+
 // ZONE_OPENING_SNIJLIJN — een raam/deur/sparing wordt óók uit de ZONE-tegels op de WERKELIJKE boven/onderrand
 // gesneden (deel-tegel), niet alleen via de grove horizontale dekking. Die dekking (planeCoverageForSpan) unieert
 // per zone-rij over de VOLLE tegelhoogte (bondRowH); bij een STAANDE zone (tegel ~221 mm) "geneest" dat over de
@@ -811,6 +818,14 @@ export function isTekenzonePlaatsing() {
   return readFlag('tekenzonePlaatsing', false);
 }
 
+// ZAAG_OPTIMALISATIE — verdeel de tekenzone-panelen zó dat ze met minimaal zaagverlies uit een basisplaat
+// (2500×1200) te zagen zijn. Kiest de paneel-MODULE (breedte = hele koppen, hoogte = hele lagen, binnen maxKg)
+// die de plaat het beste tegelt en legt die als UNIFORM raster over de zone (i.p.v. de gelijk-verdeling). Vereist
+// staand verband + tekenzonePlaatsing. DEFAULT = false → de bestaande (gelijk-verdeelde) indeling.
+export function isZaagOptimalisatie() {
+  return readFlag('zaagOptimalisatie', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -833,6 +848,7 @@ export const FLAG_REGISTRY = [
   { key: 'zonePanelen',          label: 'Tekenzone: eigen panelen (uit groep geknipt)', note: 'De getekende tekenzone wordt ook uit de groep-panelen geknipt en met eigen panelen gevuld, zodat de zone een compleet bekledingsvak is (strips + panelen + latten). Zonder deze vlag lopen de groep-panelen door de zone heen (alleen de strips zijn zone-eigen). Werkt in alle views + IFC-export.' },
   { key: 'zoneOpeningSnijlijn',  label: 'Tekenzone: raam/deur op de snijlijn (deel-tegel)', note: 'Een raam/deur/sparing wordt ook uit de STAANDE zone-tegels op de werkelijke boven- én onderrand gesneden (deel-tegel), i.p.v. dat de tegel die de raamrand kruist blijft staan als een band boven/onder het raam (het midden was al weg). De grove dekking geneest anders over de raamrand omdat een staande tegel (221 mm) veel hoger is dan een gevelrij. Werkt het schoonst met "Strips snijden op de snijlijn" aan. Werkt in alle views + IFC-export.' },
   { key: 'tekenzonePlaatsing',   label: 'Tekenzone-plaatsing (schoon)', note: 'Bundel voor de schone tekenzone-plaatsing: (1) merk per tekenzone als "letter-nr" uit het 2D-zonelabel (bv. C-1), bestaande gevel houdt "P{merk}" blauwgrijs, meetstaat-Merk = "P{letter}-{nr}" (EPC-code ongemoeid), binnen een zone geen groene koppelstrippen (enkel amber); (2) uniform paneelraster per tekenzone (raam op hele rijen → minder merken), rest via de banden-motor; (3) zonegrens op het steenraster gesnapt; (4) een smalle bestaande-gevel band naast een raam wordt alleen horizontaal gedeeld. (2)–(4) raken alleen paneelgrenzen; de strips lopen door. Werkt in alle views + IFC-export.' },
+  { key: 'zaagOptimalisatie',    label: 'Tekenzone: zaag-optimalisatie (2500×1200)', note: 'Verdeelt de tekenzone-panelen zó dat ze met minimaal zaagverlies uit een basisplaat van 2500×1200 mm te zagen zijn: kiest de paneel-module (breedte = hele koppen, hoogte = hele lagen, binnen maxKg) die de plaat het beste tegelt en legt die als UNIFORM raster over de zone, i.p.v. de gelijk-verdeelde indeling. Vereist staand verband + "Tekenzone-plaatsing". Default uit = gelijk-verdeling.' },
   { key: 'endTrim',              label: 'Einduiteinde inkorten = paneel/lat echt smaller', note: 'Een negatief einduiteinde (inkorten) maakt het buitenste paneel/lat ook in de DATA smaller — maat-label + productielijst kloppen in alle weergaven, i.p.v. alleen een rode sv-lijn + visuele clip. Buitenste element ≤ 0 → vervalt.' },
   { key: 'endExtSeparaat',       label: 'Einduiteinden per onderdeel los', note: 'Strips/latten/panelen verlengen elk ONAFHANKELIJK met hun eigen mm. Nu volgen de latten de paneel-verlenging mee (ook als "Latten" 0 is); met de vlag verlengen de latten alleen met hun eigen waarde.' },
   { key: 'paneelStartLijn',      label: 'Panelen starten op de projectstart', note: 'De groep-brede panelen beginnen op de projectstart/startlijn (peil) — panelen onder de startlijn worden afgesneden, net als de strips en de zone-panelen. Nu starten de groep-panelen op y=0 bij een positieve startlijn.' },
@@ -865,6 +881,7 @@ export const FLAG_REGISTRY = [
   { key: 'unitDetectie',         label: 'Detecteer repeterende units', note: 'Herkent verdiepingshoge buitenwand-panelen met dezelfde maat + raam/deur-layout en zet elk voorkomen als een gekoppelde gevelgroep weg (1× een unit-type instellen → alle kopieën volgen). Puur additief.' },
   { key: 'ghImport',             label: 'Grasshopper-gevel importeren', note: 'Laad een Grasshopper/Geometry-Gym IFC waarin panelen/strippen/latten al gemodelleerd zijn (geen wanden): leidt de gevels af, nummert de panelen per gevel en toont per gevel een beoordelingsaanzicht + uittrekstaat + zaaglijst.', reimport: true },
   { key: 'stijlenImport',        label: 'Module-stijlen laden (verticale latten)', note: 'Laad een stijlen-JSON (uit het Tekla modules-model) met de verticale-lat schroeflijnen per verdieping op de module-stijlen. De app koppelt ze per gevelgroep en tekent ze op de werktekening bij een 2-lats achterconstructie (per verdieping, op de stijlen, geen lat over een opening).' },
+  { key: 'productieSorteerAantal', label: 'Productie-tab: sorteer op aantal per merk', note: 'De "Paneel productie"-tab toont de unieke panelen gesorteerd op het aantal te produceren per merk — hoogste aantal eerst — i.p.v. de ruimtelijke volgorde. Alleen de weergave-volgorde verandert; merk-labels en aantallen blijven gelijk.' },
   { key: 'newOpenings',          label: 'Nieuwe opening-afleiding',  note: 'Experimenteel alternatief parse-pad; kan bestaande resultaten veranderen.', reimport: true, advanced: true },
   { key: 'openingUpAxisFix',     label: 'Opening up-as fix',         note: 'Experimenteel.', reimport: true, advanced: true },
   { key: 'selfContainedProjects',label: 'Self-contained projecten',  note: 'Experimenteel.', advanced: true },
