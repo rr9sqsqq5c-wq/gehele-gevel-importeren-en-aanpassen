@@ -3,7 +3,7 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen, isTekenzonePlaatsing, isZaagOptimalisatie } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen, isTekenzonePlaatsing, isZaagOptimalisatie, isHoogteVoorzet } from './featureFlags.js';
 
 // ZONE_EXTEND: per-laag mm-uitloop van een zone-rand (links = x0-kant, rechts = x1-kant). Vlag uit → 0 (byte-identiek).
 const zoneExtentFor = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
@@ -113,6 +113,17 @@ export function suggestOptimalLagen({ vakHeightsMM = [], groupHeightMM = 0, verb
     if (!best || score < best.score) best = { lagen: ph, util: tile.util, plate: tile.plate, kop: tile.nw, W: tile.W, kg: tile.kg, score };
   }
   return best ? { lagen: best.lagen, util: best.util, plate: best.plate, kop: best.kop, W: best.W, kg: best.kg } : null;
+}
+
+// HOOGTE_VOORZET — voorzet-paneelhoogte in MM voor een set vakken, of null als de vlag uit staat. density =
+// strips + board (gewichtM2). Retourneert {mm, lagen, meta}.
+function voorzetHoogteMM({ vakHeightsMM, verband, mat, panelen }) {
+  if (!isHoogteVoorzet()) return null;
+  const v = suggestOptimalLagen({ vakHeightsMM, verband, mat, densityKgM2: (mat?.brickWeightM2 ?? 40) + (panelen?.gewichtM2 ?? 11.8), maxKg: panelen?.maxKg ?? 46 });
+  if (!v) return null;
+  const lint = mat?.lint ?? 12;
+  const lagenmaat = (verband === 'staand_tegelverband' ? (mat?.steenL ?? 210) : (mat?.steenH ?? 50)) + lint;
+  return { mm: round2(v.lagen * lagenmaat - lint), lagen: v.lagen, meta: v };
 }
 
 function polySignedArea(poly) {
@@ -798,6 +809,10 @@ export function buildZoneBackingPanels({ facadeData, activeZones, panelen, latte
   const baseBattenYs = generateBattenPositions(groupHeight, mat, maxInterval, { minHOH: latten?.minHOH, maxHOH: latten?.maxHOH, targetPanelH: panelen?.hoogte, minPanelH: 800 });
   const lint = mat.lint ?? 12, steenH = mat.steenH ?? 50, steenL = mat.steenL ?? 210, lintHalf = lint / 2;
   const fullZones = buildFacadeZones(groupWidth, groupHeight, openings, true);   // massieve delen naast een raam samensmelten (geen strip-snede)
+  // HOOGTE_VOORZET: één optimale gemeenschappelijke paneelhoogte (lagen) over de ZONES (los van de gevel-banden,
+  // want de zones kunnen verdiept liggen). Vervangt de raster-hoogte. Vlag uit → null → huidig.
+  const _zVer = activeZones.find((z) => z?.verband)?.verband ?? verband ?? 'halfsteens';
+  const _zVoorzet = voorzetHoogteMM({ vakHeightsMM: activeZones.map((z) => zoneFillHeight(z)).filter((h) => h > 0), verband: _zVer, mat, panelen });
   let panels = [];
   for (const z of activeZones) {
     const V = z.verband ?? verband ?? 'halfsteens';
@@ -817,7 +832,7 @@ export function buildZoneBackingPanels({ facadeData, activeZones, panelen, latte
         trimL: Math.max(0, zx1), trimR: Math.max(0, round2(groupWidth - zx2)),
         By: Math.max(0, zy1), Ty: Math.min(groupHeight, zy2),
         breedte: _cut ? _cut.W : (panelen?.rasterBreedte ?? panelen?.breedte ?? 1130),
-        hoogte: _cut ? _cut.H : (panelen?.rasterHoogte ?? panelen?.hoogte ?? 789),
+        hoogte: _zVoorzet?.mm ?? (_cut ? _cut.H : (panelen?.rasterHoogte ?? panelen?.hoogte ?? 789)),   // HOOGTE_VOORZET: optimale zone-hoogte
         mat, verband: V, facadeRows: facadeData.rows ?? [],
         cleanCols: true,   // TEKENZONE_PLAATSING: paneelvoeg op de raamrand, geen reep (3D-verdeling)
       });
@@ -1801,7 +1816,10 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
     // rechter reststuk ≤46 kg in de buur opnemen; volle 11-strek kolom op 5,5 strek gesplitst → koppelstrippen om-en-om).
     const _bwM2 = (effMat?.brickWeightM2 ?? 40) + (panelen?.gewichtM2 ?? 9.4);
     const _extendRightStrips = Math.max(0, _eeT.right?.strips ?? 0);
-    panels = buildBandenOptPanels({ groupWidth, groupHeight, openings: allOpenings, trimL: _trimL, trimR: _trimR, mat: effMat, verband, facadeRows: rows, reqLagen: panelen?.hoogteLagen ?? 14, weightM2: _bwM2, extendLeftStrips: _extendLeftStrips, extendRightStrips: _extendRightStrips });
+    // HOOGTE_VOORZET: als er geen handmatige paneelhoogte staat, gebruik de optimale voorzet voor de BESTAANDE GEVEL
+    // (eigen berekening, los van de zones). Vlag uit of handmatig ingevuld → panelen.hoogteLagen ?? 14 (huidig).
+    const _gVoorzet = (panelen?.hoogteLagen == null) ? voorzetHoogteMM({ vakHeightsMM: [groupHeight], verband, mat: effMat, panelen }) : null;
+    panels = buildBandenOptPanels({ groupWidth, groupHeight, openings: allOpenings, trimL: _trimL, trimR: _trimR, mat: effMat, verband, facadeRows: rows, reqLagen: panelen?.hoogteLagen ?? _gVoorzet?.lagen ?? 14, weightM2: _bwM2, extendLeftStrips: _extendLeftStrips, extendRightStrips: _extendRightStrips });
   } else {
     for (let zone of buildFacadeZones(groupWidth, groupHeight, allOpenings)) {
       if (_trimL > 0 || _trimR > 0) {
