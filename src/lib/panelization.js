@@ -72,6 +72,49 @@ function zoneCutModule(mat, panelen, verband) {
   return bestCutModule({ hMod, vMod, hUnit: stoot, vUnit: lint, densityKgM2: mat?.brickWeightM2 ?? 40, maxKg: panelen?.maxKg ?? 50 });
 }
 
+// ZAAG_OPTIMALISATIE — VOORZET voor de optimale PANEELHOOGTE (lagen): de hoogte die de zone/vak-hoogtes zo GELIJK
+// mogelijk deelt (min totale rest-lagen → veel panelen dezelfde hoogte = productiegemak) én de basisplaat het best
+// tegelt binnen maxKg. Gemeenschappelijk over alle vakken (zones + bestaande gevel). Runt de tegeling per
+// kandidaat-hoogte tegen élk plaat-formaat. Retourneert {lagen, util, plate, kop, W, kg} of null.
+export function suggestOptimalLagen({ vakHeightsMM = [], groupHeightMM = 0, verband, mat, densityKgM2, maxKg = 46, plateW = 1250, plateLengtes = [2500, 2850] }) {
+  const stoot = mat?.stoot ?? 10, lint = mat?.lint ?? 12;
+  const staand = verband === 'staand_tegelverband';
+  const kopmaat = (staand ? (mat?.steenH ?? 50) : (mat?.steenL ?? 210)) + stoot;   // horizontale module
+  const lagenmaat = (staand ? (mat?.steenL ?? 210) : (mat?.steenH ?? 50)) + lint;  // laaghoogte
+  if (!(lagenmaat > 1) || !(kopmaat > 1)) return null;
+  const dens = densityKgM2 > 0 ? densityKgM2 : ((mat?.brickWeightM2 ?? 40) + 11.8);
+  const maxArea = maxKg > 0 && dens > 0 ? (maxKg / dens) * 1e6 : Infinity;
+  const heights = (vakHeightsMM.length ? vakHeightsMM : [groupHeightMM]).filter((h) => h > lagenmaat);
+  const vakLagen = heights.map((h) => Math.max(1, Math.round((h + lint) / lagenmaat)));
+  if (!vakLagen.length) return null;
+  const bestTile = (H) => {                                   // beste breedte+plaat voor paneelhoogte H (mm)
+    let best = null;
+    for (const PL of plateLengtes) for (let nw = 4; nw <= 30; nw++) {
+      const W = nw * kopmaat - stoot;
+      if (W * H > maxArea) break;
+      if (W > Math.max(plateW, PL)) break;
+      const n = Math.max(Math.floor(PL / W) * Math.floor(plateW / H), Math.floor(plateW / W) * Math.floor(PL / H));
+      if (n < 1) continue;
+      const u = (n * W * H) / (plateW * PL);
+      if (!best || u > best.util) best = { util: u, nw, W: round2(W), plate: `${plateW}×${PL}`, kg: Math.round(W * H / 1e6 * dens) };
+    }
+    return best;
+  };
+  // Praktische paneelhoogte: 3..6 lagen (675..1356 mm) — hanteerbaar en weinig panelen; boven-cap ook door
+  // gewicht (een hoger paneel wordt te smal/zwaar). Extremen (1 reuzenpaneel per zone, of piepkleine 2-laags) uit.
+  const weightMaxL = Math.max(3, Math.floor((maxArea / (4 * kopmaat - stoot) + lint) / lagenmaat));
+  const maxL = Math.min(6, weightMaxL);
+  let best = null;
+  for (let ph = 3; ph <= maxL; ph++) {
+    const tile = bestTile(ph * lagenmaat - lint);
+    if (!tile) continue;
+    const totalRest = vakLagen.reduce((s, zl) => s + (Math.ceil(zl / ph) * ph - zl), 0);   // rest-lagen over alle vakken
+    const score = totalRest * 1000 - tile.util * 100;        // eerst min rest (uniform), dan max benutting
+    if (!best || score < best.score) best = { lagen: ph, util: tile.util, plate: tile.plate, kop: tile.nw, W: tile.W, kg: tile.kg, score };
+  }
+  return best ? { lagen: best.lagen, util: best.util, plate: best.plate, kop: best.kop, W: best.W, kg: best.kg } : null;
+}
+
 function polySignedArea(poly) {
   let area = 0;
   for (let i = 0; i < poly.length; i++) {
