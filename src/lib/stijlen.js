@@ -42,6 +42,11 @@ export function studLattenForGroup(stijlenData, facadeData, opts = {}) {
   const clampLo = num(opts.startLijn, 0);
   const clampHi = (Number.isFinite(opts.maxHoogte) && opts.maxHoogte > 0) ? opts.maxHoogte : Infinity;
 
+  // TIJDELIJKE DEBUG (aan met ?stijlenDebug=1 of localStorage 'stijlenDebug'='1'): logt naar de console welke
+  // gevelvlakken matchten + de stijl-pijplijn (raw → buiten-bereik → mullion-weg → geklemd → kept) + per kozijn
+  // de dichtstbijzijnde gehouden stijl en de eventueel weggefilterde stijlen bij de dagkanten. Geen gedrag-wijziging.
+  const DEBUG = (() => { try { const q = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('stijlenDebug')) || (typeof localStorage !== 'undefined' && localStorage.getItem('stijlenDebug')); return q === '1'; } catch { return false; } })();
+
   // Kies de best matchende gevelvlakken: zelfde lengte-as, vlak-positie dichtbij de wand-dikte-hart.
   const cand = stijlenData.gevelvlakken.filter(f =>
     f.alongAxis === lengthAxis && Math.abs(num(f.constCoord) - thickCenter) <= planeTol);
@@ -63,16 +68,18 @@ export function studLattenForGroup(stijlenData, facadeData, opts = {}) {
 
   // verdiepingen samenvoegen over de matchende vlakken, per verdieping-index
   const perVerd = new Map();
+  let _dbgRaw = 0, _dbgOut = 0, _dbgMull = 0, _dbgClamp = 0; const _dbgMullX = [], _dbgClampX = [];   // DEBUG-tellers
   for (const f of cand) for (const v of (f.verdiepingen ?? [])) {
     const key = v.verdieping ?? 0;
     if (!perVerd.has(key)) perVerd.set(key, []);
     for (const l of (v.latten ?? [])) {
+      _dbgRaw++;
       const x = toFx(num(l.pos), mir);
       const y0r = Math.round(num(l.y0) - groupMinH), y1r = Math.round(num(l.y1) - groupMinH);
-      if (x <= -50 || x >= gw + 50) continue;
-      if (insideOpening(x, y0r, y1r)) continue;                      // kozijn-binnenstijl → geen bekledingslat (rauwe stijl-hoogte)
+      if (x <= -50 || x >= gw + 50) { _dbgOut++; continue; }
+      if (insideOpening(x, y0r, y1r)) { _dbgMull++; if (DEBUG) _dbgMullX.push(x); continue; }  // kozijn-binnenstijl → geen bekledingslat (rauwe stijl-hoogte)
       const y0 = Math.max(y0r, clampLo), y1 = Math.min(y1r, clampHi);  // klem op [peil, max striphoogte]
-      if (y1 - y0 < 1) continue;                                     // volledig onder peil of boven max striphoogte → weg
+      if (y1 - y0 < 1) { _dbgClamp++; if (DEBUG) _dbgClampX.push({ x, y0: y0r, y1: y1r }); continue; }   // volledig onder peil of boven max striphoogte → weg
       perVerd.get(key).push({ x, y0, y1, type: l.type ?? 'enkel' });
     }
   }
@@ -86,6 +93,27 @@ export function studLattenForGroup(stijlenData, facadeData, opts = {}) {
 
   if (!verdiepingen.length) return null;
   const totaal = verdiepingen.reduce((a, v) => a + v.latten.length, 0);
+
+  if (DEBUG) {
+    const kept = [...new Set(verdiepingen.flatMap((v) => v.latten.map((l) => l.x)))].sort((a, b) => a - b);
+    const opens = openings.map((o) => ({ L: Math.round(num(o.x)), R: Math.round(num(o.x) + num(o.width ?? o.breedte)), w: Math.round(num(o.width ?? o.breedte)) })).filter((o) => o.w > 0).sort((a, b) => a.L - b.L);
+    const near = (arr, v) => arr.reduce((b, x) => Math.abs(x - v) < Math.abs(b - v) ? x : b, Infinity);
+    console.log('[stijlen-debug] vlak:', { lengthAxis, thickCenter: Math.round(thickCenter), groupMinX, gw, groupMinH, planeTol, edge, clampLo, clampHi, mir });
+    console.log('[stijlen-debug] gematchte gevelvlakken (' + cand.length + '):', cand.map((f) => ({ constCoord: Math.round(num(f.constCoord)), studs: f.verdiepingen.reduce((a, v) => a + (v.latten?.length ?? 0), 0) })));
+    console.log('[stijlen-debug] stijl-pijplijn: raw=' + _dbgRaw + ' buiten-bereik=' + _dbgOut + ' mullion-weg=' + _dbgMull + ' geklemd-weg=' + _dbgClamp + ' → kept-uniek-x=' + kept.length);
+    console.log('[stijlen-debug] per kozijn (dichtstbij gehouden stijl-x; MULLION-weg = door ons filter verwijderd bij de dagkant):');
+    for (const o of opens) {
+      const nl = near(kept, o.L), nr = near(kept, o.R);
+      const mL = _dbgMullX.filter((x) => Math.abs(x - o.L) < 200).sort((a, b) => a - b);
+      const mR = _dbgMullX.filter((x) => Math.abs(x - o.R) < 200).sort((a, b) => a - b);
+      const cL = _dbgClampX.filter((s) => Math.abs(s.x - o.L) < 200).map((s) => `${s.x}@${s.y0}-${s.y1}`);
+      const cR = _dbgClampX.filter((s) => Math.abs(s.x - o.R) < 200).map((s) => `${s.x}@${s.y0}-${s.y1}`);
+      console.log(`  kozijn ${o.L}..${o.R} (${o.w}mm): kept-L Δ${Math.abs(nl - o.L)}  kept-R Δ${Math.abs(nr - o.R)}`
+        + ((mL.length || mR.length) ? `  | MULLION-weg L=[${mL}] R=[${mR}]` : '')
+        + ((cL.length || cR.length) ? `  | KLEM-weg L=[${cL}] R=[${cR}]` : ''));
+    }
+  }
+
   return { verdiepingen, plane: { constAxis: cand[0].constAxis, constCoord: cand[0].constCoord, mirrored: mir }, totaal };
 }
 

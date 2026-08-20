@@ -5,7 +5,7 @@ import { buildStripZoneRegions, getActiveStripZones, solidifyRows } from './lib/
 import { sparingRectsForFacade } from './lib/sparingElements.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isPaneelMerkPerZone, isBlankBaseVerband, isFeatureZones, isBandenOptimalisatie, isTekenzonePlaatsing } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isPaneelMerkPerZone, isBlankBaseVerband, isFeatureZones, isBandenOptimalisatie, isTekenzonePlaatsing, isProductieSorteerAantal } from './lib/featureFlags.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -841,7 +841,11 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
       alert('Sta pop-ups toe voor deze pagina om af te drukken.');
       return;
     }
-    w.document.write(`<!DOCTYPE html><html><head><title>Werktekening ${TAB_FILE_LABEL[drawingType] ?? drawingType} ${groupName}</title><style>@page{size:A3 landscape;margin:8mm}body{margin:0;padding:0;background:#fff} svg{display:block;margin:0 auto;max-width:100%;max-height:275mm;width:auto;height:auto} @media print{body{padding:0}}</style></head><body>${xml}${page2}<script>window.onload=()=>window.print()<\/script></body></html>`);
+    // Verticaal-tab is HOOG (banden onder elkaar) → A3 staand + meer hoogte; de rest liggend.
+    const _vert = drawingType === 'verticaal';
+    const _pageSize = _vert ? 'A3 portrait' : 'A3 landscape';
+    const _maxH = _vert ? '400mm' : '275mm';
+    w.document.write(`<!DOCTYPE html><html><head><title>Werktekening ${TAB_FILE_LABEL[drawingType] ?? drawingType} ${groupName}</title><style>@page{size:${_pageSize};margin:8mm}body{margin:0;padding:0;background:#fff} svg{display:block;margin:0 auto;max-width:100%;max-height:${_maxH};width:auto;height:auto} @media print{body{padding:0}}</style></head><body>${xml}${page2}<script>window.onload=()=>window.print()<\/script></body></html>`);
     w.document.close();
   }
 
@@ -923,11 +927,17 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
   // ── BATCH-EXPORT: download álle sub-tabbladen als aparte bestanden (naam = tabnaam + groep) ──
   // Elk sub-tabblad wordt kort geactiveerd (setDrawingType); ná de render vangen we de SVG's/tabel op en downloaden.
   // Nodig omdat sub-tab-inhoud pas in de DOM staat als die tab actief is. Tekeningen → .svg, zaaglijst → .html.
+  // 'Verticale latten' meenemen zodra er module-stijlen zijn (zelfde voorwaarde als de tab zelf), ná Achterconstructie.
+  const batchTabs = useMemo(() => {
+    const list = [...BATCH_TABS];
+    if (stijlLatten?.verdiepingen?.length) list.splice(1, 0, { key: 'verticaal', label: 'Verticale latten', kind: 'svg' });
+    return list;
+  }, [stijlLatten]);
   function startBatchExport() {
     if (batchExport) return;
     batchRestoreRef.current = drawingType;
     setProductieGenerated(false);
-    setDrawingType(BATCH_TABS[0].key);
+    setDrawingType(batchTabs[0].key);
     setBatchExport({ i: 0 });
   }
   function captureBatchTab(cur) {
@@ -952,14 +962,14 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
   }
   useEffect(() => {
     if (!batchExport) return;
-    const cur = BATCH_TABS[batchExport.i];
+    const cur = batchTabs[batchExport.i];
     if (!cur) { setDrawingType(batchRestoreRef.current); setBatchExport(null); return; }
     if (drawingType !== cur.key) return;                                              // wacht tot de sub-tab actief is
     if (cur.key === 'productie' && !productieGenerated) { setProductieGenerated(true); return; }   // productie eerst genereren
     const raf = requestAnimationFrame(() => requestAnimationFrame(() => {             // 2 frames → SVG's zeker gerenderd
       try { captureBatchTab(cur); } catch (e) { console.error('[batch-export]', e); }
       const next = batchExport.i + 1;
-      if (next < BATCH_TABS.length) { setDrawingType(BATCH_TABS[next].key); setBatchExport({ i: next }); }
+      if (next < batchTabs.length) { setDrawingType(batchTabs[next].key); setBatchExport({ i: next }); }
       else { setDrawingType(batchRestoreRef.current); setBatchExport(null); }
     }));
     return () => cancelAnimationFrame(raf);
@@ -974,7 +984,7 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
         <button onClick={startBatchExport} disabled={!!batchExport}
           title={"Download alle sub-tabbladen als aparte bestanden (naam = tabblad + groep): Achterconstructie, Panelen plaatsing, Paneel productie en Maltekening als SVG, Zaaglijst als HTML."}
           style={{ fontSize: 11, background: batchExport ? '#94a3b8' : '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: batchExport ? 'wait' : 'pointer', fontWeight: 600 }}>
-          {batchExport ? `⏳ ${batchExport.i + 1}/${BATCH_TABS.length}…` : '⬇ Alle tabbladen'}
+          {batchExport ? `⏳ ${batchExport.i + 1}/${batchTabs.length}…` : '⬇ Alle tabbladen'}
         </button>
         {drawingType === 'zaaglijst' ? (
           <button onClick={exportZaaglijst} style={{ fontSize: 11, background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>⬇ Export CSV</button>
@@ -1619,6 +1629,12 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
                 groups.get(e.sig).count++;
               });
               const uniques = enriched.filter((e) => groups.get(e.sig).firstIdx === e.idx);
+              // PRODUCTIE_SORTEER_AANTAL (vlag): sorteer de kaarten op aantal te produceren per merk, hoogste eerst.
+              // Telling per kaart = merk-telling (paneelMerk/SCHOON) of anders het sig-groep-aantal. Tie → ruimtelijke volgorde.
+              const _prodCountOf = (e) => (paneelMerkMap?.get(e.panel) != null) ? paneelMerkMap.count(e.panel) : groups.get(e.sig).count;
+              const orderedUniques = isProductieSorteerAantal()
+                ? [...uniques].sort((a, b) => _prodCountOf(b) - _prodCountOf(a) || a.idx - b.idx)
+                : uniques;
               return (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '0 4px' }}>
@@ -1628,7 +1644,7 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
                   <button onClick={() => setProductieGenerated(false)} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '3px 8px', cursor: 'pointer' }}>Verberg</button>
                 </div>
                 <div ref={productiePrintRef} style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-                  {uniques.map((e, uniqueIdx) => {
+                  {orderedUniques.map((e, uniqueIdx) => {
                     const { panel, strips, counts } = e;
                     // PANEEL_MERK: gebruik het GROEP-brede merk + telling (1:1 met de montage-Merk-kolom).
                     // Vlag uit → per-zone uniqueSeq + telling (byte-identiek).
@@ -1996,62 +2012,74 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
             (per verdieping, alleen waar een stijl zit → daar kun je schroeven). Maatketen per verdieping op de
             linkerranden. */}
         {drawingType === 'verticaal' && studLatLines && (() => {
-          // ZELF-SCHALEND: eigen bounds die ÁLLE inhoud omvatten (stijlen/openingen kunnen boven de geklipte
-          // achterconstructie-view uitsteken) + kop-marge, zodat de titel nooit wordt overschreven.
+          // LEESBAAR IN BANDEN: een lange gevel wordt in horizontale banden (elk ≤ ~8 m) ONDER elkaar getekend,
+          // zodat de stijlen op een leesbare schaal staan i.p.v. samengeperst. Een smalle gevel = 1 band (≈ vroeger).
           const opens = groupOpenings ?? [];
           const yLo = Math.min(0, ...studLatLines.latLines.map((L) => L.y0), ...opens.map((o) => o.y ?? 0));
           const yHi = Math.max(groupHeight ?? 0, ...studLatLines.latLines.map((L) => L.y1), ...opens.map((o) => (o.y ?? 0) + (o.height ?? 0)));
-          const ML = 92, MR = 40, MT = 48, rows = studLatLines.floors.length || 1, rowH = 30;
-          const drawW = Math.max(200, VIEW_W - ML - MR);
-          const sc = drawW / Math.max(1, groupWidth || 1);
+          const ML = 92, MR = 40, MT = 54, rowH = 26;
+          const usableW = Math.max(200, VIEW_W - ML - MR);
+          const gw = Math.max(1, groupWidth || 1);
+          const PX_PER_MM_MIN = 0.10;                                   // leesbaarheid: minstens ~0,10 px/mm
+          const nBands = Math.max(1, Math.ceil(gw * PX_PER_MM_MIN / usableW));
+          const bandMM = gw / nBands;
+          const sc = usableW / bandMM;                                  // leesbare schaal (gelijk voor alle banden)
           const drawH = (yHi - yLo) * sc;
-          const dimTop = MT + drawH + 26;
-          const svgH = Math.round(dimTop + rows * rowH + 26);
-          const X = (x) => ML + x * sc;
-          const Y = (y) => MT + drawH - (y - yLo) * sc;
+          const nFloors = studLatLines.floors.length || 1;
+          const bandBlockH = Math.round(14 + drawH + 22 + nFloors * rowH + 16);   // bandlabel + gevel + dim-gap + rijen + pad
+          const svgH = Math.round(MT + nBands * bandBlockH + 24);
+          const sL = groupSettings?.startLijn, mH = groupSettings?.maxHoogte;
+          const bandOf = (x) => Math.min(nBands - 1, Math.max(0, Math.floor(x / bandMM)));
           return (
             <svg ref={svgRef} width={VIEW_W} height={svgH} viewBox={`0 0 ${VIEW_W} ${svgH}`} style={{ background: '#fff', display: 'block', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }} xmlns="http://www.w3.org/2000/svg">
               <rect x={0} y={0} width={VIEW_W} height={svgH} fill="#fff" />
-              <text x={ML} y={18} fontSize={13} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">{groupName ?? 'Groep'} — Verticale achterconstructie (latten op de module-stijlen)</text>
-              <text x={ML} y={31} fontSize={8} fill="#64748b" fontFamily="Arial, sans-serif">Maat = LINKERZIJDE van de lat (doorlopende lijn) · gestippeld = schroeflijn (stijl-hart), alleen waar je kunt schroeven · mm</text>
-              <rect x={X(0)} y={Y(yHi)} width={(groupWidth || 0) * sc} height={drawH} fill="#f8fafc" stroke={dimColor} strokeWidth={1} />
-              {opens.map((op, i) => (
-                <rect key={`vop-${i}`} x={X(op.x ?? 0)} y={Y((op.y ?? 0) + (op.height ?? 0))} width={(op.width ?? 0) * sc} height={(op.height ?? 0) * sc} fill="#e2e8f0" stroke="#94a3b8" strokeWidth={0.6} />
-              ))}
-              {studLatLines.floors.map((f, i) => (
-                <line key={`vfl-${i}`} x1={X(0)} y1={Y(f.y0)} x2={X(groupWidth || 0)} y2={Y(f.y0)} stroke="#cbd5e1" strokeWidth={0.5} strokeDasharray="4,4" />
-              ))}
-              {/* START (peil) + MAX (striphoogte): de begrenzing waarbinnen de verticale latten lopen — dezelfde grenzen als de klem in stijlen.js. */}
-              {(() => {
-                const sL = groupSettings?.startLijn, mH = groupSettings?.maxHoogte;
-                const items = [];
-                if (sL != null && sL >= yLo - 1 && sL <= yHi + 1) items.push({ y: sL, txt: `START ${mm(sL)}`, col: '#0369a1' });
-                if (mH != null && mH > 0 && mH >= yLo - 1 && mH <= yHi + 1) items.push({ y: mH, txt: `MAX ${mm(mH)}`, col: '#dc2626' });
-                return items.map((it, i) => (
-                  <g key={`vsm-${i}`}>
-                    <line x1={X(0)} y1={Y(it.y)} x2={X(groupWidth || 0)} y2={Y(it.y)} stroke={it.col} strokeWidth={0.9} strokeDasharray="7,4" />
-                    <text x={X(0) + 3} y={Y(it.y) - 2} fontSize={8} fontWeight="bold" fill={it.col} fontFamily="Arial, sans-serif">{it.txt}</text>
-                  </g>
-                ));
-              })()}
-              {studLatLines.latLines.map((L, i) => {
-                const col = L.type === 'dubbel' ? '#dc2626' : '#7c3aed';
-                const xl = X(L.xLeft), xsw = X(L.screwX);
+              <text x={ML} y={20} fontSize={13} fontWeight="bold" fill="#0f172a" fontFamily="Arial, sans-serif">{groupName ?? 'Groep'} — Verticale achterconstructie (latten op de module-stijlen)</text>
+              <text x={ML} y={34} fontSize={8} fill="#64748b" fontFamily="Arial, sans-serif">Maat = LINKERZIJDE van de lat · gestippeld = schroeflijn (stijl-hart) · START/MAX = begrenzing{nBands > 1 ? ` · ${nBands} banden (elk ${mm(bandMM)} mm breed)` : ''} · mm</text>
+              {Array.from({ length: nBands }).map((_, b) => {
+                const x0 = b * bandMM, x1 = (b + 1) * bandMM;
+                const topY = MT + b * bandBlockH + 14;
+                const X = (x) => ML + (x - x0) * sc;
+                const Y = (y) => topY + drawH - (y - yLo) * sc;
+                const dimTop = topY + drawH + 22;
+                const latsB = studLatLines.latLines.filter((L) => bandOf(L.xLeft) === b);
                 return (
-                  <g key={`vll-${i}`}>
-                    {L.edges.map((e, j) => <line key={`ve-${j}`} x1={xl} y1={Y(e.y1)} x2={xl} y2={Y(e.y0)} stroke={col} strokeWidth={L.type === 'dubbel' ? 1.5 : 1.1} />)}
-                    {L.screws.map((s, j) => <line key={`vs-${j}`} x1={xsw} y1={Y(s.y1)} x2={xsw} y2={Y(s.y0)} stroke={col} strokeWidth={0.9} strokeDasharray="2,2" opacity={0.9} />)}
-                  </g>
-                );
-              })}
-              {studLatLines.floors.map((f, fi) => {
-                const inFloor = studLatLines.latLines.filter((L) => L.y1 > f.y0 + 100 && L.y0 < f.y1 - 100).sort((a, b) => a.xLeft - b.xLeft);
-                const y = dimTop + fi * rowH;
-                return (
-                  <g key={`vdim-${fi}`}>
-                    <text x={ML - 8} y={y + 3} textAnchor="end" fontSize={8} fill="#475569" fontFamily="Arial, sans-serif">{fi === 0 ? 'BG' : `${fi}e`}</text>
-                    {inFloor.slice(0, -1).map((L, i) => { const L2 = inFloor[i + 1]; const span = L2.xLeft - L.xLeft; if (span < 1) return null;
-                      return <DimH key={`vd-${i}`} x1={X(L.xLeft)} x2={X(L2.xLeft)} y={y} label={`${mm(span)}`} color={dimColor} />; })}
+                  <g key={`band-${b}`}>
+                    {nBands > 1 && <text x={ML} y={topY - 3} fontSize={8} fontWeight="bold" fill="#94a3b8" fontFamily="Arial, sans-serif">{`facade-x ${mm(x0)}–${mm(x1)} mm`}</text>}
+                    <rect x={X(x0)} y={Y(yHi)} width={usableW} height={drawH} fill="#f8fafc" stroke={dimColor} strokeWidth={1} />
+                    {opens.map((op, i) => { const a = Math.max(op.x ?? 0, x0), c = Math.min((op.x ?? 0) + (op.width ?? 0), x1); if (!(c > a + 0.5)) return null;
+                      return <rect key={`vop-${b}-${i}`} x={X(a)} y={Y((op.y ?? 0) + (op.height ?? 0))} width={(c - a) * sc} height={(op.height ?? 0) * sc} fill="#e2e8f0" stroke="#94a3b8" strokeWidth={0.6} />; })}
+                    {studLatLines.floors.map((f, i) => (
+                      <line key={`vfl-${b}-${i}`} x1={X(x0)} y1={Y(f.y0)} x2={X(x1)} y2={Y(f.y0)} stroke="#cbd5e1" strokeWidth={0.5} strokeDasharray="4,4" />
+                    ))}
+                    {[(sL != null && sL >= yLo - 1 && sL <= yHi + 1) ? { y: sL, txt: `START ${mm(sL)}`, col: '#0369a1' } : null,
+                      (mH != null && mH > 0 && mH >= yLo - 1 && mH <= yHi + 1) ? { y: mH, txt: `MAX ${mm(mH)}`, col: '#dc2626' } : null]
+                      .filter(Boolean).map((it, i) => (
+                        <g key={`vsm-${b}-${i}`}>
+                          <line x1={X(x0)} y1={Y(it.y)} x2={X(x1)} y2={Y(it.y)} stroke={it.col} strokeWidth={0.9} strokeDasharray="7,4" />
+                          <text x={X(x0) + 3} y={Y(it.y) - 2} fontSize={8} fontWeight="bold" fill={it.col} fontFamily="Arial, sans-serif">{it.txt}</text>
+                        </g>
+                      ))}
+                    {latsB.map((L, i) => {
+                      const col = L.type === 'dubbel' ? '#dc2626' : '#7c3aed';
+                      const xl = X(L.xLeft), xsw = X(L.screwX);
+                      return (
+                        <g key={`vll-${b}-${i}`}>
+                          {L.edges.map((e, j) => <line key={`ve-${j}`} x1={xl} y1={Y(e.y1)} x2={xl} y2={Y(e.y0)} stroke={col} strokeWidth={L.type === 'dubbel' ? 1.5 : 1.1} />)}
+                          {L.screws.map((s, j) => <line key={`vs-${j}`} x1={xsw} y1={Y(s.y1)} x2={xsw} y2={Y(s.y0)} stroke={col} strokeWidth={0.9} strokeDasharray="2,2" opacity={0.9} />)}
+                        </g>
+                      );
+                    })}
+                    {studLatLines.floors.map((f, fi) => {
+                      const inFloor = latsB.filter((L) => L.y1 > f.y0 + 100 && L.y0 < f.y1 - 100).sort((a, b2) => a.xLeft - b2.xLeft);
+                      const y = dimTop + fi * rowH;
+                      return (
+                        <g key={`vdim-${b}-${fi}`}>
+                          <text x={ML - 8} y={y + 3} textAnchor="end" fontSize={8} fill="#475569" fontFamily="Arial, sans-serif">{fi === 0 ? 'BG' : `${fi}e`}</text>
+                          {inFloor.slice(0, -1).map((L, i) => { const L2 = inFloor[i + 1]; const span = L2.xLeft - L.xLeft; if (span < 1) return null;
+                            return <DimH key={`vd-${i}`} x1={X(L.xLeft)} x2={X(L2.xLeft)} y={y} label={`${mm(span)}`} color={dimColor} />; })}
+                        </g>
+                      );
+                    })}
                   </g>
                 );
               })}
