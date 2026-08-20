@@ -5,7 +5,7 @@ import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements
 import { parseGhCladding } from './lib/ghCladding.js';
 import { attachLekdorpelToWalls } from './lib/lekdorpel.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isExportEndExtFix, isGhImport, isStijlenImport, isGeenVerband, isBlankBaseVerband, isLattenPlat, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isExportEndExtFix, isGhImport, isStijlenImport, isGeenVerband, isBlankBaseVerband, isLattenPlat, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isHoogteVoorzet, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { parseStijlenData, studLattenForGroup } from './lib/stijlen.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor, applyVentZonesToBatches, solidifyRows } from './lib/zoneRegions.js';
@@ -18,7 +18,7 @@ import { saveIfcFile, loadSavedIfcFile, deleteSavedIfcFile, saveParsedWalls, loa
 import { detectAdjacencies, detectAdjacenciesAsync, buildConnectedComponents, sortWallsInComponent } from './lib/adjacency.js';
 import { buildGroupPattern, buildFacePattern, buildSymmetricFacePattern, buildCenteredFacePattern, buildMirroredFacePattern, getGroupPatternLogic, buildFullGroupFacadePattern, buildPenantSidePattern, snapWidthToWholeStone } from './lib/pattern.js';
 import { BATTEN_CATALOG, BASISPLAAT_CATALOG, STEENSTRIP_CATALOG } from './lib/battens.js';
-import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateCombinedMoldPrintHTML, getMoldTemplates, buildWildverbandPanelGrid, moldIdLabel, cutVentHolesFromPanels, attachHolesToPanels, computeHorizontalLatten, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones, mergeStackedColumns, buildGroupPanels } from './lib/panelization.js';
+import { buildFacadeZones, panelizeZone, generateBattenPositions, computeEffectiveBasePanel, generateMoldRecipe, generateMoldDXF, generateCombinedMoldPrintHTML, getMoldTemplates, buildWildverbandPanelGrid, moldIdLabel, cutVentHolesFromPanels, attachHolesToPanels, computeHorizontalLatten, buildFacadeLatten, buildZoneBackingPanels, clipLattenToZones, mergeStackedColumns, buildGroupPanels, suggestOptimalLagen } from './lib/panelization.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -2023,11 +2023,29 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
             {pan.enabled && isBandenOptimalisatie() && (() => {
               const _m = settings.material ?? DEFAULT_MATERIAL;
               const _lm = (_m.steenH ?? 50) + (_m.lint ?? 12);           // lagenmaat = steenH + lint
-              const _hl = pan.hoogteLagen ?? 14;
+              // HOOGTE_VOORZET: optimale paneelhoogte (lagen) — de STAANDE zones en de BESTAANDE GEVEL apart berekend
+              // (zones kunnen verdiept liggen). density = strips + board; plaat auto beste van Bluclad 1250×2500/2850.
+              const _vz = isHoogteVoorzet() ? (() => {
+                const _zn = (settings.stripZones ?? []).filter((z) => z?.enabled === true);
+                const _dens = (_m.brickWeightM2 ?? 40) + (pan.gewichtM2 ?? 11.8);
+                const _mk = pan.maxKg ?? 46;
+                const _zVer = _zn.find((z) => z?.verband)?.verband ?? settings.verband ?? DEFAULT_VERBAND;
+                const _facH = Math.max(settings.maxHoogte ?? 0, 0, ..._zn.map((z) => (z.y ?? 0) + (z.height ?? 0)));
+                return {
+                  zone: _zn.length ? suggestOptimalLagen({ vakHeightsMM: _zn.map((z) => z.height ?? 0), verband: _zVer, mat: _m, densityKgM2: _dens, maxKg: _mk }) : null,
+                  gevel: _facH > 0 ? suggestOptimalLagen({ vakHeightsMM: [_facH], verband: settings.verband ?? DEFAULT_VERBAND, mat: _m, densityKgM2: _dens, maxKg: _mk }) : null,
+                };
+              })() : null;
+              const _hl = pan.hoogteLagen ?? _vz?.gevel?.lagen ?? 14;    // auto-invullen: gevel-voorzet als geen handmatige waarde
               const _lmo = pan.latMaxOverspanning ?? 450;
               return (
                 <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4, padding: '6px 8px', marginBottom: 8 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#15803d', marginBottom: 4 }}>Banden geoptimaliseerd</div>
+                  {_vz && (_vz.zone || _vz.gevel) && (
+                    <div style={{ fontSize: 9, color: '#166534', background: '#dcfce7', borderRadius: 3, padding: '3px 5px', marginBottom: 4 }}>
+                      🎯 Voorzet optimale hoogte{_vz.gevel ? ` · gevel ${_vz.gevel.lagen} lagen` : ''}{_vz.zone ? ` · zones ${_vz.zone.lagen} lagen (${Math.round(_vz.zone.util * 100)}% plaatbenutting · plaat ${_vz.zone.plate} · ${_vz.zone.kg} kg)` : ''}{pan.hoogteLagen == null ? ' — automatisch ingevuld' : ' — handmatig overschreven'}
+                    </div>
+                  )}
                   <label style={{ fontSize: 10, color: '#475569', display: 'block' }}>Paneelhoogte (lagen)
                     <DeferredNumberInput value={_hl} min={1} step={1}
                       onCommit={(v) => upd({ hoogteLagen: Math.min(15, Math.max(1, Math.round(v))) })} style={inp} />
