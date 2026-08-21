@@ -5,7 +5,7 @@ import { sparingRectsForGroup, clipRowsAroundRects } from './lib/sparingElements
 import { parseGhCladding } from './lib/ghCladding.js';
 import { attachLekdorpelToWalls } from './lib/lekdorpel.js';
 import { runNewEngineAdapter } from './lib/newEngineRunner.js';
-import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isExportEndExtFix, isGhImport, isStijlenImport, isGeenVerband, isBlankBaseVerband, isLattenPlat, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isHoogteVoorzet, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
+import { isNewOpeningDerivation, isBestFitGroups, isSelfContainedProjects, isCornerButtMode, isCorner85, isRestoreUpAxis, isWildverbandKoppelstrip, isFeatureZones, isGroothuisWildverband, isGroothuisWildverband2, isStableGroupCamera, isDropOversizedOpenings, isSyntheticWall, isMalRecept, isPlanBridge, isSparingElementen, isShowKozijnen, isOpeningFromKozijn, isOutsideDirSync, isVentilatieZone, isKozijnOffset, isOpeningEdgeQuarter, isProjectDefaults, isLekdorpelReferentie, isUnifiedLatten, isUnifiedPanels, isKliklijstReferentie, isGevelHandedness, isUittrekstaatSnap, isStrip3dFilter, isPenantHoekStoot, isUnitDetectie, isZoneStartStop, isZoneExtend, isExportEndExtFix, isGhImport, isStijlenImport, isGeenVerband, isBlankBaseVerband, isLattenPlat, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isHoogteVoorzet, isZoneVoegOverride, FLAG_REGISTRY, getFlag, setStoredFlag } from './lib/featureFlags.js';
 import { parseStijlenData, studLattenForGroup } from './lib/stijlen.js';
 import { createPlanBridge } from './lib/planBridge.js';
 import { buildStripZoneRegions, hasPenants, getActiveStripZones, ventilationZonesFor, applyVentZonesToBatches, solidifyRows } from './lib/zoneRegions.js';
@@ -1835,15 +1835,22 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                           // Groep-standaard: steenmaat ÉN voegen (lint/stoot) volgen de groep → alle vier locked +
                           // groep-maat tonen. Eigen artikel: steenmaat uit het artikel (locked), voegen zone-eigen.
                           const isGroupStd = !sz.steenstripArtikelId;
-                          const locked = isGroupStd || (fromArt && !!zoneStripArt);
-                          const val = (zoneStripArt && fromArt) ? (zoneStripArt[key] ?? DEFAULT_MATERIAL[key])
+                          // ZONE_VOEG_OVERRIDE: op groep-standaard mag je Lintvoeg/Stootvoeg per zone afwijken zonder een
+                          // eigen artikel te kiezen — de steenmaat blijft de groep volgen. Geschreven naar zone.voeg.
+                          const _voegKey = (key === 'lint' || key === 'stoot');
+                          const _voegUnlock = isZoneVoegOverride() && isGroupStd && _voegKey;
+                          const locked = _voegUnlock ? false : (isGroupStd || (fromArt && !!zoneStripArt));
+                          const val = _voegUnlock ? (zs.voeg?.[key] ?? groupSteen[key] ?? DEFAULT_MATERIAL[key])
+                            : (zoneStripArt && fromArt) ? (zoneStripArt[key] ?? DEFAULT_MATERIAL[key])
                             : isGroupStd ? (groupSteen[key] ?? DEFAULT_MATERIAL[key])
                             : (zm[key] ?? DEFAULT_MATERIAL[key]);
                           return (
                             <Field key={key} label={lbl}>
                               <input type="number" min={1} step={1} value={val}
                                 disabled={locked}
-                                onChange={(e) => updZone(sz.id, { material: { ...zm, [key]: Number(e.target.value) } })}
+                                onChange={_voegUnlock
+                                  ? (e) => updZone(sz.id, { voeg: { ...(zs.voeg ?? {}), [key]: Number(e.target.value) } })
+                                  : (e) => updZone(sz.id, { material: { ...zm, [key]: Number(e.target.value) } })}
                                 style={{ ...inp, width: '100%', opacity: locked ? 0.6 : 1 }} />
                             </Field>
                           );

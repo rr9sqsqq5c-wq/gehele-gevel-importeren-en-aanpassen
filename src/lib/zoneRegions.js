@@ -15,7 +15,7 @@
 
 import { buildFacePattern, buildRowPiecesForWidth } from './pattern.js';
 import { buildTruthRows } from './wildverbandKoppelstrip.js';
-import { isWildverbandKoppelstrip, isZoneExtend, isZoneBondPlaneParity, isZonePastegel, isZoneOpeningSnijlijn } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isZoneExtend, isZoneBondPlaneParity, isZonePastegel, isZoneOpeningSnijlijn, isZoneVoegOverride } from './featureFlags.js';
 import { clipRowsAroundRects } from './sparingElements.js';
 
 function round2(v) { return Math.round(v * 100) / 100; }
@@ -336,6 +336,13 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
       zoneMat = zoneMatBase;
     } else {
       zoneMat = applyArt({ ...mat });
+    }
+    // ZONE_VOEG_OVERRIDE: op groep-standaard mag de zone eigen LINTVOEG/STOOTVOEG hebben terwijl de STEENMAAT
+    // de groep blijft volgen. Alleen de voegen worden gemerged (steenL/steenH blijven de groep-mat/artikel).
+    // Vlag uit of geen zone.voeg → byte-identiek. Vent-zones hebben geen zone.voeg → ongemoeid.
+    if (isZoneVoegOverride() && !zone.steenstripArtikelId && zone.voeg) {
+      if (zone.voeg.lint != null) zoneMat = { ...zoneMat, lint: zone.voeg.lint };
+      if (zone.voeg.stoot != null) zoneMat = { ...zoneMat, stoot: zone.voeg.stoot };
     }
     // VENTILATIE_ZONE: een expliciete zone-steenL (verticale strip OP LENGTE = zone-hoogte) mag NIET door
     // de groep-stripArt worden overschreven. ALLEEN voor de auto-vent-zone (kind 'ventilation'), niet voor

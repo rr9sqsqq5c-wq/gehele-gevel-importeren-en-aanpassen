@@ -849,6 +849,15 @@ export function isPaneelSelector() {
   return readFlag('paneelSelector', false);
 }
 
+// ZONE_VOEG_OVERRIDE — een tekenzone op "Groep-standaard" mag eigen LINTVOEG/STOOTVOEG hebben terwijl de
+// STEENMAAT de groep blijft volgen. UI: Lintvoeg/Stootvoeg worden invulbaar (zonder een eigen steenstrip-
+// artikel te hoeven kiezen) en geschreven naar zone.voeg = {lint, stoot}. Geometrie: buildStripZoneRegions
+// merget die voegen over de groep-mat (alleen steenmaat volgt de groep). DEFAULT = false → velden op slot,
+// zone volgt volledig de groep-voeg (byte-identiek). Noodrem: ?zoneVoegOverride=0.
+export function isZoneVoegOverride() {
+  return readFlag('zoneVoegOverride', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -873,6 +882,7 @@ export const FLAG_REGISTRY = [
   { key: 'tekenzonePlaatsing',   label: 'Tekenzone-plaatsing (schoon)', note: 'Bundel voor de schone tekenzone-plaatsing: (1) merk per tekenzone als "letter-nr" uit het 2D-zonelabel (bv. C-1), bestaande gevel houdt "P{merk}" blauwgrijs, meetstaat-Merk = "P{letter}-{nr}" (EPC-code ongemoeid), binnen een zone geen groene koppelstrippen (enkel amber); (2) uniform paneelraster per tekenzone (raam op hele rijen → minder merken), rest via de banden-motor; (3) zonegrens op het steenraster gesnapt; (4) een smalle bestaande-gevel band naast een raam wordt alleen horizontaal gedeeld. (2)–(4) raken alleen paneelgrenzen; de strips lopen door. Werkt in alle views + IFC-export.' },
   { key: 'paneelZoneStrip',      label: 'Bestaande-gevel-paneel volgt de strips bij een zone', note: 'Een bestaande-gevel-paneel dat aan een tekenzone grenst wordt op DEZELFDE zonerand afgeknipt als de strips (buildStripZoneRegions) i.p.v. de rauwe/afgeronde zone-rand — het paneel loopt niet meer de zone in. Bovendien knipt de paneeltekening (getPanelStripsAnnotated) de strips óók uit de zone, zodat de paneelgenerator 1-op-1 met de IFC-export klopt. De strip-POSITIE verandert niet. Default uit = huidig.' },
   { key: 'paneelSelector',       label: 'Paneel-selector in de productietab', note: 'Voegt in "Paneel productie" een dropdown toe waarmee je snel één specifiek paneel (merk) toont i.p.v. door alle kaarten te scrollen. Puur UI-navigatie — filtert alleen welke kaart zichtbaar is, verandert geen maat/strip/export. Default uit = alle kaarten.' },
+  { key: 'zoneVoegOverride',     label: 'Tekenzone: eigen lint-/stootvoeg (steen volgt de groep)', note: 'Op "Groep-standaard" worden Lintvoeg en Stootvoeg per tekenzone invulbaar zonder dat je een eigen steenstrip-artikel hoeft te kiezen — de steenmaat blijft de groep volgen, alleen de voegen wijken af. Werkt door in de zone-strips van alle views + IFC-export (buildStripZoneRegions). Default uit = voegen op slot, zone volgt de groep-voeg.' },
   { key: 'hoogteVoorzet',        label: 'Banden: optimale paneelhoogte automatisch invullen', note: 'Vult bij bandenoptimalisatie de OPTIMALE paneelhoogte (lagen) automatisch in: de hoogte die de zone/vak-hoogtes zo gelijk mogelijk deelt (veel panelen dezelfde hoogte = productie/montagegemak) én de basisplaat het best tegelt binnen het gewichtsplafond. Gemeenschappelijk over alle zones (per zone berekend). Handmatig te overschrijven. Default uit = huidige paneelhoogte-instelling.' },
   { key: 'zaagOptimalisatie',    label: 'Tekenzone: zaag-optimalisatie (2500×1200)', note: 'Verdeelt de tekenzone-panelen zó dat ze met minimaal zaagverlies uit een basisplaat van 2500×1200 mm te zagen zijn: kiest de paneel-module (breedte = hele koppen, hoogte = hele lagen, binnen maxKg) die de plaat het beste tegelt en legt die als UNIFORM raster over de zone, i.p.v. de gelijk-verdeelde indeling. Vereist staand verband + "Tekenzone-plaatsing". Default uit = gelijk-verdeling.' },
   { key: 'endTrim',              label: 'Einduiteinde inkorten = paneel/lat echt smaller', note: 'Een negatief einduiteinde (inkorten) maakt het buitenste paneel/lat ook in de DATA smaller — maat-label + productielijst kloppen in alle weergaven, i.p.v. alleen een rode sv-lijn + visuele clip. Buitenste element ≤ 0 → vervalt.' },
