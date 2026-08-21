@@ -3,7 +3,7 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen, isTekenzonePlaatsing, isZaagOptimalisatie, isHoogteVoorzet, isPaneelZoneStrip, isPaneelVoegSnap } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen, isTekenzonePlaatsing, isZaagOptimalisatie, isHoogteVoorzet, isPaneelZoneStrip, isPaneelVoegSnap, isZoneVoegOverride } from './featureFlags.js';
 
 // ZONE_EXTEND: per-laag mm-uitloop van een zone-rand (links = x0-kant, rechts = x1-kant). Vlag uit → 0 (byte-identiek).
 const zoneExtentFor = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
@@ -816,6 +816,13 @@ export function buildZoneBackingPanels({ facadeData, activeZones, panelen, latte
   let panels = [];
   for (const z of activeZones) {
     const V = z.verband ?? verband ?? 'halfsteens';
+    // ZONE_VOEG_OVERRIDE: de zone-panelen volgen dezelfde voeg als de zone-strips → per-zone mat met de voeg-
+    // override (steenmaat volgt de groep). Raakt de course-grid (rijen, via lint) én de kolomsteek (via stoot).
+    // Vlag uit of geen zone.voeg → zMat == mat → byte-identiek.
+    const zMat = (isZoneVoegOverride() && z.voeg)
+      ? { ...mat, ...(z.voeg.lint != null ? { lint: z.voeg.lint } : {}), ...(z.voeg.stoot != null ? { stoot: z.voeg.stoot } : {}) }
+      : mat;
+    const zLint = zMat.lint ?? 12, zSteenH = zMat.steenH ?? 50, zSteenL = zMat.steenL ?? 210, zLintHalf = zLint / 2;
     const _pex = zoneExtentFor(z, 'panels');   // ZONE_EXTEND: panelen-uitloop verbreedt de zone-rechthoek
     const zx1 = (z.x ?? 0) - _pex.l, zy1 = z.y ?? 0, zx2 = (z.x ?? 0) + (z.width ?? 0) + _pex.r, zy2 = zy1 + zoneFillHeight(z);
     // ZONE_RASTER (vlag): elke tekenzone krijgt een UNIFORM paneelraster via de raster-motor — kolommen globaal
@@ -833,8 +840,8 @@ export function buildZoneBackingPanels({ facadeData, activeZones, panelen, latte
       // Zelfde anker/lagenmaat als de else-tak (regel ~868). GESCOPED op V !== verband → een zone die het groep-
       // verband al volgt houdt de veld-courses = byte-identiek. Noodrem ?paneelVoegSnap=0 → altijd veld-courses.
       let _zoneRowsForRaster = facadeData.rows ?? [];
-      if (isPaneelVoegSnap() && V !== verband) {
-        const _lmZ = V === 'staand_tegelverband' ? (steenL + lint) : (steenH + lint);
+      if ((isPaneelVoegSnap() && V !== verband) || (isZoneVoegOverride() && z.voeg)) {
+        const _lmZ = V === 'staand_tegelverband' ? (zSteenL + zLint) : (zSteenH + zLint);
         const _anchorYZ = z.bondAnchor === 'planeOrigin' ? 0 : zy1;
         const _zcR = [];
         if (_lmZ > 0) { const _k0 = Math.floor((zy1 - _anchorYZ) / _lmZ) - 1;
@@ -847,7 +854,7 @@ export function buildZoneBackingPanels({ facadeData, activeZones, panelen, latte
         By: Math.max(0, zy1), Ty: Math.min(groupHeight, zy2),
         breedte: _cut ? _cut.W : (panelen?.rasterBreedte ?? panelen?.breedte ?? 1130),
         hoogte: _zVoorzet?.mm ?? (_cut ? _cut.H : (panelen?.rasterHoogte ?? panelen?.hoogte ?? 789)),   // HOOGTE_VOORZET: optimale zone-hoogte
-        mat, verband: V, facadeRows: _zoneRowsForRaster,
+        mat: zMat, verband: V, facadeRows: _zoneRowsForRaster,
         cleanCols: true,   // TEKENZONE_PLAATSING: paneelvoeg op de raamrand, geen reep (3D-verdeling)
       });
       // Veiligheid: mocht een raam net niet op een rijrand vallen (bv. tegen de zone-boven/onder), knip het alsnog vrij
@@ -861,20 +868,20 @@ export function buildZoneBackingPanels({ facadeData, activeZones, panelen, latte
     }
     // PANEELVOEGEN OP DE STEENRIJEN: bouw de course-grid van DEZE zone (eigen verband + anker) en
     // snap de paneel-hoogtebreaks daarop, zodat een paneelvoeg op een lintvoeg valt (net als de basis).
-    const lagenmaat = V === 'staand_tegelverband' ? (steenL + lint) : (steenH + lint);
+    const lagenmaat = V === 'staand_tegelverband' ? (zSteenL + zLint) : (zSteenH + zLint);
     const anchorY = z.bondAnchor === 'planeOrigin' ? 0 : zy1;
     const rowYs = [];
     if (lagenmaat > 0) {
       const k0 = Math.floor((zy1 - anchorY) / lagenmaat) - 1;
       for (let y = anchorY + k0 * lagenmaat; y <= zy2 + lagenmaat; y += lagenmaat) if (y >= zy1 - 1 && y <= zy2 + 1) rowYs.push(round2(y));
     }
-    const snapFn = rowYs.length ? (y) => { const t = y + lintHalf; return rowYs.reduce((b, ry) => Math.abs(ry - t) < Math.abs(b - t) ? ry : b); } : null;
+    const snapFn = rowYs.length ? (y) => { const t = y + zLintHalf; return rowYs.reduce((b, ry) => Math.abs(ry - t) < Math.abs(b - t) ? ry : b); } : null;
     const bys = snapFn ? baseBattenYs.map(snapFn) : baseBattenYs;
     for (const fz of fullZones) {
       const ix1 = Math.max(fz.x, zx1), iy1 = Math.max(fz.y, zy1);
       const ix2 = Math.min(fz.x + fz.width, zx2), iy2 = Math.min(fz.y + fz.height, zy2);
       if (ix2 - ix1 > 10 && iy2 - iy1 > 10) {
-        const res = panelizeZone({ x: ix1, y: iy1, width: ix2 - ix1, height: iy2 - iy1, id: `zpz-${Math.round(ix1)}-${Math.round(iy1)}`, kind: 'zone', bondOriginX: z.bondAnchor === 'planeOrigin' ? 0 : zx1, bondOriginY: z.bondAnchor === 'planeOrigin' ? 0 : zy1 }, bys, basePanel, snapFn, mat, V);
+        const res = panelizeZone({ x: ix1, y: iy1, width: ix2 - ix1, height: iy2 - iy1, id: `zpz-${Math.round(ix1)}-${Math.round(iy1)}`, kind: 'zone', bondOriginX: z.bondAnchor === 'planeOrigin' ? 0 : zx1, bondOriginY: z.bondAnchor === 'planeOrigin' ? 0 : zy1 }, bys, basePanel, snapFn, zMat, V);
         // ZONE_PANELEN: tag elk zone-paneel met de zone-id + -verband → koppelstrip-detectie kan een
         // niet-halfsteens zone overslaan, en de werktekening kan de zone-panelen apart kleuren/labelen.
         if (res.ok) panels.push(...res.panels.map((p) => ({ ...p, zoneId: z.id, zoneVerband: V })));
