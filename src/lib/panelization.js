@@ -3,7 +3,7 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen, isTekenzonePlaatsing, isZaagOptimalisatie, isHoogteVoorzet } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen, isTekenzonePlaatsing, isZaagOptimalisatie, isHoogteVoorzet, isPaneelZoneStrip } from './featureFlags.js';
 
 // ZONE_EXTEND: per-laag mm-uitloop van een zone-rand (links = x0-kant, rechts = x1-kant). Vlag uit → 0 (byte-identiek).
 const zoneExtentFor = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
@@ -1884,9 +1884,12 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
     // gevel ernaast een hele-steen-breedte krijgt (geen 89 mm-restjes). Dezelfde snap voor de KNIP én de ZONE-panelen
     // zodat ze naadloos aansluiten. Afgeleid (niet in de opslag). Vlag uit → identiteit → _azS == _az → byte-identiek.
     const _unit = (effMat.steenL ?? 210) + (effMat.stoot ?? 10);
-    const _snap = (isTekenzonePlaatsing() && _unit > 1) ? (x) => round2(Math.round(x / _unit) * _unit) : (x) => x;
+    // PANEEL_ZONE_STRIP: knip de bestaande-gevel-panelen op DEZELFDE zonerand als de strips (buildStripZoneRegions):
+    // rauwe zone + clearMargin (voegmarge), GEEN eigen strekmaat-snap → het paneel volgt de strip-rand exact.
+    const _pzs = isPaneelZoneStrip();
+    const _snap = (isTekenzonePlaatsing() && !_pzs && _unit > 1) ? (x) => round2(Math.round(x / _unit) * _unit) : (x) => x;
     const _azS = _az.map((z) => { const a = _snap(z.x ?? 0), b = _snap((z.x ?? 0) + (z.width ?? 0)); return (b - a >= _unit - 0.5) ? { ...z, x: a, width: round2(b - a) } : z; });
-    const zoneRects = _azS.map((z) => ({ x1: z.x ?? 0, y1: z.y ?? 0, x2: (z.x ?? 0) + (z.width ?? 0), y2: (z.y ?? 0) + zoneFillHeight(z) }));
+    const zoneRects = _azS.map((z) => { const mx = _pzs ? Math.max(0, z.clearMargin?.x ?? 0) : 0; return { x1: (z.x ?? 0) - mx, y1: z.y ?? 0, x2: (z.x ?? 0) + (z.width ?? 0) + mx, y2: (z.y ?? 0) + zoneFillHeight(z) }; });
     panels = _subtractZoneRectsFromPanels(panels, zoneRects);
     // TEKENZONE — bestaande gevel: het uitknippen van de zones versnippert de groep-panelen tot smalle VERTICALE
     // rest-stroken naast de zones/ramen (links/rechts van elke zone, per horizontale band een los stukje → P16/P34/…).
