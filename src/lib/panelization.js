@@ -3,7 +3,7 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen, isTekenzonePlaatsing, isZaagOptimalisatie, isHoogteVoorzet, isPaneelZoneStrip, isPaneelVoegSnap, isZoneVoegOverride } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen, isTekenzonePlaatsing, isZaagOptimalisatie, isHoogteVoorzet, isPaneelZoneStrip, isPaneelVoegSnap, isZoneVoegOverride, isZoneRandVolleSteen } from './featureFlags.js';
 
 // ZONE_EXTEND: per-laag mm-uitloop van een zone-rand (links = x0-kant, rechts = x1-kant). Vlag uit → 0 (byte-identiek).
 const zoneExtentFor = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
@@ -1910,7 +1910,12 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
     const _pzs = isPaneelZoneStrip();
     const _snap = (isTekenzonePlaatsing() && !_pzs && _unit > 1) ? (x) => round2(Math.round(x / _unit) * _unit) : (x) => x;
     const _azS = _az.map((z) => { const a = _snap(z.x ?? 0), b = _snap((z.x ?? 0) + (z.width ?? 0)); return (b - a >= _unit - 0.5) ? { ...z, x: a, width: round2(b - a) } : z; });
-    const zoneRects = _azS.map((z) => { const mx = _pzs ? Math.max(0, z.clearMargin?.x ?? 0) : 0; return { x1: (z.x ?? 0) - mx, y1: z.y ?? 0, x2: (z.x ?? 0) + (z.width ?? 0) + mx, y2: (z.y ?? 0) + zoneFillHeight(z) }; });
+    // ZONE_RAND_VOLLE_STEEN: laat de bestaande-gevel-PANEELrand rechts van de zone dezelfde raster-snap volgen als
+    // de STRIPS (zoneRegions clearsComp) → het paneel begint op een hele steen, exact gelijk met de strip. Snap-vloer =
+    // de zone-fill-rechterrand (nooit ín de zone). Vlag uit → geen snap → paneelrand = clearRect (byte-identiek).
+    const _vsGrid = isZoneRandVolleSteen() ? [...new Set((rows ?? []).flatMap((r) => r.pieces.flatMap((p) => [round2(p.start), round2(p.start + p.length)])))].sort((a, b) => a - b) : null;
+    const _snapRightG = (x, lo) => { if (!_vsGrid || !_vsGrid.length) return x; let best = x, bd = Infinity; for (const g of _vsGrid) { if (g < lo - 1e-6) continue; const d = Math.abs(g - x); if (d < bd) { bd = d; best = g; } } return best; };
+    const zoneRects = _azS.map((z) => { const mx = _pzs ? Math.max(0, z.clearMargin?.x ?? 0) : 0; const zfr = (z.x ?? 0) + (z.width ?? 0); return { x1: (z.x ?? 0) - mx, y1: z.y ?? 0, x2: _snapRightG(zfr + mx, zfr), y2: (z.y ?? 0) + zoneFillHeight(z) }; });
     panels = _subtractZoneRectsFromPanels(panels, zoneRects);
     // TEKENZONE — bestaande gevel: het uitknippen van de zones versnippert de groep-panelen tot smalle VERTICALE
     // rest-stroken naast de zones/ramen (links/rechts van elke zone, per horizontale band een los stukje → P16/P34/…).
