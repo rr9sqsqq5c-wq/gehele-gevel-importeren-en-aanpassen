@@ -3,7 +3,7 @@ import { buildRowPiecesForWidth, buildWildverbandRow, getWildverbandModuleWidth,
 import { buildTruthFacade, getModuleWidth } from './wildverbandKoppelstrip.js';
 import { buildGroothuisModule } from './groothuisWildverband.js';
 import { buildGroothuis2Module } from './groothuisWildverband2.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen, isTekenzonePlaatsing, isZaagOptimalisatie, isHoogteVoorzet, isPaneelZoneStrip } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isHalfsteensPanel5Strek, isPaneel14Laag, isPaneelOptimalisatie, isKeepEndExtension, isZoneExtend, isEndTrim, isEndExtSeparaat, isPaneelStartLijn, isOnderlatOffset, isPaneelBanden, isLattenPaneelvoeg, isPaneelRaster, isBandenOptimalisatie, isZonePanelen, isTekenzonePlaatsing, isZaagOptimalisatie, isHoogteVoorzet, isPaneelZoneStrip, isPaneelVoegSnap } from './featureFlags.js';
 
 // ZONE_EXTEND: per-laag mm-uitloop van een zone-rand (links = x0-kant, rechts = x1-kant). Vlag uit → 0 (byte-identiek).
 const zoneExtentFor = (z, layer) => isZoneExtend() ? { l: z.endExtensions?.left?.[layer] ?? 0, r: z.endExtensions?.right?.[layer] ?? 0 } : { l: 0, r: 0 };
@@ -827,13 +827,27 @@ export function buildZoneBackingPanels({ facadeData, activeZones, panelen, latte
       // ZAAG_OPTIMALISATIE: kies de plaat-optimale module → gebruik die als UNIFORME raster-breedte/-hoogte
       // (rasterColumnJoints valt dan in het uniform-pad i.p.v. de gelijk-verdeling). Vlag uit → _cut = null → huidig.
       const _cut = zoneCutModule(mat, panelen, V);
+      // PANEEL_VOEG_SNAP (B): een zone met een AFWIJKEND verband (V !== groep-verband, bv. staand-tegel in een
+      // halfsteens groep) krijgt z'n EIGEN course-grid mee (staand tegel = steenL+lint = 226,6) i.p.v. de veld-courses
+      // (56,6), zodat rasterRowJoints de horizontale paneelnaden op de ZONE-lintvoeg snapt (net als de zone-strips).
+      // Zelfde anker/lagenmaat als de else-tak (regel ~868). GESCOPED op V !== verband → een zone die het groep-
+      // verband al volgt houdt de veld-courses = byte-identiek. Noodrem ?paneelVoegSnap=0 → altijd veld-courses.
+      let _zoneRowsForRaster = facadeData.rows ?? [];
+      if (isPaneelVoegSnap() && V !== verband) {
+        const _lmZ = V === 'staand_tegelverband' ? (steenL + lint) : (steenH + lint);
+        const _anchorYZ = z.bondAnchor === 'planeOrigin' ? 0 : zy1;
+        const _zcR = [];
+        if (_lmZ > 0) { const _k0 = Math.floor((zy1 - _anchorYZ) / _lmZ) - 1;
+          for (let y = _anchorYZ + _k0 * _lmZ; y <= zy2 + _lmZ; y += _lmZ) if (y >= zy1 - 1 && y <= zy2 + 1) _zcR.push(round2(y)); }
+        if (_zcR.length) _zoneRowsForRaster = _zcR.map((y) => ({ y }));
+      }
       const rp = buildRasterPanels({
         groupWidth, groupHeight, openings,
         trimL: Math.max(0, zx1), trimR: Math.max(0, round2(groupWidth - zx2)),
         By: Math.max(0, zy1), Ty: Math.min(groupHeight, zy2),
         breedte: _cut ? _cut.W : (panelen?.rasterBreedte ?? panelen?.breedte ?? 1130),
         hoogte: _zVoorzet?.mm ?? (_cut ? _cut.H : (panelen?.rasterHoogte ?? panelen?.hoogte ?? 789)),   // HOOGTE_VOORZET: optimale zone-hoogte
-        mat, verband: V, facadeRows: facadeData.rows ?? [],
+        mat, verband: V, facadeRows: _zoneRowsForRaster,
         cleanCols: true,   // TEKENZONE_PLAATSING: paneelvoeg op de raamrand, geen reep (3D-verdeling)
       });
       // Veiligheid: mocht een raam net niet op een rijrand vallen (bv. tegen de zone-boven/onder), knip het alsnog vrij
@@ -1904,6 +1918,26 @@ export function buildGroupPanels({ groupWidth, groupHeight, groupOpenings = [], 
     if (isTekenzonePlaatsing()) {
       panels = mergeAdjacentBandColumns(panels, groupOpenings, 6 * ((effMat.steenL ?? 210) + (effMat.stoot ?? 10)));
       panels = splitHeavyBandPanels(panels, basePanel?.maxArea50MM2 ?? Infinity, (basePanel?.width ?? 3005) + 0.5);   // te zware band → ≥2 horizontale panelen (op de streefgrens maxKg)
+    }
+    // PANEEL_VOEG_SNAP (A): snap de horizontale naden van de BASIS-panelen op de lintvoeg (facadeRows.y). Door de
+    // zone-carve + gewichts-split kan een naad naast een course belanden (bv. 819 mm = 14,47 laag → bovenrand midden
+    // in de steen). Overlap-veilig: elke UNIEKE naad-Y wordt op de dichtstbijzijnde course geremapt (gedeelde naden
+    // schuiven samen mee); de gevelrand (0/groupHeight) en de ZONEGRENZEN blijven staan; alleen kleine snaps (≤ ½ course).
+    if (isPaneelVoegSnap()) {
+      const _cY = (rows ?? []).map((r) => r.y).filter((y) => y > 1 && y < groupHeight - 1).sort((a, b) => a - b);
+      if (_cY.length) {
+        const _snapC = (y) => _cY.reduce((b, c) => Math.abs(c - y) < Math.abs(b - y) ? c : b, _cY[0]);
+        const _lm = (effMat.steenH ?? 50) + (effMat.lint ?? 12);
+        const _zY = new Set(zoneRects.flatMap((zr) => [Math.round(zr.y1), Math.round(zr.y2)]));
+        const _remap = new Map();
+        for (const p of panels) for (const y of [round2(p.y), round2(p.y + p.height)]) {
+          if (y <= 1 || y >= groupHeight - 1 || _zY.has(Math.round(y)) || _remap.has(y)) continue;
+          const s = round2(_snapC(y)); if (Math.abs(s - y) <= _lm * 0.5) _remap.set(y, s);
+        }
+        const _rey = (y) => _remap.has(round2(y)) ? _remap.get(round2(y)) : round2(y);
+        panels = panels.map((p) => { const ny = _rey(p.y), nt = _rey(p.y + p.height), nh = round2(nt - ny);
+          return nh > 1 ? { ...p, y: ny, height: nh, area: round2(p.width * nh) } : null; }).filter(Boolean);
+      }
     }
     const _fd = { groupWidth, groupHeight, groupOpenings, rows, sparingRects };
     const zonePanels = buildZoneBackingPanels({ facadeData: _fd, activeZones: _azS, panelen, latten, mat: effMat, verband, startLijn, sparingRects });
