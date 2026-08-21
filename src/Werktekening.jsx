@@ -5,7 +5,7 @@ import { buildStripZoneRegions, getActiveStripZones, solidifyRows } from './lib/
 import { sparingRectsForFacade } from './lib/sparingElements.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isPaneelMerkPerZone, isBlankBaseVerband, isFeatureZones, isBandenOptimalisatie, isTekenzonePlaatsing, isProductieSorteerAantal, isPaneelZoneStrip } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isPaneelMerkPerZone, isBlankBaseVerband, isFeatureZones, isBandenOptimalisatie, isTekenzonePlaatsing, isProductieSorteerAantal, isPaneelZoneStrip, isPaneelSelector } from './lib/featureFlags.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -390,6 +390,7 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
   const [batchExport, setBatchExport] = useState(null);   // { i } tijdens "download alle sub-tabbladen"
   const [drawingType, setDrawingType] = useState('achterconstructie');
   const [productieGenerated, setProductieGenerated] = useState(false);
+  const [prodPanelSel, setProdPanelSel] = useState('');   // PANEEL_SELECTOR: sig van het getoonde paneel ('' = alle)
   const [selectedZoneIdx, setSelectedZoneIdx] = useState(-1);
   const [tekenZone, setTekenZone] = useState({ enabled: false, x: 0, y: 0, width: null, height: null });
 
@@ -1660,16 +1661,35 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
               const orderedUniques = isProductieSorteerAantal()
                 ? [...uniques].sort((a, b) => _prodCountOf(b) - _prodCountOf(a) || a.idx - b.idx)
                 : uniques;
+              // PANEEL_SELECTOR: toon één specifiek paneel (op sig). Stale selectie (niet in huidige lijst) → alle.
+              const _selActive = isPaneelSelector() && prodPanelSel && orderedUniques.some((e) => e.sig === prodPanelSel);
               return (
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '0 4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8, padding: '0 4px' }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: '#1e3a5f' }}>
                     {uniques.length} unieke {uniques.length === 1 ? 'paneel' : 'panelen'} · {zonePanels.length} totaal — {groupName ?? 'Groep'}{selectedZone ? ` · ${selectedZone.label}` : ''}
                   </span>
-                  <button onClick={() => setProductieGenerated(false)} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '3px 8px', cursor: 'pointer' }}>Verberg</button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {isPaneelSelector() && (
+                      <select value={prodPanelSel} onChange={(ev) => setProdPanelSel(ev.target.value)}
+                        title="Toon snel één specifiek paneel zonder scrollen"
+                        style={{ fontSize: 11, padding: '3px 6px', border: '1px solid #cbd5e1', borderRadius: 3, background: '#fff', color: '#1e3a5f', maxWidth: 280, cursor: 'pointer' }}>
+                        <option value="">Alle panelen ({uniques.length})</option>
+                        {orderedUniques.map((e, i) => {
+                          const _m = paneelMerkMap?.get(e.panel);
+                          const _seq = _m != null ? _m : i + 1;
+                          const _lbl = SCHOON ? panelMerkDisplay(e.panel, _seq) : `P${_seq}`;
+                          const _cnt = _m != null ? paneelMerkMap.count(e.panel) : groups.get(e.sig).count;
+                          return <option key={e.sig} value={e.sig}>{_lbl} — {mm(e.panel.width)}×{mm(e.panel.height)} mm ({_cnt}×)</option>;
+                        })}
+                      </select>
+                    )}
+                    <button onClick={() => setProductieGenerated(false)} style={{ fontSize: 11, background: '#e2e8f0', border: 'none', borderRadius: 3, padding: '3px 8px', cursor: 'pointer' }}>Verberg</button>
+                  </div>
                 </div>
                 <div ref={productiePrintRef} style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
                   {orderedUniques.map((e, uniqueIdx) => {
+                    if (_selActive && e.sig !== prodPanelSel) return null;   // PANEEL_SELECTOR: alleen het gekozen paneel
                     const { panel, strips, counts } = e;
                     // PANEEL_MERK: gebruik het GROEP-brede merk + telling (1:1 met de montage-Merk-kolom).
                     // Vlag uit → per-zone uniqueSeq + telling (byte-identiek).

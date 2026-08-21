@@ -842,6 +842,13 @@ export function isPaneelZoneStrip() {
   return readFlag('paneelZoneStrip', false);
 }
 
+// PANEEL_SELECTOR — dropdown in de "Paneel productie"-tab om snel één specifiek paneel (merk) te tonen i.p.v.
+// door alle kaarten te scrollen. Puur UI-navigatie: filtert welke kaart getoond wordt, verandert geen maat/
+// strip/export. DEFAULT = false → geen selector, alle kaarten (byte-identiek).
+export function isPaneelSelector() {
+  return readFlag('paneelSelector', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -865,6 +872,7 @@ export const FLAG_REGISTRY = [
   { key: 'zoneOpeningSnijlijn',  label: 'Tekenzone: raam/deur op de snijlijn (deel-tegel)', note: 'Een raam/deur/sparing wordt ook uit de STAANDE zone-tegels op de werkelijke boven- én onderrand gesneden (deel-tegel), i.p.v. dat de tegel die de raamrand kruist blijft staan als een band boven/onder het raam (het midden was al weg). De grove dekking geneest anders over de raamrand omdat een staande tegel (221 mm) veel hoger is dan een gevelrij. Werkt het schoonst met "Strips snijden op de snijlijn" aan. Werkt in alle views + IFC-export.' },
   { key: 'tekenzonePlaatsing',   label: 'Tekenzone-plaatsing (schoon)', note: 'Bundel voor de schone tekenzone-plaatsing: (1) merk per tekenzone als "letter-nr" uit het 2D-zonelabel (bv. C-1), bestaande gevel houdt "P{merk}" blauwgrijs, meetstaat-Merk = "P{letter}-{nr}" (EPC-code ongemoeid), binnen een zone geen groene koppelstrippen (enkel amber); (2) uniform paneelraster per tekenzone (raam op hele rijen → minder merken), rest via de banden-motor; (3) zonegrens op het steenraster gesnapt; (4) een smalle bestaande-gevel band naast een raam wordt alleen horizontaal gedeeld. (2)–(4) raken alleen paneelgrenzen; de strips lopen door. Werkt in alle views + IFC-export.' },
   { key: 'paneelZoneStrip',      label: 'Bestaande-gevel-paneel volgt de strips bij een zone', note: 'Een bestaande-gevel-paneel dat aan een tekenzone grenst wordt op DEZELFDE zonerand afgeknipt als de strips (buildStripZoneRegions) i.p.v. de rauwe/afgeronde zone-rand — het paneel loopt niet meer de zone in. Bovendien knipt de paneeltekening (getPanelStripsAnnotated) de strips óók uit de zone, zodat de paneelgenerator 1-op-1 met de IFC-export klopt. De strip-POSITIE verandert niet. Default uit = huidig.' },
+  { key: 'paneelSelector',       label: 'Paneel-selector in de productietab', note: 'Voegt in "Paneel productie" een dropdown toe waarmee je snel één specifiek paneel (merk) toont i.p.v. door alle kaarten te scrollen. Puur UI-navigatie — filtert alleen welke kaart zichtbaar is, verandert geen maat/strip/export. Default uit = alle kaarten.' },
   { key: 'hoogteVoorzet',        label: 'Banden: optimale paneelhoogte automatisch invullen', note: 'Vult bij bandenoptimalisatie de OPTIMALE paneelhoogte (lagen) automatisch in: de hoogte die de zone/vak-hoogtes zo gelijk mogelijk deelt (veel panelen dezelfde hoogte = productie/montagegemak) én de basisplaat het best tegelt binnen het gewichtsplafond. Gemeenschappelijk over alle zones (per zone berekend). Handmatig te overschrijven. Default uit = huidige paneelhoogte-instelling.' },
   { key: 'zaagOptimalisatie',    label: 'Tekenzone: zaag-optimalisatie (2500×1200)', note: 'Verdeelt de tekenzone-panelen zó dat ze met minimaal zaagverlies uit een basisplaat van 2500×1200 mm te zagen zijn: kiest de paneel-module (breedte = hele koppen, hoogte = hele lagen, binnen maxKg) die de plaat het beste tegelt en legt die als UNIFORM raster over de zone, i.p.v. de gelijk-verdeelde indeling. Vereist staand verband + "Tekenzone-plaatsing". Default uit = gelijk-verdeling.' },
   { key: 'endTrim',              label: 'Einduiteinde inkorten = paneel/lat echt smaller', note: 'Een negatief einduiteinde (inkorten) maakt het buitenste paneel/lat ook in de DATA smaller — maat-label + productielijst kloppen in alle weergaven, i.p.v. alleen een rode sv-lijn + visuele clip. Buitenste element ≤ 0 → vervalt.' },
