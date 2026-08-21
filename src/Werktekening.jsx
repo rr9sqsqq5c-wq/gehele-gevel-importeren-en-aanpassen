@@ -5,7 +5,7 @@ import { buildStripZoneRegions, getActiveStripZones, solidifyRows } from './lib/
 import { sparingRectsForFacade } from './lib/sparingElements.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isPaneelMerkPerZone, isBlankBaseVerband, isFeatureZones, isBandenOptimalisatie, isTekenzonePlaatsing, isProductieSorteerAantal, isPaneelZoneStrip, isPaneelSelector } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isPaneelMerkPerZone, isBlankBaseVerband, isFeatureZones, isBandenOptimalisatie, isTekenzonePlaatsing, isProductieSorteerAantal, isPaneelZoneStrip, isPaneelSelector, isPaneelZoneVerband } from './lib/featureFlags.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -93,7 +93,14 @@ function fixRowEdgePieces(rowStrips, kop, stoot, steenL) {
   }
 }
 
-function getPanelStripsAnnotated(panel, facadeRows, verband, mat, koppelstripSet = null, zoneClipRects = null) {
+function getPanelStripsAnnotated(panel, facadeRows, verband, mat, koppelstripSet = null, zoneClipRects = null, zoneRowsByVerband = null) {
+  // PANEEL_ZONE_VERBAND: een zone-paneel met AFWIJKEND verband (bv. staand-tegel in een halfsteens groep) tekent z'n
+  // strips uit de ZONE-eigen rows + verband (buildStripZoneRegions — de gedeelde bron van 2D/3D/IFC) i.p.v. het veld
+  // (halfsteens). Zo klopt de productie/paneeltekening met de rest. Vlag uit → zoneRowsByVerband null → huidig.
+  if (zoneRowsByVerband && panel?.zoneVerband && panel.zoneVerband !== verband && zoneRowsByVerband[panel.zoneVerband]) {
+    facadeRows = zoneRowsByVerband[panel.zoneVerband];
+    verband = panel.zoneVerband;
+  }
   const stripH = verband === 'staand_tegelverband' ? mat.steenL : mat.steenH;
   const steenL = mat.steenL ?? 210;
   const stoot = mat.stoot ?? 10;
@@ -643,6 +650,21 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
     ? (stripZones ?? []).filter((z) => z?.enabled === true).map((z) => { const mx = Math.max(0, z.clearMargin?.x ?? 0); return { x0: (z.x ?? 0) - mx, x1: (z.x ?? 0) + (z.width ?? 0) + mx }; })
     : null;
 
+  // PANEEL_ZONE_VERBAND: strip-rows per (afwijkend) zone-verband uit de GEDEELDE buildStripZoneRegions (2D/3D/IFC-bron),
+  // zodat getPanelStripsAnnotated een zone-paneel in z'n eigen verband (staand) tekent i.p.v. het veld (halfsteens).
+  // Plain const (geen hook → hook-volgorde ongemoeid). Vlag uit / geen afwijkende zone → null → byte-identiek.
+  const _zoneRowsByVerband = (() => {
+    if (!isPaneelZoneVerband() || !facadeData) return null;
+    const azAll = (stripZones ?? []).filter((z) => z?.enabled === true);
+    if (!azAll.some((z) => z.verband && z.verband !== verband)) return null;
+    let regions;
+    try { regions = buildStripZoneRegions(facadeData, azAll, mat, verband, groupSettings?.color ?? '#a64033', {}); }
+    catch { return null; }
+    const byVb = {};
+    for (const r of (regions ?? []).slice(1)) if (r.verband && r.verband !== verband) (byVb[r.verband] ??= []).push(...(r.rows ?? []));
+    return Object.keys(byVb).length ? byVb : null;
+  })();
+
   const effectivePanels = clippedPanels ?? allPanels;
   const zonePanels = effectivePanels.filter((p) =>
     p.x + p.width > viewXStart + 1 && p.x < viewXEnd - 1 &&
@@ -656,7 +678,7 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
   // blijft achter de vlag isPaneelMerk(). Plain const (geen hook) → raakt de hook-volgorde niet.
   const paneelMerkMap = (() => {
     const sigOf = (panel) => {
-      const { strips } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet, _zoneClipRects);
+      const { strips } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet, _zoneClipRects, _zoneRowsByVerband);
       const stripSig = strips.map((s) => `${s.label}:${Math.round(s.width)}:${Math.round(s.x)}:${Math.round(s.y)}:${s.koppelstrip ? 'K' : ''}`).join('|');
       const holeSig = (panel.holes ?? []).map((h) => `${Math.round(h.x - panel.x)}:${Math.round(h.y - panel.y)}:${Math.round(h.width)}:${Math.round(h.height)}`).join(',');
       return `${Math.round(panel.width)}x${Math.round(panel.height)}|${panel.type ?? ''}|${stripSig}|H:${holeSig}`;
@@ -716,7 +738,7 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
   const _isZonePanel = (p) => p?.zoneId != null && schoonLetterOf.has(p.zoneId);
   const schoonMerkMap = SCHOON ? (() => {
     const sigOf = (panel) => {
-      const { strips } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet, _zoneClipRects);
+      const { strips } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet, _zoneClipRects, _zoneRowsByVerband);
       const stripSig = strips.map((s) => `${s.label}:${Math.round(s.width)}:${Math.round(s.x)}:${Math.round(s.y)}:${s.koppelstrip ? 'K' : ''}`).join('|');
       const holeSig = (panel.holes ?? []).map((h) => `${Math.round(h.x - panel.x)}:${Math.round(h.y - panel.y)}:${Math.round(h.width)}:${Math.round(h.height)}`).join(',');
       return `${Math.round(panel.width)}x${Math.round(panel.height)}|${panel.type ?? ''}|${stripSig}|H:${holeSig}`;
@@ -899,7 +921,7 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
       const panelsInZone = allPanels.filter((p) => p.x + p.width > zone.xStart + 1 && p.x < zone.xEnd - 1);
       for (const panel of panelsInZone) {
         const paneelId = makeEpcId(zone, globalSeq++);
-        const { counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet, _zoneClipRects);
+        const { counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet, _zoneClipRects, _zoneRowsByVerband);
         const areaM2 = (panel.width * panel.height) / 1e6;
         const gewichtKg = Math.round(areaM2 * brickW2 * 10) / 10;
         const countMap = {};
@@ -1642,7 +1664,7 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
             ) : (() => {
               // Unieke panelen: identieke panelen (zelfde maat + strippatroon) één keer tonen met aantal te produceren.
               const enriched = zonePanels.map((panel, idx) => {
-                const { strips, counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet, _zoneClipRects);
+                const { strips, counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet, _zoneClipRects, _zoneRowsByVerband);
                 const stripSig = strips.map((s) => `${s.label}:${Math.round(s.width)}:${Math.round(s.x)}:${Math.round(s.y)}:${s.koppelstrip ? 'K' : ''}`).join('|');
                 // Gaten in de sig → een paneel MÉT gat is een ander uniek paneel dan zonder (frees/zagerij).
                 const holeSig = (panel.holes ?? []).map((h) => `${Math.round(h.x - panel.x)}:${Math.round(h.y - panel.y)}:${Math.round(h.width)}:${Math.round(h.height)}`).join(',');
@@ -1724,7 +1746,7 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
                           {SCHOON ? panelMerkDisplay(panel, uniqueSeq) : `P${uniqueSeq}`}{selectedZone ? ` · ${selectedZone.label}` : ''} — {mm(panel.width)} × {mm(panel.height)} mm
                         </text>
                         <text x={CARD_W / 2} y={41} textAnchor="middle" fontSize={7} fill="#64748b" fontFamily="Arial, sans-serif">
-                          {panel.type === 'start' ? 'Start element' : panel.type === 'eind' ? 'Eind element' : panel.type === 'midden' ? 'Volg element' : panel.type === 'volledig' ? 'Volledig element' : verband} · {strips.length} strips
+                          {panel.type === 'start' ? 'Start element' : panel.type === 'eind' ? 'Eind element' : panel.type === 'midden' ? 'Volg element' : panel.type === 'volledig' ? 'Volledig element' : (() => { const _pv = isPaneelZoneVerband() && panel.zoneVerband && panel.zoneVerband !== verband ? panel.zoneVerband : verband; return _pv === 'staand_tegelverband' ? 'staand' : _pv; })()} · {strips.length} strips
                         </text>
                         <rect x={ox} y={oy} width={drawPW} height={drawPH} fill="#f8fafc" stroke="#1e3a5f" strokeWidth={1} />
                         {strips.map((s, si) => {
@@ -1794,7 +1816,7 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
               .sort((a, b) => (a.y - b.y) || (a.x - b.x));  // nummering: per rij links→rechts, dan een rij hoger
             for (const panel of panelsInZone) {
               const paneelId = makeEpcId(zone, globalSeq++);
-              const { counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet, _zoneClipRects);
+              const { counts } = getPanelStripsAnnotated(panel, facadeData.rows, verband, mat, koppelstripSet, _zoneClipRects, _zoneRowsByVerband);
               const areaM2 = (panel.width * panel.height) / 1e6;
               const gewichtKg = Math.round(areaM2 * brickW2 * 10) / 10;
               const volCount  = counts.filter(c => c.label === 'Strek').reduce((s, c) => s + c.n, 0);

@@ -849,6 +849,17 @@ export function isPaneelVoegSnap() {
   return readFlag('paneelVoegSnap', true);
 }
 
+// PANEEL_ZONE_VERBAND — de PANEEL-/PRODUCTIETEKENING tekent de strips ín een zone-paneel met het ZONE-eigen
+// verband (bv. staand-tegel) i.p.v. het groep-verband (halfsteens). Nu gebruikt getPanelStripsAnnotated
+// (Werktekening) overal facadeData.rows (veld, halfsteens) + de groep-verband, dus een paneel in een staande
+// zone kreeg halfsteens strips ("halfsteens · N strips") terwijl 2D/3D/IFC de zone wél staand tonen. Met de vlag
+// worden de zone-panelen (panel.zoneVerband ≠ groep) getekend uit de ZONE-strip-rows (buildStripZoneRegions, de
+// gedeelde bron van 2D/3D/IFC) + het zone-verband → productie congruent. GESCOPED op zones met afwijkend verband
+// → een groep zonder zulke zones is byte-identiek. DEFAULT = true (correctie). NOODREM: ?paneelZoneVerband=0.
+export function isPaneelZoneVerband() {
+  return readFlag('paneelZoneVerband', true);
+}
+
 // PANEEL_ZONE_STRIP — laat een bestaande-gevel-paneel dat aan een tekenzone grenst de STRIPS volgen: (a) de
 // paneel-knip snapt op de hele-strek-zonerand (zelfde rand als buildStripZoneRegions), zodat het paneel niet 88 mm
 // de zone in loopt; (b) getPanelStripsAnnotated (paneeltekening/merk) knipt de strips óók uit de zone-regio's, zodat
@@ -905,6 +916,7 @@ export const FLAG_REGISTRY = [
   { key: 'tekenzonePlaatsing',   label: 'Tekenzone-plaatsing (schoon)', note: 'Bundel voor de schone tekenzone-plaatsing: (1) merk per tekenzone als "letter-nr" uit het 2D-zonelabel (bv. C-1), bestaande gevel houdt "P{merk}" blauwgrijs, meetstaat-Merk = "P{letter}-{nr}" (EPC-code ongemoeid), binnen een zone geen groene koppelstrippen (enkel amber); (2) uniform paneelraster per tekenzone (raam op hele rijen → minder merken), rest via de banden-motor; (3) zonegrens op het steenraster gesnapt; (4) een smalle bestaande-gevel band naast een raam wordt alleen horizontaal gedeeld. (2)–(4) raken alleen paneelgrenzen; de strips lopen door. Werkt in alle views + IFC-export.' },
   { key: 'paneelZoneStrip',      label: 'Bestaande-gevel-paneel volgt de strips bij een zone', note: 'Een bestaande-gevel-paneel dat aan een tekenzone grenst wordt op DEZELFDE zonerand afgeknipt als de strips (buildStripZoneRegions) i.p.v. de rauwe/afgeronde zone-rand — het paneel loopt niet meer de zone in. Bovendien knipt de paneeltekening (getPanelStripsAnnotated) de strips óók uit de zone, zodat de paneelgenerator 1-op-1 met de IFC-export klopt. De strip-POSITIE verandert niet. Default uit = huidig.' },
   { key: 'paneelSelector',       label: 'Paneel-selector in de productietab', note: 'Voegt in "Paneel productie" een dropdown toe waarmee je snel één specifiek paneel (merk) toont i.p.v. door alle kaarten te scrollen. Puur UI-navigatie — filtert alleen welke kaart zichtbaar is, verandert geen maat/strip/export. Default uit = alle kaarten.' },
+  { key: 'paneelZoneVerband',    label: 'Paneeltekening: zone-strips in zone-verband (standaard aan)', note: 'STANDAARD AAN. De paneel-/productietekening tekent de strips ín een zone-paneel met het ZONE-eigen verband (bv. staand-tegel) i.p.v. het groep-verband (halfsteens). Zonder dit kreeg een paneel in een staande zone halfsteens strips ("halfsteens · N strips") terwijl 2D/3D/IFC de zone wél staand tonen. De zone-strips komen uit de gedeelde buildStripZoneRegions → productie congruent. Alleen zones met een afwijkend verband veranderen; een groep zonder zulke zones is byte-identiek. Uitzetten = ?paneelZoneVerband=0.' },
   { key: 'zoneVoegOverride',     label: 'Tekenzone: eigen lint-/stootvoeg (steen volgt de groep)', note: 'Op "Groep-standaard" worden Lintvoeg en Stootvoeg per tekenzone invulbaar zonder dat je een eigen steenstrip-artikel hoeft te kiezen — de steenmaat blijft de groep volgen, alleen de voegen wijken af. Werkt door in de zone-strips van alle views + IFC-export (buildStripZoneRegions). Default uit = voegen op slot, zone volgt de groep-voeg.' },
   { key: 'zoneRandVolleSteen',   label: 'Tekenzone: bestaande gevel start op hele steen', note: 'De bestaande gevel naast een tekenzone begint/eindigt altijd met een hele strek (even rij) of kop (oneven rij) i.p.v. een partje: de complement-knip wordt op het steenraster van de groep gesnapt i.p.v. op de zone-rand plus voegmarge. Werkt in alle views + IFC-export. Default uit = knip precies op de zone-voegmarge.' },
   { key: 'hoogteVoorzet',        label: 'Banden: optimale paneelhoogte automatisch invullen', note: 'Vult bij bandenoptimalisatie de OPTIMALE paneelhoogte (lagen) automatisch in: de hoogte die de zone/vak-hoogtes zo gelijk mogelijk deelt (veel panelen dezelfde hoogte = productie/montagegemak) én de basisplaat het best tegelt binnen het gewichtsplafond. Gemeenschappelijk over alle zones (per zone berekend). Handmatig te overschrijven. Default uit = huidige paneelhoogte-instelling.' },
@@ -951,7 +963,7 @@ export const FLAG_REGISTRY = [
 
 // Vlaggen die DEFAULT AAN staan maar tóch in de registry/UI zichtbaar zijn (zodat de UI-schakelaar
 // hun echte begintoestand toont i.p.v. vals "uit"). NOODREM blijft ?key=0.
-const FLAG_DEFAULTS_ON = { paneelOptimalisatie: true, unifiedPanels: true, unifiedLatten: true, paneelVoegSnap: true };
+const FLAG_DEFAULTS_ON = { paneelOptimalisatie: true, unifiedPanels: true, unifiedLatten: true, paneelVoegSnap: true, paneelZoneVerband: true };
 // Huidige effectieve waarde van een vlag (URL > localStorage > default).
 export function getFlag(key) { return readFlag(key, FLAG_DEFAULTS_ON[key] ?? false); }
 // Zet een vlag in localStorage (voor de UI-schakelaars).
