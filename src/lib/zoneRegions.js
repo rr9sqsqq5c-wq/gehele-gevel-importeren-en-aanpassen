@@ -15,7 +15,7 @@
 
 import { buildFacePattern, buildRowPiecesForWidth } from './pattern.js';
 import { buildTruthRows } from './wildverbandKoppelstrip.js';
-import { isWildverbandKoppelstrip, isZoneExtend, isZoneBondPlaneParity, isZonePastegel, isZoneOpeningSnijlijn, isZoneVoegOverride } from './featureFlags.js';
+import { isWildverbandKoppelstrip, isZoneExtend, isZoneBondPlaneParity, isZonePastegel, isZoneOpeningSnijlijn, isZoneVoegOverride, isZoneRandVolleSteen } from './featureFlags.js';
 import { clipRowsAroundRects } from './sparingElements.js';
 
 function round2(v) { return Math.round(v * 100) / 100; }
@@ -304,6 +304,21 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
   const clearRect = (z) => { const r = zRect(z); const mx = Math.max(0, z.clearMargin?.x ?? 0), my = Math.max(0, z.clearMargin?.y ?? 0); return { x0: r.x0 - mx, y0: r.y0 - my, x1: r.x1 + mx, y1: r.y1 + my }; };
   const clears = active.map(clearRect);
 
+  // ZONE_RAND_VOLLE_STEEN: voor het COMPLEMENT (bestaande gevel) de RECHTER knip van elke zone op het groep-
+  // steenraster snappen → de bestaande gevel rechts naast een zone begint met een hele strek (even rij) of kop
+  // (oneven rij) i.p.v. een partje. Alleen het complement (clearsComp); de zone-fill + hogere-zone-clip (clears)
+  // blijven exact. Snap-vloer = de zone-fill-rechterrand (rects[i].x1) → nooit ín de zone. Vlag uit → clears.
+  const _vsGrid = isZoneRandVolleSteen()
+    ? [...new Set((facadeData.rows ?? []).flatMap((row) => row.pieces.flatMap((p) => [round2(p.start), round2(p.start + p.length)])))].sort((a, b) => a - b)
+    : null;
+  const _snapRight = (x, lo) => {
+    if (!_vsGrid || !_vsGrid.length) return x;
+    let best = x, bd = Infinity;
+    for (const g of _vsGrid) { if (g < lo - 1e-6) continue; const d = Math.abs(g - x); if (d < bd) { bd = d; best = g; } }
+    return best;
+  };
+  const clearsComp = _vsGrid ? clears.map((c, i) => ({ ...c, x1: _snapRight(c.x1, rects[i].x1) })) : clears;
+
   // ── complement = facadeData.rows − unie(zone-rechthoeken + voegmarge) ──
   const complementRows = [];
   for (const row of facadeData.rows) {
@@ -311,7 +326,7 @@ export function buildStripZoneRegions(facadeData, stripZones, mat, defaultVerban
     const outPieces = [];
     for (const p of row.pieces) {
       let parts = [[p.start, p.start + p.length]];
-      for (const r of clears) {
+      for (const r of clearsComp) {
         if (r.y1 <= yLo + 1e-6 || r.y0 >= yHi - 1e-6) continue; // zone raakt deze laag niet
         parts = subtractInterval(parts, r.x0, r.x1);
       }

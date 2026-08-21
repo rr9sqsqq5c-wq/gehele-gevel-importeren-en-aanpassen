@@ -873,6 +873,14 @@ export function isZoneVoegOverride() {
   return readFlag('zoneVoegOverride', false);
 }
 
+// ZONE_RAND_VOLLE_STEEN — de BESTAANDE GEVEL (complement) rechts (en links) naast een tekenzone begint/eindigt
+// altijd met een HELE strek (even rij) of kop (oneven rij) i.p.v. een partje: de complement-knip wordt op het
+// groep-steenraster gesnapt i.p.v. op de zone-rand-plus-voegmarge (die van het raster af kan liggen). DEFAULT =
+// false → knip op clearRect (byte-identiek). Noodrem: ?zoneRandVolleSteen=0.
+export function isZoneRandVolleSteen() {
+  return readFlag('zoneRandVolleSteen', false);
+}
+
 // ── Vlaggen-schakelaars (UI) ────────────────────────────────────────────────────────────────
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
@@ -898,6 +906,7 @@ export const FLAG_REGISTRY = [
   { key: 'paneelZoneStrip',      label: 'Bestaande-gevel-paneel volgt de strips bij een zone', note: 'Een bestaande-gevel-paneel dat aan een tekenzone grenst wordt op DEZELFDE zonerand afgeknipt als de strips (buildStripZoneRegions) i.p.v. de rauwe/afgeronde zone-rand — het paneel loopt niet meer de zone in. Bovendien knipt de paneeltekening (getPanelStripsAnnotated) de strips óók uit de zone, zodat de paneelgenerator 1-op-1 met de IFC-export klopt. De strip-POSITIE verandert niet. Default uit = huidig.' },
   { key: 'paneelSelector',       label: 'Paneel-selector in de productietab', note: 'Voegt in "Paneel productie" een dropdown toe waarmee je snel één specifiek paneel (merk) toont i.p.v. door alle kaarten te scrollen. Puur UI-navigatie — filtert alleen welke kaart zichtbaar is, verandert geen maat/strip/export. Default uit = alle kaarten.' },
   { key: 'zoneVoegOverride',     label: 'Tekenzone: eigen lint-/stootvoeg (steen volgt de groep)', note: 'Op "Groep-standaard" worden Lintvoeg en Stootvoeg per tekenzone invulbaar zonder dat je een eigen steenstrip-artikel hoeft te kiezen — de steenmaat blijft de groep volgen, alleen de voegen wijken af. Werkt door in de zone-strips van alle views + IFC-export (buildStripZoneRegions). Default uit = voegen op slot, zone volgt de groep-voeg.' },
+  { key: 'zoneRandVolleSteen',   label: 'Tekenzone: bestaande gevel start op hele steen', note: 'De bestaande gevel naast een tekenzone begint/eindigt altijd met een hele strek (even rij) of kop (oneven rij) i.p.v. een partje: de complement-knip wordt op het steenraster van de groep gesnapt i.p.v. op de zone-rand plus voegmarge. Werkt in alle views + IFC-export. Default uit = knip precies op de zone-voegmarge.' },
   { key: 'hoogteVoorzet',        label: 'Banden: optimale paneelhoogte automatisch invullen', note: 'Vult bij bandenoptimalisatie de OPTIMALE paneelhoogte (lagen) automatisch in: de hoogte die de zone/vak-hoogtes zo gelijk mogelijk deelt (veel panelen dezelfde hoogte = productie/montagegemak) én de basisplaat het best tegelt binnen het gewichtsplafond. Gemeenschappelijk over alle zones (per zone berekend). Handmatig te overschrijven. Default uit = huidige paneelhoogte-instelling.' },
   { key: 'zaagOptimalisatie',    label: 'Tekenzone: zaag-optimalisatie (2500×1200)', note: 'Verdeelt de tekenzone-panelen zó dat ze met minimaal zaagverlies uit een basisplaat van 2500×1200 mm te zagen zijn: kiest de paneel-module (breedte = hele koppen, hoogte = hele lagen, binnen maxKg) die de plaat het beste tegelt en legt die als UNIFORM raster over de zone, i.p.v. de gelijk-verdeelde indeling. Vereist staand verband + "Tekenzone-plaatsing". Default uit = gelijk-verdeling.' },
   { key: 'endTrim',              label: 'Einduiteinde inkorten = paneel/lat echt smaller', note: 'Een negatief einduiteinde (inkorten) maakt het buitenste paneel/lat ook in de DATA smaller — maat-label + productielijst kloppen in alle weergaven, i.p.v. alleen een rode sv-lijn + visuele clip. Buitenste element ≤ 0 → vervalt.' },
