@@ -15,7 +15,9 @@
 
 import { buildFacePattern, buildRowPiecesForWidth } from './pattern.js';
 import { buildTruthRows } from './wildverbandKoppelstrip.js';
-import { isWildverbandKoppelstrip, isZoneExtend, isZoneBondPlaneParity, isZonePastegel, isZoneOpeningSnijlijn, isZoneVoegOverride, isZoneRandVolleSteen } from './featureFlags.js';
+import { buildGroothuisRows } from './groothuisWildverband.js';
+import { buildGroothuis2Rows } from './groothuisWildverband2.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isZoneExtend, isZoneBondPlaneParity, isZonePastegel, isZoneOpeningSnijlijn, isZoneVoegOverride, isZoneRandVolleSteen } from './featureFlags.js';
 import { clipRowsAroundRects } from './sparingElements.js';
 
 function round2(v) { return Math.round(v * 100) / 100; }
@@ -47,6 +49,16 @@ export function staandPastegelDivision(zH, tileH, lint) {
 function buildZoneBondRows(w, h, mat, verband, rowOffset = 0) {
   if (verband === 'wildverband' && isWildverbandKoppelstrip()) {
     return buildTruthRows(w, h, mat, []).rows;
+  }
+  // GROOTHUIS WILDVERBAND (1 + 2) — generatief verband met een EIGEN rows-bron, net als in de
+  // hoofdgroep (App.jsx). Zonder deze takken viel een zone met groothuis-verband terug op
+  // buildFacePattern → een recht gestapeld strek-verband (oogt als staand). Achter de bestaande
+  // groothuis-vlaggen; ander verband → ongewijzigd (byte-identiek).
+  if (verband === 'groothuis_wildverband' && isGroothuisWildverband()) {
+    return buildGroothuisRows(w, h, mat, []).rows;
+  }
+  if (verband === 'groothuis_wildverband_2' && isGroothuisWildverband2()) {
+    return buildGroothuis2Rows(w, h, mat, []).rows;
   }
   return buildFacePattern(w, h, mat, verband, rowOffset);
 }
