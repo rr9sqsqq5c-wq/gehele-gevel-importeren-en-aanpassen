@@ -932,6 +932,7 @@ export const FLAG_REGISTRY = [
   { key: 'cornerButt',           label: 'Stompe hoek',               note: 'Geen omslag-steenstrips op het loodrechte vlak.' },
   { key: 'corner85',             label: 'Hoek-detail 85°',           note: '' },
   { key: 'groothuisWildverband', label: 'Groothuis wildverband 1',   note: 'Het oudere groothuis-verband (versie 2 staat standaard aan).' },
+  { key: 'groothuisWildverband2', label: 'Groothuis wildverband 2',  note: 'Generatief 6-rij-groothuis-verband (DEFAULT AAN). Uitzetten → optie verdwijnt uit de verband-keuze en valt terug op de default-bond.' },
   { key: 'malRecept',            label: 'Mal recept CSV',            note: 'CSV-export per paneel — bekende telbug (defect-containment).', advanced: true },
   { key: 'unifiedLatten',        label: 'Latten — één berekening (standaard aan)', note: 'STANDAARD AAN. Eén gedeelde latten-berekening (buildFacadeLatten) voor 2D/3D/export/werktekening/uittrekstaat/mal, incl. hoek-extensie, zodat de latten overal gelijk zijn (net als panelen/strips). Uitzetten = ?unifiedLatten=0.' },
   { key: 'unifiedPanels',        label: 'Panelen — één berekening (standaard aan)', note: 'STANDAARD AAN. Eén gedeelde paneel-berekening voor 2D/3D/export/werktekening/uittrekstaat/mal zodat ze congruent zijn: het steenstrip-artikel wordt overal op de panelen toegepast (net als op de strips) en ventilatie-openingen overal gelijk behandeld. Uitzetten = ?unifiedPanels=0.' },
@@ -963,7 +964,7 @@ export const FLAG_REGISTRY = [
 
 // Vlaggen die DEFAULT AAN staan maar tóch in de registry/UI zichtbaar zijn (zodat de UI-schakelaar
 // hun echte begintoestand toont i.p.v. vals "uit"). NOODREM blijft ?key=0.
-const FLAG_DEFAULTS_ON = { paneelOptimalisatie: true, unifiedPanels: true, unifiedLatten: true, paneelVoegSnap: true, paneelZoneVerband: true };
+const FLAG_DEFAULTS_ON = { paneelOptimalisatie: true, unifiedPanels: true, unifiedLatten: true, paneelVoegSnap: true, paneelZoneVerband: true, groothuisWildverband2: true };
 // Huidige effectieve waarde van een vlag (URL > localStorage > default).
 export function getFlag(key) { return readFlag(key, FLAG_DEFAULTS_ON[key] ?? false); }
 // Zet een vlag in localStorage (voor de UI-schakelaars).
