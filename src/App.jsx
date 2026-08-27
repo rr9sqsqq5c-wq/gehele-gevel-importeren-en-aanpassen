@@ -1798,9 +1798,10 @@ function GroupConfigPanel({ groupId, settings, onUpdate, onDelete, linkedCount, 
                         <input type="text" value={sz.label ?? ''} onChange={(e) => updZone(sz.id, { label: e.target.value })} style={{ ...inp, width: '100%' }} />
                       </Field>
                       <Field label="Metselverband" tip="Verband voor deze zone (alleen volledig ondersteunde bonds).">
-                        <select value={zs.verband === 'staand_tegelverband' ? 'staand_tegelverband' : 'halfsteens'} onChange={(e) => updZone(sz.id, { verband: e.target.value })} style={inp}>
+                        <select value={zs.verband === 'staand_tegelverband' || (zs.verband === 'groothuis_wildverband_2' && isGroothuisWildverband2()) ? zs.verband : 'halfsteens'} onChange={(e) => updZone(sz.id, { verband: e.target.value })} style={inp}>
                           <option value="halfsteens">Halfsteens</option>
                           <option value="staand_tegelverband">Staand tegelverband</option>
+                          {isGroothuisWildverband2() && <option value="groothuis_wildverband_2">Groothuis wildverband 2</option>}
                         </select>
                       </Field>
                       <Field label="Anker" tip="Uitlijning van het verband: vanuit de linksonderhoek van de zone (eigen anker), of doorlopend op de vlak-oorsprong.">
