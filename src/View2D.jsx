@@ -6,7 +6,7 @@ import { brickColor, isTooSmall, polyXRangesAtY } from './lib/geometry.js';
 import { hasPenants, snapZoneRectToBond } from './lib/zoneRegions.js';
 import { isFeatureZones, isZoneVoegSnap } from './lib/featureFlags.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isKeepEndExtension, isShowKozijnen, isUnifiedLatten, isUnifiedPanels, isGevelHandedness, isBlankBaseVerband } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isKeepEndExtension, isShowKozijnen, isUnifiedLatten, isUnifiedPanels, isGevelHandedness, isBlankBaseVerband, isPeilMaatvoering } from './lib/featureFlags.js';
 import { generateSlimFortGrid, generateSlimFortFaces, SLIMFORT_DEFAULTS, CONCRETE_FACE_CLADDING_DEFAULTS, computeFaceLongRanges } from './lib/slimfort.js';
 
 function hexToRgba(hex, alpha = 1) {
@@ -1758,9 +1758,11 @@ export function View2D({ walls, facadeData = null, groupSettings, maxHoogte, sta
     }
 
     {
-      const [, sy] = toScreen(0, 0);
-      const [sx1] = toScreen(0, 0);
-      const [sx2] = toScreen(groupWidth, 0);
+      const _gMinH = walls?.length ? Math.min(...walls.map(w => w.wallOrigin?.heightStart ?? 0)) : 0;
+      const _peilY = isPeilMaatvoering() ? -_gMinH : 0;   // ± 0 peilmaat op het IFC-nulpunt (facade-y = -groupMinH); vlag uit → y=0 (byte-identiek)
+      const [, sy] = toScreen(0, _peilY);
+      const [sx1] = toScreen(0, _peilY);
+      const [sx2] = toScreen(groupWidth, _peilY);
       ctx.save();
       ctx.strokeStyle = '#facc15';
       ctx.lineWidth = 1.5;

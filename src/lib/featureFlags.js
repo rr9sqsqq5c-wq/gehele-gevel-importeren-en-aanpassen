@@ -896,6 +896,15 @@ export function isZoneRandVolleSteen() {
 // Registry van alle DEFAULT-UIT vlaggen, zodat ze via een UI-paneel aan/uit gezet kunnen worden
 // (i.p.v. handmatige ?param=1 in de URL). `reimport` = werkt pas na opnieuw importeren (parse-tijd);
 // `advanced` = experimenteel/intern (kan bestaand gedrag veranderen).
+// PEIL_MAATVOERING — alle tekeningen tonen hoogtematen t.o.v. het WERKELIJKE 0-peil (IFC-nulpunt),
+// i.p.v. de element-onderkant. De hoofd-werktekening deed dit al (peilmatenBase = groupMinH); deze vlag
+// trekt de VERTICAAL-tab (START/MAX-labels) en de View2D "± 0 peilmaat"-lijn gelijk. Puur maatvoering/
+// annotatie — geen enkele steen/lat/paneel verschuift. Bij een model waar de wand-onderkant al op peil
+// ligt (groupMinH=0) is er sowieso geen verschil. DEFAULT = false (byte-identiek). Noodrem: ?peilMaatvoering=0.
+export function isPeilMaatvoering() {
+  return readFlag('peilMaatvoering', false);
+}
+
 export const FLAG_REGISTRY = [
   { key: 'sparingElementen',     label: 'Sparing-onderdelen',        note: 'Niet-wand IFC-onderdelen importeren + de bekleding er rondom sparen.' },
   { key: 'openingFromKozijn',    label: 'Openingen op kozijn-rand',  note: 'Knip vanaf raam/deur (kozijn) i.p.v. de ruwe structurele opening.', reimport: true },
@@ -955,6 +964,7 @@ export const FLAG_REGISTRY = [
   { key: 'unitDetectie',         label: 'Detecteer repeterende units', note: 'Herkent verdiepingshoge buitenwand-panelen met dezelfde maat + raam/deur-layout en zet elk voorkomen als een gekoppelde gevelgroep weg (1× een unit-type instellen → alle kopieën volgen). Puur additief.' },
   { key: 'ghImport',             label: 'Grasshopper-gevel importeren', note: 'Laad een Grasshopper/Geometry-Gym IFC waarin panelen/strippen/latten al gemodelleerd zijn (geen wanden): leidt de gevels af, nummert de panelen per gevel en toont per gevel een beoordelingsaanzicht + uittrekstaat + zaaglijst.', reimport: true },
   { key: 'stijlenImport',        label: 'Module-stijlen laden (verticale latten)', note: 'Laad een stijlen-JSON (uit het Tekla modules-model) met de verticale-lat schroeflijnen per verdieping op de module-stijlen. De app koppelt ze per gevelgroep en tekent ze op de werktekening bij een 2-lats achterconstructie (per verdieping, op de stijlen, geen lat over een opening).' },
+  { key: 'peilMaatvoering',      label: 'Maatvoering uit het 0-peil', note: 'Alle tekeningen refereren hun hoogtematen aan het werkelijke 0-peil (IFC-nulpunt), net als de hoofd-werktekening al deed: de verticaal-tab START/MAX-labels en de 2D "± 0 peilmaat"-lijn. Puur maatvoering/annotatie — geen steen, lat of paneel verschuift. Bij een model waar de wand-onderkant al op peil ligt is er geen verschil.' },
   { key: 'productieSorteerAantal', label: 'Productie-tab: sorteer op aantal per merk', note: 'De "Paneel productie"-tab toont de unieke panelen gesorteerd op het aantal te produceren per merk — hoogste aantal eerst — i.p.v. de ruimtelijke volgorde. Alleen de weergave-volgorde verandert; merk-labels en aantallen blijven gelijk.' },
   { key: 'newOpenings',          label: 'Nieuwe opening-afleiding',  note: 'Experimenteel alternatief parse-pad; kan bestaande resultaten veranderen.', reimport: true, advanced: true },
   { key: 'openingUpAxisFix',     label: 'Opening up-as fix',         note: 'Experimenteel.', reimport: true, advanced: true },

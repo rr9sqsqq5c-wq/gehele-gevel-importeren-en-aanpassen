@@ -5,7 +5,7 @@ import { buildStripZoneRegions, getActiveStripZones, solidifyRows } from './lib/
 import { sparingRectsForFacade } from './lib/sparingElements.js';
 import { polyXRangesAtY, openingXRangesAtY, brickColor } from './lib/geometry.js';
 import { STEENSTRIP_CATALOG } from './lib/battens.js';
-import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isPaneelMerkPerZone, isBlankBaseVerband, isFeatureZones, isBandenOptimalisatie, isTekenzonePlaatsing, isProductieSorteerAantal, isPaneelZoneStrip, isPaneelSelector, isPaneelZoneVerband } from './lib/featureFlags.js';
+import { isWildverbandKoppelstrip, isGroothuisWildverband, isGroothuisWildverband2, isUnifiedLatten, isUnifiedPanels, isPaneelMerk, isPaneelMerkPerZone, isBlankBaseVerband, isFeatureZones, isBandenOptimalisatie, isTekenzonePlaatsing, isProductieSorteerAantal, isPaneelZoneStrip, isPaneelSelector, isPaneelZoneVerband, isPeilMaatvoering } from './lib/featureFlags.js';
 import { buildTruthRows } from './lib/wildverbandKoppelstrip.js';
 import { buildGroothuisRows } from './lib/groothuisWildverband.js';
 import { buildGroothuis2Rows } from './lib/groothuisWildverband2.js';
@@ -2118,8 +2118,8 @@ export function Werktekening({ walls, sharedFacadeData = null, stijlLatten = nul
                     {studLatLines.floors.map((f, i) => (
                       <line key={`vfl-${b}-${i}`} x1={X(x0)} y1={Y(f.y0)} x2={X(x1)} y2={Y(f.y0)} stroke="#cbd5e1" strokeWidth={0.5} strokeDasharray="4,4" />
                     ))}
-                    {[(sL != null && sL >= yLo - 1 && sL <= yHi + 1) ? { y: sL, txt: `START ${mm(sL)}`, col: '#0369a1' } : null,
-                      (mH != null && mH > 0 && mH >= yLo - 1 && mH <= yHi + 1) ? { y: mH, txt: `MAX ${mm(mH)}`, col: '#dc2626' } : null]
+                    {[(sL != null && sL >= yLo - 1 && sL <= yHi + 1) ? { y: sL, txt: `START ${isPeilMaatvoering() ? ((peilmatenBase + sL) / 1000).toFixed(3) : mm(sL)}`, col: '#0369a1' } : null,
+                      (mH != null && mH > 0 && mH >= yLo - 1 && mH <= yHi + 1) ? { y: mH, txt: `MAX ${isPeilMaatvoering() ? ((peilmatenBase + mH) / 1000).toFixed(3) : mm(mH)}`, col: '#dc2626' } : null]
                       .filter(Boolean).map((it, i) => (
                         <g key={`vsm-${b}-${i}`}>
                           <line x1={X(x0)} y1={Y(it.y)} x2={X(x1)} y2={Y(it.y)} stroke={it.col} strokeWidth={0.9} strokeDasharray="7,4" />
